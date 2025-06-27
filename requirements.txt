@@ -6,3 +6,5 @@ openai
 pathspec
 fs
 pytest
+telethon
+pytest-asyncio
