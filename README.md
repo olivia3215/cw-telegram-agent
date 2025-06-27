@@ -41,17 +41,20 @@ To install dependencies:
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
 
-Running Tests
+## Running Tests
 
 Run the full test suite with:
 
-PYTHONPATH=. pytest tests/
+```bash
+PYTHONPATH=. pytest
+```
 
-Development Philosophy
+## Development Philosophy
 
 This project is designed for modular growth, starting with deterministic execution and in-memory state. As development progresses, components will evolve to support LLM interactions, conversation memory, and richer behavior orchestration.
 
-License
+## License
 
 This repository is currently private and experimental. License to be determined.
