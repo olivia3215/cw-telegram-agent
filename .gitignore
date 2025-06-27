@@ -1,0 +1,12 @@
+# Local environment
+venv/
+__pycache__/
+*.pyc
+tmp/
+main.py
+
+# Secrets and credentials
+config/private-key.pem
+.env
+ssl
+state/

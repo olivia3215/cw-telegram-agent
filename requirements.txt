@@ -1,0 +1,8 @@
+flask
+pyyaml
+requests
+python-dotenv
+openai
+pathspec
+fs
+pytest
