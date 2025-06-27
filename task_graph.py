@@ -1,4 +1,5 @@
 # task_graph.py
+
 import json
 import os
 import shutil
@@ -48,9 +49,8 @@ class TaskNode:
 
         if retry_count >= max_retries:
             logger.error(f"Task {self.identifier} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}.")
-            return False
+            return False  # signal to delete graph
 
-        # Create retry wait task
         wait_id = f"wait-retry-{self.identifier}-{retry_count}"
         wait_until = (now + timedelta(seconds=retry_interval_sec)).strftime(ISO_FORMAT)
         wait_task = TaskNode(
@@ -62,10 +62,9 @@ class TaskNode:
 
         graph.nodes.append(wait_task)
         self.depends_on.append(wait_id)
-        self.params["previous_retries"] = retry_count
 
         logger.warning(f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries}).")
-        return True  # retry scheduled
+        return True
 
 @dataclass
 class TaskGraph:
@@ -92,14 +91,8 @@ class WorkQueue:
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _last_index: int = field(default=0, init=False, repr=False)
 
-    def find_graph_by_peer(self, peer_id: str) -> Optional[TaskGraph]:
-        for graph in self.task_graphs:
-            if graph.context.get("peer_id") == peer_id:
-                return graph
-        return None
-
-    def remove_graph_by_peer(self, peer_id: str):
-        self.task_graphs = [g for g in self.task_graphs if g.context.get("peer_id") != peer_id]
+    def remove_all(self, predicate):
+        self.task_graphs = [g for g in self.task_graphs if not predicate(g.context)]
 
     def round_robin_one_task(self) -> Optional[TaskNode]:
         now = datetime.now(timezone.utc)
