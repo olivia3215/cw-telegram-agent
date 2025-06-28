@@ -122,6 +122,9 @@ class WorkQueue:
             }
             md += "```json\n" + json.dumps(block, indent=2) + "\n```\n\n"
         return md
+    
+    def add(self, graph: TaskGraph):
+        self.task_graphs.append(graph)
 
     def save(self, path: str):
         with self.lock:

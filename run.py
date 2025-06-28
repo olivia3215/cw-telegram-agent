@@ -66,7 +66,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
             insert_received_task_for_conversation(
                 work_queue,
                 peer_id=dialog.id,
-                agent_id=agent_id
+                agent_id=agent_id,
             )
 
 

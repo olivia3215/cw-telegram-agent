@@ -57,7 +57,7 @@ def insert_received_task_for_conversation(
         ]
     )
 
-    work_queue.task_graphs.append(graph)
+    work_queue.add_graph(graph)
     logger.info(
         f"Inserted 'received' task for conversation {peer_id} -> {agent_id} in graph {graph_id} message {message_id}"
     )
