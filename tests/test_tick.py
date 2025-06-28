@@ -9,7 +9,12 @@ from exceptions import ShutdownException
 from test_utils import fake_clock
 
 @pytest.mark.asyncio
-async def test_run_one_tick_marks_task_done():
+async def test_run_one_tick_marks_task_done(monkeypatch):
+    from tick import _dispatch_table
+    async def fake_handle_send(task, graph):
+        pass
+    monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
+
     task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, nodes=[task])
     queue = WorkQueue(task_graphs=[graph])

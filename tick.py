@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from handle_received import handle_received
 from task_graph import WorkQueue, TaskNode
 from exceptions import ShutdownException
 from telegram import get_agent, get_agent_for_id
@@ -17,18 +18,6 @@ _dispatch_table = {}
 
 def register_task_handler(task_type, handler):
     _dispatch_table[task_type] = handler
-
-
-async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 5, state_file_path: str = None):
-    while True:
-        try:
-            logger.info("Ticking.")
-            await run_one_tick(work_queue, state_file_path)
-        except ShutdownException:
-            raise
-        except Exception as e:
-            logger.exception(f"Exception during tick: {e}")
-        await asyncio.sleep(tick_interval_sec)
 
 
 def is_graph_complete(graph) -> bool:
@@ -65,7 +54,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         task.status = "done"
 
     except Exception as e:
-        logger.warning(f"Task {task.identifier} raised exception: {e}")
+        logger.exception(f"Task {task.identifier} raised exception: {e}")
         retry_ok = task.failed(graph, retry_interval_sec=10, max_retries=10, now=now)
         if not retry_ok:
             work_queue.task_graphs.remove(graph)
@@ -78,6 +67,18 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     if state_file_path:
         work_queue.save(state_file_path)
         logger.debug(f"Work queue state saved to {state_file_path}")
+
+
+async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 5, state_file_path: str = None, tick_fn = run_one_tick):
+    while True:
+        try:
+            logger.info("Ticking.")
+            await tick_fn(work_queue, state_file_path)
+        except ShutdownException:
+            raise
+        except Exception as e:
+            logger.exception(f"Exception during tick: {e}")
+        await asyncio.sleep(tick_interval_sec)
 
 
 async def handle_wait(task: TaskNode, graph):
@@ -107,7 +108,6 @@ async def handle_send(task: TaskNode, graph):
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
     reply_to = task.params.get("in_reply_to")
-    reply_to = task.params.get("in_reply_to")
     try:
         if reply_to:
             await client.send_message(peer_id, message, reply_to=reply_to)
@@ -119,34 +119,5 @@ async def handle_send(task: TaskNode, graph):
 
 register_task_handler("send", handle_send)
 
-
-async def handle_received(task: TaskNode, graph):
-    peer_id = graph.context.get("peer_id")
-    agent_id = graph.context.get("agent_id")
-    agent = get_agent_for_id(agent_id)
-    client = agent.client
-
-    if not client:
-        raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
-
-    if not peer_id or not agent_id:
-        raise ValueError("Missing 'peer_id' or 'agent_id' in task graph context")
-
-    send_task = TaskNode(
-        identifier=f"send-{uuid.uuid4().hex[:8]}",
-        type="send",
-        params={
-            "to": peer_id,
-            "message": "Got it. I'll get back to you later.",
-            "in_reply_to": task.params.get("message_id"),
-            },
-        depends_on=[task.identifier]
-    )
-
-    graph.add_task(send_task)
-    logger.info(f"Added 'send' task in response to 'received' from {peer_id}")
-
-    await client.send_read_acknowledge(peer_id)
-    logger.info(f"Marked conversation {peer_id} as read for agent {agent_id}")
-
+# implementation in handle_received.py
 register_task_handler("received", handle_received)
