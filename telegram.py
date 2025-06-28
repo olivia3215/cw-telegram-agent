@@ -31,20 +31,17 @@ class AgentRegistry:
         agent = self._registry.get(name)
         return agent.client if agent else None
 
+    def get_by_agent_id(self, agent_id):
+        for agent in self._registry.values():
+            if agent.agent_id == agent_id:
+                return agent
+        return None
+
 _agent_registry = AgentRegistry()
 
 register_telegram_agent = _agent_registry.register
-
-
-def get_agent_for_id(agent_id):
-    for agent in _agent_registry._registry.values():
-        if agent.agent_id == agent_id:
-            return agent
-    return None
-
-
-def get_agent(name):
-    return _agent_registry._registry.get(name)
+get_agent_for_id = _agent_registry.get_by_agent_id
+get_agent = _agent_registry.get_client
 
 
 def all_agents():
