@@ -7,32 +7,42 @@ from telegram import get_agent_for_id
 
 logger = logging.getLogger(__name__)
 
-
 async def handle_received(task: TaskNode, graph):
     peer_id = graph.context.get("peer_id")
     agent_id = graph.context.get("agent_id")
     agent = get_agent_for_id(agent_id)
     client = agent.client
+    llm = agent.llm
 
-    if not client:
-        raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
+    if not peer_id or not agent_id or not client:
+        raise RuntimeError("Missing context or Telegram client")
 
-    if not peer_id or not agent_id:
-        raise ValueError("Missing 'peer_id' or 'agent_id' in task graph context")
+    # Compose prompts
+    system_prompt = "You are a helpful assistant..."
+    context_lines = task.params.get("thread_context", [])
+    formatted_context = "\n".join(context_lines)
+    user_message = task.params.get("message_text", "")
 
+    user_prompt = (
+        "Here is the conversation so far:\n\n"
+        f"{formatted_context}\n\n"
+        f"Compose a polite reply to the final message:\n{user_message}"
+    )
+
+    # Await LLM response
+    reply = await llm.query(system_prompt, user_prompt)
+
+    # Add a send task with the generated message
     send_task = TaskNode(
         identifier=f"send-{uuid.uuid4().hex[:8]}",
         type="send",
         params={
             "to": peer_id,
-            "message": "Got it. I'll get back to you later.",
+            "message": reply,
             "in_reply_to": task.params.get("message_id"),
-            },
+        },
         depends_on=[task.identifier]
     )
 
     graph.add_task(send_task)
-    logger.info(f"Added 'send' task in response to 'received' from {peer_id}")
-
     await client.send_read_acknowledge(peer_id)
-    logger.info(f"Marked conversation {peer_id} as read for agent {agent_id}")

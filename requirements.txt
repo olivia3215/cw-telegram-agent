@@ -8,3 +8,4 @@ fs
 pytest
 telethon
 pytest-asyncio
+mistune

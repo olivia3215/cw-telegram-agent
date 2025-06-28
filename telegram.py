@@ -2,19 +2,28 @@
 
 from datetime import datetime, timezone
 import logging
+import os
 from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
 
+from llm import ChatGPT
+
 logger = logging.getLogger(__name__)
 
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    logger.warning("No OpenAI API key provided and OPENAI_API_KEY not set in environment.")
+
 class Agent:
-    def __init__(self, name, phone, sticker_set_name):
+    def __init__(self, *, name, phone, sticker_set_name, instructions):
         self.name = name
         self.phone = phone
         self.sticker_set_name = sticker_set_name
         self.sticker_cache = {}  # name -> InputDocument
         self.client = None
         self.agent_id = None
+        self.llm = ChatGPT(api_key)
+        self.instructions = instructions
 
 
 class AgentRegistry:
@@ -24,28 +33,37 @@ class AgentRegistry:
     def all_agent_names(self):
         return list(self._registry.keys())
 
-    def register(self, name, *, phone, sticker_set_name):
-        self._registry[name] = Agent(name, phone, sticker_set_name)
+    def register(self, name: str, *, phone: str, sticker_set_name: str, instructions: str):
+        if name == "":
+            raise RuntimeError("No agent name provided")
+        if phone == "":
+            raise RuntimeError("No agent phone provided")
+
+        self._registry[name] = Agent(
+            name=name,
+            phone=phone,
+            sticker_set_name=sticker_set_name,
+            instructions=instructions)
 
     def get_client(self, name):
         agent = self._registry.get(name)
         return agent.client if agent else None
 
     def get_by_agent_id(self, agent_id):
-        for agent in self._registry.values():
+        for agent in self.all_agents():
             if agent.agent_id == agent_id:
                 return agent
         return None
+    
+    def all_agents(self):
+        return self._registry.values()
 
 _agent_registry = AgentRegistry()
 
 register_telegram_agent = _agent_registry.register
 get_agent_for_id = _agent_registry.get_by_agent_id
 get_agent = _agent_registry.get_client
-
-
-def all_agents():
-    return list(_agent_registry._registry.values())
+all_agents = _agent_registry.all_agents
 
 
 async def is_muted(client, dialog) -> bool:

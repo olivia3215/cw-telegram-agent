@@ -3,48 +3,50 @@
 import getpass
 import os
 import logging
+from register_agents import register_all_agents
 from telegram_client_util import get_telegram_client
 from telethon.errors import SessionPasswordNeededError
+import asyncio
+from telegram_client_util import get_telegram_client
+from telegram import all_agents
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def main():
-    agent_name = os.environ.get("AGENT_NAME")
-    phone = os.environ.get("TELEGRAM_PHONE")
+async def login_agent(agent):
+    client = get_telegram_client(agent.name, agent.phone)
+    await client.connect()
 
-    if not all([agent_name, phone]):
-        raise RuntimeError("Missing required environment variables: AGENT_NAME, TELEGRAM_PHONE")
+    if await client.is_user_authorized():
+        logger.info(f"[{agent.name}] Already logged in.")
+        return
 
-    client = get_telegram_client(agent_name, phone)
+    logger.info(f"[{agent.name}] Sending code to {agent.phone}...")
+    await client.send_code_request(agent.phone)
+    code = input(f"Enter the code you received for {agent.name}: ")
 
-    async def login():
-        await client.connect()
+    try:
+        await client.sign_in(agent.phone, code)
+    except SessionPasswordNeededError:
+        password = getpass.getpass('Enter your 2FA password: ')
+        await client.sign_in(password=password)
+    except Exception as e:
+        logger.error(f"[{agent.name}] Login failed: {e}")
+        return
 
-        if await client.is_user_authorized():
-            logger.info("Already logged in.")
-        else:
-            logger.info(f"Sending code to {phone}...")
-            await client.send_code_request(phone)
-            code = input("Enter the code you received: ")
-            try:
-                await client.sign_in(phone, code)
-            except SessionPasswordNeededError:
-                password = getpass.getpass('Enter your 2FA password: ')
-                await client.sign_in(password=password)
-            except Exception as e:
-                logger.error(f"Login failed: {e}")
-                return
+    me = await client.get_me()
+    if me:
+        logger.info(f"[{agent.name}] Logged in as: {me.username or me.first_name} ({me.id})")
 
-        me = await client.get_me()
-        if me:
-            logger.info(f"Logged in as: {me.username or me.first_name} (id: {me.id})")
-        else:
-            logger.warning("Login appeared successful but get_me() returned None.")
+    await client.disconnect()
 
-        await client.disconnect()
 
-    client.loop.run_until_complete(login())
+async def main():
+    register_all_agents()
+    for agent in all_agents():
+        await login_agent(agent)
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

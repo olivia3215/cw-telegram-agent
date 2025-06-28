@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from agents import register_all_agents
+from register_agents import register_all_agents
 from exceptions import ShutdownException
 from task_graph import WorkQueue
 from tick import run_tick_loop
@@ -23,8 +23,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.md")
-AGENT_NAME = os.environ["AGENT_NAME"]
-TELEGRAM_PHONE = os.environ["TELEGRAM_PHONE"]
 
 
 def load_work_queue():
@@ -46,7 +44,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     logger.info(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
 
     if not muted and dialog.is_user and dialog.unread_count > 0:
-        insert_received_task_for_conversation(
+        await insert_received_task_for_conversation(
             work_queue,
             peer_id=sender.id,
             agent_id=agent.agent_id,
@@ -63,7 +61,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
         logger.info(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
         if not muted and dialog.is_user and dialog.unread_count > 0:
             logger.info(f"[{name}] Found unread message with {dialog.id}")
-            insert_received_task_for_conversation(
+            await insert_received_task_for_conversation(
                 work_queue,
                 peer_id=dialog.id,
                 agent_id=agent_id,

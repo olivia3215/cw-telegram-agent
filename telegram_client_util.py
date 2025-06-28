@@ -8,6 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
+    logger.info(f"Connecting to phone '{phone_number}' for agent '{agent_name}'")
+    if phone_number == "" or agent_name == "":
+        raise RuntimeError("Missing agent name or phone number")
+
     api_id = os.environ.get("TELEGRAM_API_ID")
     api_hash = os.environ.get("TELEGRAM_API_HASH")
     session_root = os.environ.get("CINDY_AGENT_STATE_DIR")
