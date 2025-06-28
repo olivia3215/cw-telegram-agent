@@ -40,27 +40,79 @@ Run the full test suite with:
 PYTHONPATH=. pytest
 ```
 
-## Running Agent
+## Agent Setup and Configuration
 
-Run the agent with:
+Before running the agent, you must configure at least one agent persona using a markdown file.
+
+### Agent Markdown Files
+
+Each agent is defined by a markdown file located in the directory specified by the `AGENT_DIR` environment variable. Each file should include the following fields as top-level markdown headings:
+
+```markdown
+# Agent Name
+
+Ivy
+
+# Agent Phone
+
++11234567890
+
+# Agent Sticker Set
+
+MY CUTE STICKERS
+
+# Agent Instructions
+
+You are {{AGENT_NAME}}, a cheerful AI who helps students prepare for their exams...
+```
+
+- All fields are required.
+- `{{AGENT_NAME}}` will be substituted automatically during prompt construction.
+- You may include multiple markdown files in the agent directory to support multiple simultaneous agents.
+
+## Required Environment Variables
+
+The following environment variables must be set before running the login or agent runtime:
 
 ```bash
-export CINDY_AGENT_STATE_DIR="directory_to_store_state"
+export CINDY_AGENT_STATE_DIR="./state"       # where persistent work queue and session info is stored
+export AGENT_DIR="./agents"                  # directory containing *.md files defining agent setup
+export TELEGRAM_API_ID="<your Telegram API ID>"
+export TELEGRAM_API_HASH="<your Telegram API HASH>"
+```
 
-# Telegram client API
-export TELEGRAM_API_ID="<your value>"
-export TELEGRAM_API_HASH="<your value>"
-export TELEGRAM_CLIENT_NAME="<your value>"
+> Both `CINDY_AGENT_STATE_DIR` and `AGENT_DIR` must point to valid, writable directories. Create them if needed.
 
-export AGENT_NAME="<your character's name>"
-export TELEGRAM_PHONE='+<your character phone number including country code>'
-export TELEGRAM_STICKER_SET="<the name of a sticker set your character may use>"
+---
 
-python telegram_login.py # You only need to do this once
-  # log in to the account by responding to the prompts
+## Logging in to Agents
 
+You must log in each Telegram account before running the agent. This is done interactively via:
+
+```bash
+python telegram_login.py
+```
+
+This script will load the agent definitions from `$AGENT_DIR`, then walk through each account and prompt for the verification code (and 2FA password, if needed). You only need to do this once per device unless the session expires.
+
+---
+
+## Running the Agent
+
+Once all agents are logged in, run the main server loop:
+
+```bash
 python run.py
 ```
+
+The agent will:
+
+- Connect to Telegram for each registered agent
+- Process any unread messages
+- Generate task graphs using the LLM
+- Execute tasks on a tick loop
+
+---
 
 ## Development Philosophy
 
