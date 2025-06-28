@@ -1,4 +1,4 @@
-# telegram.py
+# agent.py
 
 from datetime import datetime, timezone
 import logging
@@ -44,6 +44,7 @@ class AgentRegistry:
             phone=phone,
             sticker_set_name=sticker_set_name,
             instructions=instructions)
+        # logger.info(f"Added agent {name} with intructions: {instructions}")
 
     def get_client(self, name):
         agent = self._registry.get(name)

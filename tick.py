@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from handle_received import handle_received
 from task_graph import WorkQueue, TaskNode
 from exceptions import ShutdownException
-from telegram import get_agent, get_agent_for_id
+from agent import get_agent, get_agent_for_id
 import uuid
 
 

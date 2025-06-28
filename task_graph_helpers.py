@@ -4,7 +4,7 @@ from typing import Optional
 import uuid
 import logging
 from task_graph import TaskGraph, TaskNode, WorkQueue
-from telegram import get_agent_for_id
+from agent import get_agent_for_id
 
 logger = logging.getLogger(__name__)
 

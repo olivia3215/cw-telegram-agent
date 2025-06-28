@@ -3,7 +3,8 @@
 import logging
 import uuid
 from task_graph import TaskNode
-from telegram import get_agent_for_id
+from agent import get_agent_for_id
+from prompt_loader import load_raw_system_prompt_preamble
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ async def handle_received(task: TaskNode, graph):
         raise RuntimeError("Missing context or Telegram client")
 
     # Compose prompts
-    system_prompt = "You are a helpful assistant..."
+    raw_preamble = load_raw_system_prompt_preamble()
+    system_prompt = raw_preamble.replace("{{AGENT_NAME}}", agent.name) + "\n\n" + agent.instructions
     context_lines = task.params.get("thread_context", [])
     formatted_context = "\n".join(context_lines)
     user_message = task.params.get("message_text", "")
@@ -26,23 +28,26 @@ async def handle_received(task: TaskNode, graph):
     user_prompt = (
         "Here is the conversation so far:\n\n"
         f"{formatted_context}\n\n"
-        f"Compose a polite reply to the final message:\n{user_message}"
+        f"Compose a polite reply to the final message: {user_message}"
     )
 
     # Await LLM response
     reply = await llm.query(system_prompt, user_prompt)
+    if reply == "":
+        logger.info(f"LLM decided not to reply to {user_message}")
+    else:
+        # Add a send task with the generated message
+        send_task = TaskNode(
+            identifier=f"send-{uuid.uuid4().hex[:8]}",
+            type="send",
+            params={
+                "to": peer_id,
+                "message": reply,
+                "in_reply_to": task.params.get("message_id"),
+            },
+            depends_on=[task.identifier]
+        )
 
-    # Add a send task with the generated message
-    send_task = TaskNode(
-        identifier=f"send-{uuid.uuid4().hex[:8]}",
-        type="send",
-        params={
-            "to": peer_id,
-            "message": reply,
-            "in_reply_to": task.params.get("message_id"),
-        },
-        depends_on=[task.identifier]
-    )
+        graph.add_task(send_task)
 
-    graph.add_task(send_task)
     await client.send_read_acknowledge(peer_id)

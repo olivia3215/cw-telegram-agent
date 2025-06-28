@@ -8,7 +8,7 @@ from telegram_client_util import get_telegram_client
 from telethon.errors import SessionPasswordNeededError
 import asyncio
 from telegram_client_util import get_telegram_client
-from telegram import all_agents
+from agent import all_agents
 
 
 logging.basicConfig(level=logging.INFO)

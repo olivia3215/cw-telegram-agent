@@ -10,12 +10,12 @@ from tick import run_tick_loop
 from telegram_client_util import get_telegram_client
 from telethon import events
 from task_graph_helpers import insert_received_task_for_conversation
-from telegram import (
+from agent import (
     Agent,
     all_agents,
 )
 from telegram_client_util import get_telegram_client
-from telegram import is_muted, get_dialog
+from agent import is_muted, get_dialog
 import asyncio
 import logging
 
