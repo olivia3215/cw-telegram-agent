@@ -1,5 +1,6 @@
 # task_graph_helpers.py
 
+from typing import Optional
 import uuid
 import logging
 from task_graph import TaskGraph, TaskNode, WorkQueue
@@ -19,6 +20,7 @@ def insert_received_task_for_conversation(
     *,
     peer_id: str,
     agent_id: str,
+    message_id: Optional[int] = None,
     conversation_matcher=None
 ):
     """
@@ -49,13 +51,13 @@ def insert_received_task_for_conversation(
             TaskNode(
                 identifier=task_id,
                 type="received",
-                params={},
-                depends_on=[]
+                params={"message_id": message_id} if message_id is not None else {},
+                depends_on=[],
             )
         ]
     )
 
     work_queue.task_graphs.append(graph)
     logger.info(
-        f"Inserted 'received' task for conversation {peer_id} -> {agent_id} in graph {graph_id}"
+        f"Inserted 'received' task for conversation {peer_id} -> {agent_id} in graph {graph_id} message {message_id}"
     )

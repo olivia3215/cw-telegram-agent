@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import os
-import uuid
 from agents import register_all_agents
 from exceptions import ShutdownException
 from task_graph import WorkQueue
@@ -17,8 +16,6 @@ from telegram import (
 )
 from telegram_client_util import get_telegram_client
 from telegram import is_muted, get_dialog
-from task_graph_helpers import insert_received_task_for_conversation
-from telethon import events
 import asyncio
 import logging
 
@@ -52,7 +49,8 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
         insert_received_task_for_conversation(
             work_queue,
             peer_id=sender.id,
-            agent_id=agent.agent_id
+            agent_id=agent.agent_id,
+            message_id=event.message.id,
         )
 
 

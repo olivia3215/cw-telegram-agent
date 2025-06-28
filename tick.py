@@ -106,7 +106,16 @@ async def handle_send(task: TaskNode, graph):
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
-    await client.send_message(peer_id, message)
+    reply_to = task.params.get("in_reply_to")
+    reply_to = task.params.get("in_reply_to")
+    try:
+        if reply_to:
+            await client.send_message(peer_id, message, reply_to=reply_to)
+        else:
+            await client.send_message(peer_id, message)
+    except Exception as e:
+        logger.warning(f"Failed to send reply to message {reply_to}: {e}")
+        await client.send_message(peer_id, message)  # fallback send
 
 register_task_handler("send", handle_send)
 
@@ -128,8 +137,9 @@ async def handle_received(task: TaskNode, graph):
         type="send",
         params={
             "to": peer_id,
-            "message": "Got it. I'll get back to you later."
-        },
+            "message": "Got it. I'll get back to you later.",
+            "in_reply_to": task.params.get("message_id"),
+            },
         depends_on=[task.identifier]
     )
 
