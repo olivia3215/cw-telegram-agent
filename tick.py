@@ -5,25 +5,24 @@ import logging
 from datetime import datetime, timezone
 from task_graph import WorkQueue, TaskNode
 from exceptions import ShutdownException
+from telegram import get_agent, get_agent_for_id
+import uuid
+
 
 logger = logging.getLogger(__name__)
 
 # Dispatch table for task type handlers
 _dispatch_table = {}
-_telegram_clients_by_agent = {}
 
 
 def register_task_handler(task_type, handler):
     _dispatch_table[task_type] = handler
 
 
-def register_telegram_client(agent_id, client):
-    _telegram_clients_by_agent[agent_id] = client
-
-
 async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 5, state_file_path: str = None):
     while True:
         try:
+            logger.info("Ticking.")
             await run_one_tick(work_queue, state_file_path)
         except ShutdownException:
             raise
@@ -48,7 +47,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     task = work_queue.round_robin_one_task()
 
     if not task:
-        logger.debug("No tasks ready to run.")
+        logger.info("No tasks ready to run.")
         return
 
     graph = find_graph_containing(work_queue, task)
@@ -84,9 +83,13 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
 async def handle_wait(task: TaskNode, graph):
     pass  # Already time-gated in is_ready()
 
+register_task_handler("wait", handle_wait)
+
 
 async def handle_send(task: TaskNode, graph):
     agent_id = graph.context.get("agent_id")
+    agent = get_agent_for_id(agent_id)
+    client = agent.client
     peer_id = task.params.get("to")
     message = task.params.get("message")
 
@@ -100,12 +103,40 @@ async def handle_send(task: TaskNode, graph):
 
     logger.info(f"SEND: from={task.params['from']} to={peer_id} message={message!r}")
 
-    client = _telegram_clients_by_agent.get(agent_id)
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
     await client.send_message(peer_id, message)
 
+register_task_handler("send", handle_send)
+
 
 async def handle_received(task: TaskNode, graph):
-    logger.info("Received task encountered — LLM processing placeholder.")
+    peer_id = graph.context.get("peer_id")
+    agent_id = graph.context.get("agent_id")
+    agent = get_agent_for_id(agent_id)
+    client = agent.client
+
+    if not client:
+        raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
+
+    if not peer_id or not agent_id:
+        raise ValueError("Missing 'peer_id' or 'agent_id' in task graph context")
+
+    send_task = TaskNode(
+        identifier=f"send-{uuid.uuid4().hex[:8]}",
+        type="send",
+        params={
+            "to": peer_id,
+            "message": "Got it. I'll get back to you later."
+        },
+        depends_on=[task.identifier]
+    )
+
+    graph.add_task(send_task)
+    logger.info(f"Added 'send' task in response to 'received' from {peer_id}")
+
+    await client.send_read_acknowledge(peer_id)
+    logger.info(f"Marked conversation {peer_id} as read for agent {agent_id}")
+
+register_task_handler("received", handle_received)

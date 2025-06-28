@@ -26,6 +26,8 @@ def insert_received_task_for_conversation(
     Replaces any existing task graph for that sender/recipient pair using the provided matcher.
     """
 
+    logger.info("adding a task for received message.")
+
     # Default matcher compares both peer_id and agent_id in context
     if conversation_matcher is None:
         def conversation_matcher(ctx):

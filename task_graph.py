@@ -60,7 +60,7 @@ class TaskNode:
             depends_on=[]
         )
 
-        graph.nodes.append(wait_task)
+        graph.add_task(wait_task)
         self.depends_on.append(wait_id)
 
         logger.warning(f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries}).")
@@ -84,6 +84,9 @@ class TaskGraph:
             if node.identifier == node_id:
                 return node
         return None
+    
+    def add_task(self, node: TaskNode):
+        self.nodes.append(node)
 
 @dataclass
 class WorkQueue:

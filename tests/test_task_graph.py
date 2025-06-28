@@ -104,7 +104,7 @@ def test_retry_injection_and_limit(caplog):
     caplog.set_level(logging.DEBUG)
     graph = make_graph("retry-graph", [])
     failing = make_send_task("f1")
-    graph.nodes.append(failing)
+    graph.add_task(failing)
 
     # Retry 1
     result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
