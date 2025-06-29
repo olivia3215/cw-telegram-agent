@@ -8,7 +8,7 @@ Olivia
 
 # Agent Sticker Set
 
-Olivia, of Cindy's World LLC
+OliviaAI
 
 # Agent Instructions
 

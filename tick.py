@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from handle_received import handle_received
 from task_graph import WorkQueue, TaskNode
 from exceptions import ShutdownException
-from agent import get_agent, get_agent_for_id
+from agent import Agent, get_agent, get_agent_for_id
 import uuid
 
 
@@ -121,3 +121,23 @@ register_task_handler("send", handle_send)
 
 # implementation in handle_received.py
 register_task_handler("received", handle_received)
+
+
+async def handle_sticker(task: TaskNode, graph):
+    agent_id = graph.context.get("agent_id")
+    agent: Agent = get_agent_for_id(agent_id)
+    client = agent.client
+    peer_id = task.params.get("to")
+    sticker_name = task.params.get("name")
+    in_reply_to = task.params.get("in_reply_to")
+
+    if not sticker_name:
+        raise ValueError("Sticker task missing 'name' parameter.")
+
+    file = agent.sticker_cache.get(sticker_name)
+    if not file:
+        raise ValueError(f"Unknown sticker '{sticker_name}' for agent '{agent.name}'.")
+
+    await client.send_file(peer_id, file=file, file_type="sticker", reply_to=in_reply_to)
+
+register_task_handler("sticker", handle_sticker)

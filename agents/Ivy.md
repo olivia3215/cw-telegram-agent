@@ -8,7 +8,7 @@ Ivy
 
 # Agent Sticker Set
 
-CUTIE MADELINE
+CutieMadeline
 
 # Agent Instructions
 

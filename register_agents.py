@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 import mistune
 from agent import register_telegram_agent
+from markdown_utils import flatten_node_text
 
 logger = logging.getLogger("register_agents")
 
@@ -44,35 +45,23 @@ def extract_fields_from_markdown(md_text):
     logger.debug(f"Extracted fields: {fields}")
     return fields
 
-def flatten_node_text(node):
-    if node["type"] == "text":
-        return [node.get("raw", "")]
-    elif node["type"] == "linebreak":
-        return [""]  # Treat like a line break
-    elif "children" in node:
-        lines = []
-        for child in node["children"]:
-            lines.extend(flatten_node_text(child))
-        return lines
-    return []
-
 
 def parse_agent_markdown(path):
     try:
         content = path.read_text()
-        logger.info("ORIGINAL MARKDOWN:\n" + content)
+        logger.debug("ORIGINAL MARKDOWN:\n" + content)
         fields = extract_fields_from_markdown(content)
 
         missing = [f for f in EXPECTED_FIELDS if f not in fields]
         if missing:
             logger.error(f"Agent config '{path.name}' is missing fields: {', '.join(missing)}")
-            logger.info(f"Parsed agent from {path.name}: {fields}")
+            logger.debug(f"Parsed agent from {path.name}: {fields}")
             return None
 
         name = fields["Agent Name"]
         instructions = fields["Agent Instructions"].replace("{{AGENT_NAME}}", name)
 
-        logger.info(f"Final agent instructions for {name}:\n{instructions}")
+        logger.debug(f"Final agent instructions for {name}:\n{instructions}")
         return {
             "name": name,
             "phone": fields["Agent Phone"],

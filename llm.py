@@ -21,7 +21,7 @@ class ChatGPT(LLM):
         self.temperature = temperature
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
-        logger.info(f"Querying ChatGPT with '{system_prompt}' and '{user_prompt}'")
+        logger.debug(f"Querying ChatGPT with '{system_prompt}' and '{user_prompt}'")
         response = await self.client.chat.completions.create(
             model=self.model,
             temperature=self.temperature,

@@ -1,4 +1,4 @@
-# test_tick.py
+# tests/test_tick.py
 
 import pytest
 import asyncio

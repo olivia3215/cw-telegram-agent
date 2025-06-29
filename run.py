@@ -18,6 +18,9 @@ from telegram_client_util import get_telegram_client
 from agent import is_muted, get_dialog
 import asyncio
 import logging
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import InputStickerSetShortName, InputDocument
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,7 +44,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     muted = await is_muted(client, dialog)
 
     logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r}")
-    logger.info(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
+    logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
 
     if not muted and dialog.is_user and dialog.unread_count > 0:
         await insert_received_task_for_conversation(
@@ -58,7 +61,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
         muted = await is_muted(client, dialog)
-        logger.info(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
+        logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
         if not muted and dialog.is_user and dialog.unread_count > 0:
             logger.info(f"[{name}] Found unread message with {dialog.id}")
             await insert_received_task_for_conversation(
@@ -68,12 +71,38 @@ async def scan_unread_messages(agent: Agent, work_queue):
             )
 
 
+async def ensure_sticker_cache(agent, client):
+    if agent.sticker_cache:
+        return  # already populated
+
+    try:
+        result = await client(GetStickerSetRequest(
+            stickerset=InputStickerSetShortName(short_name=agent.sticker_set_name),
+            hash=0
+        ))
+        for doc in result.documents:
+            # Use either a stable alt name or index as fallback
+            name = next(
+                (a.alt for a in doc.attributes if hasattr(a, "alt")), 
+                f"sticker_{len(agent.sticker_cache)+1}"
+            )
+            agent.sticker_cache[name] = doc
+
+            # The following block of code is for diagnostics only
+            alt = next((a.alt for a in doc.attributes if hasattr(a, "alt")), None)
+            name = alt or f"sticker_{len(agent.sticker_cache)+1}"
+            agent.sticker_cache[name] = doc
+            logger.info(f"[{agent.name}] Registered sticker: {repr(name)}")
+
+    except Exception as e:
+        logger.warning(f"Failed to load sticker set for agent '{agent.name}': {e}")
+
+
 async def run_telegram_loop(agent: Agent, work_queue):
     name = agent.name
 
     while True:
         client = get_telegram_client(agent.name, agent.phone)
-        agent.client = client
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
@@ -81,6 +110,8 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         try:
             async with client:
+                agent.client = client
+                await ensure_sticker_cache(agent, client)
                 me = await client.get_me()
                 agent_id = me.id
                 agent.agent_id = agent_id
