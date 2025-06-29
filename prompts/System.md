@@ -35,6 +35,18 @@ Hi Neal, thanks for the update.
 I'll look into the issue and get back to you shortly.
 ```
 
+You may include
+
+- bold text in your response using **this syntax**
+- italics text using __this syntax__
+- code-formatted text can be expressed `this way`.
+- strikethrough text can be written ~~this way~~
+
+Unlike markdown elsewhere, you need **two** underscores to make text italic in Telegram,
+and you cannot use two underscores to make text bold.
+
+Avoid this syntax outside code blocks if you don't intend to affect the format of the text.
+
 ## sticker
 
 Use this if a sticker captures the essence of your reply. The body should be the sticker name (emoji or short name):

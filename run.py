@@ -92,7 +92,7 @@ async def ensure_sticker_cache(agent, client):
             alt = next((a.alt for a in doc.attributes if hasattr(a, "alt")), None)
             name = alt or f"sticker_{len(agent.sticker_cache)+1}"
             agent.sticker_cache[name] = doc
-            logger.info(f"[{agent.name}] Registered sticker: {repr(name)}")
+            logger.debug(f"[{agent.name}] Registered sticker: {repr(name)}")
 
     except Exception as e:
         logger.warning(f"Failed to load sticker set for agent '{agent.name}': {e}")

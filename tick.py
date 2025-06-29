@@ -110,12 +110,12 @@ async def handle_send(task: TaskNode, graph):
     reply_to = task.params.get("in_reply_to")
     try:
         if reply_to:
-            await client.send_message(peer_id, message, reply_to=reply_to)
+            await client.send_message(peer_id, message, reply_to=reply_to, parse_mode="Markdown")
         else:
-            await client.send_message(peer_id, message)
+            await client.send_message(peer_id, message, parse_mode="Markdown")
     except Exception as e:
         logger.warning(f"Failed to send reply to message {reply_to}: {e}")
-        await client.send_message(peer_id, message)  # fallback send
+        await client.send_message(peer_id, message, parse_mode="Markdown")  # fallback send
 
 register_task_handler("send", handle_send)
 

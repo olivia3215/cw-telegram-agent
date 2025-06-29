@@ -44,10 +44,15 @@ async def insert_received_task_for_conversation(
     thread_context = []
 
     for msg in reversed(messages):
-        if not msg.text:
+        if msg.text:
+            content = f": «{msg.text.strip()}»"
+        elif msg.sticker:
+            emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
+            content = f" sent sticker: {emoji}"
+        else:
             continue
         sender_name = "You" if msg.out else (msg.sender.first_name if msg.sender and msg.sender.first_name else "Someone")
-        thread_context.append(f"{sender_name}: «{msg.text.strip()}»")
+        thread_context.append(f"{sender_name} {content}")
 
     message_text = None
     if message_id is not None:
