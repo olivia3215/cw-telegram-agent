@@ -50,7 +50,7 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
         ))
 
     for line in md_text.splitlines():
-        heading_match = re.match(r"# (\w+)", line)
+        heading_match = re.match(r"# «(\w+)»", line)
         if heading_match:
             flush()
             current_type = heading_match.group(1).strip().lower()

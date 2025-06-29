@@ -100,9 +100,10 @@ async def ensure_sticker_cache(agent, client):
 
 async def run_telegram_loop(agent: Agent, work_queue):
     name = agent.name
-
+    
     while True:
         client = get_telegram_client(agent.name, agent.phone)
+        agent.client = client
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
@@ -110,7 +111,6 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         try:
             async with client:
-                agent.client = client
                 await ensure_sticker_cache(agent, client)
                 me = await client.get_me()
                 agent_id = me.id

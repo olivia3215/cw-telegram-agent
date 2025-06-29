@@ -25,19 +25,19 @@ def test_flatten_unknown_type():
     assert flatten_node_text(node) == []
 
 def test_parse_markdown_reply_all_task_types():
-    md = """# send
+    md = """# «send»
 
 I'll reply shortly.
 
-# wait
+# «wait»
 
 delay: 10
 
-# sticker
+# «sticker»
 
 👍
 
-# shutdown
+# «shutdown»
 
 Because I was asked to stop.
 """
