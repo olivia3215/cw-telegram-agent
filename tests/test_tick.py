@@ -8,6 +8,7 @@ from tick import run_tick_loop, run_one_tick
 from exceptions import ShutdownException
 from test_utils import fake_clock
 
+
 @pytest.mark.asyncio
 async def test_run_one_tick_marks_task_done(monkeypatch):
     from tick import _dispatch_table
@@ -79,3 +80,48 @@ async def test_retry_eventually_gives_up(fake_clock):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
 
     assert fake_clock.slept().count(10) >= 10
+
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+from agent import Agent, _agent_registry
+from task_graph import TaskNode, TaskGraph, WorkQueue
+from tick import run_one_tick
+
+@pytest.mark.asyncio
+async def test_execute_clear_conversation(monkeypatch):
+    # Setup task and graph
+    task = TaskNode(identifier="t1", type="clear-conversation", params={})
+    graph = TaskGraph(identifier="g1", context={"agent_id": "a1", "peer_id": "p1"}, nodes=[task])
+    queue = WorkQueue(task_graphs=[graph])
+
+    # Create and configure mock Telegram client
+    mock_client = MagicMock()
+    mock_client.get_entity = AsyncMock(return_value=MagicMock(is_user=True))
+    mock_client.delete_messages = AsyncMock()
+
+    # Simulate async message iteration
+    class FakeAsyncIter:
+        def __init__(self, messages): self._msgs = messages
+        def __aiter__(self): return self
+        async def __anext__(self):
+            if not self._msgs: raise StopAsyncIteration
+            return self._msgs.pop(0)
+
+    monkeypatch.setattr(mock_client, "iter_messages", lambda peer: FakeAsyncIter([
+        MagicMock(id=1), MagicMock(id=2)
+    ]))
+
+    # Register mock agent and attach mock client
+    registry = _agent_registry
+    mock_agent = Agent(name="mock", phone="123", sticker_set_name="", instructions="(none)")
+    mock_agent.client = mock_client
+    mock_agent.agent_id = "a1"
+    registry._registry["mock"] = mock_agent  # Needed for get_client("mock")
+
+    # Execute one tick
+    await run_one_tick(queue)
+
+    # Assertions
+    assert task.status == "done"
+    assert mock_client.delete_messages.call_count > 0

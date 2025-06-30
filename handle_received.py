@@ -7,6 +7,7 @@ import re
 from task_graph import TaskNode
 from agent import get_agent_for_id
 from prompt_loader import load_raw_system_prompt_preamble
+from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
     buffer = []
 
     def flush():
-        if current_type is None or not buffer:
+        if current_type is None:
             return
 
         body = "\n".join(buffer).strip()
@@ -39,6 +40,8 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
         elif current_type == "shutdown":
             if body:
                 params["reason"] = body
+        elif current_type == "clear-conversation":
+            pass  # No parameters needed
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
@@ -50,7 +53,7 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
         ))
 
     for line in md_text.splitlines():
-        heading_match = re.match(r"# «(\w+)»", line)
+        heading_match = re.match(r"# «([^»]+)»", line)
         if heading_match:
             flush()
             current_type = heading_match.group(1).strip().lower()
@@ -62,6 +65,7 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
     return task_nodes
 
 
+@register_task_handler("received")
 async def handle_received(task: TaskNode, graph):
     peer_id = graph.context.get("peer_id")
     agent_id = graph.context.get("agent_id")

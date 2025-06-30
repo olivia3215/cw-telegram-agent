@@ -40,9 +40,11 @@ delay: 10
 # «shutdown»
 
 Because I was asked to stop.
+
+# «clear-conversation»
 """
     tasks = parse_llm_reply_from_markdown(md)
-    assert len(tasks) == 4
+    assert len(tasks) == 5
 
     assert tasks[0].type == "send"
     assert "I'll reply shortly." in tasks[0].params["message"]
@@ -54,4 +56,15 @@ Because I was asked to stop.
     assert tasks[2].params["name"] == "👍"
 
     assert tasks[3].type == "shutdown"
-    assert tasks[3].params["reason"] == "Because I was asked to stop."
+    assert "Because I was asked to stop." in tasks[3].params["reason"]
+
+    assert tasks[4].type == "clear-conversation"
+    assert tasks[4].params == {}
+
+
+def test_parse_clear_conversation_task():
+    md = """# «clear-conversation»"""
+    tasks = parse_llm_reply_from_markdown(md)
+    assert len(tasks) == 1
+    assert tasks[0].type == "clear-conversation"
+    assert tasks[0].params == {}

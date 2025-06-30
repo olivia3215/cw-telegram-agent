@@ -14,7 +14,6 @@ from agent import (
     Agent,
     all_agents,
 )
-from telegram_client_util import get_telegram_client
 from agent import is_muted, get_dialog
 import asyncio
 import logging

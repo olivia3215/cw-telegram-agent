@@ -19,6 +19,7 @@ Valid task types:
 - `# «send»` — send a text message
 - `# «sticker»` — send a sticker by name (must be from your assigned sticker set)
 - `# «wait»` — wait for a specified number of seconds
+- `# «clear-conversation»` — to clear the current conversation history (used rarely)
 - `# «shutdown»` — gracefully stop the agent (used rarely)
 
 Each task type is followed by a body that depends on the type:
@@ -65,6 +66,17 @@ Wait a number of seconds before continuing. The body must contain a line like:
 # «wait»
 
 delay: 60
+```
+
+## clear-conversation
+
+Used to delete all prior messages in a 1-on-1 direct message conversation.
+This allows the agent to begin fresh with a clean thread (for example, to set the stage in a role-play).
+
+Do not use this in group chats or channels.
+
+```markdown
+# «clear-conversation»
 ```
 
 ## shutdown
