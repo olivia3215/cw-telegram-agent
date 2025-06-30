@@ -91,20 +91,17 @@ async def handle_wait(task: TaskNode, graph):
 @register_task_handler("send")
 async def handle_send(task: TaskNode, graph):
     agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
     client = agent.client
-    peer_id = task.params.get("to")
     message = task.params.get("message")
 
     if not agent_id:
         raise ValueError("Missing 'agent_id' in task graph context")
-    if not peer_id or not message:
-        raise ValueError(f"Missing required 'to' or 'message' fields in task {task.identifier}")
+    if not channel_id or not message:
+        raise ValueError(f"Missing required 'channel_id' or 'message' fields in task {task.identifier}")
 
-    if "from" not in task.params:
-        task.params["from"] = agent_id
-
-    logger.info(f"SEND: from={task.params['from']} to={peer_id} message={message!r}")
+    logger.info(f"SEND: from={agent_id} to={channel_id} message={message!r}")
 
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
@@ -112,20 +109,20 @@ async def handle_send(task: TaskNode, graph):
     reply_to = task.params.get("in_reply_to")
     try:
         if reply_to:
-            await client.send_message(peer_id, message, reply_to=reply_to, parse_mode="Markdown")
+            await client.send_message(channel_id, message, reply_to=reply_to, parse_mode="Markdown")
         else:
-            await client.send_message(peer_id, message, parse_mode="Markdown")
+            await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
-        logger.warning(f"Failed to send reply to message {reply_to}: {e}")
-        await client.send_message(peer_id, message, parse_mode="Markdown")  # fallback send
+        logger.exception(f"Failed to send reply to message {reply_to}: {e}")
+        await client.send_message(channel_id, message, parse_mode="Markdown")
 
 
 register_task_handler("sticker")
 async def handle_sticker(task: TaskNode, graph):
     agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
     client = agent.client
-    peer_id = task.params.get("to")
     sticker_name = task.params.get("name")
     in_reply_to = task.params.get("in_reply_to")
 
@@ -136,30 +133,30 @@ async def handle_sticker(task: TaskNode, graph):
     if not file:
         raise ValueError(f"Unknown sticker '{sticker_name}' for agent '{agent.name}'.")
 
-    await client.send_file(peer_id, file=file, file_type="sticker", reply_to=in_reply_to)
+    await client.send_file(channel_id, file=file, file_type="sticker", reply_to=in_reply_to)
 
 
 @register_task_handler("clear-conversation")
 async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
     agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
     client = agent.client
-    peer_id = graph.context.get("peer_id")
 
-    peer = await client.get_entity(peer_id)
-    print(f"Resolved peer for ID {peer_id}: {peer} (type: {type(peer)})")
+    channel = await client.get_entity(channel_id)
+    logger.debug(f"Resolved channel for ID {channel_id}: {channel} (type: {type(channel)})")
 
-    if not isinstance(peer, User):
-        logger.info(f"Skipping clear-conversation: peer {peer_id} is not a DM.")
+    if not isinstance(channel, User):
+        logger.info(f"Skipping clear-conversation: channel {channel_id} is not a DM.")
         return
 
-    logger.info(f"Clearing conversation history for agent {agent_id} with peer {peer_id}.")
+    logger.info(f"Clearing conversation history for agent {agent_id} with channel {channel_id}.")
 
-    async for msg in client.iter_messages(peer):
+    async for msg in client.iter_messages(channel):
         try:
-            await client.delete_messages(peer, msg.id)
+            await client.delete_messages(channel, msg.id)
         except Exception as e:
-            logger.warning(f"Failed to delete message {msg.id}: {e}")
+            logger.exception(f"Failed to delete message {msg.id}: {e}")
 
 
 # import to make sure handle_received is registered.

@@ -5,13 +5,13 @@ import logging
 import uuid
 import re
 from task_graph import TaskNode
-from agent import get_agent_for_id
+from agent import get_agent_for_id, get_dialog
 from prompt_loader import load_raw_system_prompt_preamble
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 
-def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
+def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
     Recognized task types: send, sticker, wait, shutdown.
@@ -26,7 +26,7 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
 
         body = "\n".join(buffer).strip()
         task_id = f"{current_type}-{uuid.uuid4().hex[:8]}"
-        params = {}
+        params = {"agent_id": agent_id, "channel_id": channel_id}
 
         if current_type == "send":
             params["message"] = body
@@ -67,14 +67,20 @@ def parse_llm_reply_from_markdown(md_text: str) -> list[TaskNode]:
 
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph):
-    peer_id = graph.context.get("peer_id")
+    channel_id = graph.context.get("channel_id")
+    assert channel_id != None
     agent_id = graph.context.get("agent_id")
+    assert agent_id != None
     agent = get_agent_for_id(agent_id)
+    assert agent_id != None
     client = agent.client
     llm = agent.llm
 
-    if not peer_id or not agent_id or not client:
+    if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
+
+    dialog = await get_dialog(client, channel_id)
+    is_group = not dialog.is_user
 
     # Compose prompts
     raw_preamble = load_raw_system_prompt_preamble()
@@ -84,8 +90,10 @@ async def handle_received(task: TaskNode, graph):
         now = datetime.now().astimezone()
         system_prompt += (
             f"\n\n# Available Stickers\n\n"
-            f"You may only use the following sticker names in \"sticker\" tasks:\n\n{sticker_list}\n\n"
-            f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}\n"
+            f"\n\nYou may only use the following sticker names in \"sticker\" tasks:\n\n{sticker_list}"
+            f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
+            f"\n\n# Chat Type\n\nThis is a {"group" if is_group else "direct (one-on-one)"} chat."
+            "\n"
         )
 
     context_lines = task.params.get("thread_context", [])
@@ -95,7 +103,7 @@ async def handle_received(task: TaskNode, graph):
     user_prompt = (
         "Here is the conversation so far:\n\n"
         f"{formatted_context}\n\n"
-        f"Compose a polite reply to the final message: {user_message}"
+        f"Consider responding to the final message: {user_message}"
     )
 
     # Await LLM response
@@ -107,7 +115,7 @@ async def handle_received(task: TaskNode, graph):
         return
 
     try:
-        task_nodes = parse_llm_reply_from_markdown(reply)
+        task_nodes = parse_llm_reply_from_markdown(reply, agent_id=agent_id, channel_id=channel_id)
     except ValueError as e:
         logger.warning(f"Failed to parse LLM response '{reply}': {e}")
         return
@@ -119,14 +127,9 @@ async def handle_received(task: TaskNode, graph):
         graph.nodes.append(node)
         last_id = node.identifier
 
-        if node.type == "send":
-            node.params.setdefault("to", peer_id)
-        elif node.type == "sticker":
-            node.params.setdefault("to", peer_id)
-
         # preserve reply threading
         node.params.setdefault("in_reply_to", task.params.get("message_id"))
 
         graph.nodes.append(node)
 
-    await client.send_read_acknowledge(peer_id)
+    await client.send_read_acknowledge(channel_id)

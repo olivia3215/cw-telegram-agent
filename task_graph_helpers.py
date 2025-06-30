@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 async def insert_received_task_for_conversation(
     work_queue: WorkQueue,
     *,
-    peer_id: str,
-    agent_id: str,
+    recipient_id: str,
+    channel_id: str,
     message_id: Optional[int] = None,
     conversation_matcher=None
 ):
@@ -27,20 +27,20 @@ async def insert_received_task_for_conversation(
     if conversation_matcher is None:
         def conversation_matcher(ctx):
             return (
-                ctx.get("peer_id") == peer_id and
-                ctx.get("agent_id") == agent_id
+                ctx.get("channel_id") == channel_id and
+                ctx.get("agent_id") == recipient_id
             )
 
     work_queue.remove_all(conversation_matcher)
 
-    agent = get_agent_for_id(agent_id)
+    agent = get_agent_for_id(recipient_id)
     if not agent:
-        raise RuntimeError(f"Agent ID {agent_id} not found")
+        raise RuntimeError(f"Agent ID {recipient_id} not found")
     client = agent.client
     if not client:
-        raise RuntimeError(f"Telegram client for agent {agent_id} not connected")
+        raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
 
-    messages = await client.get_messages(peer_id, limit=10)
+    messages = await client.get_messages(channel_id, limit=10)
     thread_context = []
 
     for msg in reversed(messages):
@@ -71,9 +71,10 @@ async def insert_received_task_for_conversation(
     if message_text is not None:
         task_params["message_text"] = f"«{message_text}»"
 
+    assert recipient_id != None
     graph = TaskGraph(
         identifier=graph_id,
-        context={"peer_id": peer_id, "agent_id": agent_id},
+        context={"agent_id": recipient_id, "channel_id": channel_id},
         nodes=[
             TaskNode(
                 identifier=task_id,
@@ -86,5 +87,5 @@ async def insert_received_task_for_conversation(
 
     work_queue.task_graphs.append(graph)
     logger.info(
-        f"Inserted 'received' task for conversation {peer_id} -> {agent_id} in graph {graph_id}"
+        f"Inserted 'received' task for agent {recipient_id} in conversation {channel_id} in graph {graph_id}"
     )

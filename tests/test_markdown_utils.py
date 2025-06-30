@@ -43,7 +43,7 @@ Because I was asked to stop.
 
 # «clear-conversation»
 """
-    tasks = parse_llm_reply_from_markdown(md)
+    tasks = parse_llm_reply_from_markdown(md, agent_id="123", channel_id="456")
     assert len(tasks) == 5
 
     assert tasks[0].type == "send"

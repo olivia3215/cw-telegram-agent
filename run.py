@@ -43,13 +43,13 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     muted = await is_muted(client, dialog)
 
     logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r}")
-    logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
+    logger.debug(f"[{name}] muted:{muted}, unread_count:{dialog.unread_count}")
 
-    if not muted and dialog.is_user and dialog.unread_count > 0:
+    if not muted and dialog.unread_count > 0:
         await insert_received_task_for_conversation(
             work_queue,
-            peer_id=sender.id,
-            agent_id=agent.agent_id,
+            recipient_id=agent.agent_id,
+            channel_id=event.chat_id,
             message_id=event.message.id,
         )
 
@@ -61,12 +61,12 @@ async def scan_unread_messages(agent: Agent, work_queue):
     async for dialog in client.iter_dialogs():
         muted = await is_muted(client, dialog)
         logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
-        if not muted and dialog.is_user and dialog.unread_count > 0:
+        if not muted and dialog.unread_count > 0:
             logger.info(f"[{name}] Found unread message with {dialog.id}")
             await insert_received_task_for_conversation(
                 work_queue,
-                peer_id=dialog.id,
-                agent_id=agent_id,
+                recipient_id=agent_id,
+                channel_id=dialog.id,
             )
 
 
