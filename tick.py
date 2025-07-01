@@ -39,7 +39,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     task = work_queue.round_robin_one_task()
 
     if not task:
-        logger.info("No tasks ready to run.")
+        logger.debug("No tasks ready to run.")
         return
 
     graph = find_graph_containing(work_queue, task)

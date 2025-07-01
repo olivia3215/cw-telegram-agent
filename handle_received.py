@@ -109,7 +109,7 @@ async def handle_received(task: TaskNode, graph):
     )
 
     # Await LLM response
-    logger.info(f"LLM prompt: System: {system_prompt}, User: {user_prompt}")
+    logger.debug(f"LLM prompt: System: {system_prompt}, User: {user_prompt}")
     reply = await llm.query(system_prompt, user_prompt)
 
     if reply == "":
@@ -119,7 +119,7 @@ async def handle_received(task: TaskNode, graph):
     try:
         task_nodes = parse_llm_reply_from_markdown(reply, agent_id=agent_id, channel_id=channel_id)
     except ValueError as e:
-        logger.warning(f"Failed to parse LLM response '{reply}': {e}")
+        logger.exception(f"Failed to parse LLM response '{reply}': {e}")
         return
 
     # Inject conversation-specific context into each task
