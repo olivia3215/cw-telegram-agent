@@ -7,6 +7,9 @@ from task_graph import TaskNode, TaskGraph, WorkQueue
 from tick import run_tick_loop, run_one_tick
 from exceptions import ShutdownException
 from test_utils import fake_clock
+from unittest.mock import AsyncMock, MagicMock, patch
+from agent import Agent, _agent_registry
+from telethon.tl.functions.messages import DeleteHistoryRequest
 
 
 @pytest.mark.asyncio
@@ -82,46 +85,32 @@ async def test_retry_eventually_gives_up(fake_clock):
     assert fake_clock.slept().count(10) >= 10
 
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from agent import Agent, _agent_registry
-from task_graph import TaskNode, TaskGraph, WorkQueue
-from tick import run_one_tick
-
 @pytest.mark.asyncio
 async def test_execute_clear_conversation(monkeypatch):
-    # Setup task and graph
+    # Create the task and graph
     task = TaskNode(identifier="t1", type="clear-conversation", params={})
-    graph = TaskGraph(identifier="g1", context={"agent_id": "a1", "peer_id": "p1"}, nodes=[task])
+    graph = TaskGraph(identifier="g1", context={
+        "agent_id": "a1",
+        "channel_id": "u123",
+        "peer_id": "u123"  # legacy field; not strictly needed
+    }, nodes=[task])
     queue = WorkQueue(task_graphs=[graph])
 
-    # Create and configure mock Telegram client
-    mock_client = MagicMock()
-    mock_client.get_entity = AsyncMock(return_value=MagicMock(is_user=True))
-    mock_client.delete_messages = AsyncMock()
+    mock_client = AsyncMock()
+    mock_user = MagicMock()
+    mock_user.is_user = True
+    mock_client.get_entity.return_value = mock_user
 
-    # Simulate async message iteration
-    class FakeAsyncIter:
-        def __init__(self, messages): self._msgs = messages
-        def __aiter__(self): return self
-        async def __anext__(self):
-            if not self._msgs: raise StopAsyncIteration
-            return self._msgs.pop(0)
-
-    monkeypatch.setattr(mock_client, "iter_messages", lambda peer: FakeAsyncIter([
-        MagicMock(id=1), MagicMock(id=2)
-    ]))
-
-    # Register mock agent and attach mock client
-    registry = _agent_registry
+    # Register a mock agent
     mock_agent = Agent(name="mock", phone="123", sticker_set_name="", instructions="(none)")
     mock_agent.client = mock_client
     mock_agent.agent_id = "a1"
-    registry._registry["mock"] = mock_agent  # Needed for get_client("mock")
+    _agent_registry._registry["mock"] = mock_agent
 
-    # Execute one tick
+    # Run the tick to execute the clear-conversation task
     await run_one_tick(queue)
 
-    # Assertions
+    # Validate outcome
     assert task.status == "done"
-    assert mock_client.delete_messages.call_count > 0
+    calls = mock_client.await_args_list
+    assert any(isinstance(call.args[0], DeleteHistoryRequest) for call in calls)

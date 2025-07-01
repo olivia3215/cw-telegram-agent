@@ -7,6 +7,7 @@ from task_graph import TaskGraph, WorkQueue, TaskNode
 from exceptions import ShutdownException
 from agent import Agent, get_agent_for_id
 from telethon.tl.types import User
+from telethon.tl.functions.messages import DeleteHistoryRequest
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +118,8 @@ async def handle_send(task: TaskNode, graph):
         await client.send_message(channel_id, message, parse_mode="Markdown")
 
 
-register_task_handler("sticker")
-async def handle_sticker(task: TaskNode, graph):
+@register_task_handler("sticker")
+async def handle_sticker(task: TaskNode, graph: TaskGraph):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
@@ -144,19 +145,24 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
     client = agent.client
 
     channel = await client.get_entity(channel_id)
+
     logger.debug(f"Resolved channel for ID {channel_id}: {channel} (type: {type(channel)})")
 
-    if not isinstance(channel, User):
+    if not getattr(channel, "is_user", False):
         logger.info(f"Skipping clear-conversation: channel {channel_id} is not a DM.")
         return
 
     logger.info(f"Clearing conversation history for agent {agent_id} with channel {channel_id}.")
 
-    async for msg in client.iter_messages(channel):
-        try:
-            await client.delete_messages(channel, msg.id)
-        except Exception as e:
-            logger.exception(f"Failed to delete message {msg.id}: {e}")
+    try:
+        await client(DeleteHistoryRequest(
+            peer=channel,
+            max_id=0,  # 0 means delete all messages
+            revoke=True  # revoke=True removes messages for both sides
+        ))
+        logger.info(f"Successfully cleared conversation with {channel_id}")
+    except Exception as e:
+        logger.exception(f"Failed to clear conversation with {channel_id}: {e}")
 
 
 # import to make sure handle_received is registered.

@@ -15,6 +15,9 @@ do not reply to a message unless all of the following are true:
 
 In particular, do not thank someone whom you have already thanked
 or praise someone you have just praised a moment ago.
+Avoid merely rephrasing what's already been said to show support.
+Minimize conversation that is primarily to be polite,
+like praise, thanks, encouragement, and "that's right" and "you're welcome".
 
 # Response Format: Structured Markdown Tasks
 

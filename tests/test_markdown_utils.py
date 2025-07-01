@@ -59,12 +59,12 @@ Because I was asked to stop.
     assert "Because I was asked to stop." in tasks[3].params["reason"]
 
     assert tasks[4].type == "clear-conversation"
-    assert tasks[4].params == {}
+    assert tasks[4].params == {'agent_id': '123', 'channel_id': '456'}
 
 
 def test_parse_clear_conversation_task():
     md = """# «clear-conversation»"""
-    tasks = parse_llm_reply_from_markdown(md)
+    tasks = parse_llm_reply_from_markdown(md, agent_id='123', channel_id='456')
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
-    assert tasks[0].params == {}
+    assert tasks[0].params == {'agent_id': '123', 'channel_id': '456'}
