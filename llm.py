@@ -1,11 +1,14 @@
 # llm.py
 
 from abc import ABC, abstractmethod
+import asyncio
 import json
 import logging
-from typing import Protocol
+import os
+from typing import Optional, Protocol
 from openai import AsyncOpenAI
 import httpx
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +72,18 @@ class OllamaLLM(LLM):
 
 
 class GeminiLLM(LLM):
-    def __init__(self):
+    def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
+        self.model_name = model
+        self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
         self.history_size = 20
-        pass
+        if not self.api_key:
+            raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(model)
 
-    async def query(self, system: str, user: str) -> str:
-        pass
+    async def query(self, system_prompt: str, user_prompt: str) -> str:
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response = await asyncio.to_thread(self.model.generate_content, full_prompt)
+        # print("================ (1)")
+        # print(response)
+        return response.text

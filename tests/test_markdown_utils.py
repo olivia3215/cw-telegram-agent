@@ -1,5 +1,5 @@
 from markdown_utils import flatten_node_text
-from handle_received import parse_llm_reply_from_markdown
+from handle_received import parse_llm_reply
 
 def test_flatten_text_node():
     node = {"type": "text", "raw": "Hello"}
@@ -43,7 +43,7 @@ Because I was asked to stop.
 
 # «clear-conversation»
 """
-    tasks = parse_llm_reply_from_markdown(md, agent_id="123", channel_id="456")
+    tasks = parse_llm_reply(md, agent_id="123", channel_id="456")
     assert len(tasks) == 5
 
     assert tasks[0].type == "send"
@@ -64,7 +64,7 @@ Because I was asked to stop.
 
 def test_parse_clear_conversation_task():
     md = """# «clear-conversation»"""
-    tasks = parse_llm_reply_from_markdown(md, agent_id='123', channel_id='456')
+    tasks = parse_llm_reply(md, agent_id='123', channel_id='456')
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
     assert tasks[0].params == {'agent_id': '123', 'channel_id': '456'}

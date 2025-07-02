@@ -157,7 +157,7 @@ async def handle_received(task: TaskNode, graph):
         return
 
     try:
-        task_nodes = parse_llm_reply_from_markdown(reply, agent_id=agent_id, channel_id=channel_id)
+        task_nodes = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
     except ValueError as e:
         logger.exception(f"Failed to parse LLM response '{reply}': {e}")
         return
