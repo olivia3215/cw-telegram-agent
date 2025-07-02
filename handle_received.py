@@ -13,6 +13,7 @@ from telethon.tl.types import SendMessageTypingAction
 
 logger = logging.getLogger(__name__)
 
+
 def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
@@ -67,6 +68,36 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
     return task_nodes
 
 
+def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
+    if text.startswith("# "):
+        return parse_llm_reply_from_markdown(text, agent_id=agent_id, channel_id=channel_id)
+    
+    # Dumb models might reply with just the reply text and not understand the task machinery.
+    if text.startswith("You: "):
+        text = text.removeprefix("You: ")
+    if text.startswith("«") and text.endswith("»"):
+        text = text.removeprefix("«").removesuffix("»")
+    task_id = f"{"send"}-{uuid.uuid4().hex[:8]}"
+    params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
+    task_nodes = [TaskNode(
+        identifier=task_id,
+        type="send",
+        params=params,
+        depends_on=[]
+    )]
+    return task_nodes
+
+
+async def get_user_name(client, user_id):
+    user = await client.get_entity(user_id)
+    if hasattr(user, "first_name") or hasattr(user, "last_name"):
+        return f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+    elif hasattr(user, "username"):
+        return user.username
+    else:
+        return f"User({user_id})"
+
+
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph):
     channel_id = graph.context.get("channel_id")
@@ -85,8 +116,17 @@ async def handle_received(task: TaskNode, graph):
     is_group = not dialog.is_user
 
     # Compose prompts
-    raw_preamble = load_raw_system_prompt_preamble()
-    system_prompt = raw_preamble.replace("{{AGENT_NAME}}", agent.name) + "\n\n" + agent.instructions
+    system_prompt = load_raw_system_prompt_preamble()
+    system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
+
+    agent_instructions = agent.instructions
+    agent_instructions = agent_instructions.replace("{{AGENT_NAME}}", agent.name)
+    agent_instructions = agent_instructions.replace("{character}", agent.name)
+    agent_instructions = agent_instructions.replace("{char}", agent.name)
+    agent_instructions = agent_instructions.replace("{user}",
+        await get_user_name(client, dialog) if dialog.is_user else "Someone")
+
+    system_prompt = system_prompt + "\n\n" + agent_instructions
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
         now = datetime.now().astimezone()

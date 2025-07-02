@@ -6,13 +6,9 @@ import os
 from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
 
-from llm import ChatGPT
+from llm import ChatGPT, OllamaLLM, GeminiLLM
 
 logger = logging.getLogger(__name__)
-
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    logger.warning("No OpenAI API key provided and OPENAI_API_KEY not set in environment.")
 
 class Agent:
     def __init__(self, *, name, phone, sticker_set_name, instructions):
@@ -22,8 +18,19 @@ class Agent:
         self.sticker_cache = {}  # name -> InputDocument
         self.client = None
         self.agent_id = None
-        self.llm = ChatGPT(api_key)
         self.instructions = instructions
+
+        #### Code for using ChatGPT ####
+        # api_key = os.getenv("OPENAI_API_KEY")
+        # if not api_key:
+        #     logger.warning("No OpenAI API key provided and OPENAI_API_KEY not set in environment.")
+        # self.llm = ChatGPT(api_key)
+
+        #### Code for using Ollama
+        self.llm = OllamaLLM()
+
+        #### Code for using Google Gemini
+        self.llm = GeminiLLM()
 
 
 class AgentRegistry:
@@ -82,8 +89,9 @@ async def is_muted(client, dialog) -> bool:
             return mute_until > now
         return False
     except Exception as e:
-        logger.warning(f"is_muted(...) failed for dialog {dialog.id}: {e}")
+        logger.exception(f"is_muted(...) failed for dialog {dialog.id}: {e}")
         return False
+
 
 async def get_dialog(client: TelegramClient, chat_id):
     async for dialog in client.iter_dialogs():
