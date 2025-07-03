@@ -3,6 +3,7 @@
 from typing import Optional
 import uuid
 import logging
+from handle_received import get_user_name
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
 
@@ -51,7 +52,7 @@ async def insert_received_task_for_conversation(
             content = f" sent sticker: {emoji}"
         else:
             continue
-        sender_name = "You" if msg.out else (msg.sender.first_name if msg.sender and msg.sender.first_name else "Someone")
+        sender_name = await get_user_name(client, msg.sender)
         thread_context.append(f"{sender_name} {content}")
 
     message_text = None

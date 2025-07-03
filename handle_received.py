@@ -69,6 +69,11 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
 
 
 def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
+    # Gemini generates this, and prompting doesn't appear to discourage it.
+    if text.startswith("```markdown\n") and text.endswith("```"):
+        text = text.removeprefix("```markdown\n").removesuffix("```")
+    
+    # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
     if text.startswith("# "):
         return parse_llm_reply_from_markdown(text, agent_id=agent_id, channel_id=channel_id)
     
@@ -90,8 +95,14 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
 
 async def get_user_name(client, user_id):
     user = await client.get_entity(user_id)
-    if hasattr(user, "first_name") or hasattr(user, "last_name"):
-        return f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+    first_name = user.first_name if hasattr(user, "first_name") else None
+    last_name = user.last_name if hasattr(user, "last_name") else None
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+    elif first_name:
+        return first_name
+    elif last_name:
+        return last_name
     elif hasattr(user, "username"):
         return user.username
     else:
@@ -121,8 +132,12 @@ async def handle_received(task: TaskNode, graph):
 
     agent_instructions = agent.instructions
     agent_instructions = agent_instructions.replace("{{AGENT_NAME}}", agent.name)
+    agent_instructions = agent_instructions.replace("{{character}}", agent.name)
     agent_instructions = agent_instructions.replace("{character}", agent.name)
+    agent_instructions = agent_instructions.replace("{{char}}", agent.name)
     agent_instructions = agent_instructions.replace("{char}", agent.name)
+    agent_instructions = agent_instructions.replace("{{user}}",
+        await get_user_name(client, dialog) if dialog.is_user else "Someone")
     agent_instructions = agent_instructions.replace("{user}",
         await get_user_name(client, dialog) if dialog.is_user else "Someone")
 

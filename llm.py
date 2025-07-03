@@ -84,6 +84,4 @@ class GeminiLLM(LLM):
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         response = await asyncio.to_thread(self.model.generate_content, full_prompt)
-        # print("================ (1)")
-        # print(response)
         return response.text
