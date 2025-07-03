@@ -179,20 +179,19 @@ async def handle_received(task: TaskNode, graph):
 
     # Inject conversation-specific context into each task
     last_id = task.identifier  # Start chain from current 'received' task
-    in_reply_to = task.params.get("message_id")
+    in_reply_to = task.params.get("message_id") if not is_group else None
     for node in task_nodes:
-        node.depends_on.append(last_id)
         graph.nodes.append(node)
+        node.depends_on.append(last_id)
         last_id = node.identifier
 
         if node.type == "send":
-            # preserve reply threading only for "send"
+            # preserve reply threading only for first "send" in a group
             if in_reply_to:
                 node.params.setdefault("in_reply_to", in_reply_to)
                 in_reply_to = None
+
             # appear to be typing for four seconds
             await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
-
-        graph.nodes.append(node)
 
     await client.send_read_acknowledge(channel_id)
