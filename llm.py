@@ -14,12 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class LLM(ABC):
+    prompt_name: str = "Default"
+
     @abstractmethod
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         pass
 
 
 class ChatGPT(LLM):
+    prompt_name = "ChatGPT"
+
     def __init__(self, api_key: str, model: str = "gpt-4o", temperature: float = 0.7):
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
@@ -46,6 +50,7 @@ class ChatGPT(LLM):
 
 class OllamaLLM(LLM):
     def __init__(self, base_url="http://serv:11434", model="gemma3"):
+        self.prompt_name = model
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.history_size = 5
@@ -72,6 +77,8 @@ class OllamaLLM(LLM):
 
 
 class GeminiLLM(LLM):
+    prompt_name = "Gemini"
+
     def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")

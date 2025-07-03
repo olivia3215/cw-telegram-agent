@@ -4,9 +4,9 @@ from datetime import datetime
 import logging
 import uuid
 import re
-from task_graph import TaskNode
+from task_graph import TaskGraph, TaskNode
 from agent import get_agent_for_id, get_dialog
-from prompt_loader import load_raw_system_prompt_preamble
+from prompt_loader import load_system_prompt
 from tick import register_task_handler
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
@@ -93,24 +93,45 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
     return task_nodes
 
 
-async def get_user_name(client, user_id):
-    user = await client.get_entity(user_id)
-    first_name = user.first_name if hasattr(user, "first_name") else None
-    last_name = user.last_name if hasattr(user, "last_name") else None
-    if first_name and last_name:
-        return f"{first_name} {last_name}"
-    elif first_name:
-        return first_name
-    elif last_name:
-        return last_name
-    elif hasattr(user, "username"):
-        return user.username
-    else:
-        return f"User({user_id})"
+async def get_channel_name(client, channel_id):
+    """
+    Fetches the display name for any channel (user, group, or channel).
+    """
+    try:
+        # get_entity can fetch users, chats, or channels
+        entity = await client.get_entity(channel_id)
+
+        # 1. Check for a 'title' (for groups and channels)
+        if hasattr(entity, 'title') and entity.title:
+            return entity.title
+
+        # 2. Check for user attributes
+        if hasattr(entity, 'first_name') or hasattr(entity, 'last_name'):
+            first_name = getattr(entity, 'first_name', None)
+            last_name = getattr(entity, 'last_name', None)
+
+            if first_name and last_name:
+                return f"{first_name} {last_name}"
+            if first_name:
+                return first_name
+            if last_name:
+                return last_name
+        
+        # 3. Fallback to username if available
+        if hasattr(entity, 'username') and entity.username:
+            return entity.username
+
+        # 4. Final fallback if no name can be determined
+        return f"Entity ({entity.id})"
+
+    except Exception as e:
+        # If the entity can't be fetched, return a default identifier
+        print(f"Could not fetch entity for {channel_id}: {e}")
+        return f"Unknown ({channel_id})"
 
 
 @register_task_handler("received")
-async def handle_received(task: TaskNode, graph):
+async def handle_received(task: TaskNode, graph: TaskGraph):
     channel_id = graph.context.get("channel_id")
     assert channel_id != None
     agent_id = graph.context.get("agent_id")
@@ -126,22 +147,24 @@ async def handle_received(task: TaskNode, graph):
     dialog = await get_dialog(client, channel_id)
     is_group = not dialog.is_user
 
-    # Compose prompts
-    system_prompt = load_raw_system_prompt_preamble()
-    system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
+    llm_prompt = load_system_prompt(llm.prompt_name)
+    role_prompt = load_system_prompt(agent.role_prompt_name)
+
+    system_prompt = f"{llm_prompt}\n\n{role_prompt}"
 
     agent_instructions = agent.instructions
-    agent_instructions = agent_instructions.replace("{{AGENT_NAME}}", agent.name)
-    agent_instructions = agent_instructions.replace("{{character}}", agent.name)
-    agent_instructions = agent_instructions.replace("{character}", agent.name)
-    agent_instructions = agent_instructions.replace("{{char}}", agent.name)
-    agent_instructions = agent_instructions.replace("{char}", agent.name)
-    agent_instructions = agent_instructions.replace("{{user}}",
-        await get_user_name(client, dialog) if dialog.is_user else "Someone")
-    agent_instructions = agent_instructions.replace("{user}",
-        await get_user_name(client, dialog) if dialog.is_user else "Someone")
+    system_prompt = f"{system_prompt}\n\n{agent_instructions}"
 
-    system_prompt = system_prompt + "\n\n" + agent_instructions
+    system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
+    system_prompt = system_prompt.replace("{{character}}", agent.name)
+    system_prompt = system_prompt.replace("{character}", agent.name)
+    system_prompt = system_prompt.replace("{{char}}", agent.name)
+    system_prompt = system_prompt.replace("{char}", agent.name)
+    system_prompt = system_prompt.replace("{{user}}",
+        await get_channel_name(client, dialog) if dialog.is_user else "Someone")
+    system_prompt = system_prompt.replace("{user}",
+        await get_channel_name(client, dialog) if dialog.is_user else "Someone")
+
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
         now = datetime.now().astimezone()

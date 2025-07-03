@@ -11,14 +11,16 @@ from llm import ChatGPT, OllamaLLM, GeminiLLM
 logger = logging.getLogger(__name__)
 
 class Agent:
-    def __init__(self, *, name, phone, sticker_set_name, instructions):
+    def __init__(self, *, name, phone, sticker_set_name, instructions, role_prompt_name):
         self.name = name
         self.phone = phone
         self.sticker_set_name = sticker_set_name
+        self.instructions = instructions
+        self.role_prompt_name = role_prompt_name
         self.sticker_cache = {}  # name -> InputDocument
         self.client = None
         self.agent_id = None
-        self.instructions = instructions
+
 
         #### Code for using ChatGPT ####
         # api_key = os.getenv("OPENAI_API_KEY")
@@ -27,7 +29,7 @@ class Agent:
         # self.llm = ChatGPT(api_key)
 
         #### Code for using Ollama
-        self.llm = OllamaLLM()
+        # self.llm = OllamaLLM()
 
         #### Code for using Google Gemini
         self.llm = GeminiLLM()
@@ -40,7 +42,7 @@ class AgentRegistry:
     def all_agent_names(self):
         return list(self._registry.keys())
 
-    def register(self, name: str, *, phone: str, sticker_set_name: str, instructions: str):
+    def register(self, *, name: str, phone: str, sticker_set_name: str, instructions: str, role_prompt_name: str):
         if name == "":
             raise RuntimeError("No agent name provided")
         if phone == "":
@@ -50,7 +52,9 @@ class AgentRegistry:
             name=name,
             phone=phone,
             sticker_set_name=sticker_set_name,
-            instructions=instructions)
+            instructions=instructions,
+            role_prompt_name=role_prompt_name
+        )
         # logger.info(f"Added agent {name} with intructions: {instructions}")
 
     def get_client(self, name):
@@ -70,26 +74,46 @@ _agent_registry = AgentRegistry()
 
 register_telegram_agent = _agent_registry.register
 get_agent_for_id = _agent_registry.get_by_agent_id
-get_agent = _agent_registry.get_client
 all_agents = _agent_registry.all_agents
 
 
-async def is_muted(client, dialog) -> bool:
+# agent.py
+
+from datetime import datetime, timezone
+import logging
+# ... other imports from agent.py
+
+#...
+
+async def is_muted(client, dialog_or_entity) -> bool:
     """
-    Check if the given dialog (user, chat, or channel) is muted.
+    Check if the given dialog or entity (user, chat, or channel) is muted.
     """
+    # If the passed object has an 'entity' attr, it's a Dialog.
+    # Otherwise, it's the entity itself.
+    peer = getattr(dialog_or_entity, 'entity', dialog_or_entity)
+
     try:
-        settings = await client(GetNotifySettingsRequest(dialog.entity))
-        mute_until = getattr(settings, "mute_until", 0)
+        settings = await client(GetNotifySettingsRequest(peer))
+        mute_until = getattr(settings, "mute_until", None)
 
         if not mute_until:
             return False
-        if isinstance(mute_until, int):
-            now = int(datetime.now(tz=timezone.utc).timestamp())
+
+        now = datetime.now(timezone.utc)
+
+        # Handle case where mute_until is a datetime object
+        if isinstance(mute_until, datetime):
             return mute_until > now
+
+        # Handle case where mute_until is an integer timestamp
+        if isinstance(mute_until, int):
+            return mute_until > now.timestamp()
+
         return False
     except Exception as e:
-        logger.exception(f"is_muted(...) failed for dialog {dialog.id}: {e}")
+        entity_id = getattr(peer, 'id', 'unknown')
+        logger.exception(f"is_muted(...) failed for dialog {entity_id}: {e}")
         return False
 
 

@@ -2,20 +2,23 @@
 import os
 from pathlib import Path
 
-_system_preamble = None
+# Cache for storing loaded prompts to avoid redundant file I/O
+_prompt_cache = {}
 
-def load_raw_system_prompt_preamble(prompts_dir="./prompts"):
-    global _system_preamble
-    if _system_preamble is not None:
-        return _system_preamble
+def load_system_prompt(prompt_name: str, prompts_dir="./prompts"):
+    """
+    Loads a single system prompt file by name from the prompts directory.
+    The prompt is cached in memory after the first read.
+    """
+    if prompt_name in _prompt_cache:
+        return _prompt_cache[prompt_name]
 
-    path = Path(prompts_dir)
-    if not path.exists():
-        raise RuntimeError(f"Prompt directory not found: {prompts_dir}")
+    file_path = Path(prompts_dir) / f"{prompt_name}.md"
+    if not file_path.exists():
+        raise RuntimeError(f"Prompt file not found: {file_path}")
 
-    parts = []
-    for file in sorted(path.glob("*.md")):
-        parts.append(file.read_text().strip())
-
-    _system_preamble = "\n\n".join(parts)
-    return _system_preamble
+    # Read the prompt content and store it in the cache
+    prompt_content = file_path.read_text().strip()
+    _prompt_cache[prompt_name] = prompt_content
+    
+    return prompt_content

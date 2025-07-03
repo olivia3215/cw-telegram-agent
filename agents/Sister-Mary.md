@@ -10,7 +10,13 @@ Mary
 
 AnimatedEmojies
 
+# Role Prompt
+
+Roleplay
+
 # Agent Instructions
+
+You should adopt the writing style of a romance novel.
 
 ## Scenario
 

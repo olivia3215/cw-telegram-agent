@@ -40,7 +40,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     client = agent.client
     sender = await event.get_sender()
     dialog = await get_dialog(client, event.chat_id)
-    muted = await is_muted(client, dialog)
+    muted = await is_muted(client, dialog) or await is_muted(client, sender)
 
     logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r}")
     logger.debug(f"[{name}] muted:{muted}, unread_count:{dialog.unread_count}")

@@ -13,7 +13,8 @@ EXPECTED_FIELDS = [
     "Agent Name",
     "Agent Phone",
     "Agent Sticker Set",
-    "Agent Instructions"
+    "Agent Instructions",
+    "Role Prompt"
 ]
 
 def extract_fields_from_markdown(md_text):
@@ -59,14 +60,15 @@ def parse_agent_markdown(path):
             return None
 
         name = fields["Agent Name"]
-        instructions = fields["Agent Instructions"].replace("{{AGENT_NAME}}", name)
+        instructions = fields["Agent Instructions"]
 
-        logger.debug(f"Final agent instructions for {name}:\n{instructions}")
+        logger.debug(f"Agent instructions for {name}:\n{instructions}")
         return {
             "name": name,
             "phone": fields["Agent Phone"],
             "sticker_set_name": fields["Agent Sticker Set"],
-            "instructions": instructions
+            "instructions": instructions,
+            "role_prompt_name": fields["Role Prompt"]
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -86,8 +88,9 @@ def register_all_agents():
         parsed = parse_agent_markdown(file)
         if parsed:
             register_telegram_agent(
-                parsed["name"],
+                name=parsed["name"],
                 phone=parsed["phone"],
                 sticker_set_name=parsed["sticker_set_name"],
-                instructions=parsed["instructions"]
+                instructions=parsed["instructions"],
+                role_prompt_name=parsed["role_prompt_name"]
             )

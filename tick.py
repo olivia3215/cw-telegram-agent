@@ -114,8 +114,7 @@ async def handle_send(task: TaskNode, graph):
         else:
             await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
-        logger.exception(f"Failed to send reply to message {reply_to}: {e}")
-        await client.send_message(channel_id, message, parse_mode="Markdown")
+        logger.error(f"Failed to send reply to message {reply_to}: {e}")
 
 
 @register_task_handler("sticker")

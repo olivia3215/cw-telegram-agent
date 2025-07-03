@@ -3,7 +3,7 @@
 from typing import Optional
 import uuid
 import logging
-from handle_received import get_user_name
+from handle_received import get_channel_name
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
 
@@ -52,7 +52,7 @@ async def insert_received_task_for_conversation(
             content = f" sent sticker: {emoji}"
         else:
             continue
-        sender_name = await get_user_name(client, msg.sender)
+        sender_name = await get_channel_name(client, msg.sender)
         thread_context.append(f"{sender_name} {content}")
 
     message_text = None
@@ -73,9 +73,16 @@ async def insert_received_task_for_conversation(
         task_params["message_text"] = f"«{message_text}»"
 
     assert recipient_id != None
+    recipient_name = await get_channel_name(client, recipient_id)
+    channel_name = await get_channel_name(client, channel_id)
     graph = TaskGraph(
         identifier=graph_id,
-        context={"agent_id": recipient_id, "channel_id": channel_id},
+        context={
+            "agent_id": recipient_id,
+            "channel_id": channel_id,
+            "agent_name": recipient_name,
+            "channel_name": channel_name,
+            },
         nodes=[
             TaskNode(
                 identifier=task_id,
