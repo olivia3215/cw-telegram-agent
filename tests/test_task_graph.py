@@ -55,7 +55,7 @@ def test_round_robin_rotation():
     g2 = make_graph("g2", [make_wait_task("w2", -10)])
     g3 = make_graph("g3", [make_wait_task("w3", 10)])  # not ready
 
-    q = WorkQueue(task_graphs=[g1, g2, g3])
+    q = WorkQueue(_task_graphs=[g1, g2, g3])
 
     task1 = q.round_robin_one_task()
     assert task1.identifier == "w1"
@@ -69,15 +69,15 @@ def test_round_robin_rotation():
 
 def test_serialization_and_reload(tmp_path):
     g = make_graph("gX", [make_wait_task("wX", -10)])
-    queue = WorkQueue(task_graphs=[g])
+    queue = WorkQueue(_task_graphs=[g])
     file_path = tmp_path / "queue.md"
     queue.save(str(file_path))
 
     reloaded = WorkQueue.load(str(file_path))
-    assert len(reloaded.task_graphs) == 1
-    assert reloaded.task_graphs[0].identifier == "gX"
-    assert reloaded.task_graphs[0].nodes[0].identifier == "wX"
-    assert reloaded.task_graphs[0].nodes[0].type == "wait"
+    assert len(reloaded._task_graphs) == 1
+    assert reloaded._task_graphs[0].identifier == "gX"
+    assert reloaded._task_graphs[0].nodes[0].identifier == "wX"
+    assert reloaded._task_graphs[0].nodes[0].type == "wait"
 
 
 def test_invalid_wait_task_logs(caplog):

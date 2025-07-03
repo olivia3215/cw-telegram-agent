@@ -27,13 +27,6 @@ def is_graph_complete(graph) -> bool:
     return all(n.status == "done" for n in graph.nodes)
 
 
-def find_graph_containing(work_queue: WorkQueue, task: TaskNode):
-    for graph in work_queue.task_graphs:
-        if task in graph.nodes:
-            return graph
-    return None
-
-
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     now = datetime.now(timezone.utc)
     task = work_queue.round_robin_one_task()
@@ -42,7 +35,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         logger.debug("No tasks ready to run.")
         return
 
-    graph = find_graph_containing(work_queue, task)
+    graph = work_queue.graph_containing(task)
     if not graph:
         logger.warning(f"Task {task.identifier} found but no matching graph.")
         return
@@ -50,21 +43,27 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     logger.info(f"Running task {task.identifier} of type {task.type}")
 
     try:
+        task.status = "active"
+        if state_file_path:
+            work_queue.save(state_file_path)
+        logger.info(f"Task {task.identifier} is now active.")
+
         handler = _dispatch_table.get(task.type)
         if not handler:
             raise ValueError(f"Unknown task type: {task.type}")
         await handler(task, graph)
+
         task.status = "done"
 
     except Exception as e:
         logger.exception(f"Task {task.identifier} raised exception: {e}")
         retry_ok = task.failed(graph, retry_interval_sec=10, max_retries=10, now=now)
         if not retry_ok:
-            work_queue.task_graphs.remove(graph)
+            work_queue.remove(graph)
             logger.warning(f"Removed graph {graph.identifier} due to max retries.")
 
     if is_graph_complete(graph):
-        work_queue.task_graphs.remove(graph)
+        work_queue.remove(graph)
         logger.info(f"Graph {graph.identifier} completed and removed.")
 
     if state_file_path:

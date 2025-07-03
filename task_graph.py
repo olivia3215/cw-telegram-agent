@@ -91,30 +91,37 @@ class TaskGraph:
 
 @dataclass
 class WorkQueue:
-    task_graphs: List[TaskGraph] = field(default_factory=list)
-    lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _task_graphs: List[TaskGraph] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _last_index: int = field(default=0, init=False, repr=False)
 
     def remove_all(self, predicate):
-        self.task_graphs = [g for g in self.task_graphs if not predicate(g.context)]
+        with self._lock:
+            self._task_graphs = [g for g in self._task_graphs if not predicate(g.context)]
+    
+    def remove(self, graph: TaskGraph):
+        with self._lock:
+            self._task_graphs = [g for g in self._task_graphs if not g == graph]
 
     def round_robin_one_task(self) -> Optional[TaskNode]:
-        now = datetime.now(timezone.utc)
-        if not self.task_graphs:
+        with self._lock:
+            now = datetime.now(timezone.utc)
+            if not self._task_graphs:
+                return None
+            
+            start = self._last_index % len(self._task_graphs)
+            for i in range(len(self._task_graphs)):
+                index = (start + i) % len(self._task_graphs)
+                graph = self._task_graphs[index]
+                tasks = graph.pending_tasks(now)
+                if tasks:
+                    self._last_index = (index + 1) % len(self._task_graphs)
+                    return tasks[0]
             return None
-        start = self._last_index % len(self.task_graphs)
-        for i in range(len(self.task_graphs)):
-            index = (start + i) % len(self.task_graphs)
-            graph = self.task_graphs[index]
-            tasks = graph.pending_tasks(now)
-            if tasks:
-                self._last_index = (index + 1) % len(self.task_graphs)
-                return tasks[0]  # execute only one task per tick
-        return None
 
-    def serialize(self) -> str:
+    def _serialize(self) -> str:
         md = "# Work Queue Snapshot\n\n"
-        for graph in self.task_graphs:
+        for graph in self._task_graphs:
             md += f"## Task Graph: {graph.identifier}\n"
             block = {
                 "identifier": graph.identifier,
@@ -125,16 +132,26 @@ class WorkQueue:
         return md
     
     def add_graph(self, graph: TaskGraph):
-        self.task_graphs.append(graph)
+        with self._lock:
+            self._task_graphs.append(graph)
+
+    def graph_containing(self, task: TaskNode):
+        with self._lock:
+            for graph in self._task_graphs:
+                if task in graph.nodes:
+                    return graph
+            return None
 
     def save(self, path: str):
-        with self.lock:
-            backup = path + ".bak"
-            tmp = path + ".tmp"
+        """Saves the current state of the work queue to a file."""
+        with self._lock:
+            data = self._serialize()
+            backup = path + ".bak.md"
+            tmp = path + ".tmp.md"
             if os.path.exists(path):
                 shutil.copy2(path, backup)
             with open(tmp, "w") as f:
-                f.write(self.serialize())
+                f.write(data)
             os.replace(tmp, path)
 
     @classmethod
@@ -150,7 +167,15 @@ class WorkQueue:
         for block in blocks[1:]:
             json_part = block.split("```", 1)[0]
             data = json.loads(json_part)
-            nodes = [TaskNode(**n) for n in data.get("nodes", [])]
+            
+            nodes = []
+            for n in data.get("nodes", []):
+                # On startup, tasks that were pending become active
+                if n.get("status") == "active":
+                    n["status"] = "pending"
+                    logger.info(f"Reverted active task {n['identifier']} to pending on load.")
+                nodes.append(TaskNode(**n))
+
             graphs.append(TaskGraph(
                 identifier=data["identifier"],
                 context=data["context"],

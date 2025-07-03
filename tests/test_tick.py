@@ -21,26 +21,26 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 
     task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, nodes=[task])
-    queue = WorkQueue(task_graphs=[graph])
+    queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
 
     assert task.status == "done"
-    assert graph not in queue.task_graphs  # Should be removed after completion
+    assert graph not in queue._task_graphs  # Should be removed after completion
 
 
 @pytest.mark.asyncio
 async def test_run_one_tick_retries_on_failure():
     task = TaskNode(identifier="bad", type="explode", params={})
     graph = TaskGraph(identifier="g2", context={"peer_id": "test"}, nodes=[task])
-    queue = WorkQueue(task_graphs=[graph])
+    queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
 
     assert "previous_retries" in task.params
     assert task.status == "pending"
     assert any(n.identifier.startswith("wait-retry-") for n in graph.nodes)
-    assert graph in queue.task_graphs
+    assert graph in queue._task_graphs
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
 
     task = TaskNode(identifier="shutdown", type="shutdown", params={})
     graph = TaskGraph(identifier="g3", context={"peer_id": "test"}, nodes=[task])
-    queue = WorkQueue(task_graphs=[graph])
+    queue = WorkQueue(_task_graphs=[graph])
 
     def mock_round_robin():
         return task
@@ -72,7 +72,7 @@ async def test_retry_eventually_gives_up(fake_clock):
 
     task = TaskNode(identifier="fail", type="explode", params={})
     graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, nodes=[task])
-    queue = WorkQueue(task_graphs=[graph])
+    queue = WorkQueue(_task_graphs=[graph])
 
     async def patched_tick(queue, state_file_path=None):
         await real_tick(queue, state_file_path=state_file_path)
@@ -94,7 +94,7 @@ async def test_execute_clear_conversation(monkeypatch):
         "channel_id": "u123",
         "peer_id": "u123"  # legacy field; not strictly needed
     }, nodes=[task])
-    queue = WorkQueue(task_graphs=[graph])
+    queue = WorkQueue(_task_graphs=[graph])
 
     mock_client = AsyncMock()
     mock_user = MagicMock()

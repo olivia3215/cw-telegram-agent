@@ -15,23 +15,20 @@ async def insert_received_task_for_conversation(
     *,
     recipient_id: str,
     channel_id: str,
-    message_id: Optional[int] = None,
-    conversation_matcher=None
+    message_id: Optional[int] = None
 ):
     """
     Insert a new task graph with a single 'received' task for a conversation.
     Replaces any existing task graph for that sender/recipient pair using the provided matcher.
     """
 
+    # Get a lock specific to this conversation
     logger.info("adding a task for received message.")
-
-    if conversation_matcher is None:
-        def conversation_matcher(ctx):
-            return (
-                ctx.get("channel_id") == channel_id and
-                ctx.get("agent_id") == recipient_id
-            )
-
+    def conversation_matcher(ctx):
+        return (
+            ctx.get("channel_id") == channel_id and
+            ctx.get("agent_id") == recipient_id
+        )
     work_queue.remove_all(conversation_matcher)
 
     agent = get_agent_for_id(recipient_id)
@@ -93,7 +90,7 @@ async def insert_received_task_for_conversation(
         ]
     )
 
-    work_queue.task_graphs.append(graph)
+    work_queue.add_graph(graph)
     logger.info(
         f"Inserted 'received' task for agent {recipient_id} in conversation {channel_id} in graph {graph_id}"
     )
