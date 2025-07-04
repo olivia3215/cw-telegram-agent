@@ -21,6 +21,7 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
     """
     task_nodes = []
     current_type = None
+    current_reply_to = None
     buffer = []
 
     def flush():
@@ -30,6 +31,9 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
         body = "\n".join(buffer).strip()
         task_id = f"{current_type}-{uuid.uuid4().hex[:8]}"
         params = {"agent_id": agent_id, "channel_id": channel_id}
+
+        if current_reply_to:
+            params["in_reply_to"] = current_reply_to
 
         if current_type == "send":
             params["message"] = body
@@ -56,10 +60,12 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
         ))
 
     for line in md_text.splitlines():
-        heading_match = re.match(r"# «([^»]+)»", line)
+        heading_match = re.match(r"# «([^»]+)»(?:\s+(\d+))?", line)
         if heading_match:
             flush()
             current_type = heading_match.group(1).strip().lower()
+            reply_to_str = heading_match.group(2)
+            current_reply_to = int(reply_to_str) if reply_to_str else None
             buffer = []
         else:
             buffer.append(line)

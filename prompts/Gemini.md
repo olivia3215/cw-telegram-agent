@@ -34,9 +34,18 @@ Use this to send a text message. You may include formatting and multiple paragra
 ```markdown
 # «send»
 
+Hi Lokesh, I just wanted to give you a quick update. Things are progressing nicely.
+```
+
+You can also reply to a particular message,
+by specifying the message number (which appears at the beginning of each line of the history) in the header:
+
+```markdown
+# «send» 1234
+
 Hi Neal, thanks for the update.
 
-I'll look into the issue and get back to you shortly.
+I'll give you my status later this afternoon.
 ```
 
 You may include
@@ -61,11 +70,20 @@ Use this if a sticker captures the essence of your reply. The body should be the
 👍
 ```
 
-General Rules
+A sticker may also be send in response to a particular message.
+
+```markdown
+# «sticker» 1234
+
+😘
+```
+
+## General Rules
 
 - You may include as many tasks as appropriate. It is better to send several smaller messages as separate tasks than one big message.
+- Several paragraphs at once are better sent as several separate "send" tasks rather than in one "send".
 - Tasks will be executed sequentially.
 - Do not emit any explanation or formatting outside the task blocks.
 - Prefer stickers when they express your intent well.
 - Only use sticker names from your assigned sticker set (see “Available Stickers”).
-- If your sticker set doesn't include an emoji that would be appropriate, you may **send** a message with just that emoji.
+- If your sticker set doesn't include an emoji that would be appropriate, you may **send** a message with just that emoji rather than sending a sticker.

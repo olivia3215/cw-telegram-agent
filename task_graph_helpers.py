@@ -58,15 +58,17 @@ async def insert_received_task_for_conversation(
     thread_context = []
 
     for msg in reversed(messages):
-        if msg.text:
-            content = f": «{msg.text.strip()}»"
-        elif msg.sticker:
-            emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
-            content = f" sent sticker: {emoji}"
-        else:
-            continue
+        # Prepend the message ID to each line of the context
+        mag_id = msg.id
         sender_name = await get_channel_name(client, msg.sender)
-        thread_context.append(f"{sender_name} {content}")
+        if msg.sticker:
+            emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
+            content = f"[{msg.id}] ({sender_name}): sticker «{emoji}»"
+        elif msg.text:
+            content = f"[{msg.id}] ({sender_name}): «{msg.text.strip()}»"
+        else:
+            content = f"[{msg.id}] ({sender_name}): not understood"
+        thread_context.append(content)
 
     message_text = None
     if message_id is not None:

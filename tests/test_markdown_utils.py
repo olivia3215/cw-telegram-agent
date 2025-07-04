@@ -68,3 +68,30 @@ def test_parse_clear_conversation_task():
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
     assert tasks[0].params == {'agent_id': '123', 'channel_id': '456'}
+
+
+def test_parse_markdown_reply_with_reply_to():
+    """
+    Tests that the parser correctly extracts the 'in_reply_to' message ID
+    from the task heading.
+    """
+    md = """# «send» 12345
+
+This is a reply.
+
+# «sticker» 54321
+
+👍
+"""
+    tasks = parse_llm_reply(md, agent_id="agent1", channel_id="channel1")
+    assert len(tasks) == 2
+
+    # Check the 'send' task
+    assert tasks[0].type == "send"
+    assert tasks[0].params.get("in_reply_to") == 12345
+    assert "This is a reply" in tasks[0].params["message"]
+
+    # Check the 'sticker' task
+    assert tasks[1].type == "sticker"
+    assert tasks[1].params.get("in_reply_to") == 54321
+    assert tasks[1].params["name"] == "👍"
