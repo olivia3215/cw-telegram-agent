@@ -171,14 +171,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     )
 
     # Await LLM response
-    logger.info(f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}")
+    logger.debug(f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}")
     reply = await llm.query(system_prompt, user_prompt)
 
     if reply == "":
         logger.info(f"[{agent_name}] LLM decided not to reply to {user_message}")
         return
 
-    logger.info(f"[{agent_name}] LLM reply: {reply}")
+    logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
     try:
         tasks = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
