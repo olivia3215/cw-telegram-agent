@@ -65,6 +65,7 @@ class TaskNode:
         self.depends_on.append(wait_id)
 
         logger.warning(f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries}).")
+        self.status = "pending"
         return True
 
 @dataclass
@@ -181,4 +182,11 @@ class WorkQueue:
                 context=data["context"],
                 nodes=nodes,
             ))
-        return cls(task_graphs=graphs)
+        return cls(_task_graphs=graphs)
+
+    def graph_for_conversation(self, agent_id: int, channel_id: int) -> Optional[TaskGraph]:
+        with self._lock:
+            for graph in self._task_graphs:
+                if graph.context.get("agent_id") == agent_id and graph.context.get("channel_id") == channel_id:
+                    return graph
+            return None

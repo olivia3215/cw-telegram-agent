@@ -42,15 +42,20 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     dialog = await get_dialog(client, event.chat_id)
     muted = await is_muted(client, dialog) or await is_muted(client, sender)
 
-    logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r}")
+    is_callout = event.message.mentioned
+    if is_callout:
+        await client.send_read_acknowledge(dialog, clear_mentions=True)
+
+    logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r} (callout: {is_callout})")
     logger.debug(f"[{name}] muted:{muted}, unread_count:{dialog.unread_count}")
 
-    if not muted and dialog.unread_count > 0:
+    if not muted or is_callout:
         await insert_received_task_for_conversation(
             work_queue,
             recipient_id=agent.agent_id,
             channel_id=event.chat_id,
             message_id=event.message.id,
+            is_callout=is_callout,
         )
 
 
@@ -60,13 +65,19 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
         muted = await is_muted(client, dialog)
+        has_unread = dialog.unread_count > 0 and not muted
+        has_mentions = dialog.unread_mentions_count > 0
+
         logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
-        if not muted and dialog.unread_count > 0:
-            logger.info(f"[{name}] Found unread message with {dialog.id}")
+        if has_unread or has_mentions:
+            logger.info(f"[{name}] Found unread content in {dialog.id} (mentions: {has_mentions})")
+            if has_mentions:
+                await client.send_read_acknowledge(dialog, clear_mentions=True)
             await insert_received_task_for_conversation(
                 work_queue,
                 recipient_id=agent_id,
                 channel_id=dialog.id,
+                is_callout=has_mentions,
             )
 
 

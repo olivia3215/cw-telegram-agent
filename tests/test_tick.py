@@ -76,7 +76,7 @@ async def test_retry_eventually_gives_up(fake_clock):
 
     async def patched_tick(queue, state_file_path=None):
         await real_tick(queue, state_file_path=state_file_path)
-        if not queue.task_graphs:
+        if not queue._task_graphs:
             raise ShutdownException("done")
 
     with pytest.raises(ShutdownException):
@@ -97,15 +97,26 @@ async def test_execute_clear_conversation(monkeypatch):
     queue = WorkQueue(_task_graphs=[graph])
 
     mock_client = AsyncMock()
+    # This configures the mock to work correctly with 'async with'
+    mock_client.__aenter__.return_value = mock_client
+
     mock_user = MagicMock()
     mock_user.is_user = True
     mock_client.get_entity.return_value = mock_user
 
     # Register a mock agent
-    mock_agent = Agent(name="mock", phone="123", sticker_set_name="", instructions="(none)")
+    mock_agent = Agent(
+        name="mock",
+        phone="123",
+        sticker_set_name="",
+        instructions="(none)",
+        role_prompt_name="TestRole",
+    )
+
     mock_agent.client = mock_client
     mock_agent.agent_id = "a1"
-    _agent_registry._registry["mock"] = mock_agent
+
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: mock_agent)
 
     # Run the tick to execute the clear-conversation task
     await run_one_tick(queue)
@@ -114,3 +125,34 @@ async def test_execute_clear_conversation(monkeypatch):
     assert task.status == "done"
     calls = mock_client.await_args_list
     assert any(isinstance(call.args[0], DeleteHistoryRequest) for call in calls)
+
+
+@pytest.mark.asyncio
+async def test_run_one_tick_lifecycle(monkeypatch):
+    """
+    Tests that a task transitions from pending -> active -> done.
+    """
+    from tick import _dispatch_table
+    # Mock the handler so we can inspect the task's status during its run
+    async def fake_handle_send(task, graph):
+        # When the handler is called, the task should be 'active'
+        assert task.status == "active"
+        # Simulate work
+        await asyncio.sleep(0)
+    
+    monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
+
+    task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
+    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, nodes=[task])
+    queue = WorkQueue(_task_graphs=[graph])
+    
+    # The task should start as 'pending'
+    assert task.status == "pending"
+
+    # Run the tick
+    await run_one_tick(queue, state_file_path=None)
+
+    # After the tick completes, the task should be 'done'
+    assert task.status == "done"
+    # And the graph should have been removed
+    assert graph not in queue._task_graphs

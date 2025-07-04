@@ -144,6 +144,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
+    is_callout = task.params.get("callout", False)
     dialog = await get_dialog(client, channel_id)
     is_group = not dialog.is_user
 
@@ -204,7 +205,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     last_id = task.identifier  # Start chain from current 'received' task
     in_reply_to = task.params.get("message_id") if not is_group else None
     for node in task_nodes:
-        graph.nodes.append(node)
+        if is_callout:
+            node.params["callout"] = True
+
+        graph.add_task(node)
         node.depends_on.append(last_id)
         last_id = node.identifier
 

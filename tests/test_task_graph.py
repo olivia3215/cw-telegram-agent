@@ -125,3 +125,31 @@ def test_retry_injection_and_limit(caplog):
     assert result is False  # signal to delete graph
     assert failing.params["previous_retries"] == 3
     assert "exceeded max retries" in caplog.text
+
+
+def test_reloads_active_task_as_pending(tmp_path):
+    """
+    Ensures that a task marked 'active' in a saved file is loaded
+    back into the 'pending' state to allow for recovery after a crash.
+    """
+    # 1. Create a graph with one task and mark it 'active'
+    task = make_send_task("t1")
+    task.status = "active"
+    graph = make_graph("g1", [task])
+    
+    # 2. Manually create a WorkQueue and save it
+    # We bypass the constructor to set the internal state directly for the test
+    queue = WorkQueue()
+    queue._task_graphs = [graph]
+    
+    file_path = tmp_path / "queue_with_active.md"
+    queue.save(str(file_path))
+
+    # 3. Load the queue from the file
+    reloaded_queue = WorkQueue.load(str(file_path))
+
+    # 4. Assert that the task's status is now 'pending'
+    assert len(reloaded_queue._task_graphs) == 1
+    reloaded_task = reloaded_queue._task_graphs[0].nodes[0]
+    assert reloaded_task.identifier == "t1"
+    assert reloaded_task.status == "pending"

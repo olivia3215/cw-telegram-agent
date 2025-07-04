@@ -15,12 +15,28 @@ async def insert_received_task_for_conversation(
     *,
     recipient_id: str,
     channel_id: str,
-    message_id: Optional[int] = None
+    message_id: Optional[int] = None,
+    is_callout: bool = False,
 ):
     """
-    Insert a new task graph with a single 'received' task for a conversation.
-    Replaces any existing task graph for that sender/recipient pair using the provided matcher.
+    Replaces a conversation's task graph, preserving any tasks marked 'callout'.
     """
+    preserved_tasks = []
+    # Find the existing graph for this conversation
+    old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
+
+    if old_graph:
+        # Find any tasks with the callout flag
+        for node in old_graph.nodes:
+            if node.params.get("callout"):
+                # Clear its dependencies, as the old graph is being destroyed
+                node.depends_on.clear()
+                preserved_tasks.append(node)
+        
+        # Remove the old graph completely
+        work_queue.remove(old_graph)
+        if preserved_tasks:
+            logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
 
     # Get a lock specific to this conversation
     logger.info("adding a task for received message.")
@@ -58,21 +74,22 @@ async def insert_received_task_for_conversation(
         if match:
             message_text = match.text or ""
 
-    graph_id = f"recv-{uuid.uuid4().hex[:8]}"
-    task_id = f"received-{uuid.uuid4().hex[:8]}"
-
     task_params = {
         "thread_context": thread_context
     }
     if message_id is not None:
         task_params["message_id"] = message_id
+    if is_callout:
+        task_params["callout"] = True
     if message_text is not None:
         task_params["message_text"] = f"«{message_text}»"
 
     assert recipient_id != None
     recipient_name = await get_channel_name(client, recipient_id)
     channel_name = await get_channel_name(client, channel_id)
-    graph = TaskGraph(
+
+    graph_id = f"recv-{uuid.uuid4().hex[:8]}"
+    new_graph = TaskGraph(
         identifier=graph_id,
         context={
             "agent_id": recipient_id,
@@ -80,17 +97,18 @@ async def insert_received_task_for_conversation(
             "agent_name": recipient_name,
             "channel_name": channel_name,
             },
-        nodes=[
-            TaskNode(
-                identifier=task_id,
-                type="received",
-                params=task_params,
-                depends_on=[]
-            )
-        ]
+        nodes=preserved_tasks 
     )
 
-    work_queue.add_graph(graph)
+    task_id = f"received-{uuid.uuid4().hex[:8]}"
+    received_task = TaskNode(
+        identifier=task_id,
+        type="received",
+        params=task_params,
+        depends_on=[]
+    )
+    new_graph.add_task(received_task)
+    work_queue.add_graph(new_graph)
     logger.info(
-        f"Inserted 'received' task for agent {recipient_id} in conversation {channel_id} in graph {graph_id}"
+        f"Inserted 'received' task for agent {recipient_name} in conversation {channel_name} in graph {graph_id}"
     )
