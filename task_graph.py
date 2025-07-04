@@ -72,23 +72,23 @@ class TaskNode:
 class TaskGraph:
     identifier: str
     context: Dict
-    nodes: List[TaskNode] = field(default_factory=list)
+    tasks: List[TaskNode] = field(default_factory=list)
 
     def completed_ids(self):
-        return {node.identifier for node in self.nodes if node.status == "done"}
+        return {task.identifier for task in self.tasks if task.status == "done"}
 
     def pending_tasks(self, now: datetime):
         done = self.completed_ids()
-        return [n for n in self.nodes if n.is_ready(done, now)]
+        return [n for n in self.tasks if n.is_ready(done, now)]
 
     def get_node(self, node_id: str) -> Optional[TaskNode]:
-        for node in self.nodes:
-            if node.identifier == node_id:
-                return node
+        for task in self.tasks:
+            if task.identifier == node_id:
+                return task
         return None
     
-    def add_task(self, node: TaskNode):
-        self.nodes.append(node)
+    def add_task(self, task: TaskNode):
+        self.tasks.append(task)
 
 @dataclass
 class WorkQueue:
@@ -127,7 +127,7 @@ class WorkQueue:
             block = {
                 "identifier": graph.identifier,
                 "context": graph.context,
-                "nodes": [node.__dict__ for node in graph.nodes],
+                "nodes": [task.__dict__ for task in graph.tasks],
             }
             md += "```json\n" + json.dumps(block, indent=2) + "\n```\n\n"
         return md
@@ -139,7 +139,7 @@ class WorkQueue:
     def graph_containing(self, task: TaskNode):
         with self._lock:
             for graph in self._task_graphs:
-                if task in graph.nodes:
+                if task in graph.tasks:
                     return graph
             return None
 
@@ -169,18 +169,18 @@ class WorkQueue:
             json_part = block.split("```", 1)[0]
             data = json.loads(json_part)
             
-            nodes = []
-            for n in data.get("nodes", []):
+            tasks = []
+            for t in data.get("nodes", []):
                 # On startup, tasks that were pending become active
-                if n.get("status") == "active":
-                    n["status"] = "pending"
-                    logger.info(f"Reverted active task {n['identifier']} to pending on load.")
-                nodes.append(TaskNode(**n))
+                if t.get("status") == "active":
+                    t["status"] = "pending"
+                    logger.info(f"Reverted active task {t['identifier']} to pending on load.")
+                tasks.append(TaskNode(**t))
 
             graphs.append(TaskGraph(
                 identifier=data["identifier"],
                 context=data["context"],
-                nodes=nodes,
+                tasks=tasks,
             ))
         return cls(_task_graphs=graphs)
 

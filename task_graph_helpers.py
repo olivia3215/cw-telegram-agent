@@ -3,9 +3,10 @@
 from typing import Optional
 import uuid
 import logging
-from handle_received import get_channel_name
+from telegram_util import get_channel_name
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -25,21 +26,23 @@ async def insert_received_task_for_conversation(
     # Find the existing graph for this conversation
     old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
 
+    last_task = None
     if old_graph:
-        # Find any tasks with the callout flag
-        for node in old_graph.nodes:
-            if node.params.get("callout"):
-                # Clear its dependencies, as the old graph is being destroyed
-                node.depends_on.clear()
-                preserved_tasks.append(node)
+        # preserve tasks from the old graph, but mark some as done
+        for old_task in old_graph.tasks:
+            was_callout = old_task.params.get("callout")
+            preserve = was_callout and ((not is_callout) or random.random() < 0.5)
+            if preserve:
+                last_task = old_task.identifier
+            else:
+                old_task.status = "done"
+            preserved_tasks.append(old_task)
         
         # Remove the old graph completely
         work_queue.remove(old_graph)
         if preserved_tasks:
             logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
 
-    # Get a lock specific to this conversation
-    logger.info("adding a task for received message.")
     def conversation_matcher(ctx):
         return (
             ctx.get("channel_id") == channel_id and
@@ -86,7 +89,7 @@ async def insert_received_task_for_conversation(
     if message_text is not None:
         task_params["message_text"] = f"«{message_text}»"
 
-    assert recipient_id != None
+    assert recipient_id
     recipient_name = await get_channel_name(client, recipient_id)
     channel_name = await get_channel_name(client, channel_id)
 
@@ -99,7 +102,7 @@ async def insert_received_task_for_conversation(
             "agent_name": recipient_name,
             "channel_name": channel_name,
             },
-        nodes=preserved_tasks 
+        tasks=preserved_tasks 
     )
 
     task_id = f"received-{uuid.uuid4().hex[:8]}"
@@ -107,10 +110,10 @@ async def insert_received_task_for_conversation(
         identifier=task_id,
         type="received",
         params=task_params,
-        depends_on=[]
+        depends_on=[last_task] if last_task else []
     )
     new_graph.add_task(received_task)
     work_queue.add_graph(new_graph)
     logger.info(
-        f"Inserted 'received' task for agent {recipient_name} in conversation {channel_name} in graph {graph_id}"
+        f"[{recipient_name}] Inserted 'received' task in conversation {channel_name} in graph {graph_id}"
     )

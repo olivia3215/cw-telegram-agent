@@ -7,9 +7,11 @@ import re
 from task_graph import TaskGraph, TaskNode
 from agent import get_agent_for_id, get_dialog
 from prompt_loader import load_system_prompt
+from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction, User
+from telethon.errors.rpcerrorlist import UserBannedInChannelError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,13 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
 
         if current_reply_to:
             params["in_reply_to"] = current_reply_to
+
+        if body.startswith("```markdown\n"):
+            body = body.removeprefix("```markdown\n")
+            if body.endswith("```"):
+                body = body.removesuffix("```")
+            elif body.endswith("```\n"):
+                body = body.removesuffix("```\n")
 
         if current_type == "send":
             params["message"] = body
@@ -75,9 +84,11 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
 
 
 def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
-    # Gemini generates this, and prompting doesn't appear to discourage it.
+    # Gemini generates this, and prompting doesn't seem to discourage it.
     if text.startswith("```markdown\n") and text.endswith("```"):
         text = text.removeprefix("```markdown\n").removesuffix("```")
+    if text.startswith("```markdown\n") and text.endswith("```\n"):
+        text = text.removeprefix("```markdown\n").removesuffix("```\n")
     
     # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
     if text.startswith("# "):
@@ -99,60 +110,26 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
     return task_nodes
 
 
-async def get_channel_name(client, channel_id):
-    """
-    Fetches the display name for any channel (user, group, or channel).
-    """
-    try:
-        # get_entity can fetch users, chats, or channels
-        entity = await client.get_entity(channel_id)
-
-        # 1. Check for a 'title' (for groups and channels)
-        if hasattr(entity, 'title') and entity.title:
-            return entity.title
-
-        # 2. Check for user attributes
-        if hasattr(entity, 'first_name') or hasattr(entity, 'last_name'):
-            first_name = getattr(entity, 'first_name', None)
-            last_name = getattr(entity, 'last_name', None)
-
-            if first_name and last_name:
-                return f"{first_name} {last_name}"
-            if first_name:
-                return first_name
-            if last_name:
-                return last_name
-        
-        # 3. Fallback to username if available
-        if hasattr(entity, 'username') and entity.username:
-            return entity.username
-
-        # 4. Final fallback if no name can be determined
-        return f"Entity ({entity.id})"
-
-    except Exception as e:
-        # If the entity can't be fetched, return a default identifier
-        logger.exception(f"Could not fetch entity for {channel_id}: {e}")
-        return f"Unknown ({channel_id})"
-
-
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph: TaskGraph):
     channel_id = graph.context.get("channel_id")
-    assert channel_id != None
+    assert channel_id
     agent_id = graph.context.get("agent_id")
-    assert agent_id != None
+    assert agent_id
     agent = get_agent_for_id(agent_id)
-    assert agent_id != None
+    assert agent_id
     client = agent.client
     llm = agent.llm
+    agent_name = agent.name
 
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
     is_callout = task.params.get("callout", False)
     dialog = await get_dialog(client, channel_id)
-    is_group = not isinstance(dialog.entity, User)
+
+    # A group or channel will have a .title attribute, a user will not.
+    is_group = hasattr(dialog.entity, 'title')
 
     llm_prompt = load_system_prompt(llm.prompt_name)
     role_prompt = load_system_prompt(agent.role_prompt_name)
@@ -168,9 +145,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{{char}}", agent.name)
     system_prompt = system_prompt.replace("{char}", agent.name)
     system_prompt = system_prompt.replace("{{user}}",
-        await get_channel_name(client, dialog) if dialog.is_user else "Someone")
+        await get_dialog_name(client, dialog) if dialog.is_user else "Someone")
     system_prompt = system_prompt.replace("{user}",
-        await get_channel_name(client, dialog) if dialog.is_user else "Someone")
+        await get_dialog_name(client, dialog) if dialog.is_user else "Someone")
 
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
@@ -194,38 +171,43 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     )
 
     # Await LLM response
-    logger.debug(f"LLM prompt: System: {system_prompt}, User: {user_prompt}")
+    logger.info(f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}")
     reply = await llm.query(system_prompt, user_prompt)
 
     if reply == "":
-        logger.info(f"LLM decided not to reply to {user_message}")
+        logger.info(f"[{agent_name}] LLM decided not to reply to {user_message}")
         return
 
+    logger.info(f"[{agent_name}] LLM reply: {reply}")
+
     try:
-        task_nodes = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
+        tasks = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
     except ValueError as e:
-        logger.exception(f"Failed to parse LLM response '{reply}': {e}")
+        logger.exception(f"[{agent_name}] Failed to parse LLM response '{reply}': {e}")
         return
 
     # Inject conversation-specific context into each task
     fallback_reply_to = task.params.get("message_id") if is_group else None
     last_id = task.identifier
-    for node in task_nodes:
+    for task in tasks:
         if is_callout:
-            node.params["callout"] = True
+            task.params["callout"] = True
 
-        graph.add_task(node)
-        node.depends_on.append(last_id)
-        last_id = node.identifier
-
-        if node.type == "send" or node.type == "sticker":
-            # If the LLM did NOT specify a reply-to ID, and we have a fallback, use it.
-            # This prevents us from overwriting the LLM's specific choice.
-            if "in_reply_to" not in node.params and fallback_reply_to:
-                node.params["in_reply_to"] = fallback_reply_to
+        if task.type == "send" or task.type == "sticker":
+            if "in_reply_to" not in task.params and fallback_reply_to:
+                task.params["in_reply_to"] = fallback_reply_to
                 fallback_reply_to = None
 
             # appear to be typing for four seconds
-            await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
+            try:
+                await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
+            except UserBannedInChannelError as e:
+                # It's okay if we can't show ourselves as typing
+                logger.error(f"[{agent_name}] is currently banned from sending in channel [{await get_channel_name(client, channel_id)}]")
+                continue
+
+        graph.add_task(task)
+        task.depends_on.append(last_id)
+        last_id = task.identifier
 
     await client.send_read_acknowledge(channel_id)

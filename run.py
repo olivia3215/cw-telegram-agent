@@ -3,11 +3,12 @@
 import asyncio
 import logging
 import os
+from telegram_util import get_channel_name
 from register_agents import register_all_agents
 from exceptions import ShutdownException
 from task_graph import WorkQueue
 from tick import run_tick_loop
-from telegram_client_util import get_telegram_client
+from telegram_util import get_telegram_client
 from telethon import events
 from task_graph_helpers import insert_received_task_for_conversation
 from agent import (
@@ -36,7 +37,7 @@ def load_work_queue():
 
 
 async def handle_incoming_message(agent: Agent, work_queue, event):
-    name = agent.name
+    agent_name = agent.name
     client = agent.client
     sender = await event.get_sender()
     dialog = await get_dialog(client, event.chat_id)
@@ -46,8 +47,9 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     if is_callout:
         await client.send_read_acknowledge(dialog, clear_mentions=True)
 
-    logger.info(f"[{name}] Message from {sender.id}: {event.raw_text!r} (callout: {is_callout})")
-    logger.debug(f"[{name}] muted:{muted}, unread_count:{dialog.unread_count}")
+    sender_name = await get_channel_name(client, sender.id)
+    logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
+    logger.debug(f"[{agent_name}] muted:{muted}, unread_count:{dialog.unread_count}")
 
     if not muted or is_callout:
         await insert_received_task_for_conversation(
@@ -61,16 +63,17 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
 
 async def scan_unread_messages(agent: Agent, work_queue):
     client = agent.client
-    name = agent.name
+    agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
+        dialog_name = await get_channel_name(client, dialog)
         muted = await is_muted(client, dialog)
         has_unread = dialog.unread_count > 0 and not muted
         has_mentions = dialog.unread_mentions_count > 0
 
-        logger.debug(f"[{name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
+        logger.debug(f"[{agent_name}] messages from [{dialog_name}] muted:{muted}, is_user:{dialog.is_user}, unread_count:{dialog.unread_count}")
         if has_unread or has_mentions:
-            logger.info(f"[{name}] Found unread content in {dialog.id} (mentions: {has_mentions})")
+            logger.info(f"[{agent_name}] Found unread content in [{dialog_name}] (mentions: {has_mentions})")
             if has_mentions:
                 await client.send_read_acknowledge(dialog, clear_mentions=True)
             await insert_received_task_for_conversation(
@@ -105,11 +108,11 @@ async def ensure_sticker_cache(agent, client):
             logger.debug(f"[{agent.name}] Registered sticker: {repr(name)}")
 
     except Exception as e:
-        logger.warning(f"Failed to load sticker set for agent '{agent.name}': {e}")
+        logger.warning(f"[{agent.name}] Failed to load sticker set for agent: {e}")
 
 
 async def run_telegram_loop(agent: Agent, work_queue):
-    name = agent.name
+    agent_name = agent.name
     
     while True:
         client = get_telegram_client(agent.name, agent.phone)
@@ -125,13 +128,13 @@ async def run_telegram_loop(agent: Agent, work_queue):
                 me = await client.get_me()
                 agent_id = me.id
                 agent.agent_id = agent_id
-                logger.info(f"[{name}] Agent started as {me.username or me.first_name} ({agent_id})")
+                logger.info(f"[{agent_name}] Agent started ({agent_id})")
 
                 await scan_unread_messages(agent, work_queue)
                 await client.run_until_disconnected()
 
         except Exception as e:
-            logger.warning(f"[{name}] Telegram client error: {e}. Reconnecting in 5 seconds...")
+            logger.warning(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
 
         finally:

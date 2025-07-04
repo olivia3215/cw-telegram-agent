@@ -1,8 +1,12 @@
 # telegram_echo_agent.py
 
+#######
+## A sample telegram client
+#######
+
 import os
 import logging
-from telegram_client_util import get_telegram_client
+from telegram_util import get_telegram_client
 from telethon import events
 
 logging.basicConfig(level=logging.INFO)

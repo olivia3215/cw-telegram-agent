@@ -6,6 +6,7 @@ import os
 from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
 
+from telegram_util import get_channel_name
 from llm import ChatGPT, OllamaLLM, GeminiLLM
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ class AgentRegistry:
             instructions=instructions,
             role_prompt_name=role_prompt_name
         )
-        # logger.info(f"Added agent {name} with intructions: {instructions}")
+        # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
 
     def get_client(self, name):
         agent = self._registry.get(name)
@@ -113,7 +114,8 @@ async def is_muted(client, dialog_or_entity) -> bool:
         return False
     except Exception as e:
         entity_id = getattr(peer, 'id', 'unknown')
-        logger.exception(f"is_muted(...) failed for dialog {entity_id}: {e}")
+        dialog_name = await get_channel_name(client, entity_id)
+        logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
         return False
 
 
@@ -122,5 +124,6 @@ async def get_dialog(client: TelegramClient, chat_id):
         if dialog.id == chat_id:
             return dialog
     else:
-        logger.warning(f"No dialog found for chat_id {chat_id}")
+        chat_name = await get_channel_name(client, chat_id)
+        logger.warning(f"No dialog found for [{chat_name}]")
         return None

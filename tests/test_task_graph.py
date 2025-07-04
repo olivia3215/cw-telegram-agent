@@ -25,7 +25,7 @@ def make_send_task(identifier: str, depends=None):
     )
 
 def make_graph(identifier: str, nodes):
-    return TaskGraph(identifier=identifier, context={"peer_id": "user123"}, nodes=nodes)
+    return TaskGraph(identifier=identifier, context={"peer_id": "user123"}, tasks=nodes)
 
 
 def test_task_readiness():
@@ -76,8 +76,8 @@ def test_serialization_and_reload(tmp_path):
     reloaded = WorkQueue.load(str(file_path))
     assert len(reloaded._task_graphs) == 1
     assert reloaded._task_graphs[0].identifier == "gX"
-    assert reloaded._task_graphs[0].nodes[0].identifier == "wX"
-    assert reloaded._task_graphs[0].nodes[0].type == "wait"
+    assert reloaded._task_graphs[0].tasks[0].identifier == "wX"
+    assert reloaded._task_graphs[0].tasks[0].type == "wait"
 
 
 def test_invalid_wait_task_logs(caplog):
@@ -111,14 +111,14 @@ def test_retry_injection_and_limit(caplog):
     assert result is True
     assert failing.params["previous_retries"] == 1
     assert any(dep.startswith("wait-retry-f1-") for dep in failing.depends_on)
-    assert any(n.identifier.startswith("wait-retry-f1-1") for n in graph.nodes)
+    assert any(n.identifier.startswith("wait-retry-f1-1") for n in graph.tasks)
     assert "Retrying in 5s" in caplog.text
 
     # Retry 2
     result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
     assert result is True
     assert failing.params["previous_retries"] == 2
-    assert any(n.identifier.startswith("wait-retry-f1-2") for n in graph.nodes)
+    assert any(n.identifier.startswith("wait-retry-f1-2") for n in graph.tasks)
 
     # Retry 3 (limit exceeded)
     result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
@@ -150,6 +150,6 @@ def test_reloads_active_task_as_pending(tmp_path):
 
     # 4. Assert that the task's status is now 'pending'
     assert len(reloaded_queue._task_graphs) == 1
-    reloaded_task = reloaded_queue._task_graphs[0].nodes[0]
+    reloaded_task = reloaded_queue._task_graphs[0].tasks[0]
     assert reloaded_task.identifier == "t1"
     assert reloaded_task.status == "pending"

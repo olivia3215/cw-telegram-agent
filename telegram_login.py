@@ -4,7 +4,7 @@ import getpass
 import os
 import logging
 from register_agents import register_all_agents
-from telegram_client_util import get_telegram_client
+from telegram_util import get_telegram_client
 from telethon.errors import SessionPasswordNeededError
 import asyncio
 from agent import all_agents

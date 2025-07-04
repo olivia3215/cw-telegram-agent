@@ -11,10 +11,24 @@ organized in a markdown document as described below.
 
 # Response Format: Structured Markdown Tasks
 
-You must return your response as a series of markdown task blocks.
+You must return your response as a markdown document containing series
+of markdown task blocks.
 If you format it in any other way, your response will be ignored.
 So it is very important to format your response as a markdown document
-containing only tasks, as described below.
+containing only tasks, as described below. Do not surround tasks
+with code blocks. Your response should be a single markdown document.
+
+For example, the following is an acceptable response _without the surrounding code block_.
+
+```markdown
+# «send»
+
+This is correct.
+
+# «send»
+
+It contains two messages to send
+```
 
 Each task begins with a level 1 heading like `# «send»` or `# «sticker»`,
 followed by the content for that task.

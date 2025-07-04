@@ -22,7 +22,7 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     old_graph = TaskGraph(
         identifier="old_graph",
         context={"agent_id": agent_id, "channel_id": channel_id},
-        nodes=[callout_task, regular_task]
+        tasks=[callout_task, regular_task]
     )
     work_queue.add_graph(old_graph)
     assert len(work_queue._task_graphs) == 1
@@ -54,11 +54,11 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     new_graph = work_queue._task_graphs[0]
     
     # The new graph should contain the preserved callout task
-    node_ids = {node.identifier for node in new_graph.nodes}
+    node_ids = {task.identifier for task in new_graph.tasks}
     assert "callout1" in node_ids
     
     # The new graph should NOT contain the old regular task
     assert "regular1" not in node_ids
     
     # The new graph should contain a new 'received' task
-    assert any(node.type == "received" for node in new_graph.nodes)
+    assert any(task.type == "received" for task in new_graph.tasks)

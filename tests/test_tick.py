@@ -20,7 +20,7 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
-    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, nodes=[task])
+    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
@@ -32,14 +32,14 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_one_tick_retries_on_failure():
     task = TaskNode(identifier="bad", type="explode", params={})
-    graph = TaskGraph(identifier="g2", context={"peer_id": "test"}, nodes=[task])
+    graph = TaskGraph(identifier="g2", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
 
     assert "previous_retries" in task.params
     assert task.status == "pending"
-    assert any(n.identifier.startswith("wait-retry-") for n in graph.nodes)
+    assert any(n.identifier.startswith("wait-retry-") for n in graph.tasks)
     assert graph in queue._task_graphs
 
 
@@ -49,7 +49,7 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
     from tick import run_one_tick as real_run_one_tick
 
     task = TaskNode(identifier="shutdown", type="shutdown", params={})
-    graph = TaskGraph(identifier="g3", context={"peer_id": "test"}, nodes=[task])
+    graph = TaskGraph(identifier="g3", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     def mock_round_robin():
@@ -71,7 +71,7 @@ async def test_retry_eventually_gives_up(fake_clock):
     from tick import run_one_tick as real_tick
 
     task = TaskNode(identifier="fail", type="explode", params={})
-    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, nodes=[task])
+    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     async def patched_tick(queue, state_file_path=None):
@@ -93,7 +93,7 @@ async def test_execute_clear_conversation(monkeypatch):
         "agent_id": "a1",
         "channel_id": "u123",
         "peer_id": "u123"  # legacy field; not strictly needed
-    }, nodes=[task])
+    }, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     mock_client = AsyncMock()
@@ -143,7 +143,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
-    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, nodes=[task])
+    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
     
     # The task should start as 'pending'

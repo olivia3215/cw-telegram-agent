@@ -9,6 +9,8 @@ from agent import Agent, get_agent_for_id
 from telethon.tl.types import User
 from telethon.tl.functions.messages import DeleteHistoryRequest
 
+from telegram_util import get_channel_name, get_user_name
+
 logger = logging.getLogger(__name__)
 
 # Dispatch table for task type handlers
@@ -24,7 +26,7 @@ def register_task_handler(task_type):
 
 
 def is_graph_complete(graph) -> bool:
-    return all(n.status == "done" for n in graph.nodes)
+    return all(n.status == "done" for n in graph.tasks)
 
 
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
@@ -40,35 +42,41 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         logger.warning(f"Task {task.identifier} found but no matching graph.")
         return
 
-    logger.info(f"Running task {task.identifier} of type {task.type}")
+    agent_id = graph.context.get("agent_id")
+    assert agent_id
+    agent = get_agent_for_id(agent_id)
+    assert agent_id
+    agent_name = agent.name
+
+    logger.info(f"[{agent_name}] Running task {task.identifier} of type {task.type}")
 
     try:
         task.status = "active"
         if state_file_path:
             work_queue.save(state_file_path)
-        logger.info(f"Task {task.identifier} is now active.")
+        logger.info(f"[{agent_name}] Task {task.identifier} is now active.")
 
         handler = _dispatch_table.get(task.type)
         if not handler:
-            raise ValueError(f"Unknown task type: {task.type}")
+            raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
         await handler(task, graph)
 
         task.status = "done"
 
     except Exception as e:
-        logger.exception(f"Task {task.identifier} raised exception: {e}")
+        logger.exception(f"[{agent_name}] Task {task.identifier} raised exception: {e}")
         retry_ok = task.failed(graph, retry_interval_sec=10, max_retries=10, now=now)
         if not retry_ok:
             work_queue.remove(graph)
-            logger.warning(f"Removed graph {graph.identifier} due to max retries.")
+            logger.warning(f"[{agent_name}] Removed graph {graph.identifier} due to max retries.")
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
-        logger.info(f"Graph {graph.identifier} completed and removed.")
+        logger.info(f"[{agent_name}] Graph {graph.identifier} completed and removed.")
 
     if state_file_path:
         work_queue.save(state_file_path)
-        logger.debug(f"Work queue state saved to {state_file_path}")
+        logger.debug(f"[{agent_name}] Work queue state saved to {state_file_path}")
 
 
 async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 5, state_file_path: str = None, tick_fn = run_one_tick):
@@ -93,6 +101,7 @@ async def handle_send(task: TaskNode, graph):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
+    agent_name = agent.name
     client = agent.client
     message = task.params.get("message")
 
@@ -100,8 +109,7 @@ async def handle_send(task: TaskNode, graph):
         raise ValueError("Missing 'agent_id' in task graph context")
     if not channel_id or not message:
         raise ValueError(f"Missing required 'channel_id' or 'message' fields in task {task.identifier}")
-
-    logger.info(f"SEND: from={agent_id} to={channel_id} message={message!r}")
+    logger.info(f"[{agent_name}] SEND: to=[{await get_channel_name(client, channel_id)}] message={message!r}")
 
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
@@ -113,7 +121,7 @@ async def handle_send(task: TaskNode, graph):
         else:
             await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Failed to send reply to message {reply_to}: {e}")
+        logger.error(f"[{agent_name}] Failed to send reply to message {reply_to}: {e}")
 
 
 @register_task_handler("sticker")
@@ -121,18 +129,23 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
+    agent_name = agent.name
     client = agent.client
     sticker_name = task.params.get("name")
     in_reply_to = task.params.get("in_reply_to")
 
     if not sticker_name:
-        raise ValueError("Sticker task missing 'name' parameter.")
+        raise ValueError(f"[{agent_name}] Sticker task missing 'name' parameter.")
 
     file = agent.sticker_cache.get(sticker_name)
-    if not file:
-        raise ValueError(f"Unknown sticker '{sticker_name}' for agent '{agent.name}'.")
-
-    await client.send_file(channel_id, file=file, file_type="sticker", reply_to=in_reply_to)
+    try:
+        if file:
+            await client.send_file(channel_id, file=file, file_type="sticker", reply_to=in_reply_to)
+        else:
+            # Send unknown stickers as a plain message.
+            await client.send_message(channel_id, sticker_name)
+    except Exception as e:
+        logger.error(f"[{agent_name}] Failed to send sticker: {e}")
 
 
 @register_task_handler("clear-conversation")
@@ -140,17 +153,18 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
+    agent_name = agent.name
     client = agent.client
 
     channel = await client.get_entity(channel_id)
 
-    logger.debug(f"Resolved channel for ID {channel_id}: {channel} (type: {type(channel)})")
+    logger.debug(f"[{agent_name}] Resolved channel for ID [{await get_channel_name(client, channel_id)}]: {channel} (type: {type(channel)})")
 
     if not getattr(channel, "is_user", False):
-        logger.info(f"Skipping clear-conversation: channel {channel_id} is not a DM.")
+        logger.info(f"[{agent_name}] Skipping clear-conversation: channel [{await get_channel_name(client, channel_id)}] is not a DM.")
         return
 
-    logger.info(f"Clearing conversation history for agent {agent_id} with channel {channel_id}.")
+    logger.info(f"[{agent_name}] Clearing conversation history with channel [{await get_channel_name(client, channel_id)}].")
 
     try:
         await client(DeleteHistoryRequest(
@@ -158,9 +172,9 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
             max_id=0,  # 0 means delete all messages
             revoke=True  # revoke=True removes messages for both sides
         ))
-        logger.info(f"Successfully cleared conversation with {channel_id}")
+        logger.info(f"[{agent_name}] Successfully cleared conversation with [{await get_channel_name(client, channel_id)}]")
     except Exception as e:
-        logger.exception(f"Failed to clear conversation with {channel_id}: {e}")
+        logger.exception(f"[{agent_name}] Failed to clear conversation with [{await get_channel_name(client, channel_id)}]: {e}")
 
 
 # import to make sure handle_received is registered.
