@@ -9,7 +9,7 @@ from agent import get_agent_for_id, get_dialog
 from prompt_loader import load_system_prompt
 from tick import register_task_handler
 from telethon.tl.functions.messages import SetTypingRequest
-from telethon.tl.types import SendMessageTypingAction
+from telethon.tl.types import SendMessageTypingAction, User
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ async def get_channel_name(client, channel_id):
 
     except Exception as e:
         # If the entity can't be fetched, return a default identifier
-        print(f"Could not fetch entity for {channel_id}: {e}")
+        logger.exception(f"Could not fetch entity for {channel_id}: {e}")
         return f"Unknown ({channel_id})"
 
 
@@ -152,7 +152,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     is_callout = task.params.get("callout", False)
     dialog = await get_dialog(client, channel_id)
-    is_group = not dialog.is_user
+    is_group = not isinstance(dialog.entity, User)
 
     llm_prompt = load_system_prompt(llm.prompt_name)
     role_prompt = load_system_prompt(agent.role_prompt_name)
@@ -208,8 +208,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         return
 
     # Inject conversation-specific context into each task
-    last_id = task.identifier  # Start chain from current 'received' task
-    in_reply_to = task.params.get("message_id") if not is_group else None
+    fallback_reply_to = task.params.get("message_id") if is_group else None
+    last_id = task.identifier
     for node in task_nodes:
         if is_callout:
             node.params["callout"] = True
@@ -218,11 +218,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         node.depends_on.append(last_id)
         last_id = node.identifier
 
-        if node.type == "send":
-            # preserve reply threading only for first "send" in a group
-            if in_reply_to:
-                node.params.setdefault("in_reply_to", in_reply_to)
-                in_reply_to = None
+        if node.type == "send" or node.type == "sticker":
+            # If the LLM did NOT specify a reply-to ID, and we have a fallback, use it.
+            # This prevents us from overwriting the LLM's specific choice.
+            if "in_reply_to" not in node.params and fallback_reply_to:
+                node.params["in_reply_to"] = fallback_reply_to
+                fallback_reply_to = None
 
             # appear to be typing for four seconds
             await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
