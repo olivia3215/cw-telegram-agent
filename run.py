@@ -47,7 +47,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     if is_callout:
         await client.send_read_acknowledge(dialog, clear_mentions=True)
 
-    sender_name = await get_channel_name(client, sender.id)
+    sender_name = await get_channel_name(client, sender)
     logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
     logger.debug(f"[{agent_name}] muted:{muted}, unread_count:{dialog.unread_count}")
 
