@@ -1,6 +1,6 @@
 # handle_received.py
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 import re
@@ -14,6 +14,7 @@ from telethon.tl.types import SendMessageTypingAction, User
 from telethon.errors.rpcerrorlist import UserBannedInChannelError
 
 logger = logging.getLogger(__name__)
+ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list[TaskNode]:
@@ -52,7 +53,15 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
             match = re.search(r"delay:\s*(\d+)", body)
             if not match:
                 raise ValueError("Wait task must contain 'delay: <seconds>'")
-            params["delay"] = int(match.group(1))
+            
+            delay_seconds = int(match.group(1))
+            params["delay"] = delay_seconds
+            wait_until_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+            params["until"] = wait_until_time.strftime(ISO_FORMAT)
+        elif current_type == "block":
+            pass # No parameters needed
+        elif current_type == "unblock":
+            pass # No parameters needed
         elif current_type == "shutdown":
             if body:
                 params["reason"] = body

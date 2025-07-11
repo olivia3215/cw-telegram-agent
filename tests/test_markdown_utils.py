@@ -95,3 +95,14 @@ This is a reply.
     assert tasks[1].type == "sticker"
     assert tasks[1].params.get("in_reply_to") == 54321
     assert tasks[1].params["name"] == "👍"
+
+
+def test_parse_markdown_block_unblock_tasks():
+    md = """# «block»
+
+# «unblock»
+"""
+    tasks = parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    assert len(tasks) == 2
+    assert tasks[0].type == "block"
+    assert tasks[1].type == "unblock"

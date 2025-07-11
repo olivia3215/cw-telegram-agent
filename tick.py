@@ -5,9 +5,15 @@ import logging
 from datetime import datetime, timezone
 from task_graph import TaskGraph, WorkQueue, TaskNode
 from exceptions import ShutdownException
-from agent import Agent, get_agent_for_id
+from agent import Agent, get_agent_for_id, get_dialog
 from telethon.tl.types import User
 from telethon.tl.functions.messages import DeleteHistoryRequest
+from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
+from telethon.tl.functions.contacts import (
+    GetBlockedRequest,
+    SetBlockedRequest,
+    UnblockRequest # Keep this for the unblock logic
+)
 
 from telegram_util import get_channel_name, get_user_name
 
@@ -177,5 +183,40 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
         logger.exception(f"[{agent_name}] Failed to clear conversation with [{await get_channel_name(client, channel_id)}]: {e}")
 
 
+@register_task_handler("block")
+async def handle_block(task: TaskNode, graph: TaskGraph):
+    agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
+    agent = get_agent_for_id(agent_id)
+    client = agent.client
+
+    # Safety check: ensure this is a one-on-one conversation
+    dialog = await get_dialog(client, channel_id)
+    if hasattr(dialog.entity, 'title'):
+        logger.warning(f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting.")
+        return
+    
+    logger.info(f"Agent {agent.name} is blocking user {channel_id}.")
+    await client(BlockRequest(id=channel_id))
+
+
+@register_task_handler("unblock")
+async def handle_unblock(task: TaskNode, graph: TaskGraph):
+    agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
+    agent = get_agent_for_id(agent_id)
+    client = agent.client
+
+    # Safety check: ensure this is a one-on-one conversation
+    dialog = await get_dialog(client, channel_id)
+    if hasattr(dialog.entity, 'title'):
+        logger.warning(f"Agent {agent.name} attempted to unblock a group/channel ({channel_id}). Aborting.")
+        return
+
+    logger.info(f"Agent {agent.name} is unblocking user {channel_id}.")
+    await client(UnblockRequest(id=channel_id))
+
+
 # import to make sure handle_received is registered.
 import handle_received
+

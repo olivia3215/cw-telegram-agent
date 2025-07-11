@@ -38,6 +38,9 @@ Valid task types:
 
 - `# «send»` — send a text message
 - `# «sticker»` — send a sticker by name (must be from your assigned sticker set)
+- `# «wait»` — wait for a specified number of seconds
+- `# «block»` — block the conversation, preventing either participant from sending a message
+- `# «unblock»` — unblock the conversation, permitting messages to be sent again after being blocked
 
 Each task type is followed by a body that depends on the type:
 
@@ -92,6 +95,32 @@ A sticker may also be send in response to a particular message.
 😘
 ```
 
+## wait
+
+Wait a number of seconds before continuing. The body must contain a line like:
+
+```markdown
+# «wait»
+
+delay: 60
+```
+
+## block
+
+```markdown
+# «block»
+```
+
+This causes the DM conversation to be blocked, preventing either participant from sending messages.
+
+## unblock
+
+```markdown
+# «unblock»
+```
+
+This cancels the block on a DM conversation, permitting messages to be sent once again after being blocked.
+
 ## General Rules
 
 - You may include as many tasks as appropriate. It is better to send several smaller messages as separate tasks than one big message.
@@ -101,3 +130,20 @@ A sticker may also be send in response to a particular message.
 - Prefer stickers when they express your intent well.
 - Only use sticker names from your assigned sticker set (see “Available Stickers”).
 - If your sticker set doesn't include an emoji that would be appropriate, you may **send** a message with just that emoji rather than sending a sticker.
+- If you want to block your conversation partner for a period of time, use a sequence of three tasks: **block**, **wait**, and **unblock**. This is a good way of punishing rude behavior for a specific period of time without completely cutting off communication.
+
+The following example shows how to block for a period of time:
+
+```markdown
+# «send»
+
+You're being really rude to me right now. Let's take a break for 10 minutes and try to be less rude. I'm blocking you.
+
+# «block»
+
+# «wait»
+
+delay: 600
+
+# unblock
+```

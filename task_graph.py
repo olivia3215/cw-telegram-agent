@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 import threading
 import logging
 
-ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 logger = logging.getLogger(__name__)
+ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 @dataclass
 class TaskNode:

@@ -5,7 +5,6 @@ import logging
 import os
 from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
-
 from telegram_util import get_channel_name
 from llm import ChatGPT, OllamaLLM, GeminiLLM
 
@@ -117,3 +116,14 @@ async def is_muted(client, dialog_or_entity) -> bool:
         dialog_name = await get_channel_name(client, entity_id)
         logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
         return False
+
+
+async def get_dialog(client: TelegramClient, chat_id):
+    """
+    Iterates through the client's dialogs to find the one matching the given chat_id.
+    """
+    async for dialog in client.iter_dialogs():
+        if dialog.id == chat_id:
+            return dialog
+    # Return None if no matching dialog is found
+    return None
