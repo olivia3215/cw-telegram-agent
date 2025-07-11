@@ -82,7 +82,7 @@ class GeminiLLM(LLM):
     def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
-        self.history_size = 50
+        self.history_size = 75
         if not self.api_key:
             raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
         genai.configure(api_key=self.api_key)

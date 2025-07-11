@@ -117,13 +117,3 @@ async def is_muted(client, dialog_or_entity) -> bool:
         dialog_name = await get_channel_name(client, entity_id)
         logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
         return False
-
-
-async def get_dialog(client: TelegramClient, chat_id):
-    async for dialog in client.iter_dialogs():
-        if dialog.id == chat_id:
-            return dialog
-    else:
-        chat_name = await get_channel_name(client, chat_id)
-        logger.warning(f"No dialog found for [{chat_name}]")
-        return None

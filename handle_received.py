@@ -5,7 +5,7 @@ import logging
 import uuid
 import re
 from task_graph import TaskGraph, TaskNode
-from agent import get_agent_for_id, get_dialog
+from agent import get_agent_for_id
 from prompt_loader import load_system_prompt
 from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
@@ -126,10 +126,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         raise RuntimeError("Missing context or Telegram client")
 
     is_callout = task.params.get("callout", False)
-    dialog = await get_dialog(client, channel_id)
+    dialog = await client.get_entity(channel_id)
 
     # A group or channel will have a .title attribute, a user will not.
-    is_group = hasattr(dialog.entity, 'title')
+    is_group = hasattr(dialog, 'title')
 
     llm_prompt = load_system_prompt(llm.prompt_name)
     role_prompt = load_system_prompt(agent.role_prompt_name)
@@ -144,10 +144,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{character}", agent.name)
     system_prompt = system_prompt.replace("{{char}}", agent.name)
     system_prompt = system_prompt.replace("{char}", agent.name)
-    system_prompt = system_prompt.replace("{{user}}",
-        await get_dialog_name(client, dialog) if dialog.is_user else "Someone")
-    system_prompt = system_prompt.replace("{user}",
-        await get_dialog_name(client, dialog) if dialog.is_user else "Someone")
+    system_prompt = system_prompt.replace("{{user}}", await get_dialog_name(client, dialog))
+    system_prompt = system_prompt.replace("{user}", await get_dialog_name(client, dialog))
 
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
