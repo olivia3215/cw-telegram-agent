@@ -15,7 +15,6 @@ from agent import (
     Agent,
     all_agents,
 )
-from agent import is_muted
 import asyncio
 import logging
 from telethon.tl.functions.messages import GetStickerSetRequest
@@ -40,8 +39,8 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     agent_name = agent.name
     client = agent.client
     sender = await event.get_sender()
-    dialog = await client.get_entity(event.chat_id)
-    muted = await is_muted(client, dialog) or await is_muted(client, sender)
+    dialog = await agent.get_dialog(event.chat_id)
+    muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
 
     sender_is_blocked = await agent.is_blocked(sender_id)
@@ -53,7 +52,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     # a reply to our message already sets `event.message.mentioned`
     is_callout = event.message.mentioned
 
-    sender_name = await get_channel_name(client, sender)
+    sender_name = await get_channel_name(agent, event.sender_id)
     logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
 
     if not muted or is_callout:
@@ -73,7 +72,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
         await asyncio.sleep(1) # Don't poll too fast
-        muted = await is_muted(client, dialog)
+        muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
 
@@ -89,7 +88,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
         is_marked_unread = getattr(dialog.dialog, 'unread_mark', False)
 
         if is_callout or has_unread or is_marked_unread:
-            dialog_name = await get_channel_name(client, dialog)
+            dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
                 f"[{agent_name}] Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread})"

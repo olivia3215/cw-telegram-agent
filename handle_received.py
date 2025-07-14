@@ -135,7 +135,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         raise RuntimeError("Missing context or Telegram client")
 
     is_callout = task.params.get("callout", False)
-    dialog = await client.get_entity(channel_id)
+    dialog = await agent.get_cached_entity(channel_id)
 
     # A group or channel will have a .title attribute, a user will not.
     is_group = hasattr(dialog, 'title')
@@ -153,8 +153,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{character}", agent.name)
     system_prompt = system_prompt.replace("{{char}}", agent.name)
     system_prompt = system_prompt.replace("{char}", agent.name)
-    system_prompt = system_prompt.replace("{{user}}", await get_dialog_name(client, dialog))
-    system_prompt = system_prompt.replace("{user}", await get_dialog_name(client, dialog))
+    system_prompt = system_prompt.replace("{{user}}", await get_dialog_name(agent, channel_id))
+    system_prompt = system_prompt.replace("{user}", await get_dialog_name(agent, channel_id))
 
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
@@ -210,7 +210,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
             except UserBannedInChannelError as e:
                 # It's okay if we can't show ourselves as typing
-                logger.error(f"[{agent_name}] is currently banned from sending in channel [{await get_channel_name(client, channel_id)}]")
+                logger.error(f"[{agent_name}] is currently banned from sending in channel [{await get_channel_name(agent, channel_id)}]")
                 continue
 
         graph.add_task(task)

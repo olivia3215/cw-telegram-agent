@@ -5,7 +5,6 @@ import logging
 import os
 from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
-from telegram_util import get_channel_name
 from llm import ChatGPT, OllamaLLM, GeminiLLM
 from datetime import datetime, timedelta
 from telethon.tl.functions.contacts import GetBlockedRequest
@@ -25,6 +24,11 @@ class Agent:
         self._blocklist_cache = None
         self._blocklist_last_updated = None
 
+        # Cache for mute status: {peer_id: (is_muted, expiration_time)}
+        self._mute_cache = {}
+
+        # Cache for entities: {entity_id: (entity, expiration_time)}
+        self._entity_cache = {}
 
         #### Code for using ChatGPT ####
         # api_key = os.getenv("OPENAI_API_KEY")
@@ -37,6 +41,61 @@ class Agent:
 
         #### Code for using Google Gemini
         self.llm = GeminiLLM()
+
+    def clear_entity_cache(self):
+        """Clears the entity cache for this agent."""
+        logger.info(f"Clearing entity cache for agent {self.name}.")
+        self._entity_cache.clear()
+
+    async def is_muted(self, peer_id: int) -> bool:
+        """
+        Checks if a peer is muted, using a 60-second cache.
+        """
+        assert isinstance(peer_id, int)
+        now = datetime.now(timezone.utc)
+        cached = self._mute_cache.get(peer_id)
+        if cached and cached[1] > now:
+            return cached[0]
+
+        try:
+            settings = await self.client(GetNotifySettingsRequest(peer=peer_id))
+            mute_until = getattr(settings, "mute_until", None)
+            
+            is_currently_muted = False
+            if isinstance(mute_until, datetime):
+                is_currently_muted = mute_until > now
+            elif isinstance(mute_until, int):
+                is_currently_muted = mute_until > now.timestamp()
+            
+            # Cache for 60 seconds
+            self._mute_cache[peer_id] = (is_currently_muted, now + timedelta(seconds=60))
+            return is_currently_muted
+            
+        except Exception as e:
+            logger.exception(f"is_muted failed for peer {peer_id}: {e}")
+            # In case of error, assume not muted and cache for a shorter time
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
+
+    async def get_cached_entity(self, entity_id: int):
+        """
+        Fetches an entity (user, chat, channel), using a 5-minute cache.
+        """
+        assert isinstance(entity_id, int), f"got {entity_id} but required an int"
+        now = datetime.now(timezone.utc)
+        cached = self._entity_cache.get(entity_id)
+        if cached and cached[1] > now:
+            return cached[0]
+            
+        try:
+            entity = await self.client.get_entity(entity_id)
+            # Cache for 5 minutes (300 seconds)
+            self._entity_cache[entity_id] = (entity, now + timedelta(seconds=300))
+            return entity
+        except Exception as e:
+            logger.exception(f"get_cached_entity failed for ID {entity_id}: {e}")
+            # On error, return None and don't cache
+            return None
 
     async def is_blocked(self, user_id):
         """
@@ -60,6 +119,15 @@ class Agent:
                 self._blocklist_cache = set()
 
         return user_id in self._blocklist_cache
+
+    async def get_dialog(self, chat_id: int):
+        """
+        Finds a dialog, preferring the agent's entity cache.
+        """
+        async for dialog in self.client.iter_dialogs():
+            if dialog.id == chat_id:
+                return dialog
+        return None
 
 
 class AgentRegistry:
@@ -112,45 +180,34 @@ import logging
 
 #...
 
-async def is_muted(client, dialog_or_entity) -> bool:
-    """
-    Check if the given dialog or entity (user, chat, or channel) is muted.
-    """
-    # If the passed object has an 'entity' attr, it's a Dialog.
-    # Otherwise, it's the entity itself.
-    peer = getattr(dialog_or_entity, 'entity', dialog_or_entity)
+# async def is_muted(client, dialog_or_entity) -> bool:
+#     """
+#     Check if the given dialog or entity (user, chat, or channel) is muted.
+#     """
+#     # If the passed object has an 'entity' attr, it's a Dialog.
+#     # Otherwise, it's the entity itself.
+#     peer = getattr(dialog_or_entity, 'entity', dialog_or_entity)
 
-    try:
-        settings = await client(GetNotifySettingsRequest(peer))
-        mute_until = getattr(settings, "mute_until", None)
+#     try:
+#         settings = await client(GetNotifySettingsRequest(peer))
+#         mute_until = getattr(settings, "mute_until", None)
 
-        if not mute_until:
-            return False
+#         if not mute_until:
+#             return False
 
-        now = datetime.now(timezone.utc)
+#         now = datetime.now(timezone.utc)
 
-        # Handle case where mute_until is a datetime object
-        if isinstance(mute_until, datetime):
-            return mute_until > now
+#         # Handle case where mute_until is a datetime object
+#         if isinstance(mute_until, datetime):
+#             return mute_until > now
 
-        # Handle case where mute_until is an integer timestamp
-        if isinstance(mute_until, int):
-            return mute_until > now.timestamp()
+#         # Handle case where mute_until is an integer timestamp
+#         if isinstance(mute_until, int):
+#             return mute_until > now.timestamp()
 
-        return False
-    except Exception as e:
-        entity_id = getattr(peer, 'id', 'unknown')
-        dialog_name = await get_channel_name(client, entity_id)
-        logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
-        return False
-
-
-async def get_dialog(client: TelegramClient, chat_id):
-    """
-    Iterates through the client's dialogs to find the one matching the given chat_id.
-    """
-    async for dialog in client.iter_dialogs():
-        if dialog.id == chat_id:
-            return dialog
-    # Return None if no matching dialog is found
-    return None
+#         return False
+#     except Exception as e:
+#         entity_id = getattr(peer, 'id', 'unknown')
+#         dialog_name = await get_channel_name(agent, entity_id)
+#         logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
+#         return False

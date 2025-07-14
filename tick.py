@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from task_graph import TaskGraph, WorkQueue, TaskNode
 from exceptions import ShutdownException
-from agent import Agent, get_agent_for_id, get_dialog
+from agent import Agent, get_agent_for_id
 from telethon.tl.types import User
 from telethon.tl.functions.messages import DeleteHistoryRequest
 from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
@@ -14,6 +14,7 @@ from telethon.tl.functions.contacts import (
     SetBlockedRequest,
     UnblockRequest # Keep this for the unblock logic
 )
+from telethon.errors.rpcerrorlist import PeerIdInvalidError
 
 from telegram_util import get_channel_name, get_user_name
 
@@ -61,17 +62,18 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         if state_file_path:
             work_queue.save(state_file_path)
         logger.info(f"[{agent_name}] Task {task.identifier} is now active.")
-
         handler = _dispatch_table.get(task.type)
         if not handler:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
-        await handler(task, graph)
 
+        await handler(task, graph)
         task.status = "done"
 
     except Exception as e:
         logger.exception(f"[{agent_name}] Task {task.identifier} raised exception: {e}")
-        retry_ok = task.failed(graph, retry_interval_sec=10, max_retries=10, now=now)
+        if isinstance(e, PeerIdInvalidError):
+            agent.clear_entity_cache()
+        retry_ok = task.failed(graph)
         if not retry_ok:
             work_queue.remove(graph)
             logger.warning(f"[{agent_name}] Removed graph {graph.identifier} due to max retries.")
@@ -115,7 +117,7 @@ async def handle_send(task: TaskNode, graph):
         raise ValueError("Missing 'agent_id' in task graph context")
     if not channel_id or not message:
         raise ValueError(f"Missing required 'channel_id' or 'message' fields in task {task.identifier}")
-    logger.info(f"[{agent_name}] SEND: to=[{await get_channel_name(client, channel_id)}] message={message!r}")
+    logger.info(f"[{agent_name}] SEND: to=[{await get_channel_name(agent, channel_id)}] message={message!r}")
 
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
@@ -162,15 +164,15 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
     agent_name = agent.name
     client = agent.client
 
-    channel = await client.get_entity(channel_id)
+    channel = await agent.get_cached_entity(channel_id)
 
-    logger.debug(f"[{agent_name}] Resolved channel for ID [{await get_channel_name(client, channel_id)}]: {channel} (type: {type(channel)})")
+    logger.debug(f"[{agent_name}] Resolved channel for ID [{await get_channel_name(agent, channel_id)}]: {channel} (type: {type(channel)})")
 
     if not getattr(channel, "is_user", False):
-        logger.info(f"[{agent_name}] Skipping clear-conversation: channel [{await get_channel_name(client, channel_id)}] is not a DM.")
+        logger.info(f"[{agent_name}] Skipping clear-conversation: channel [{await get_channel_name(agent, channel_id)}] is not a DM.")
         return
 
-    logger.info(f"[{agent_name}] Clearing conversation history with channel [{await get_channel_name(client, channel_id)}].")
+    logger.info(f"[{agent_name}] Clearing conversation history with channel [{await get_channel_name(agent, channel_id)}].")
 
     try:
         await client(DeleteHistoryRequest(
@@ -178,9 +180,9 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
             max_id=0,  # 0 means delete all messages
             revoke=True  # revoke=True removes messages for both sides
         ))
-        logger.info(f"[{agent_name}] Successfully cleared conversation with [{await get_channel_name(client, channel_id)}]")
+        logger.info(f"[{agent_name}] Successfully cleared conversation with [{await get_channel_name(agent, channel_id)}]")
     except Exception as e:
-        logger.exception(f"[{agent_name}] Failed to clear conversation with [{await get_channel_name(client, channel_id)}]: {e}")
+        logger.exception(f"[{agent_name}] Failed to clear conversation with [{await get_channel_name(agent, channel_id)}]: {e}")
 
 
 @register_task_handler("block")
@@ -192,12 +194,12 @@ async def handle_block(task: TaskNode, graph: TaskGraph):
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
-    dialog = await get_dialog(client, channel_id)
+    dialog = await agent.get_dialog(channel_id)
     if hasattr(dialog.entity, 'title'):
         logger.warning(f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting.")
         return
     
-    logger.info(f"[{agent_name}] Blocking [{await get_channel_name(client, channel_id)}].")
+    logger.info(f"[{agent_name}] Blocking [{await get_channel_name(agent, channel_id)}].")
     await client(BlockRequest(id=channel_id))
 
 
@@ -209,7 +211,7 @@ async def handle_unblock(task: TaskNode, graph: TaskGraph):
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
-    dialog = await get_dialog(client, channel_id)
+    dialog = await agent.get_dialog(channel_id)
     if hasattr(dialog.entity, 'title'):
         logger.warning(f"Agent {agent.name} attempted to unblock a group/channel ({channel_id}). Aborting.")
         return

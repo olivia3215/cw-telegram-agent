@@ -22,6 +22,7 @@ async def insert_received_task_for_conversation(
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
     """
+    agent = get_agent_for_id(recipient_id) 
     preserved_tasks = []
     # Find the existing graph for this conversation
     old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
@@ -65,7 +66,7 @@ async def insert_received_task_for_conversation(
     for msg in reversed(messages):
         # Prepend the message ID to each line of the context
         mag_id = msg.id
-        sender_name = await get_channel_name(client, msg.sender)
+        sender_name = await get_channel_name(agent, msg.sender.id)
         if msg.sticker:
             emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
             content = f"[{msg.id}] ({sender_name}): sticker «{emoji}»"
@@ -92,8 +93,8 @@ async def insert_received_task_for_conversation(
         task_params["message_text"] = f"«{message_text}»"
 
     assert recipient_id
-    recipient_name = await get_channel_name(client, recipient_id)
-    channel_name = await get_channel_name(client, channel_id)
+    recipient_name = await get_channel_name(agent, recipient_id)
+    channel_name = await get_channel_name(agent, channel_id)
 
     graph_id = f"recv-{uuid.uuid4().hex[:8]}"
     new_graph = TaskGraph(

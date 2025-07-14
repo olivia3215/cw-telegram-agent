@@ -4,6 +4,8 @@ import os
 import logging
 from telethon import TelegramClient
 
+from agent import Agent
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,18 +30,17 @@ def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
     return client
 
 
-async def get_channel_name(client, channel_id):
+async def get_channel_name(agent: Agent, channel_id: int):
     """
     Fetches the display name for any channel (user, group, or channel).
     """
-    ###### Temporary for debugging.
-    if not channel_id:
-        logger.error("Got no channel id!")
-        raise RuntimeError("Got no channel id!")
-
+    assert isinstance(agent, Agent)
+    assert isinstance(channel_id, int), f"Expected an int but got {channel_id}"
     try:
         # get_entity can fetch users, chats, or channels
-        entity = await client.get_entity(channel_id)
+        entity = await agent.get_cached_entity(channel_id)
+        if not entity:
+            return f"Unknown ({channel_id})"
 
         # 1. Check for a 'title' (for groups and channels)
         if hasattr(entity, 'title') and entity.title:
@@ -70,8 +71,8 @@ async def get_channel_name(client, channel_id):
         return f"Unknown ({channel_id})"
 
 
-async def get_user_name(client, channel_id):
-    return await get_channel_name(client, channel_id)
+async def get_user_name(agent, channel_id):
+    return await get_channel_name(agent, channel_id)
 
-async def get_dialog_name(client, channel_id):
-    return await get_channel_name(client, channel_id)
+async def get_dialog_name(agent, channel_id):
+    return await get_channel_name(agent, channel_id)
