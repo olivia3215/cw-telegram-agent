@@ -34,9 +34,9 @@ async def insert_received_task_for_conversation(
             preserve = was_callout and ((not is_callout) or random.random() < 0.5)
             if preserve:
                 last_task = old_task.identifier
+                preserved_tasks.append(old_task)
             else:
                 old_task.status = "done"
-            preserved_tasks.append(old_task)
         
         # Remove the old graph completely
         work_queue.remove(old_graph)

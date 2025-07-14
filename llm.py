@@ -82,7 +82,7 @@ class GeminiLLM(LLM):
     def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
-        self.history_size = 75
+        self.history_size = 120
         if not self.api_key:
             raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
         genai.configure(api_key=self.api_key)
@@ -90,7 +90,7 @@ class GeminiLLM(LLM):
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        logger.warning(f"=====> prompt: {full_prompt}")
+        # logger.warning(f"=====> prompt: {full_prompt}")
         response = await asyncio.to_thread(self.model.generate_content, full_prompt)
-        logger.warning(f"=====> response: {response}")
+        # logger.warning(f"=====> response: {response}")
         return response.text

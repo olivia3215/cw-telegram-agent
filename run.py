@@ -149,8 +149,8 @@ async def run_telegram_loop(agent: Agent, work_queue):
                 await client.run_until_disconnected()
 
         except Exception as e:
-            logger.warning(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 5 seconds...")
-            await asyncio.sleep(5)
+            logger.warning(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds...")
+            await asyncio.sleep(10)
 
         finally:
             # client has disconnected
@@ -177,7 +177,7 @@ async def main():
     agents_list = all_agents()
 
     tick_task = asyncio.create_task(
-        run_tick_loop(work_queue, tick_interval_sec=5, state_file_path=STATE_PATH)
+        run_tick_loop(work_queue, tick_interval_sec=10, state_file_path=STATE_PATH)
     )
 
     telegram_tasks = [

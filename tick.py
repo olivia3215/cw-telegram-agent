@@ -85,7 +85,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         logger.debug(f"[{agent_name}] Work queue state saved to {state_file_path}")
 
 
-async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 5, state_file_path: str = None, tick_fn = run_one_tick):
+async def run_tick_loop(work_queue: WorkQueue, tick_interval_sec: int = 10, state_file_path: str = None, tick_fn = run_one_tick):
     while True:
         try:
             logger.info("Ticking.")
@@ -188,6 +188,7 @@ async def handle_block(task: TaskNode, graph: TaskGraph):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
+    agent_name = agent.name
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
@@ -196,7 +197,7 @@ async def handle_block(task: TaskNode, graph: TaskGraph):
         logger.warning(f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting.")
         return
     
-    logger.info(f"Agent {agent.name} is blocking user {channel_id}.")
+    logger.info(f"[{agent_name}] Blocking [{await get_channel_name(client, channel_id)}].")
     await client(BlockRequest(id=channel_id))
 
 

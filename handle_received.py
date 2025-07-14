@@ -172,9 +172,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     user_message = task.params.get("message_text", "")
 
     user_prompt = (
-        "Here is the conversation so far:\n\n"
-        f"{formatted_context}\n\n"
-        f"Consider responding to the final message: {user_message}"
+        "Here is the conversation so far:\n\n" +
+        f"{formatted_context}\n\n" +
+        (f"Consider responding to the message: {user_message}" if is_group else f"Consider responding to messages that you have not responded to yet.")
     )
 
     # Await LLM response
