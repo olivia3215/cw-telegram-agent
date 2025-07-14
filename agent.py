@@ -7,6 +7,8 @@ from telethon import TelegramClient
 from telethon.tl.functions.account import GetNotifySettingsRequest
 from telegram_util import get_channel_name
 from llm import ChatGPT, OllamaLLM, GeminiLLM
+from datetime import datetime, timedelta
+from telethon.tl.functions.contacts import GetBlockedRequest
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,8 @@ class Agent:
         self.sticker_cache = {}  # name -> InputDocument
         self.client = None
         self.agent_id = None
+        self._blocklist_cache = None
+        self._blocklist_last_updated = None
 
 
         #### Code for using ChatGPT ####
@@ -33,6 +37,29 @@ class Agent:
 
         #### Code for using Google Gemini
         self.llm = GeminiLLM()
+
+    async def is_blocked(self, user_id):
+        """
+        Checks if a user is in the agent's blocklist, using a short-lived cache
+        to avoid excessive API calls.
+        """
+        now = datetime.now()
+        # Invalidate cache every 60 seconds
+        if self._blocklist_cache is None or \
+           (self._blocklist_last_updated and (now - self._blocklist_last_updated) > timedelta(seconds=60)):
+            
+            try:
+                result = await self.client(GetBlockedRequest(offset=0, limit=100))
+                # Store a set of user IDs for fast lookups
+                self._blocklist_cache = {item.peer_id.user_id for item in result.blocked}
+                self._blocklist_last_updated = now
+                logger.info(f"[{self.name}] Updated blocklist cache.")
+            except Exception as e:
+                logger.exception(f"[{self.name}] Failed to update blocklist: {e}")
+                # In case of error, use an empty set and try again later
+                self._blocklist_cache = set()
+
+        return user_id in self._blocklist_cache
 
 
 class AgentRegistry:

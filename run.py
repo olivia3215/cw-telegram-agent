@@ -42,16 +42,22 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     sender = await event.get_sender()
     dialog = await client.get_entity(event.chat_id)
     muted = await is_muted(client, dialog) or await is_muted(client, sender)
+    sender_id = event.sender_id
 
+    sender_is_blocked = await agent.is_blocked(sender_id)
+    if sender_is_blocked:
+        # completely ignore messages from blocked contacts
+        return
+
+    # We don't test `event.message.is_reply` because
+    # a reply to our message already sets `event.message.mentioned`
     is_callout = event.message.mentioned
-    if is_callout:
-        await client.send_read_acknowledge(dialog, clear_mentions=True)
 
     sender_name = await get_channel_name(client, sender)
     logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
-    # logger.debug(f"[{agent_name}] muted:{muted}, unread_count:{dialog.unread_count}")
 
     if not muted or is_callout:
+        await client.send_read_acknowledge(dialog, clear_mentions=True)
         await insert_received_task_for_conversation(
             work_queue,
             recipient_id=agent.agent_id,
@@ -70,20 +76,30 @@ async def scan_unread_messages(agent: Agent, work_queue):
         muted = await is_muted(client, dialog)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
+
+        # If there are mentions, we must check if they are from a non-blocked user.
+        is_callout = False
+        if has_mentions:
+            async for message in client.iter_messages(dialog.id, limit=dialog.unread_mentions_count):
+                if message.mentioned and not await agent.is_blocked(message.sender_id):
+                    is_callout = True
+                    break
+
+        # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, 'unread_mark', False)
-        if has_unread or has_mentions or is_marked_unread:
+
+        if is_callout or has_unread or is_marked_unread:
             dialog_name = await get_channel_name(client, dialog)
             logger.info(
                 f"[{agent_name}] Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread})"
             )
-            if has_mentions:
-                await client.send_read_acknowledge(dialog, clear_mentions=has_mentions)
+            await client.send_read_acknowledge(dialog, clear_mentions=has_mentions)
             await insert_received_task_for_conversation(
                 work_queue,
                 recipient_id=agent_id,
                 channel_id=dialog.id,
-                is_callout=has_mentions or is_marked_unread,
+                is_callout=is_callout or is_marked_unread,
             )
 
 
