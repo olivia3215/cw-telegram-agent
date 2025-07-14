@@ -70,9 +70,10 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         task.status = "done"
 
     except Exception as e:
-        logger.exception(f"[{agent_name}] Task {task.identifier} raised exception: {e}")
         if isinstance(e, PeerIdInvalidError):
             agent.clear_entity_cache()
+        else:
+            logger.exception(f"[{agent_name}] Task {task.identifier} raised exception: {e}")
         retry_ok = task.failed(graph)
         if not retry_ok:
             work_queue.remove(graph)
@@ -129,7 +130,7 @@ async def handle_send(task: TaskNode, graph):
         else:
             await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"[{agent_name}] Failed to send reply to message {reply_to}: {e}")
+        logger.exception(f"[{agent_name}] Failed to send reply to message {reply_to}: {e}")
 
 
 @register_task_handler("sticker")
@@ -153,7 +154,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
             # Send unknown stickers as a plain message.
             await client.send_message(channel_id, sticker_name)
     except Exception as e:
-        logger.error(f"[{agent_name}] Failed to send sticker: {e}")
+        logger.exception(f"[{agent_name}] Failed to send sticker: {e}")
 
 
 @register_task_handler("clear-conversation")

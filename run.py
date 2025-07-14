@@ -31,7 +31,7 @@ def load_work_queue():
     try:
         return WorkQueue.load(STATE_PATH)
     except Exception as e:
-        logger.warning(f"Failed to load work queue, starting fresh: {e}")
+        logger.exception(f"Failed to load work queue, starting fresh: {e}")
         return WorkQueue()
 
 
@@ -126,7 +126,7 @@ async def ensure_sticker_cache(agent, client):
             logger.debug(f"[{agent.name}] Registered sticker: {repr(name)}")
 
     except Exception as e:
-        logger.warning(f"[{agent.name}] Failed to load sticker set for agent: {e}")
+        logger.exception(f"[{agent.name}] Failed to load sticker set for agent: {e}")
 
 
 async def run_telegram_loop(agent: Agent, work_queue):
@@ -164,7 +164,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
                 await client.run_until_disconnected()
 
         except Exception as e:
-            logger.warning(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds...")
+            logger.exception(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds...")
             await asyncio.sleep(10)
 
         finally:
@@ -182,7 +182,7 @@ async def periodic_scan(work_queue, agents, interval_sec):
                 try:
                     await scan_unread_messages(agent, work_queue)
                 except Exception as e:
-                    logger.error(f"Error during periodic scan for agent {agent.name}: {e}")
+                    logger.exception(f"Error during periodic scan for agent {agent.name}: {e}")
         await asyncio.sleep(interval_sec)
         
 
