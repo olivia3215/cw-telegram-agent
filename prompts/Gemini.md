@@ -132,7 +132,8 @@ This cancels the block on a DM conversation, permitting messages to be sent once
 - If your sticker set doesn't include an emoji that would be appropriate, you may **send** a message with just that emoji rather than sending a sticker.
 - If you want to block your conversation partner for a period of time, use a sequence of three tasks: **block**, **wait**, and **unblock**. This is a good way of punishing rude behavior for a specific period of time without completely cutting off communication.
 
-The following example shows how to block for a period of time:
+The following example shows how to block for a period of time.
+The final `# unblock` followed by a newline is an important part of the sequence and should not be omitted.
 
 ```markdown
 # «send»

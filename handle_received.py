@@ -11,7 +11,7 @@ from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction, User
-from telethon.errors.rpcerrorlist import UserBannedInChannelError
+from telethon.errors.rpcerrorlist import UserBannedInChannelError, ChatWriteForbiddenError
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -153,8 +153,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{character}", agent.name)
     system_prompt = system_prompt.replace("{{char}}", agent.name)
     system_prompt = system_prompt.replace("{char}", agent.name)
-    system_prompt = system_prompt.replace("{{user}}", await get_dialog_name(agent, channel_id))
-    system_prompt = system_prompt.replace("{user}", await get_dialog_name(agent, channel_id))
+    channel_name = await get_dialog_name(agent, channel_id)
+    system_prompt = system_prompt.replace("{{user}}", channel_name)
+    system_prompt = system_prompt.replace("{user}", channel_name)
 
     if agent.sticker_cache:
         sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
@@ -174,7 +175,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     user_prompt = (
         "Here is the conversation so far:\n\n" +
         f"{formatted_context}\n\n" +
-        (f"Consider responding to the message: {user_message}" if is_group else f"Consider responding to messages that you have not responded to yet.")
+        (f"Consider responding to the message: {user_message}" if is_group else
+         f"Consider responding to any messages from {channel_name} that you have not responded to yet.")
     )
 
     # Await LLM response
@@ -208,10 +210,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             # appear to be typing for four seconds
             try:
                 await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
-            except UserBannedInChannelError as e:
+            except (UserBannedInChannelError, ChatWriteForbiddenError) as e:
                 # It's okay if we can't show ourselves as typing
-                logger.error(f"[{agent_name}] is currently banned from sending in channel [{await get_channel_name(agent, channel_id)}]")
-                continue
+                logger.error(f"[{agent_name}] cannot send in channel [{channel_name}]")
+                task.status = "done"
 
         graph.add_task(task)
         task.depends_on.append(last_id)

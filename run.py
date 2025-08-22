@@ -52,8 +52,12 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     # a reply to our message already sets `event.message.mentioned`
     is_callout = event.message.mentioned
 
-    sender_name = await get_channel_name(agent, event.sender_id)
-    logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
+    sender_name = await get_channel_name(agent, sender_id)
+    dialog_name = await get_channel_name(agent, event.chat_id)
+    if sender_name == dialog_name:
+        logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
+    else:
+        logger.info(f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {event.raw_text!r} (callout: {is_callout})")
 
     if not muted or is_callout:
         await client.send_read_acknowledge(dialog, clear_mentions=True)

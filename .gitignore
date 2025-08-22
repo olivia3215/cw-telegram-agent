@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 tmp/
 main.py
+._*
+.DS_Store
 
 # Secrets and credentials
 config/private-key.pem

@@ -24,11 +24,14 @@ class LLM(ABC):
 class ChatGPT(LLM):
     prompt_name = "ChatGPT"
 
-    def __init__(self, api_key: str, model: str = "gpt-4o", temperature: float = 0.7):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4.1-nano", temperature: float = 0.7):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("Missing ChatGPT API key. Set OPENAI_API_KEY or pass it explicitly.")
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
-        self.history_size = 50
+        self.history_size = 120
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         logger.debug(f"Querying ChatGPT with '{system_prompt}' and '{user_prompt}'")
@@ -82,11 +85,11 @@ class GeminiLLM(LLM):
     def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
-        self.history_size = 120
         if not self.api_key:
             raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(model)
+        self.history_size = 200
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"

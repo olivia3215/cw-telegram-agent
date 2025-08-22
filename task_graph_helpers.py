@@ -32,7 +32,9 @@ async def insert_received_task_for_conversation(
         # preserve tasks from the old graph, but mark some as done
         for old_task in old_graph.tasks:
             was_callout = old_task.params.get("callout")
-            preserve = was_callout and ((not is_callout) or random.random() < 0.5)
+            # We no longer preserve existing tasks.
+            # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
+            preserve = False
             if preserve and old_task.status != "done":
                 last_task = old_task.identifier
             else:
@@ -43,8 +45,8 @@ async def insert_received_task_for_conversation(
         
         # Remove the old graph completely
         work_queue.remove(old_graph)
-        if preserved_tasks:
-            logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
+        # if preserved_tasks:
+        #     logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
 
     def conversation_matcher(ctx):
         return (

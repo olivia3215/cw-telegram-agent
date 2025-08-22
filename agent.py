@@ -31,10 +31,7 @@ class Agent:
         self._entity_cache = {}
 
         #### Code for using ChatGPT ####
-        # api_key = os.getenv("OPENAI_API_KEY")
-        # if not api_key:
-        #     logger.warning("No OpenAI API key provided and OPENAI_API_KEY not set in environment.")
-        # self.llm = ChatGPT(api_key)
+        # self.llm = ChatGPT()
 
         #### Code for using Ollama
         # self.llm = OllamaLLM()
