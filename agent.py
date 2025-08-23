@@ -31,6 +31,8 @@ class Agent:
         self._entity_cache = {}
 
         #### Code for using ChatGPT ####
+        ## Experiments have proven that ChatGPT gpt-4.1-nano works poorly for this use.
+        ## We prefer Gemini.
         # self.llm = ChatGPT()
 
         #### Code for using Ollama
