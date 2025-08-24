@@ -89,7 +89,7 @@ class GeminiLLM(LLM):
             raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(model)
-        self.history_size = 200
+        self.history_size = 500
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
