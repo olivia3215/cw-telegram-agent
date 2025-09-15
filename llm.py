@@ -97,3 +97,19 @@ class GeminiLLM(LLM):
         response = await asyncio.to_thread(self.model.generate_content, full_prompt)
         # logger.warning(f"=====> response: {response}")
         return response.text
+
+IMAGE_DESCRIPTION_PROMPT = (
+    "You are given a single image. Describe the scene in rich detail so a reader "
+    "can understand it without seeing the image. Include salient objects, colors, "
+    "relations, actions, and setting. Output only the description."
+)
+
+def describe_image(image_bytes: bytes) -> str:
+    """
+    Return a rich, single-string description for the given image bytes.
+
+    NOTE: This is a stub and is intentionally unimplemented so tests remain
+    independent of external LLMs. When we wire up media handling, this function
+    will call our chosen multimodal provider internally (no provider arg).
+    """
+    raise NotImplementedError("llm.describe_image() is not implemented yet")
