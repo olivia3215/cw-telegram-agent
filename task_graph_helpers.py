@@ -7,6 +7,7 @@ from telegram_util import get_channel_name
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
 import random
+from media_injector import inject_media_descriptions
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ async def insert_received_task_for_conversation(
         raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
 
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    messages = inject_media_descriptions(messages)
     thread_context = []
 
     for msg in reversed(messages):
