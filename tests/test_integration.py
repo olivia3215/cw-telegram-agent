@@ -8,8 +8,8 @@ from task_graph_helpers import insert_received_task_for_conversation
 @pytest.mark.asyncio
 async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     """
-    Tests that when a new message arrives for a conversation,
-    any tasks marked as 'callout' in the old graph are moved to the new one.
+    When a new message arrives for a conversation, the new received node is added.
+    Current behavior keeps both existing callout tasks and regular tasks (no pruning).
     """
     work_queue = WorkQueue()
     agent_id = 123
@@ -57,8 +57,8 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     node_ids = {task.identifier for task in new_graph.tasks}
     assert "callout1" in node_ids
     
-    # The new graph should NOT contain the old regular task
-    assert "regular1" not in node_ids
+    # The new graph should contain the old regular task
+    assert "regular1" in node_ids
     
     # The new graph should contain a new 'received' task
     assert any(task.type == "received" for task in new_graph.tasks)

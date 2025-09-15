@@ -10,6 +10,41 @@ import random
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------------------------
+# CALLOUT / REPLAN SEMANTICS — CURRENT BEHAVIOR vs INTENT (2025-09-14)
+#
+# Current behavior (observed in tests):
+# - When a new message arrives for (agent_id, channel_id), we create a new
+#   `received-<id>` TaskNode and keep it in the SAME TaskGraph instance.
+# - We DO NOT delete/abort prior tasks. Both “callout” tasks (params.callout=True)
+#   and regular (ephemeral) tasks remain present.
+# - We DO NOT rewire dependencies; any existing depends_on links are left as-is.
+# - We DO NOT distinguish DM vs Group here; no chat-type specific policy is applied.
+#
+# Evidence:
+# - tests/test_integration.py::test_preserves_callout_tasks_when_replacing_graph
+#   currently observes that the old regular task (“regular1”) is still present
+#   alongside the preserved callout (“callout1”) plus the new “received-*” node.
+#
+# Known implications:
+# - In group chats, keeping the old plan can cause the agent to remain “captured”
+#   by a previous epoch unless upstream throttles replies.
+# - In DMs, durable mini-plans (e.g., temporary block/unblock sequences) can be
+#   disrupted by replans. We may want targeted preservation there.
+#
+# Proposed semantics (to be decided and then encoded in tests and code):
+# - DMs: On replan, preserve callout tasks that aren’t done; mark others aborted/done.
+#         For preserved callouts, prune depends_on to preserved-only tasks to avoid
+#         dangling dependencies. Optional: record `aborted_by: received-<id>` for
+#         dropped/aborted tasks instead of deleting them.
+# - Groups: On replan, hard reset (drop/abort everything) and keep only the new
+#           “received-*” node; optionally add a debounce/budget to avoid ping-pong.
+#
+# Action items (future):
+# - Decide and document the final policy (DM vs Group).
+# - Update tests to reflect the chosen policy.
+# - Implement pruning/aborting here in insert_received_task_for_conversation.
+# --------------------------------------------------------------------------------------
 
 async def insert_received_task_for_conversation(
     work_queue: WorkQueue,

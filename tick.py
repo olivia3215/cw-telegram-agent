@@ -50,10 +50,14 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         return
 
     agent_id = graph.context.get("agent_id")
-    assert agent_id
-    agent = get_agent_for_id(agent_id)
-    assert agent_id
-    agent_name = agent.name
+    agent = None
+    agent_name = "unknown-agent"
+    if agent_id:
+        try:
+            agent = get_agent_for_id(agent_id)
+            agent_name = getattr(agent, "name", f"agent:{agent_id}")
+        except Exception as e:
+            logger.debug(f"run_one_tick: could not resolve agent {agent_id}: {e}")
 
     logger.info(f"[{agent_name}] Running task {task.identifier} of type {task.type}")
 

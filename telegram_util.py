@@ -3,7 +3,7 @@
 import os
 import logging
 from telethon import TelegramClient
-
+from id_utils import normalize_peer_id
 from agent import Agent
 
 logger = logging.getLogger(__name__)
@@ -33,9 +33,9 @@ def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
 async def get_channel_name(agent: Agent, channel_id: int):
     """
     Fetches the display name for any channel (user, group, or channel).
+    Accepts Agent-like objects (e.g., test doubles) too.
     """
-    assert isinstance(agent, Agent)
-    assert isinstance(channel_id, int), f"Expected an int but got {channel_id}"
+    channel_id = normalize_peer_id(channel_id)
     try:
         # get_entity can fetch users, chats, or channels
         entity = await agent.get_cached_entity(channel_id)

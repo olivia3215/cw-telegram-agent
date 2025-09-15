@@ -8,11 +8,12 @@ from telethon.tl.functions.account import GetNotifySettingsRequest
 from llm import ChatGPT, OllamaLLM, GeminiLLM
 from datetime import datetime, timedelta
 from telethon.tl.functions.contacts import GetBlockedRequest
+from id_utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
 
 class Agent:
-    def __init__(self, *, name, phone, sticker_set_name, instructions, role_prompt_name):
+    def __init__(self, *, name, phone, sticker_set_name, instructions, role_prompt_name, llm=None):
         self.name = name
         self.phone = phone
         self.sticker_set_name = sticker_set_name
@@ -30,16 +31,26 @@ class Agent:
         # Cache for entities: {entity_id: (entity, expiration_time)}
         self._entity_cache = {}
 
-        #### Code for using ChatGPT ####
-        ## Experiments have proven that ChatGPT gpt-4.1-nano works poorly for this use.
-        ## We prefer Gemini.
-        # self.llm = ChatGPT()
+        self._llm = llm
+    
+    @property
+    def llm(self):
+        if self._llm is None:
+            #### Code for using ChatGPT ####
+            ## Experiments have proven that ChatGPT gpt-4.1-nano works poorly for this use.
+            ## We prefer Gemini.
+            # self._llm = ChatGPT()
 
-        #### Code for using Ollama
-        # self.llm = OllamaLLM()
+            #### Code for using Ollama
+            # self._llm = OllamaLLM()
 
-        #### Code for using Google Gemini
-        self.llm = GeminiLLM()
+            #### Code for using Google Gemini
+            api_key = os.getenv("GOOGLE_GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("LLM not configured (no GOOGLE_GEMINI_API_KEY). Inject an LLM or set the key.")
+            self._llm = GeminiLLM(api_key=api_key)
+
+        return self._llm
 
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""
@@ -78,9 +89,11 @@ class Agent:
 
     async def get_cached_entity(self, entity_id: int):
         """
-        Fetches an entity (user, chat, channel), using a 5-minute cache.
+        Return a Telegram entity.
         """
-        assert isinstance(entity_id, int), f"got {entity_id} but required an int"
+
+        entity_id = normalize_peer_id(entity_id)
+
         now = datetime.now(timezone.utc)
         cached = self._entity_cache.get(entity_id)
         if cached and cached[1] > now:
