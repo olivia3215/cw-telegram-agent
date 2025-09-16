@@ -6,7 +6,6 @@ import logging
 from telegram_util import get_channel_name
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
-import random
 from media_injector import inject_media_descriptions
 from media_cache import get_media_cache
 from telegram_media import iter_media_parts
@@ -105,65 +104,6 @@ async def insert_received_task_for_conversation(
 
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
     messages = await inject_media_descriptions(messages, agent=agent)
-
-    # thread_context = []
-    #
-    # for msg in reversed(messages):
-    #     # Prepend the message ID to each line of the context
-    #     mag_id = msg.id
-    #     sender_name = await get_channel_name(agent, msg.sender.id)
-    #     if msg.sticker:
-    #         emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
-    #         content = f"[{msg.id}] ({sender_name}): sticker «{emoji}»"
-    #     elif msg.text:
-    #         content = f"[{msg.id}] ({sender_name}): «{msg.text.strip()}»"
-    #     else:
-    #         content = f"[{msg.id}] ({sender_name}): not understood"
-    #     thread_context.append(content)
-
-    # media_cache = get_media_cache()
-    # thread_context = []
-    # for msg in reversed(messages):
-    #     sender_name = await get_channel_name(agent, msg.sender.id)
-    #     line_prefix = f"[{msg.id}] ({sender_name}): "
-
-    #     # 1) User text (kept in French quotes)
-    #     text = (getattr(msg, "text", None) or "").strip()
-    #     if text:
-    #         thread_context.append(f"{line_prefix}«{text}»")
-
-    #     # 2) Media (replaces the visual with a textual line outside French quotes)
-    #     items = []
-    #     try:
-    #         items = iter_media_parts(msg)
-    #     except Exception:
-    #         items = []
-
-    #     if MEDIA_FEATURE_ENABLED and items:
-    #         for it in items:
-    #             desc = media_cache.get(it.unique_id)
-    #             if desc:
-    #                 if it.kind == "sticker":
-    #                     sticker_set = it.sticker_set or "(unknown)"
-    #                     sticker_name = it.sticker_name or "(unnamed)"
-    #                     thread_context.append(
-    #                         f"{line_prefix}{format_sticker_sentence(sticker_name=sticker_name, sticker_set=sticker_set, description=desc)}"
-    #                     )
-    #                 else:
-    #                     thread_context.append(f"{line_prefix}{format_media_description(desc)}")
-    #             else:
-    #                 # Not understood / unsupported (no cache entry yet)
-    #                 thread_context.append(f"{line_prefix}‹{it.kind} not understood›")
-
-    #     # 3) Fallback when there was neither text nor media
-    #     if not text and not items:
-    #         thread_context.append(f"{line_prefix}not understood")
-
-    # message_text = None
-    # if message_id is not None:
-    #     match = next((m for m in messages if m.id == message_id), None)
-    #     if match:
-    #         message_text = match.text or ""
 
     # use the shared cache
     media_cache = get_media_cache()

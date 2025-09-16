@@ -11,7 +11,6 @@ from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
 
-# Feature gate: leave True for your local manual testing; tests don't depend on it.
 MEDIA_FEATURE_ENABLED = True
 MEDIA_DEBUG_SAVE = True
 
@@ -56,20 +55,6 @@ def _sniff_ext(data: bytes, kind: Optional[str] = None, mime: Optional[str] = No
     if kind == "gif": return ".gif"
     if kind == "animation": return ".mp4"
     if kind == "sticker": return ".webp"  # most common sticker container
-    return ".bin"
-
-def _guess_ext(kind: str, mime: Optional[str]) -> str:
-    if mime:
-        m = mime.lower()
-        if "png" in m: return ".png"
-        if "jpeg" in m or "jpg" in m: return ".jpg"
-        if "gif" in m: return ".gif"
-        if "webp" in m: return ".webp"
-        if "mp4" in m: return ".mp4"
-    # fallbacks by kind
-    if kind == "photo": return ".jpg"
-    if kind == "gif": return ".gif"
-    if kind == "animation": return ".mp4"
     return ".bin"
 
 async def inject_media_descriptions(
@@ -119,7 +104,6 @@ async def inject_media_descriptions(
                     # Optional debug save
                     if MEDIA_DEBUG_SAVE:
                         try:
-                            # ext = _guess_ext(it.kind, getattr(it, "mime", None))
                             ext = _sniff_ext(data, kind=it.kind, mime=getattr(it, "mime", None))
                             out_path = PHOTOS_DIR / f"{it.unique_id}{ext}"
                             with open(out_path, "wb") as f:
