@@ -148,3 +148,18 @@ class MediaCache:
         except Exception as e:
             logger.error(f"MEDIA CACHE READ ERROR {unique_id}: {e}")
             return None
+
+_media_cache_singleton: Optional[MediaCache] = None
+
+def get_media_cache(state_dir: str = "state") -> MediaCache:
+    """
+    Return a process-wide MediaCache instance rooted at `state_dir`.
+    Reuses the same instance across calls; if `state_dir` changes, re-create it.
+    """
+    global _media_cache_singleton
+    if _media_cache_singleton is None:
+        _media_cache_singleton = MediaCache(state_dir)
+    else:
+        if Path(state_dir) != _media_cache_singleton.state_dir:
+            _media_cache_singleton = MediaCache(state_dir)
+    return _media_cache_singleton

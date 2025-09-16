@@ -8,6 +8,11 @@ from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
 import random
 from media_injector import inject_media_descriptions
+from media_cache import get_media_cache
+from telegram_media import iter_media_parts
+from media_injector import MEDIA_FEATURE_ENABLED
+from media_format import format_media_description, format_sticker_sentence
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -100,36 +105,129 @@ async def insert_received_task_for_conversation(
 
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
     messages = await inject_media_descriptions(messages, agent=agent)
+
+    # thread_context = []
+    #
+    # for msg in reversed(messages):
+    #     # Prepend the message ID to each line of the context
+    #     mag_id = msg.id
+    #     sender_name = await get_channel_name(agent, msg.sender.id)
+    #     if msg.sticker:
+    #         emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
+    #         content = f"[{msg.id}] ({sender_name}): sticker «{emoji}»"
+    #     elif msg.text:
+    #         content = f"[{msg.id}] ({sender_name}): «{msg.text.strip()}»"
+    #     else:
+    #         content = f"[{msg.id}] ({sender_name}): not understood"
+    #     thread_context.append(content)
+
+    # media_cache = get_media_cache()
+    # thread_context = []
+    # for msg in reversed(messages):
+    #     sender_name = await get_channel_name(agent, msg.sender.id)
+    #     line_prefix = f"[{msg.id}] ({sender_name}): "
+
+    #     # 1) User text (kept in French quotes)
+    #     text = (getattr(msg, "text", None) or "").strip()
+    #     if text:
+    #         thread_context.append(f"{line_prefix}«{text}»")
+
+    #     # 2) Media (replaces the visual with a textual line outside French quotes)
+    #     items = []
+    #     try:
+    #         items = iter_media_parts(msg)
+    #     except Exception:
+    #         items = []
+
+    #     if MEDIA_FEATURE_ENABLED and items:
+    #         for it in items:
+    #             desc = media_cache.get(it.unique_id)
+    #             if desc:
+    #                 if it.kind == "sticker":
+    #                     sticker_set = it.sticker_set or "(unknown)"
+    #                     sticker_name = it.sticker_name or "(unnamed)"
+    #                     thread_context.append(
+    #                         f"{line_prefix}{format_sticker_sentence(sticker_name=sticker_name, sticker_set=sticker_set, description=desc)}"
+    #                     )
+    #                 else:
+    #                     thread_context.append(f"{line_prefix}{format_media_description(desc)}")
+    #             else:
+    #                 # Not understood / unsupported (no cache entry yet)
+    #                 thread_context.append(f"{line_prefix}‹{it.kind} not understood›")
+
+    #     # 3) Fallback when there was neither text nor media
+    #     if not text and not items:
+    #         thread_context.append(f"{line_prefix}not understood")
+
+    # message_text = None
+    # if message_id is not None:
+    #     match = next((m for m in messages if m.id == message_id), None)
+    #     if match:
+    #         message_text = match.text or ""
+
+    # use the shared cache
+    media_cache = get_media_cache()
+
     thread_context = []
+    message_text = None
 
     for msg in reversed(messages):
-        # Prepend the message ID to each line of the context
-        mag_id = msg.id
         sender_name = await get_channel_name(agent, msg.sender.id)
-        if msg.sticker:
-            emoji = msg.file.emoji if msg.file and msg.file.emoji else "📎"
-            content = f"[{msg.id}] ({sender_name}): sticker «{emoji}»"
-        elif msg.text:
-            content = f"[{msg.id}] ({sender_name}): «{msg.text.strip()}»"
-        else:
-            content = f"[{msg.id}] ({sender_name}): not understood"
-        thread_context.append(content)
+        line_prefix = f"[{msg.id}] ({sender_name}): "
 
-    message_text = None
-    if message_id is not None:
-        match = next((m for m in messages if m.id == message_id), None)
-        if match:
-            message_text = match.text or ""
+        parts = []
 
-    task_params = {
-        "thread_context": thread_context
-    }
+        # 1) user text (quoted)
+        text = (getattr(msg, "text", None) or "").strip()
+        if text:
+            parts.append(f"«{text}»")
+
+        # 2) media (outside quotes), from cache
+        items = []
+        try:
+            items = iter_media_parts(msg)
+        except Exception:
+            items = []
+
+        if MEDIA_FEATURE_ENABLED and items:
+            for it in items:
+                desc = media_cache.get(it.unique_id)
+                if desc:
+                    if it.kind == "sticker":
+                        sticker_set = it.sticker_set or "(unknown)"
+                        sticker_name = it.sticker_name or "(unnamed)"
+                        parts.append(
+                            format_sticker_sentence(
+                                sticker_name=sticker_name,
+                                sticker_set=sticker_set,
+                                description=desc,
+                            )
+                        )
+                    else:
+                        parts.append(format_media_description(desc))
+                else:
+                    parts.append(f"‹{it.kind} not understood›")
+
+        # 3) fallback when neither text nor media
+        if not text and not items:
+            parts.append("not understood")
+
+        # append to history with prefix
+        for p in parts:
+            thread_context.append(line_prefix + p)
+
+        # capture processed current-message text (without prefix)
+        if message_id is not None and msg.id == message_id:
+            message_text = "\n".join(parts)
+
+    # build params (no added French quotes here; they’re already in `parts`)
+    task_params = {"thread_context": thread_context}
     if message_id is not None:
         task_params["message_id"] = message_id
     if is_callout:
         task_params["callout"] = True
     if message_text is not None:
-        task_params["message_text"] = f"«{message_text}»"
+        task_params["message_text"] = message_text
 
     assert recipient_id
     recipient_name = await get_channel_name(agent, recipient_id)
