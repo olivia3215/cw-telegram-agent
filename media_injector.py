@@ -10,7 +10,7 @@ from telegram_download import download_media_bytes   # <-- add this import
 
 logger = logging.getLogger(__name__)
 
-MEDIA_FEATURE_ENABLED = False
+MEDIA_FEATURE_ENABLED = True
 MEDIA_DEBUG_SAVE = True
 
 STATE_DIR = Path("state")
@@ -35,7 +35,9 @@ def _guess_ext(kind: str, mime: Optional[str]) -> str:
     if kind == "animation": return ".mp4"
     return ".bin"
 
-async def inject_media_descriptions(messages: Sequence[Any], client: Optional[Any] = None) -> Sequence[Any]:
+async def inject_media_descriptions(
+        messages: Sequence[Any],
+        agent: Optional[Any] = None) -> Sequence[Any]:
     """
     Detect media and:
       - always log cache hits/misses
@@ -44,6 +46,8 @@ async def inject_media_descriptions(messages: Sequence[Any], client: Optional[An
     Messages are returned unchanged (no mutations yet).
     """
     cache = MediaCache(str(STATE_DIR))
+    client = getattr(agent, "client", None)
+
     try:
         for msg in messages:
             try:
@@ -66,13 +70,30 @@ async def inject_media_descriptions(messages: Sequence[Any], client: Optional[An
                     try:
                         _ensure_state_dirs()
                         data = await download_media_bytes(client, it.file_ref)
-                        ext = _guess_ext(it.kind, getattr(it, "mime", None))
-                        out_path = PHOTOS_DIR / f"{it.unique_id}{ext}"
-                        with open(out_path, "wb") as f:
-                            f.write(data)
-                        logger.debug(f"media: saved debug copy {out_path}")
+
+                        # (debug save unchanged)
+
+                        # Generate description via the agent’s provider
+                        try:
+                            if agent is None or getattr(agent, "llm", None) is None:
+                                raise RuntimeError("no agent/LLM available for image description")
+                            desc_text = agent.llm.describe_image(data)   # ← provider-owned method
+                            record = {
+                                "description": desc_text,
+                                "kind": it.kind,
+                            }
+                            if it.kind == "sticker":
+                                if it.sticker_set:
+                                    record["sticker_set"] = it.sticker_set
+                                if it.sticker_name:
+                                    record["sticker_name"] = it.sticker_name
+
+                            cache.put(it.unique_id, record)
+                            logger.debug(f"media: generated description cached id={it.unique_id}")
+                        except Exception as e_llm:
+                            logger.debug(f"media: LLM describe failed for {it.unique_id}: {e_llm}")
                     except Exception as e:
-                        logger.debug(f"media: debug save failed for {it.unique_id}: {e}")
+                        logger.debug(f"media: download failed for {it.unique_id}: {e}")
     except TypeError:
         logger.debug("media: injector got non-iterable history chunk; passing through")
     return messages

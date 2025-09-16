@@ -99,7 +99,7 @@ async def insert_received_task_for_conversation(
         raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
 
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-    messages = await inject_media_descriptions(messages, client)
+    messages = await inject_media_descriptions(messages, agent=agent)
     thread_context = []
 
     for msg in reversed(messages):

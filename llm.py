@@ -9,6 +9,8 @@ from typing import Optional, Protocol
 from openai import AsyncOpenAI
 import httpx
 import google.generativeai as genai
+import base64
+from urllib import request, error
 
 logger = logging.getLogger(__name__)
 
@@ -98,18 +100,75 @@ class GeminiLLM(LLM):
         # logger.warning(f"=====> response: {response}")
         return response.text
 
-IMAGE_DESCRIPTION_PROMPT = (
-    "You are given a single image. Describe the scene in rich detail so a reader "
-    "can understand it without seeing the image. Include salient objects, colors, "
-    "relations, actions, and setting. Output only the description."
-)
+    IMAGE_DESCRIPTION_PROMPT = (
+        "You are given a single image. Describe the scene in rich detail so a reader "
+        "can understand it without seeing the image. Include salient objects, colors, "
+        "relations, actions, and setting. Output only the description."
+    )
 
-def describe_image(image_bytes: bytes) -> str:
-    """
-    Return a rich, single-string description for the given image bytes.
+    def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
+        """
+        Return a rich, single-string description for the given image.
+        Uses Gemini via REST with this instance's api key.
+        Raises on failures so the scheduler's retry policy can handle it.
+        """
+        if not self.api_key:
+            raise ValueError("Missing Gemini API key (GOOGLE_GEMINI_API_KEY)")
 
-    NOTE: This is a stub and is intentionally unimplemented so tests remain
-    independent of external LLMs. When we wire up media handling, this function
-    will call our chosen multimodal provider internally (no provider arg).
-    """
-    raise NotImplementedError("llm.describe_image() is not implemented yet")
+        # Minimal mime sniffing; refine later if needed.
+        if not mime_type:
+            mime_type = "image/jpeg"
+            if image_bytes.startswith(b"\x89PNG"):
+                mime_type = "image/png"
+            elif image_bytes[:3] == b"GIF":
+                mime_type = "image/gif"
+            elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+                mime_type = "image/webp"
+
+        # Prefer a vision-capable model; fall back to this instance's model if already 1.5.
+        model = "gemini-1.5-pro"
+        if isinstance(getattr(self, "model_name", None), str) and "1.5" in self.model_name:
+            model = self.model_name
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": self.IMAGE_DESCRIPTION_PROMPT},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64.b64encode(image_bytes).decode("ascii"),
+                            }
+                        },
+                    ],
+                }
+            ]
+        }
+
+        data = json.dumps(payload).encode("utf-8")
+        req = request.Request(url, data=data, headers={"Content-Type": "application/json"})
+
+        try:
+            with request.urlopen(req, timeout=30) as resp:
+                body = resp.read()
+        except error.HTTPError as e:
+            raise RuntimeError(f"Gemini HTTP {e.code}: {e.read().decode('utf-8', 'ignore')}") from e
+        except Exception as e:
+            raise RuntimeError(f"Gemini request failed: {e}") from e
+
+        try:
+            obj = json.loads(body.decode("utf-8"))
+            # Typical path: candidates[0].content.parts[0].text
+            candidates = obj.get("candidates") or []
+            if not candidates:
+                raise RuntimeError(f"Gemini returned no candidates: {obj}")
+            parts = (candidates[0].get("content") or {}).get("parts") or []
+            if not parts or "text" not in parts[0]:
+                raise RuntimeError(f"Gemini returned no text parts: {obj}")
+            return parts[0]["text"].strip()
+        except Exception as e:
+            raise RuntimeError(f"Gemini parse error: {e}") from e
