@@ -1,11 +1,12 @@
 # media_injector.py
-from typing import Optional, Sequence, Any
+from typing import Sequence, Any, Optional
 import logging
 from pathlib import Path
 
 from telegram_media import iter_media_parts
 from media_cache import MediaCache
 from media_types import MediaItem
+from telegram_download import download_media_bytes   # <-- add this import
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,27 @@ def _ensure_state_dirs():
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
-def inject_media_descriptions(messages: Sequence[Any], client: Optional[Any] = None) -> Sequence[Any]:
+def _guess_ext(kind: str, mime: Optional[str]) -> str:
+    if mime:
+        m = mime.lower()
+        if "png" in m: return ".png"
+        if "jpeg" in m or "jpg" in m: return ".jpg"
+        if "gif" in m: return ".gif"
+        if "webp" in m: return ".webp"
+        if "mp4" in m: return ".mp4"
+    # fallbacks by kind
+    if kind == "photo": return ".jpg"
+    if kind == "gif": return ".gif"
+    if kind == "animation": return ".mp4"
+    return ".bin"
+
+async def inject_media_descriptions(messages: Sequence[Any], client: Optional[Any] = None) -> Sequence[Any]:
     """
-    Detect media and (for now) only log cache hits/misses.
-    `client` is an optional Telegram client handle for future downloads; unused here.
+    Detect media and:
+      - always log cache hits/misses
+      - if MEDIA_FEATURE_ENABLED is True and we have a client + file_ref on cache miss,
+        download bytes and save a debug copy under state/photos/<unique_id>.<ext>
+    Messages are returned unchanged (no mutations yet).
     """
     cache = MediaCache(str(STATE_DIR))
     try:
@@ -35,12 +53,26 @@ def inject_media_descriptions(messages: Sequence[Any], client: Optional[Any] = N
                 continue
             if not items:
                 continue
+
             for it in items:
                 desc = cache.get(it.unique_id)
                 if desc:
                     logger.debug(f"media: cache-hit kind={it.kind} id={it.unique_id}")
-                else:
-                    logger.debug(f"media: cache-miss kind={it.kind} id={it.unique_id}")
+                    continue
+
+                logger.debug(f"media: cache-miss kind={it.kind} id={it.unique_id}")
+
+                if MEDIA_FEATURE_ENABLED and client is not None and getattr(it, "file_ref", None) is not None:
+                    try:
+                        _ensure_state_dirs()
+                        data = await download_media_bytes(client, it.file_ref)
+                        ext = _guess_ext(it.kind, getattr(it, "mime", None))
+                        out_path = PHOTOS_DIR / f"{it.unique_id}{ext}"
+                        with open(out_path, "wb") as f:
+                            f.write(data)
+                        logger.debug(f"media: saved debug copy {out_path}")
+                    except Exception as e:
+                        logger.debug(f"media: debug save failed for {it.unique_id}: {e}")
     except TypeError:
         logger.debug("media: injector got non-iterable history chunk; passing through")
     return messages
