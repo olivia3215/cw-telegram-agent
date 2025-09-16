@@ -151,15 +151,17 @@ class MediaCache:
 
 _media_cache_singleton: Optional[MediaCache] = None
 
-def get_media_cache(state_dir: str = "state") -> MediaCache:
+def get_state_dir() -> Path:
+    """Resolve the state directory once, honoring CINDY_AGENT_STATE_DIR with a 'state' default."""
+    return Path(os.getenv("CINDY_AGENT_STATE_DIR", "state"))
+
+def get_media_cache(state_dir: str | None = None) -> MediaCache:
     """
-    Return a process-wide MediaCache instance rooted at `state_dir`.
-    Reuses the same instance across calls; if `state_dir` changes, re-create it.
+    Return a process-wide MediaCache instance.
+    If state_dir is None, use get_state_dir().
     """
     global _media_cache_singleton
-    if _media_cache_singleton is None:
-        _media_cache_singleton = MediaCache(state_dir)
-    else:
-        if Path(state_dir) != _media_cache_singleton.state_dir:
-            _media_cache_singleton = MediaCache(state_dir)
+    resolved = Path(state_dir) if state_dir else get_state_dir()
+    if _media_cache_singleton is None or resolved != _media_cache_singleton.state_dir:
+        _media_cache_singleton = MediaCache(str(resolved))
     return _media_cache_singleton
