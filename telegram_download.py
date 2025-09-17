@@ -1,9 +1,9 @@
 # telegram_download.py
 
-from typing import Any
 import asyncio
 import io
 import os
+from typing import Any
 
 
 async def download_media_bytes(client: Any, file_ref: Any) -> bytes:

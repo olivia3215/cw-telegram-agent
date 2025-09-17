@@ -1,10 +1,12 @@
 # telegram_util.py
 
-import os
 import logging
+import os
+
 from telethon import TelegramClient
-from id_utils import normalize_peer_id
+
 from agent import Agent
+from id_utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
 

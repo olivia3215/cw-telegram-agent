@@ -1,9 +1,10 @@
 # tests/test_task_graph.py
-from datetime import datetime, timedelta, timezone
-from task_graph import TaskNode, TaskGraph, WorkQueue
 import logging
+from datetime import UTC, datetime, timedelta, timezone
 
-NOW = datetime.now(timezone.utc)
+from task_graph import TaskGraph, TaskNode, WorkQueue
+
+NOW = datetime.now(UTC)
 
 
 def make_wait_task(identifier: str, delta_sec: int):

@@ -1,8 +1,10 @@
 # tests/test_integration.py
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from task_graph import WorkQueue, TaskGraph, TaskNode
+
+import pytest
+
+from task_graph import TaskGraph, TaskNode, WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 
 

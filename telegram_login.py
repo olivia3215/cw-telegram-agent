@@ -1,13 +1,14 @@
 # telegram_login.py
 
+import asyncio
 import getpass
 import logging
+
+from telethon.errors import SessionPasswordNeededError
+
+from agent import all_agents
 from register_agents import register_all_agents
 from telegram_util import get_telegram_client
-from telethon.errors import SessionPasswordNeededError
-import asyncio
-from agent import all_agents
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

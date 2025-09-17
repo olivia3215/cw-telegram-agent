@@ -1,20 +1,22 @@
 # handle_received.py
 
-from datetime import datetime, timedelta, timezone
 import logging
-import uuid
 import re
-from task_graph import TaskGraph, TaskNode
-from agent import get_agent_for_id
-from prompt_loader import load_system_prompt
-from telegram_util import get_dialog_name
-from tick import register_task_handler
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from telethon.errors.rpcerrorlist import (
+    ChatWriteForbiddenError,
+    UserBannedInChannelError,
+)
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
-from telethon.errors.rpcerrorlist import (
-    UserBannedInChannelError,
-    ChatWriteForbiddenError,
-)
+
+from agent import get_agent_for_id
+from prompt_loader import load_system_prompt
+from task_graph import TaskGraph, TaskNode
+from telegram_util import get_dialog_name
+from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -61,9 +63,7 @@ def parse_llm_reply_from_markdown(
 
             delay_seconds = int(match.group(1))
             params["delay"] = delay_seconds
-            wait_until_time = datetime.now(timezone.utc) + timedelta(
-                seconds=delay_seconds
-            )
+            wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
             params["until"] = wait_until_time.strftime(ISO_FORMAT)
         elif current_type == "block":
             pass  # No parameters needed

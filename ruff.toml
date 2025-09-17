@@ -1,0 +1,17 @@
+# ruff.toml (standalone config file)
+
+target-version = "py313"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+extend-ignore = ["E501"]  # Turn off line-length checks
+
+[lint.per-file-ignores]
+# Intentional side-effect import for handler registration
+"tick.py" = ["E402", "F401"]
+# Tests often import fixtures/plugins that look “unused”
+"tests/**" = ["F401"]
+
+[format]
+quote-style = "preserve"

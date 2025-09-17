@@ -1,13 +1,14 @@
 # media_injector.py
 
-from typing import Sequence, Any, Optional
 import logging
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+from typing import Any
 
-from telegram_media import iter_media_parts
 from media_cache import get_media_cache
 from telegram_download import download_media_bytes
+from telegram_media import iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,7 @@ def _ensure_state_dirs() -> None:
 
 
 # ---------- format sniffing & support checks ----------
-def _sniff_ext(
-    data: bytes, kind: Optional[str] = None, mime: Optional[str] = None
-) -> str:
+def _sniff_ext(data: bytes, kind: str | None = None, mime: str | None = None) -> str:
     """Decide extension from magic bytes; fall back to mime, then kind."""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
         return ".png"
@@ -88,7 +87,7 @@ def _is_llm_supported_image(data: bytes) -> bool:
 
 
 # ---------- sticker helpers ----------
-async def _maybe_get_sticker_set_short_name(agent, it) -> Optional[str]:
+async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
     """
     Resolve a sticker set short name from the MediaItem.file_ref (Telethon doc).
     - If the attribute already has short_name/name/title, return it.
@@ -168,7 +167,7 @@ async def _attach_sticker_metadata(agent, it, record: dict) -> None:
 # ---------- provenance helpers ----------
 async def _resolve_sender_and_channel(
     agent, msg
-) -> tuple[Optional[int], Optional[str], Optional[int], Optional[str]]:
+) -> tuple[int | None, str | None, int | None, str | None]:
     # sender
     sender_id = getattr(getattr(msg, "sender", None), "id", None)
     try:
@@ -201,7 +200,7 @@ async def _resolve_sender_and_channel(
 
 # ---------- main ----------
 async def inject_media_descriptions(
-    messages: Sequence[Any], agent: Optional[Any] = None
+    messages: Sequence[Any], agent: Any | None = None
 ) -> Sequence[Any]:
     """
     Inspect fetched history:
@@ -264,11 +263,11 @@ async def inject_media_descriptions(
                             )
 
                     # Provenance timestamps
-                    ts_now = datetime.now(timezone.utc).isoformat()
+                    ts_now = datetime.now(UTC).isoformat()
                     media_ts = None
                     if getattr(msg, "date", None):
                         try:
-                            media_ts = msg.date.astimezone(timezone.utc).isoformat()
+                            media_ts = msg.date.astimezone(UTC).isoformat()
                         except Exception:
                             media_ts = None
                     (

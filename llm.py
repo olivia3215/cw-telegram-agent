@@ -1,16 +1,16 @@
 # llm.py
 
-from abc import ABC, abstractmethod
 import asyncio
+import base64
 import json
 import logging
 import os
-from typing import Optional
-from openai import AsyncOpenAI
-import httpx
+from abc import ABC, abstractmethod
+from urllib import error, request
+
 import google.generativeai as genai
-import base64
-from urllib import request, error
+import httpx
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ChatGPT(LLM):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "gpt-4.1-nano",
         temperature: float = 0.7,
     ):
@@ -88,7 +88,7 @@ class OllamaLLM(LLM):
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
 
-    def __init__(self, model: str = "gemini-2.0-flash", api_key: Optional[str] = None):
+    def __init__(self, model: str = "gemini-2.0-flash", api_key: str | None = None):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
         if not self.api_key:

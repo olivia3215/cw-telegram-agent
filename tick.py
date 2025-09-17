@@ -2,14 +2,15 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from task_graph import TaskGraph, WorkQueue, TaskNode
-from exceptions import ShutdownException
-from agent import Agent, get_agent_for_id
-from telethon.tl.functions.messages import DeleteHistoryRequest
-from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
-from telethon.errors.rpcerrorlist import PeerIdInvalidError
+from datetime import UTC, datetime, timezone
 
+from telethon.errors.rpcerrorlist import PeerIdInvalidError
+from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
+from telethon.tl.functions.messages import DeleteHistoryRequest
+
+from agent import Agent, get_agent_for_id
+from exceptions import ShutdownException
+from task_graph import TaskGraph, TaskNode, WorkQueue
 from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def is_graph_complete(graph) -> bool:
 
 
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
-    datetime.now(timezone.utc)
+    datetime.now(UTC)
     task = work_queue.round_robin_one_task()
 
     if not task:

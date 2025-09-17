@@ -1,15 +1,15 @@
 # task_graph_helpers.py
 
-from typing import Optional
-import uuid
 import logging
-from telegram_util import get_channel_name
-from telegram_media import iter_media_parts
-from task_graph import TaskGraph, TaskNode, WorkQueue
+import uuid
+
 from agent import get_agent_for_id
-from media_injector import inject_media_descriptions
 from media_cache import get_media_cache
 from media_format import format_media_description, format_sticker_sentence
+from media_injector import inject_media_descriptions
+from task_graph import TaskGraph, TaskNode, WorkQueue
+from telegram_media import iter_media_parts
+from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ async def insert_received_task_for_conversation(
     *,
     recipient_id: str,
     channel_id: str,
-    message_id: Optional[int] = None,
+    message_id: int | None = None,
     is_callout: bool = False,
 ):
     """

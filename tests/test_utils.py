@@ -1,8 +1,9 @@
 # tests/test_utils.py
 
-import pytest
 import asyncio
 from datetime import datetime
+
+import pytest
 from fake_clock import FakeClock
 
 
@@ -28,8 +29,8 @@ def fake_clock(monkeypatch):
     Provides a FakeClock instance and automatically monkeypatches asyncio.sleep
     and datetime in all relevant modules.
     """
-    import tick
     import task_graph  # <-- Import the other module that uses time
+    import tick
 
     clock = FakeClock()
     monkeypatch_fake_clock(clock, monkeypatch, tick)

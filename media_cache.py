@@ -7,7 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
 class _MemEntry:
     """In-memory cache entry (sliding TTL)."""
 
-    value: Dict[str, Any]  # full JSON record with at least "description": str
+    value: dict[str, Any]  # full JSON record with at least "description": str
     expires_at: float
 
 
@@ -60,7 +60,7 @@ class MediaCache:
             if sweep_interval is not None
             else max(60.0, min(300.0, self.ttl / 2))
         )
-        self._mem: Dict[str, _MemEntry] = {}
+        self._mem: dict[str, _MemEntry] = {}
         self._last_sweep = time.time()
 
     # ---------- internals ----------
@@ -81,7 +81,7 @@ class MediaCache:
 
     # ---------- public API ----------
 
-    def get(self, unique_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, unique_id: str) -> dict[str, Any] | None:
         """
         Return the full record dict if known, else None.
         Sliding TTL semantics: if present in memory, we return it and extend TTL.
@@ -120,7 +120,7 @@ class MediaCache:
         logger.debug(f"MEDIA CACHE EMPTY/BAD RECORD {unique_id}")
         return None
 
-    def put(self, unique_id: str, record: Dict[str, Any]) -> None:
+    def put(self, unique_id: str, record: dict[str, Any]) -> None:
         """
         Save a full record (dict) to disk and memory. Must include 'description': str (non-empty).
         """
@@ -141,7 +141,7 @@ class MediaCache:
 
 
 # ---------- singleton helper ----------
-_GLOBAL_CACHE: Optional[MediaCache] = None
+_GLOBAL_CACHE: MediaCache | None = None
 
 
 def get_media_cache() -> MediaCache:

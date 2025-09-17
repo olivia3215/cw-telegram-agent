@@ -1,13 +1,12 @@
 # task_graph.py
 
 import json
+import logging
 import os
 import shutil
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional
-from dataclasses import dataclass, field
 import threading
-import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -17,8 +16,8 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 class TaskNode:
     identifier: str
     type: str
-    params: Dict = field(default_factory=dict)
-    depends_on: List[str] = field(default_factory=list)
+    params: dict = field(default_factory=dict)
+    depends_on: list[str] = field(default_factory=list)
     status: str = "pending"
 
     def is_ready(self, completed_ids: set, now: datetime) -> bool:
@@ -58,9 +57,9 @@ class TaskNode:
         graph: "TaskGraph",
         retry_interval_sec: int = 10,
         max_retries: int = 10,
-        now: Optional[datetime] = None,
+        now: datetime | None = None,
     ):
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         retry_count = self.params.get("previous_retries", 0) + 1
         self.params["previous_retries"] = retry_count
 
@@ -89,8 +88,8 @@ class TaskNode:
 @dataclass
 class TaskGraph:
     identifier: str
-    context: Dict
-    tasks: List[TaskNode] = field(default_factory=list)
+    context: dict
+    tasks: list[TaskNode] = field(default_factory=list)
 
     def completed_ids(self):
         return {task.identifier for task in self.tasks if task.status == "done"}
@@ -99,7 +98,7 @@ class TaskGraph:
         done = self.completed_ids()
         return [n for n in self.tasks if n.is_ready(done, now)]
 
-    def get_node(self, node_id: str) -> Optional[TaskNode]:
+    def get_node(self, node_id: str) -> TaskNode | None:
         for task in self.tasks:
             if task.identifier == node_id:
                 return task
@@ -111,7 +110,7 @@ class TaskGraph:
 
 @dataclass
 class WorkQueue:
-    _task_graphs: List[TaskGraph] = field(default_factory=list)
+    _task_graphs: list[TaskGraph] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _last_index: int = field(default=0, init=False, repr=False)
 
@@ -125,9 +124,9 @@ class WorkQueue:
         with self._lock:
             self._task_graphs = [g for g in self._task_graphs if not g == graph]
 
-    def round_robin_one_task(self) -> Optional[TaskNode]:
+    def round_robin_one_task(self) -> TaskNode | None:
         with self._lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if not self._task_graphs:
                 return None
 
@@ -181,7 +180,7 @@ class WorkQueue:
         if not os.path.exists(path):
             return cls()
 
-        with open(path, "r") as f:
+        with open(path) as f:
             content = f.read()
 
         graphs = []
@@ -211,7 +210,7 @@ class WorkQueue:
 
     def graph_for_conversation(
         self, agent_id: int, channel_id: int
-    ) -> Optional[TaskGraph]:
+    ) -> TaskGraph | None:
         with self._lock:
             for graph in self._task_graphs:
                 if (

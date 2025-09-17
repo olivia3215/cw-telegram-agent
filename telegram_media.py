@@ -1,15 +1,16 @@
 # telegram_media.py
 
-from typing import Any, List, Optional
+from typing import Any
+
 from media_types import MediaItem
 
 
-def iter_media_parts(msg: Any) -> List[MediaItem]:
+def iter_media_parts(msg: Any) -> list[MediaItem]:
     """
     Return a flat list of MediaItem extracted from a Telegram message.
     Duck-typed to work with Telethon or Bot API-like objects.
     """
-    out: List[MediaItem] = []
+    out: list[MediaItem] = []
     _maybe_add_photo(msg, out)
     _maybe_add_sticker(msg, out)
     _maybe_add_gif_or_animation(msg, out)
@@ -19,7 +20,7 @@ def iter_media_parts(msg: Any) -> List[MediaItem]:
 # ---------- helpers ----------
 
 
-def _get_unique_id(obj: Any) -> Optional[str]:
+def _get_unique_id(obj: Any) -> str | None:
     # Prefer stable string ids when available; fall back to numeric id.
     for attr in ("file_unique_id", "unique_id", "id"):
         v = getattr(obj, attr, None)
@@ -28,7 +29,7 @@ def _get_unique_id(obj: Any) -> Optional[str]:
     return None
 
 
-def _maybe_add_photo(msg: Any, out: List[MediaItem]) -> None:
+def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:
     photo = getattr(msg, "photo", None)
     if not photo:
         return
@@ -46,7 +47,7 @@ def _maybe_add_photo(msg: Any, out: List[MediaItem]) -> None:
     )
 
 
-def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
+def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
     """
     Stickers via Telethon: msg.document with a DocumentAttributeSticker in document.attributes.
     Bot API fallback: msg.sticker object with fields (set_name / set.name / emoji).
@@ -120,7 +121,7 @@ def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
         )
 
 
-def _maybe_add_gif_or_animation(msg: Any, out: List[MediaItem]) -> None:
+def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     """
     Heuristics:
       • image/gif OR DocumentAttributeAnimated => kind 'gif'

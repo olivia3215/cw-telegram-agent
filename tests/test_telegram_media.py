@@ -1,9 +1,9 @@
 # tests/test_telegram_media.py
 
-from typing import List, Any
-from telegram_media import iter_media_parts
-from media_types import MediaItem
+from typing import Any
 
+from media_types import MediaItem
+from telegram_media import iter_media_parts
 
 # --- tiny fakes (duck-typed to match what iter_media_parts looks for) ---
 
@@ -23,7 +23,7 @@ def make_msg(**kw) -> Any:
 def test_detect_photo():
     photo = Obj(file_unique_id="ph_u1", mime_type="image/jpeg")
     msg = make_msg(photo=photo)
-    parts: List[MediaItem] = iter_media_parts(msg)
+    parts: list[MediaItem] = iter_media_parts(msg)
     assert len(parts) == 1
     m = parts[0]
     assert m.kind == "photo"

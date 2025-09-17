@@ -1,13 +1,15 @@
 # tests/test_tick.py
 
-import pytest
 import asyncio
-from task_graph import TaskNode, TaskGraph, WorkQueue
-from tick import run_tick_loop, run_one_tick
-from exceptions import ShutdownException
 from unittest.mock import AsyncMock, MagicMock
-from agent import Agent
+
+import pytest
 from telethon.tl.functions.messages import DeleteHistoryRequest
+
+from agent import Agent
+from exceptions import ShutdownException
+from task_graph import TaskGraph, TaskNode, WorkQueue
+from tick import run_one_tick, run_tick_loop
 
 
 @pytest.mark.asyncio

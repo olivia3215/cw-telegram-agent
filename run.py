@@ -3,24 +3,24 @@
 import asyncio
 import logging
 import os
-from telegram_util import get_channel_name
-from register_agents import register_all_agents
-from exceptions import ShutdownException
-from task_graph import WorkQueue
-from tick import run_tick_loop
-from telegram_util import get_telegram_client
+
 from telethon import events
-from task_graph_helpers import insert_received_task_for_conversation
-from agent import (
-    Agent,
-    all_agents,
-)
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import (
     InputStickerSetShortName,
     UpdateDialogFilter,
 )
 
+from agent import (
+    Agent,
+    all_agents,
+)
+from exceptions import ShutdownException
+from register_agents import register_all_agents
+from task_graph import WorkQueue
+from task_graph_helpers import insert_received_task_for_conversation
+from telegram_util import get_channel_name, get_telegram_client
+from tick import run_tick_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

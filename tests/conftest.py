@@ -1,2 +1,2 @@
-# tests/conftest.py
-from test_utils import fake_clock  # noqa: F401
+# Register fixtures from test_utils without an “unused import”.
+pytest_plugins = ["test_utils"]

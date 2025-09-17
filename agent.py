@@ -1,13 +1,14 @@
 # agent.py
 
-from datetime import datetime, timezone
 import logging
 import os
+from datetime import UTC, datetime, timedelta
+
 from telethon.tl.functions.account import GetNotifySettingsRequest
-from llm import GeminiLLM
-from datetime import timedelta
 from telethon.tl.functions.contacts import GetBlockedRequest
+
 from id_utils import normalize_peer_id
+from llm import GeminiLLM
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class Agent:
         Checks if a peer is muted, using a 60-second cache.
         """
         assert isinstance(peer_id, int)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cached = self._mute_cache.get(peer_id)
         if cached and cached[1] > now:
             return cached[0]
@@ -101,7 +102,7 @@ class Agent:
 
         entity_id = normalize_peer_id(entity_id)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cached = self._entity_cache.get(entity_id)
         if cached and cached[1] > now:
             return cached[0]

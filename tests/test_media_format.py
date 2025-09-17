@@ -1,6 +1,7 @@
 # tests/test_media_format.py
 
 import pytest
+
 from media_format import format_media_description, format_sticker_sentence
 
 

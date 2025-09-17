@@ -1,9 +1,11 @@
 # register_agents.py
 
-import os
 import logging
+import os
 from pathlib import Path
+
 import mistune
+
 from agent import register_telegram_agent
 from markdown_utils import flatten_node_text
 

@@ -1,5 +1,5 @@
-from markdown_utils import flatten_node_text
 from handle_received import parse_llm_reply
+from markdown_utils import flatten_node_text
 
 
 def test_flatten_text_node():
