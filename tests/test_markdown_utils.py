@@ -1,13 +1,16 @@
-from markdown_utils import flatten_node_text
 from handle_received import parse_llm_reply
+from markdown_utils import flatten_node_text
+
 
 def test_flatten_text_node():
     node = {"type": "text", "raw": "Hello"}
     assert flatten_node_text(node) == ["Hello"]
 
+
 def test_flatten_linebreak_node():
     node = {"type": "linebreak"}
     assert flatten_node_text(node) == [""]
+
 
 def test_flatten_nested_children():
     node = {
@@ -16,13 +19,15 @@ def test_flatten_nested_children():
             {"type": "text", "raw": "Hello"},
             {"type": "linebreak"},
             {"type": "text", "raw": "world"},
-        ]
+        ],
     }
     assert flatten_node_text(node) == ["Hello", "", "world"]
+
 
 def test_flatten_unknown_type():
     node = {"type": "image", "src": "img.png"}
     assert flatten_node_text(node) == []
+
 
 def test_parse_markdown_reply_all_task_types():
     md = """# «send»
@@ -59,15 +64,15 @@ Because I was asked to stop.
     assert "Because I was asked to stop." in tasks[3].params["reason"]
 
     assert tasks[4].type == "clear-conversation"
-    assert tasks[4].params == {'agent_id': '123', 'channel_id': '456'}
+    assert tasks[4].params == {"agent_id": "123", "channel_id": "456"}
 
 
 def test_parse_clear_conversation_task():
     md = """# «clear-conversation»"""
-    tasks = parse_llm_reply(md, agent_id='123', channel_id='456')
+    tasks = parse_llm_reply(md, agent_id="123", channel_id="456")
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
-    assert tasks[0].params == {'agent_id': '123', 'channel_id': '456'}
+    assert tasks[0].params == {"agent_id": "123", "channel_id": "456"}
 
 
 def test_parse_markdown_reply_with_reply_to():

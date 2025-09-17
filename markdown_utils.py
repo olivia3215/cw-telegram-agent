@@ -1,5 +1,6 @@
 # markdown_utils.py
 
+
 def flatten_node_text(node):
     """
     Recursively extracts lines of raw text from a mistune AST node.

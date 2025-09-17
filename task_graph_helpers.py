@@ -1,20 +1,15 @@
 # task_graph_helpers.py
 
-from typing import Optional
-import uuid
 import logging
-import re
-import json
-from pathlib import Path
-from telegram_util import get_channel_name
-from telegram_media import iter_media_parts
-from task_graph import TaskGraph, TaskNode, WorkQueue
+import uuid
+
 from agent import get_agent_for_id
-from media_injector import inject_media_descriptions
 from media_cache import get_media_cache
-from media_injector import MEDIA_FEATURE_ENABLED
 from media_format import format_media_description, format_sticker_sentence
-from media_injector import _maybe_get_sticker_set_short_name
+from media_injector import inject_media_descriptions
+from task_graph import TaskGraph, TaskNode, WorkQueue
+from telegram_media import iter_media_parts
+from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +49,19 @@ logger = logging.getLogger(__name__)
 # - Implement pruning/aborting here in insert_received_task_for_conversation.
 # --------------------------------------------------------------------------------------
 
+
 async def insert_received_task_for_conversation(
     work_queue: WorkQueue,
     *,
     recipient_id: str,
     channel_id: str,
-    message_id: Optional[int] = None,
+    message_id: int | None = None,
     is_callout: bool = False,
 ):
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
     """
-    agent = get_agent_for_id(recipient_id) 
+    agent = get_agent_for_id(recipient_id)
     preserved_tasks = []
     # Find the existing graph for this conversation
     old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
@@ -74,7 +70,7 @@ async def insert_received_task_for_conversation(
     if old_graph:
         # preserve tasks from the old graph, but mark some as done
         for old_task in old_graph.tasks:
-            was_callout = old_task.params.get("callout")
+            old_task.params.get("callout")
             # We no longer preserve existing tasks.
             # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
             preserve = False
@@ -85,7 +81,7 @@ async def insert_received_task_for_conversation(
             # save all the old tasks, because even if they're done,
             # other tasks might depend on them.
             preserved_tasks.append(old_task)
-        
+
         # Remove the old graph completely
         work_queue.remove(old_graph)
         # if preserved_tasks:
@@ -93,9 +89,9 @@ async def insert_received_task_for_conversation(
 
     def conversation_matcher(ctx):
         return (
-            ctx.get("channel_id") == channel_id and
-            ctx.get("agent_id") == recipient_id
+            ctx.get("channel_id") == channel_id and ctx.get("agent_id") == recipient_id
         )
+
     work_queue.remove_all(conversation_matcher)
 
     agent = get_agent_for_id(recipient_id)
@@ -133,10 +129,16 @@ async def insert_received_task_for_conversation(
             desc_text = meta.get("description") if isinstance(meta, dict) else meta
 
             if it.kind == "sticker":
-                sticker_set = ((meta.get("sticker_set") if isinstance(meta, dict) else None)
-                               or getattr(it, "sticker_set", None) or "(unknown)")
-                sticker_name = ((meta.get("sticker_name") if isinstance(meta, dict) else None)
-                                or getattr(it, "sticker_name", None) or "(unnamed)")
+                sticker_set = (
+                    (meta.get("sticker_set") if isinstance(meta, dict) else None)
+                    or getattr(it, "sticker_set", None)
+                    or "(unknown)"
+                )
+                sticker_name = (
+                    (meta.get("sticker_name") if isinstance(meta, dict) else None)
+                    or getattr(it, "sticker_name", None)
+                    or "(unnamed)"
+                )
                 parts.append(
                     format_sticker_sentence(
                         sticker_name=sticker_name,
@@ -173,8 +175,8 @@ async def insert_received_task_for_conversation(
             "channel_id": channel_id,
             "agent_name": recipient_name,
             "channel_name": channel_name,
-            },
-        tasks=preserved_tasks 
+        },
+        tasks=preserved_tasks,
     )
 
     task_id = f"received-{uuid.uuid4().hex[:8]}"
@@ -182,7 +184,7 @@ async def insert_received_task_for_conversation(
         identifier=task_id,
         type="received",
         params=task_params,
-        depends_on=[last_task] if last_task else []
+        depends_on=[last_task] if last_task else [],
     )
     new_graph.add_task(received_task)
     work_queue.add_graph(new_graph)

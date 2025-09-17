@@ -11,7 +11,7 @@ This README is written for a future developer (and future ChatGPT) to quickly re
 ## Quick start
 
 ### Requirements
-- **Python 3.12+**
+- **Python 3.13+**
 - `pip install -r requirements.txt`
 
 ### Environment
@@ -130,7 +130,7 @@ Goal: When a message (DM or group) contains images or stickers, replace them **i
 - **Photos / PNG / GIF / stickers** use the **same mechanism**. Stickers also record **sticker set name** and **sticker name**.
 - Unsupported/huge media (e.g., videos) are represented as `'[kind] not understood'` and are **not stored**.
 - **Quoting**: user text uses `«…»`; media descriptions use `‹…›`; sticker mention syntax example:
-  
+
   `the sticker '😀' from the sticker set 'WENDYAI' that appears as ‹a picture of a woman …›`
 
 ### Integration points
@@ -182,21 +182,21 @@ This repo supports enriching the LLM prompt with **descriptions of media** from 
 
 ### Overview
 - **Where it runs:** history is fetched in `insert_received_task_for_conversation()` (`task_graph_helpers.py`).
-- **Hook:** the fetched messages pass through `inject_media_descriptions()` (`media_injector.py`).  
+- **Hook:** the fetched messages pass through `inject_media_descriptions()` (`media_injector.py`).
   - By default this is **feature-flagged** via `MEDIA_FEATURE_ENABLED` in `media_injector.py`.
 - **Download:** on cache miss (flag on), media bytes are downloaded once using `telegram_download.download_media_bytes()`.
 - **Describe:** for **raster images** (jpeg/png/webp/gif), we call the agent’s provider: `agent.llm.describe_image(bytes)`.
   - Implemented for `GeminiLLM`; other providers can add the same method later.
-- **Cache:** descriptions are persisted per-**file_unique_id** in `state/media/<id>.json` via `MediaCache`.  
+- **Cache:** descriptions are persisted per-**file_unique_id** in `state/media/<id>.json` via `MediaCache`.
   - In-memory TTL avoids disk churn; on-disk cache is shared across agents and survives restarts.
 - **Prompt assembly:** when building history lines & current message:
   - User text is wrapped in **French quotes** `« … »`.
   - Media descriptions are wrapped in **single angle quotes** `‹ … ›` (outside the French quotes).
-  - Stickers render as:  
+  - Stickers render as:
     `the sticker '<name>' from the sticker set '<set>' that appears as ‹…›`
 
 ### Paths & state
-- The **single source of truth** for the state directory is `media_cache.get_state_dir()`.  
+- The **single source of truth** for the state directory is `media_cache.get_state_dir()`.
   - Respects `$CINDY_AGENT_STATE_DIR`, falling back to `state/`.
 - Debug copies of downloaded media go to `state/photos/` with byte-sniffed extensions:
   - PNG/JPEG/GIF/WEBP/MP4/WEBM/TGS recognized; unknown falls back to `.bin`.
@@ -230,4 +230,3 @@ This repo supports enriching the LLM prompt with **descriptions of media** from 
 * Flip the flag: set `MEDIA_FEATURE_ENABLED = True` in `media_injector.py` for local runs.
 * Peek artifacts: `state/photos/` for raw bytes, `state/media/` for JSON descriptions.
 * CI: tests do **not** require network/API keys; vision calls are only used at runtime.
-

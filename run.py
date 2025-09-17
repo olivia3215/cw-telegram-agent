@@ -3,23 +3,24 @@
 import asyncio
 import logging
 import os
-from telegram_util import get_channel_name
-from register_agents import register_all_agents
-from exceptions import ShutdownException
-from task_graph import WorkQueue
-from tick import run_tick_loop
-from telegram_util import get_telegram_client
+
 from telethon import events
-from task_graph_helpers import insert_received_task_for_conversation
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import (
+    InputStickerSetShortName,
+    UpdateDialogFilter,
+)
+
 from agent import (
     Agent,
     all_agents,
 )
-import asyncio
-import logging
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputStickerSetShortName, InputDocument, UpdateDialogFilter
-
+from exceptions import ShutdownException
+from register_agents import register_all_agents
+from task_graph import WorkQueue
+from task_graph_helpers import insert_received_task_for_conversation
+from telegram_util import get_channel_name, get_telegram_client
+from tick import run_tick_loop
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def load_work_queue():
 async def handle_incoming_message(agent: Agent, work_queue, event):
     agent_name = agent.name
     client = agent.client
-    sender = await event.get_sender()
+    await event.get_sender()
     dialog = await agent.get_dialog(event.chat_id)
     muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
@@ -55,9 +56,13 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     sender_name = await get_channel_name(agent, sender_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
     if sender_name == dialog_name:
-        logger.info(f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})")
+        logger.info(
+            f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})"
+        )
     else:
-        logger.info(f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {event.raw_text!r} (callout: {is_callout})")
+        logger.info(
+            f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {event.raw_text!r} (callout: {is_callout})"
+        )
 
     if not muted or is_callout:
         await client.send_read_acknowledge(dialog, clear_mentions=True)
@@ -75,7 +80,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await asyncio.sleep(1) # Don't poll too fast
+        await asyncio.sleep(1)  # Don't poll too fast
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
@@ -83,13 +88,15 @@ async def scan_unread_messages(agent: Agent, work_queue):
         # If there are mentions, we must check if they are from a non-blocked user.
         is_callout = False
         if has_mentions:
-            async for message in client.iter_messages(dialog.id, limit=dialog.unread_mentions_count):
+            async for message in client.iter_messages(
+                dialog.id, limit=dialog.unread_mentions_count
+            ):
                 if message.mentioned and not await agent.is_blocked(message.sender_id):
                     is_callout = True
                     break
 
         # When a conversation was explicitly marked unread, treat it as a callout.
-        is_marked_unread = getattr(dialog.dialog, 'unread_mark', False)
+        is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
         if is_callout or has_unread or is_marked_unread:
             dialog_name = await get_channel_name(agent, dialog.id)
@@ -111,21 +118,23 @@ async def ensure_sticker_cache(agent, client):
         return  # already populated
 
     try:
-        result = await client(GetStickerSetRequest(
-            stickerset=InputStickerSetShortName(short_name=agent.sticker_set_name),
-            hash=0
-        ))
+        result = await client(
+            GetStickerSetRequest(
+                stickerset=InputStickerSetShortName(short_name=agent.sticker_set_name),
+                hash=0,
+            )
+        )
         for doc in result.documents:
             # Use either a stable alt name or index as fallback
             name = next(
-                (a.alt for a in doc.attributes if hasattr(a, "alt")), 
-                f"sticker_{len(agent.sticker_cache)+1}"
+                (a.alt for a in doc.attributes if hasattr(a, "alt")),
+                f"sticker_{len(agent.sticker_cache) + 1}",
             )
             agent.sticker_cache[name] = doc
 
             # The following block of code is for diagnostics only
             alt = next((a.alt for a in doc.attributes if hasattr(a, "alt")), None)
-            name = alt or f"sticker_{len(agent.sticker_cache)+1}"
+            name = alt or f"sticker_{len(agent.sticker_cache) + 1}"
             agent.sticker_cache[name] = doc
             logger.debug(f"[{agent.name}] Registered sticker: {repr(name)}")
 
@@ -135,7 +144,7 @@ async def ensure_sticker_cache(agent, client):
 
 async def run_telegram_loop(agent: Agent, work_queue):
     agent_name = agent.name
-    
+
     while True:
         client = get_telegram_client(agent.name, agent.phone)
         agent.client = client
@@ -151,7 +160,9 @@ async def run_telegram_loop(agent: Agent, work_queue):
             being marked as unread. It serves as an event-driven trigger
             to re-scan the dialogs.
             """
-            logger.info(f"[{agent_name}] Detected a dialog filter update. Triggering a scan.")
+            logger.info(
+                f"[{agent_name}] Detected a dialog filter update. Triggering a scan."
+            )
             # We don't need to inspect the event further; its existence is the trigger.
             # We call the existing scan function to check for the unread mark.
             await scan_unread_messages(agent, work_queue)
@@ -168,7 +179,9 @@ async def run_telegram_loop(agent: Agent, work_queue):
                 await client.run_until_disconnected()
 
         except Exception as e:
-            logger.exception(f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds...")
+            logger.exception(
+                f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds..."
+            )
             await asyncio.sleep(10)
 
         finally:
@@ -178,17 +191,19 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
 async def periodic_scan(work_queue, agents, interval_sec):
     """A background task that periodically scans for unread messages."""
-    await asyncio.sleep(interval_sec/9)
+    await asyncio.sleep(interval_sec / 9)
     while True:
         logger.info("Scanning for changes...")
         for agent in agents:
-            if agent.client: # Only scan if the client is connected
+            if agent.client:  # Only scan if the client is connected
                 try:
                     await scan_unread_messages(agent, work_queue)
                 except Exception as e:
-                    logger.exception(f"Error during periodic scan for agent {agent.name}: {e}")
+                    logger.exception(
+                        f"Error during periodic scan for agent {agent.name}: {e}"
+                    )
         await asyncio.sleep(interval_sec)
-        
+
 
 async def main():
     register_all_agents()
