@@ -18,8 +18,10 @@ def test_media_cache_sliding_ttl(monkeypatch, tmp_path):
     """
     # Controlled clock
     t = {"now": 1_000.0}
+
     def _now():
         return t["now"]
+
     monkeypatch.setattr(media_cache.time, "time", _now)
 
     # Small TTL and sweep
@@ -47,10 +49,10 @@ def test_media_cache_sliding_ttl(monkeypatch, tmp_path):
     cache.put("u2", rec2)
 
     # Stagger access so u1 stays fresh but u2 expires
-    t["now"] += 80.0             # 1150 -> 1230
-    _ = cache.get("u1")          # extend u1 to 1230 + ttl = 1330
+    t["now"] += 80.0  # 1150 -> 1230
+    _ = cache.get("u1")  # extend u1 to 1230 + ttl = 1330
 
-    t["now"] += 50.0             # now 1280 (> u2's 1250), (< u1's 1330)
+    t["now"] += 50.0  # now 1280 (> u2's 1250), (< u1's 1330)
     cache._sweep_if_needed()
     assert "u1" in cache._mem, "touched entry must remain after sweep"
     assert "u2" not in cache._mem, "untouched entry should be evicted by sweep"

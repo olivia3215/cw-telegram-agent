@@ -1,19 +1,22 @@
 # agent.py
 
-from datetime import datetime, timezone
 import logging
 import os
-from telethon import TelegramClient
+from datetime import UTC, datetime, timedelta
+
 from telethon.tl.functions.account import GetNotifySettingsRequest
-from llm import ChatGPT, OllamaLLM, GeminiLLM
-from datetime import datetime, timedelta
 from telethon.tl.functions.contacts import GetBlockedRequest
+
 from id_utils import normalize_peer_id
+from llm import GeminiLLM
 
 logger = logging.getLogger(__name__)
 
+
 class Agent:
-    def __init__(self, *, name, phone, sticker_set_name, instructions, role_prompt_name, llm=None):
+    def __init__(
+        self, *, name, phone, sticker_set_name, instructions, role_prompt_name, llm=None
+    ):
         self.name = name
         self.phone = phone
         self.sticker_set_name = sticker_set_name
@@ -32,7 +35,7 @@ class Agent:
         self._entity_cache = {}
 
         self._llm = llm
-    
+
     @property
     def llm(self):
         if self._llm is None:
@@ -47,7 +50,9 @@ class Agent:
             #### Code for using Google Gemini
             api_key = os.getenv("GOOGLE_GEMINI_API_KEY")
             if not api_key:
-                raise ValueError("LLM not configured (no GOOGLE_GEMINI_API_KEY). Inject an LLM or set the key.")
+                raise ValueError(
+                    "LLM not configured (no GOOGLE_GEMINI_API_KEY). Inject an LLM or set the key."
+                )
             self._llm = GeminiLLM(api_key=api_key)
 
         return self._llm
@@ -62,7 +67,7 @@ class Agent:
         Checks if a peer is muted, using a 60-second cache.
         """
         assert isinstance(peer_id, int)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cached = self._mute_cache.get(peer_id)
         if cached and cached[1] > now:
             return cached[0]
@@ -70,17 +75,20 @@ class Agent:
         try:
             settings = await self.client(GetNotifySettingsRequest(peer=peer_id))
             mute_until = getattr(settings, "mute_until", None)
-            
+
             is_currently_muted = False
             if isinstance(mute_until, datetime):
                 is_currently_muted = mute_until > now
             elif isinstance(mute_until, int):
                 is_currently_muted = mute_until > now.timestamp()
-            
+
             # Cache for 60 seconds
-            self._mute_cache[peer_id] = (is_currently_muted, now + timedelta(seconds=60))
+            self._mute_cache[peer_id] = (
+                is_currently_muted,
+                now + timedelta(seconds=60),
+            )
             return is_currently_muted
-            
+
         except Exception as e:
             logger.exception(f"is_muted failed for peer {peer_id}: {e}")
             # In case of error, assume not muted and cache for a shorter time
@@ -94,11 +102,11 @@ class Agent:
 
         entity_id = normalize_peer_id(entity_id)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cached = self._entity_cache.get(entity_id)
         if cached and cached[1] > now:
             return cached[0]
-            
+
         try:
             entity = await self.client.get_entity(entity_id)
             # Cache for 5 minutes (300 seconds)
@@ -116,13 +124,16 @@ class Agent:
         """
         now = datetime.now()
         # Invalidate cache every 60 seconds
-        if self._blocklist_cache is None or \
-           (self._blocklist_last_updated and (now - self._blocklist_last_updated) > timedelta(seconds=60)):
-            
+        if self._blocklist_cache is None or (
+            self._blocklist_last_updated
+            and (now - self._blocklist_last_updated) > timedelta(seconds=60)
+        ):
             try:
                 result = await self.client(GetBlockedRequest(offset=0, limit=100))
                 # Store a set of user IDs for fast lookups
-                self._blocklist_cache = {item.peer_id.user_id for item in result.blocked}
+                self._blocklist_cache = {
+                    item.peer_id.user_id for item in result.blocked
+                }
                 self._blocklist_last_updated = now
                 logger.info(f"[{self.name}] Updated blocklist cache.")
             except Exception as e:
@@ -149,7 +160,15 @@ class AgentRegistry:
     def all_agent_names(self):
         return list(self._registry.keys())
 
-    def register(self, *, name: str, phone: str, sticker_set_name: str, instructions: str, role_prompt_name: str):
+    def register(
+        self,
+        *,
+        name: str,
+        phone: str,
+        sticker_set_name: str,
+        instructions: str,
+        role_prompt_name: str,
+    ):
         if name == "":
             raise RuntimeError("No agent name provided")
         if phone == "":
@@ -160,7 +179,7 @@ class AgentRegistry:
             phone=phone,
             sticker_set_name=sticker_set_name,
             instructions=instructions,
-            role_prompt_name=role_prompt_name
+            role_prompt_name=role_prompt_name,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
 
@@ -173,53 +192,13 @@ class AgentRegistry:
             if agent.agent_id == agent_id:
                 return agent
         return None
-    
+
     def all_agents(self):
         return self._registry.values()
+
 
 _agent_registry = AgentRegistry()
 
 register_telegram_agent = _agent_registry.register
 get_agent_for_id = _agent_registry.get_by_agent_id
 all_agents = _agent_registry.all_agents
-
-
-# agent.py
-
-from datetime import datetime, timezone
-import logging
-# ... other imports from agent.py
-
-#...
-
-# async def is_muted(client, dialog_or_entity) -> bool:
-#     """
-#     Check if the given dialog or entity (user, chat, or channel) is muted.
-#     """
-#     # If the passed object has an 'entity' attr, it's a Dialog.
-#     # Otherwise, it's the entity itself.
-#     peer = getattr(dialog_or_entity, 'entity', dialog_or_entity)
-
-#     try:
-#         settings = await client(GetNotifySettingsRequest(peer))
-#         mute_until = getattr(settings, "mute_until", None)
-
-#         if not mute_until:
-#             return False
-
-#         now = datetime.now(timezone.utc)
-
-#         # Handle case where mute_until is a datetime object
-#         if isinstance(mute_until, datetime):
-#             return mute_until > now
-
-#         # Handle case where mute_until is an integer timestamp
-#         if isinstance(mute_until, int):
-#             return mute_until > now.timestamp()
-
-#         return False
-#     except Exception as e:
-#         entity_id = getattr(peer, 'id', 'unknown')
-#         dialog_name = await get_channel_name(agent, entity_id)
-#         logger.exception(f"is_muted(...) failed for dialog [{dialog_name}]: {e}")
-#         return False

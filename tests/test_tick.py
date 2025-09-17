@@ -1,25 +1,29 @@
 # tests/test_tick.py
 
-import pytest
 import asyncio
-from datetime import datetime, timezone
-from task_graph import TaskNode, TaskGraph, WorkQueue
-from tick import run_tick_loop, run_one_tick
-from exceptions import ShutdownException
-from test_utils import fake_clock
-from unittest.mock import AsyncMock, MagicMock, patch
-from agent import Agent, _agent_registry
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from telethon.tl.functions.messages import DeleteHistoryRequest
+
+from agent import Agent
+from exceptions import ShutdownException
+from task_graph import TaskGraph, TaskNode, WorkQueue
+from tick import run_one_tick, run_tick_loop
 
 
 @pytest.mark.asyncio
 async def test_run_one_tick_marks_task_done(monkeypatch):
     from tick import _dispatch_table
+
     async def fake_handle_send(task, graph):
         pass
+
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
-    task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
+    task = TaskNode(
+        identifier="t1", type="send", params={"to": "test", "message": "hi"}
+    )
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
@@ -45,7 +49,6 @@ async def test_run_one_tick_retries_on_failure():
 
 @pytest.mark.asyncio
 async def test_run_tick_loop_stops_on_shutdown(fake_clock):
-    import tick
     from tick import run_one_tick as real_run_one_tick
 
     task = TaskNode(identifier="shutdown", type="shutdown", params={})
@@ -54,6 +57,7 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
 
     def mock_round_robin():
         return task
+
     queue.round_robin_one_task = mock_round_robin
 
     async def patched_run_one_tick(work_queue, state_file_path=None):
@@ -67,7 +71,6 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
 
 @pytest.mark.asyncio
 async def test_retry_eventually_gives_up(fake_clock):
-    import tick
     from tick import run_one_tick as real_tick
 
     task = TaskNode(identifier="fail", type="explode", params={})
@@ -89,11 +92,15 @@ async def test_retry_eventually_gives_up(fake_clock):
 async def test_execute_clear_conversation(monkeypatch):
     # Create the task and graph
     task = TaskNode(identifier="t1", type="clear-conversation", params={})
-    graph = TaskGraph(identifier="g1", context={
-        "agent_id": "a1",
-        "channel_id": "u123",
-        "peer_id": "u123"  # legacy field; not strictly needed
-    }, tasks=[task])
+    graph = TaskGraph(
+        identifier="g1",
+        context={
+            "agent_id": "a1",
+            "channel_id": "u123",
+            "peer_id": "u123",  # legacy field; not strictly needed
+        },
+        tasks=[task],
+    )
     queue = WorkQueue(_task_graphs=[graph])
 
     mock_client = AsyncMock()
@@ -133,19 +140,22 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     Tests that a task transitions from pending -> active -> done.
     """
     from tick import _dispatch_table
+
     # Mock the handler so we can inspect the task's status during its run
     async def fake_handle_send(task, graph):
         # When the handler is called, the task should be 'active'
         assert task.status == "active"
         # Simulate work
         await asyncio.sleep(0)
-    
+
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
-    task = TaskNode(identifier="t1", type="send", params={"to": "test", "message": "hi"})
+    task = TaskNode(
+        identifier="t1", type="send", params={"to": "test", "message": "hi"}
+    )
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
-    
+
     # The task should start as 'pending'
     assert task.status == "pending"
 

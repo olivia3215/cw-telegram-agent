@@ -15,17 +15,25 @@ FRENCH_CLOSE = "»"
 ANGLE_OPEN = "‹"
 ANGLE_CLOSE = "›"
 
+
 def format_media_description(description: str | None) -> str:
     """
     Returns a clause beginning with 'that ...'.
     If there's no usable description (unsupported/unknown), avoid angle quotes.
     """
     s = (description or "").strip()
-    if not s or s.lower().startswith("not understood") or s.lower().startswith("sticker not understood"):
+    if (
+        not s
+        or s.lower().startswith("not understood")
+        or s.lower().startswith("sticker not understood")
+    ):
         return "that is not understood"
     return f"that appears as ‹{s}›"
 
-def format_sticker_sentence(sticker_name: str, sticker_set: str, description: str) -> str:
+
+def format_sticker_sentence(
+    sticker_name: str, sticker_set: str, description: str
+) -> str:
     """
     Full sticker sentence:
       the sticker '<name>' from the sticker set '<set>' that appears as ‹…›

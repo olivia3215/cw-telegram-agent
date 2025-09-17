@@ -1,5 +1,6 @@
 # id_utils.py
 
+
 def normalize_peer_id(value):
     """
     Normalize Telegram peer/channel/user IDs:

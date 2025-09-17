@@ -1,9 +1,9 @@
 # prompt_loader.py
-import os
 from pathlib import Path
 
 # Cache for storing loaded prompts to avoid redundant file I/O
 _prompt_cache = {}
+
 
 def load_system_prompt(prompt_name: str, prompts_dir="./prompts"):
     """
@@ -20,5 +20,5 @@ def load_system_prompt(prompt_name: str, prompts_dir="./prompts"):
     # Read the prompt content and store it in the cache
     prompt_content = file_path.read_text().strip()
     _prompt_cache[prompt_name] = prompt_content
-    
+
     return prompt_content
