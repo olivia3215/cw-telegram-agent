@@ -1,5 +1,7 @@
 # Cindy’s World Telegram Agent (cw-telegram-agent)
 
+[![CI](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml)
+
 > **Purpose**: Permit an LLM to act like a regular Telegram user (DMs & groups) by representing behavior as **task graphs** and executing them on a **tick loop** with durable on‑disk state.
 
 This README is written for a future developer (and future ChatGPT) to quickly regain context: what’s here today, how it runs, and where to extend it—especially around media understanding.
