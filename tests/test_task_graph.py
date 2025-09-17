@@ -1,5 +1,4 @@
 # tests/test_task_graph.py
-import pytest
 from datetime import datetime, timedelta, timezone
 from task_graph import TaskNode, TaskGraph, WorkQueue
 import logging
@@ -10,19 +9,18 @@ NOW = datetime.now(timezone.utc)
 def make_wait_task(identifier: str, delta_sec: int):
     future_time = (NOW + timedelta(seconds=delta_sec)).strftime("%Y-%m-%dT%H:%M:%S%z")
     return TaskNode(
-        identifier=identifier,
-        type="wait",
-        params={"until": future_time},
-        depends_on=[]
+        identifier=identifier, type="wait", params={"until": future_time}, depends_on=[]
     )
+
 
 def make_send_task(identifier: str, depends=None):
     return TaskNode(
         identifier=identifier,
         type="send",
         params={"to": "user123", "message": "Hello!"},
-        depends_on=depends or []
+        depends_on=depends or [],
     )
+
 
 def make_graph(identifier: str, nodes):
     return TaskGraph(identifier=identifier, context={"peer_id": "user123"}, tasks=nodes)
@@ -36,7 +34,7 @@ def test_task_readiness():
     assert not t2.is_ready(set(), NOW)
 
     t3 = make_send_task("send1", depends=["wait1"])
-    graph = make_graph("graph1", [t1, t3])
+    make_graph("graph1", [t1, t3])
     t1.status = "done"
     assert t3.is_ready({"wait1"}, NOW)
 
@@ -87,7 +85,9 @@ def test_invalid_wait_task_logs(caplog):
     assert not missing_until.is_ready(set(), NOW)
     assert any("missing 'until'" in m for m in caplog.text.splitlines())
 
-    bad_format = TaskNode(identifier="t2", type="wait", params={"until": "not-a-date"}, depends_on=[])
+    bad_format = TaskNode(
+        identifier="t2", type="wait", params={"until": "not-a-date"}, depends_on=[]
+    )
     assert not bad_format.is_ready(set(), NOW)
     assert any("invalid 'until' format" in m for m in caplog.text.splitlines())
 
@@ -136,12 +136,12 @@ def test_reloads_active_task_as_pending(tmp_path):
     task = make_send_task("t1")
     task.status = "active"
     graph = make_graph("g1", [task])
-    
+
     # 2. Manually create a WorkQueue and save it
     # We bypass the constructor to set the internal state directly for the test
     queue = WorkQueue()
     queue._task_graphs = [graph]
-    
+
     file_path = tmp_path / "queue_with_active.md"
     queue.save(str(file_path))
 

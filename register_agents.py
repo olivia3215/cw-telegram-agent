@@ -14,11 +14,12 @@ EXPECTED_FIELDS = [
     "Agent Phone",
     "Agent Sticker Set",
     "Agent Instructions",
-    "Role Prompt"
+    "Role Prompt",
 ]
 
+
 def extract_fields_from_markdown(md_text):
-    markdown = mistune.create_markdown(renderer='ast')
+    markdown = mistune.create_markdown(renderer="ast")
     ast = markdown(md_text)
 
     logger.debug("Markdown AST:")
@@ -32,16 +33,16 @@ def extract_fields_from_markdown(md_text):
     for node in ast:
         if node["type"] == "heading" and node.get("attrs", {}).get("level") == 1:
             if current_header:
-                fields[current_header] = '\n\n'.join(paragraph_blocks).strip()
+                fields[current_header] = "\n\n".join(paragraph_blocks).strip()
             current_header = node["children"][0].get("raw", "")
             paragraph_blocks = []
         elif current_header and node["type"] == "paragraph":
             text_lines = flatten_node_text(node)
-            paragraph_blocks.append('\n'.join(text_lines))
+            paragraph_blocks.append("\n".join(text_lines))
             logger.debug(f"Extracted paragraph (raw): {repr(text_lines)}")
 
     if current_header:
-        fields[current_header] = '\n\n'.join(paragraph_blocks).strip()
+        fields[current_header] = "\n\n".join(paragraph_blocks).strip()
 
     logger.debug(f"Extracted fields: {fields}")
     return fields
@@ -55,7 +56,9 @@ def parse_agent_markdown(path):
 
         missing = [f for f in EXPECTED_FIELDS if f not in fields]
         if missing:
-            logger.error(f"Agent config '{path.name}' is missing fields: {', '.join(missing)}")
+            logger.error(
+                f"Agent config '{path.name}' is missing fields: {', '.join(missing)}"
+            )
             logger.debug(f"Parsed agent from {path.name}: {fields}")
             return None
 
@@ -68,7 +71,7 @@ def parse_agent_markdown(path):
             "phone": fields["Agent Phone"],
             "sticker_set_name": fields["Agent Sticker Set"],
             "instructions": instructions,
-            "role_prompt_name": fields["Role Prompt"]
+            "role_prompt_name": fields["Role Prompt"],
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -82,7 +85,9 @@ def register_all_agents():
 
     path = Path(agent_dir)
     if not path.exists() or not path.is_dir():
-        raise RuntimeError(f"AGENT_DIR does not exist or is not a directory: {agent_dir}")
+        raise RuntimeError(
+            f"AGENT_DIR does not exist or is not a directory: {agent_dir}"
+        )
 
     for file in path.glob("*.md"):
         parsed = parse_agent_markdown(file)
@@ -92,5 +97,5 @@ def register_all_agents():
                 phone=parsed["phone"],
                 sticker_set_name=parsed["sticker_set_name"],
                 instructions=parsed["instructions"],
-                role_prompt_name=parsed["role_prompt_name"]
+                role_prompt_name=parsed["role_prompt_name"],
             )

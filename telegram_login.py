@@ -1,7 +1,6 @@
 # telegram_login.py
 
 import getpass
-import os
 import logging
 from register_agents import register_all_agents
 from telegram_util import get_telegram_client
@@ -12,6 +11,7 @@ from agent import all_agents
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 async def login_agent(agent):
     client = get_telegram_client(agent.name, agent.phone)
@@ -28,7 +28,7 @@ async def login_agent(agent):
     try:
         await client.sign_in(agent.phone, code)
     except SessionPasswordNeededError:
-        password = getpass.getpass('Enter your 2FA password: ')
+        password = getpass.getpass("Enter your 2FA password: ")
         await client.sign_in(password=password)
     except Exception as e:
         logger.error(f"[{agent.name}] Login failed: {e}")
@@ -36,7 +36,9 @@ async def login_agent(agent):
 
     me = await client.get_me()
     if me:
-        logger.info(f"[{agent.name}] Logged in as: {me.username or me.first_name} ({me.id})")
+        logger.info(
+            f"[{agent.name}] Logged in as: {me.username or me.first_name} ({me.id})"
+        )
 
     await client.disconnect()
 

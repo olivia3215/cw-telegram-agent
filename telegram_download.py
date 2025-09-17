@@ -5,6 +5,7 @@ import asyncio
 import io
 import os
 
+
 async def download_media_bytes(client: Any, file_ref: Any) -> bytes:
     """
     Download media bytes from Telegram in a duck-typed way.

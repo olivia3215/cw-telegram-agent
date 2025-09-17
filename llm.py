@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Optional, Protocol
+from typing import Optional
 from openai import AsyncOpenAI
 import httpx
 import google.generativeai as genai
@@ -26,10 +26,17 @@ class LLM(ABC):
 class ChatGPT(LLM):
     prompt_name = "ChatGPT"
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4.1-nano", temperature: float = 0.7):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4.1-nano",
+        temperature: float = 0.7,
+    ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("Missing ChatGPT API key. Set OPENAI_API_KEY or pass it explicitly.")
+            raise ValueError(
+                "Missing ChatGPT API key. Set OPENAI_API_KEY or pass it explicitly."
+            )
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
@@ -49,7 +56,7 @@ class ChatGPT(LLM):
 
         if not response.choices:
             raise RuntimeError("LLM returned no choices.")
-        
+
         return response.choices[0].message.content.strip()
 
 
@@ -66,16 +73,13 @@ class OllamaLLM(LLM):
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": user}
+                {"role": "user", "content": user},
             ],
-            "stream": False
+            "stream": False,
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                json=payload,
-                timeout=60)
+            response = await client.post(url, json=payload, timeout=60)
             response.raise_for_status()
             data = response.json()
         return data.get("message", {}).get("content", "")
@@ -88,7 +92,9 @@ class GeminiLLM(LLM):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError("Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly.")
+            raise ValueError(
+                "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
+            )
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(model)
         self.history_size = 500
@@ -127,7 +133,10 @@ class GeminiLLM(LLM):
 
         # Prefer a vision-capable model; fall back to this instance's model if already 1.5.
         model = "gemini-1.5-pro"
-        if isinstance(getattr(self, "model_name", None), str) and "1.5" in self.model_name:
+        if (
+            isinstance(getattr(self, "model_name", None), str)
+            and "1.5" in self.model_name
+        ):
             model = self.model_name
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
@@ -150,13 +159,17 @@ class GeminiLLM(LLM):
         }
 
         data = json.dumps(payload).encode("utf-8")
-        req = request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        req = request.Request(
+            url, data=data, headers={"Content-Type": "application/json"}
+        )
 
         try:
             with request.urlopen(req, timeout=30) as resp:
                 body = resp.read()
         except error.HTTPError as e:
-            raise RuntimeError(f"Gemini HTTP {e.code}: {e.read().decode('utf-8', 'ignore')}") from e
+            raise RuntimeError(
+                f"Gemini HTTP {e.code}: {e.read().decode('utf-8', 'ignore')}"
+            ) from e
         except Exception as e:
             raise RuntimeError(f"Gemini request failed: {e}") from e
 

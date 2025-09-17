@@ -11,9 +11,15 @@ def monkeypatch_fake_clock(clock, monkeypatch, target_module):
     Replaces asyncio.sleep and datetime.now in the given module using the FakeClock.
     """
     monkeypatch.setattr(asyncio, "sleep", clock.sleep)
-    monkeypatch.setattr(target_module, "datetime", type("FakeDateTime", (datetime,), {
-        "now": classmethod(lambda cls, tz=None: clock.now())
-    }))
+    monkeypatch.setattr(
+        target_module,
+        "datetime",
+        type(
+            "FakeDateTime",
+            (datetime,),
+            {"now": classmethod(lambda cls, tz=None: clock.now())},
+        ),
+    )
 
 
 @pytest.fixture
@@ -28,5 +34,5 @@ def fake_clock(monkeypatch):
     clock = FakeClock()
     monkeypatch_fake_clock(clock, monkeypatch, tick)
     monkeypatch_fake_clock(clock, monkeypatch, task_graph)
-    
+
     return clock

@@ -1,7 +1,7 @@
 # fake_clock.py
 
-import asyncio
 from datetime import datetime, timedelta, timezone
+
 
 class FakeClock:
     def __init__(self, start: datetime = None):

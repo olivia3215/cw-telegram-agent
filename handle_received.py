@@ -7,17 +7,22 @@ import re
 from task_graph import TaskGraph, TaskNode
 from agent import get_agent_for_id
 from prompt_loader import load_system_prompt
-from telegram_util import get_channel_name, get_dialog_name
+from telegram_util import get_dialog_name
 from tick import register_task_handler
 from telethon.tl.functions.messages import SetTypingRequest
-from telethon.tl.types import SendMessageTypingAction, User
-from telethon.errors.rpcerrorlist import UserBannedInChannelError, ChatWriteForbiddenError
+from telethon.tl.types import SendMessageTypingAction
+from telethon.errors.rpcerrorlist import (
+    UserBannedInChannelError,
+    ChatWriteForbiddenError,
+)
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
-def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list[TaskNode]:
+def parse_llm_reply_from_markdown(
+    md_text: str, *, agent_id, channel_id
+) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
     Recognized task types: send, sticker, wait, shutdown.
@@ -53,15 +58,17 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
             match = re.search(r"delay:\s*(\d+)", body)
             if not match:
                 raise ValueError("Wait task must contain 'delay: <seconds>'")
-            
+
             delay_seconds = int(match.group(1))
             params["delay"] = delay_seconds
-            wait_until_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+            wait_until_time = datetime.now(timezone.utc) + timedelta(
+                seconds=delay_seconds
+            )
             params["until"] = wait_until_time.strftime(ISO_FORMAT)
         elif current_type == "block":
-            pass # No parameters needed
+            pass  # No parameters needed
         elif current_type == "unblock":
-            pass # No parameters needed
+            pass  # No parameters needed
         elif current_type == "shutdown":
             if body:
                 params["reason"] = body
@@ -70,12 +77,11 @@ def parse_llm_reply_from_markdown(md_text: str, *, agent_id, channel_id) -> list
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
-        task_nodes.append(TaskNode(
-            identifier=task_id,
-            type=current_type,
-            params=params,
-            depends_on=[]
-        ))
+        task_nodes.append(
+            TaskNode(
+                identifier=task_id, type=current_type, params=params, depends_on=[]
+            )
+        )
 
     for line in md_text.splitlines():
         heading_match = re.match(r"# «([^»]+)»(?:\s+(\d+))?", line)
@@ -98,24 +104,23 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
         text = text.removeprefix("```markdown\n").removesuffix("```")
     if text.startswith("```markdown\n") and text.endswith("```\n"):
         text = text.removeprefix("```markdown\n").removesuffix("```\n")
-    
+
     # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
     if text.startswith("# "):
-        return parse_llm_reply_from_markdown(text, agent_id=agent_id, channel_id=channel_id)
-    
+        return parse_llm_reply_from_markdown(
+            text, agent_id=agent_id, channel_id=channel_id
+        )
+
     # Dumb models might reply with just the reply text and not understand the task machinery.
     if text.startswith("You: "):
         text = text.removeprefix("You: ")
     if text.startswith("«") and text.endswith("»"):
         text = text.removeprefix("«").removesuffix("»")
-    task_id = f"{"send"}-{uuid.uuid4().hex[:8]}"
+    task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
     params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
-    task_nodes = [TaskNode(
-        identifier=task_id,
-        type="send",
-        params=params,
-        depends_on=[]
-    )]
+    task_nodes = [
+        TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
+    ]
     return task_nodes
 
 
@@ -138,7 +143,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     dialog = await agent.get_cached_entity(channel_id)
 
     # A group or channel will have a .title attribute, a user will not.
-    is_group = hasattr(dialog, 'title')
+    is_group = hasattr(dialog, "title")
 
     llm_prompt = load_system_prompt(llm.prompt_name)
     role_prompt = load_system_prompt(agent.role_prompt_name)
@@ -162,9 +167,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         now = datetime.now().astimezone()
         system_prompt += (
             f"\n\n# Available Stickers\n\n"
-            f"\n\nYou may only use the following sticker names in \"sticker\" tasks:\n\n{sticker_list}"
+            f'\n\nYou may only use the following sticker names in "sticker" tasks:\n\n{sticker_list}'
             f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
-            f"\n\n# Chat Type\n\nThis is a {"group" if is_group else "direct (one-on-one)"} chat."
+            f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
             "\n"
         )
 
@@ -173,14 +178,19 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     user_message = task.params.get("message_text", "")
 
     user_prompt = (
-        "Here is the conversation so far:\n\n" +
-        f"{formatted_context}\n\n" +
-        (f"Consider responding to the message: {user_message}" if is_group else
-         f"Consider responding to any messages from {channel_name} that you have not responded to yet.")
+        "Here is the conversation so far:\n\n"
+        + f"{formatted_context}\n\n"
+        + (
+            f"Consider responding to the message: {user_message}"
+            if is_group
+            else f"Consider responding to any messages from {channel_name} that you have not responded to yet."
+        )
     )
 
     # Await LLM response
-    logger.debug(f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}")
+    logger.debug(
+        f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}"
+    )
     reply = await llm.query(system_prompt, user_prompt)
 
     if reply == "":
@@ -209,8 +219,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
             # appear to be typing for four seconds
             try:
-                await client(SetTypingRequest(peer=channel_id, action=SendMessageTypingAction()))
-            except (UserBannedInChannelError, ChatWriteForbiddenError) as e:
+                await client(
+                    SetTypingRequest(peer=channel_id, action=SendMessageTypingAction())
+                )
+            except (UserBannedInChannelError, ChatWriteForbiddenError):
                 # It's okay if we can't show ourselves as typing
                 logger.error(f"[{agent_name}] cannot send in channel [{channel_name}]")
                 task.status = "done"

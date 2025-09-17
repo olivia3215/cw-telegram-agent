@@ -1,6 +1,5 @@
 # task_graph.py
 
-import asyncio
 import json
 import os
 import shutil
@@ -13,6 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
+
 @dataclass
 class TaskNode:
     identifier: str
@@ -23,50 +23,68 @@ class TaskNode:
 
     def is_ready(self, completed_ids: set, now: datetime) -> bool:
         if self.status != "pending":
-            logger.debug(f"Task {self.identifier} is not pending (status: {self.status}).")
+            logger.debug(
+                f"Task {self.identifier} is not pending (status: {self.status})."
+            )
             return False
         if not all(dep in completed_ids for dep in self.depends_on):
-            logger.debug(f"Task {self.identifier} dependencies not met: {self.depends_on} vs {completed_ids}.")
+            logger.debug(
+                f"Task {self.identifier} dependencies not met: {self.depends_on} vs {completed_ids}."
+            )
             return False
         if self.type == "wait":
             until = self.params.get("until")
             if not until:
-                logger.warning(f"Task {self.identifier} of type 'wait' missing 'until' parameter.")
+                logger.warning(
+                    f"Task {self.identifier} of type 'wait' missing 'until' parameter."
+                )
                 return False
             try:
                 wait_time = datetime.strptime(until, ISO_FORMAT)
                 if now < wait_time:
-                    logger.debug(f"Task {self.identifier} wait time not reached: now={now.isoformat()}, until={until}.")
+                    logger.debug(
+                        f"Task {self.identifier} wait time not reached: now={now.isoformat()}, until={until}."
+                    )
                     return False
             except ValueError:
-                logger.warning(f"Task {self.identifier} has invalid 'until' format: {until}.")
+                logger.warning(
+                    f"Task {self.identifier} has invalid 'until' format: {until}."
+                )
                 return False
         return True
 
-    def failed(self, graph: 'TaskGraph', retry_interval_sec: int = 10, max_retries: int = 10, now: Optional[datetime] = None):
+    def failed(
+        self,
+        graph: "TaskGraph",
+        retry_interval_sec: int = 10,
+        max_retries: int = 10,
+        now: Optional[datetime] = None,
+    ):
         now = now or datetime.now(timezone.utc)
         retry_count = self.params.get("previous_retries", 0) + 1
         self.params["previous_retries"] = retry_count
 
         if retry_count >= max_retries:
-            logger.error(f"Task {self.identifier} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}.")
+            logger.error(
+                f"Task {self.identifier} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
+            )
             return False  # signal to delete graph
 
         wait_id = f"wait-retry-{self.identifier}-{retry_count}"
         wait_until = (now + timedelta(seconds=retry_interval_sec)).strftime(ISO_FORMAT)
         wait_task = TaskNode(
-            identifier=wait_id,
-            type="wait",
-            params={"until": wait_until},
-            depends_on=[]
+            identifier=wait_id, type="wait", params={"until": wait_until}, depends_on=[]
         )
 
         graph.add_task(wait_task)
         self.depends_on.append(wait_id)
 
-        logger.warning(f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries}).")
+        logger.warning(
+            f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries})."
+        )
         self.status = "pending"
         return True
+
 
 @dataclass
 class TaskGraph:
@@ -86,9 +104,10 @@ class TaskGraph:
             if task.identifier == node_id:
                 return task
         return None
-    
+
     def add_task(self, task: TaskNode):
         self.tasks.append(task)
+
 
 @dataclass
 class WorkQueue:
@@ -98,8 +117,10 @@ class WorkQueue:
 
     def remove_all(self, predicate):
         with self._lock:
-            self._task_graphs = [g for g in self._task_graphs if not predicate(g.context)]
-    
+            self._task_graphs = [
+                g for g in self._task_graphs if not predicate(g.context)
+            ]
+
     def remove(self, graph: TaskGraph):
         with self._lock:
             self._task_graphs = [g for g in self._task_graphs if not g == graph]
@@ -109,7 +130,7 @@ class WorkQueue:
             now = datetime.now(timezone.utc)
             if not self._task_graphs:
                 return None
-            
+
             start = self._last_index % len(self._task_graphs)
             for i in range(len(self._task_graphs)):
                 index = (start + i) % len(self._task_graphs)
@@ -131,7 +152,7 @@ class WorkQueue:
             }
             md += "```json\n" + json.dumps(block, indent=2) + "\n```\n\n"
         return md
-    
+
     def add_graph(self, graph: TaskGraph):
         with self._lock:
             self._task_graphs.append(graph)
@@ -168,25 +189,34 @@ class WorkQueue:
         for block in blocks[1:]:
             json_part = block.split("```", 1)[0]
             data = json.loads(json_part)
-            
+
             tasks = []
             for t in data.get("nodes", []):
                 # On startup, tasks that were pending become active
                 if t.get("status") == "active":
                     t["status"] = "pending"
-                    logger.info(f"Reverted active task {t['identifier']} to pending on load.")
+                    logger.info(
+                        f"Reverted active task {t['identifier']} to pending on load."
+                    )
                 tasks.append(TaskNode(**t))
 
-            graphs.append(TaskGraph(
-                identifier=data["identifier"],
-                context=data["context"],
-                tasks=tasks,
-            ))
+            graphs.append(
+                TaskGraph(
+                    identifier=data["identifier"],
+                    context=data["context"],
+                    tasks=tasks,
+                )
+            )
         return cls(_task_graphs=graphs)
 
-    def graph_for_conversation(self, agent_id: int, channel_id: int) -> Optional[TaskGraph]:
+    def graph_for_conversation(
+        self, agent_id: int, channel_id: int
+    ) -> Optional[TaskGraph]:
         with self._lock:
             for graph in self._task_graphs:
-                if graph.context.get("agent_id") == agent_id and graph.context.get("channel_id") == channel_id:
+                if (
+                    graph.context.get("agent_id") == agent_id
+                    and graph.context.get("channel_id") == channel_id
+                ):
                     return graph
             return None

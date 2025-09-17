@@ -17,12 +17,15 @@ def test_format_media_description_missing_or_blank(raw):
     assert "‹" not in out and "›" not in out
 
 
-@pytest.mark.parametrize("raw", [
-    "not understood",
-    "Not Understood: format gif",
-    "sticker not understood (format tgs)",
-    "Sticker Not Understood (FORMAT TGS)",
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "not understood",
+        "Not Understood: format gif",
+        "sticker not understood (format tgs)",
+        "Sticker Not Understood (FORMAT TGS)",
+    ],
+)
 def test_format_media_description_not_understood_variants(raw):
     out = format_media_description(raw)
     assert out == "that is not understood"
@@ -36,10 +39,18 @@ def test_format_media_description_trims_whitespace():
 
 def test_format_sticker_sentence_with_desc():
     out = format_sticker_sentence("😊", "HotCherry", "Kermit gives a thumbs up")
-    assert out == "the sticker '😊' from the sticker set 'HotCherry' that appears as ‹Kermit gives a thumbs up›"
+    assert (
+        out
+        == "the sticker '😊' from the sticker set 'HotCherry' that appears as ‹Kermit gives a thumbs up›"
+    )
 
 
-@pytest.mark.parametrize("desc", ["", "   ", "not understood", "sticker not understood (format tgs)"])
+@pytest.mark.parametrize(
+    "desc", ["", "   ", "not understood", "sticker not understood (format tgs)"]
+)
 def test_format_sticker_sentence_without_desc(desc):
     out = format_sticker_sentence("👋", "WendyDancer", desc)
-    assert out == "the sticker '👋' from the sticker set 'WendyDancer' that is not understood"
+    assert (
+        out
+        == "the sticker '👋' from the sticker set 'WendyDancer' that is not understood"
+    )

@@ -3,6 +3,7 @@
 from typing import Any, List, Optional
 from media_types import MediaItem
 
+
 def iter_media_parts(msg: Any) -> List[MediaItem]:
     """
     Return a flat list of MediaItem extracted from a Telegram message.
@@ -14,7 +15,9 @@ def iter_media_parts(msg: Any) -> List[MediaItem]:
     _maybe_add_gif_or_animation(msg, out)
     return out
 
+
 # ---------- helpers ----------
+
 
 def _get_unique_id(obj: Any) -> Optional[str]:
     # Prefer stable string ids when available; fall back to numeric id.
@@ -23,6 +26,7 @@ def _get_unique_id(obj: Any) -> Optional[str]:
         if isinstance(v, (str, int)):
             return str(v)
     return None
+
 
 def _maybe_add_photo(msg: Any, out: List[MediaItem]) -> None:
     photo = getattr(msg, "photo", None)
@@ -41,6 +45,7 @@ def _maybe_add_photo(msg: Any, out: List[MediaItem]) -> None:
         )
     )
 
+
 def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
     """
     Stickers via Telethon: msg.document with a DocumentAttributeSticker in document.attributes.
@@ -57,7 +62,11 @@ def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
                     if not uid:
                         return
                     # sticker name (emoji/alt/file_name)
-                    name = getattr(a, "alt", None) or getattr(doc, "emoji", None) or getattr(doc, "file_name", None)
+                    name = (
+                        getattr(a, "alt", None)
+                        or getattr(doc, "emoji", None)
+                        or getattr(doc, "file_name", None)
+                    )
                     # sticker set short name if present directly on attribute
                     ss = getattr(a, "stickerset", None)
                     set_name = (
@@ -93,7 +102,11 @@ def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
                     or getattr(set_obj, "short_name", None)
                     or getattr(set_obj, "title", None)
                 )
-        name = getattr(st, "emoji", None) or getattr(st, "alt", None) or getattr(st, "file_name", None)
+        name = (
+            getattr(st, "emoji", None)
+            or getattr(st, "alt", None)
+            or getattr(st, "file_name", None)
+        )
         mime = getattr(st, "mime_type", None) or getattr(st, "mime", None)
         out.append(
             MediaItem(
@@ -105,6 +118,7 @@ def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
                 file_ref=st,
             )
         )
+
 
 def _maybe_add_gif_or_animation(msg: Any, out: List[MediaItem]) -> None:
     """
@@ -118,13 +132,19 @@ def _maybe_add_gif_or_animation(msg: Any, out: List[MediaItem]) -> None:
         uid = _get_unique_id(anim)
         if uid:
             mime = getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
-            out.append(MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=anim))
+            out.append(
+                MediaItem(
+                    kind="animation", unique_id=str(uid), mime=mime, file_ref=anim
+                )
+            )
     gif = getattr(msg, "gif", None)
     if gif:
         uid = _get_unique_id(gif)
         if uid:
             mime = getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
-            out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=gif))
+            out.append(
+                MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=gif)
+            )
 
     # Telethon document path
     doc = getattr(msg, "document", None)
@@ -153,5 +173,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: List[MediaItem]) -> None:
         return
 
     if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
-        out.append(MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=doc))
+        out.append(
+            MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=doc)
+        )
         return
