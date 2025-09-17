@@ -228,3 +228,4 @@ This repo supports enriching the LLM prompt with **descriptions of media** from 
 * Flip the flag: set `MEDIA_FEATURE_ENABLED = True` in `media_injector.py` for local runs.
 * Peek artifacts: `state/photos/` for raw bytes, `state/media/` for JSON descriptions.
 * CI: tests do **not** require network/API keys; vision calls are only used at runtime.
+
