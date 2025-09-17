@@ -11,7 +11,7 @@ This README is written for a future developer (and future ChatGPT) to quickly re
 ## Quick start
 
 ### Requirements
-- **Python 3.12+**
+- **Python 3.13+**
 - `pip install -r requirements.txt`
 
 ### Environment
