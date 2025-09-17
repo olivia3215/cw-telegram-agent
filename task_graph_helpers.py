@@ -3,15 +3,18 @@
 from typing import Optional
 import uuid
 import logging
+import re
+import json
+from pathlib import Path
 from telegram_util import get_channel_name
+from telegram_media import iter_media_parts
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from agent import get_agent_for_id
 from media_injector import inject_media_descriptions
 from media_cache import get_media_cache
-from telegram_media import iter_media_parts
 from media_injector import MEDIA_FEATURE_ENABLED
 from media_format import format_media_description, format_sticker_sentence
-from pathlib import Path
+from media_injector import _maybe_get_sticker_set_short_name
 
 logger = logging.getLogger(__name__)
 
@@ -105,60 +108,49 @@ async def insert_received_task_for_conversation(
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
     messages = await inject_media_descriptions(messages, agent=agent)
 
-    # use the shared cache
-    media_cache = get_media_cache()
-
-    thread_context = []
+    cache = get_media_cache()
     message_text = None
+    thread_context = []
 
     for msg in reversed(messages):
         sender_name = await get_channel_name(agent, msg.sender.id)
-        line_prefix = f"[{msg.id}] ({sender_name}): "
 
         parts = []
+        # include text if present
+        if getattr(msg, "text", None):
+            text = msg.text.strip()
+            if text:
+                parts.append(f"«{text}»")
 
-        # 1) user text (quoted)
-        text = (getattr(msg, "text", None) or "").strip()
-        if text:
-            parts.append(f"«{text}»")
-
-        # 2) media (outside quotes), from cache
-        items = []
+        # include media (photos/stickers/gif/animation); use cached descriptions & metadata
         try:
-            items = iter_media_parts(msg)
+            items = iter_media_parts(msg) or []
         except Exception:
             items = []
 
-        if MEDIA_FEATURE_ENABLED and items:
-            for it in items:
-                desc = media_cache.get(it.unique_id)
-                if desc:
-                    if it.kind == "sticker":
-                        sticker_set = it.sticker_set or "(unknown)"
-                        sticker_name = it.sticker_name or "(unnamed)"
-                        parts.append(
-                            format_sticker_sentence(
-                                sticker_name=sticker_name,
-                                sticker_set=sticker_set,
-                                description=desc,
-                            )
-                        )
-                    else:
-                        parts.append(format_media_description(desc))
-                else:
-                    parts.append(f"‹{it.kind} not understood›")
+        for it in items:
+            meta = cache.get(it.unique_id)
+            desc_text = meta.get("description") if isinstance(meta, dict) else meta
 
-        # 3) fallback when neither text nor media
-        if not text and not items:
-            parts.append("not understood")
+            if it.kind == "sticker":
+                sticker_set = ((meta.get("sticker_set") if isinstance(meta, dict) else None)
+                               or getattr(it, "sticker_set", None) or "(unknown)")
+                sticker_name = ((meta.get("sticker_name") if isinstance(meta, dict) else None)
+                                or getattr(it, "sticker_name", None) or "(unnamed)")
+                parts.append(
+                    format_sticker_sentence(
+                        sticker_name=sticker_name,
+                        sticker_set=sticker_set,
+                        description=desc_text or "sticker not understood",
+                    )
+                )
+            else:
+                parts.append(
+                    f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
+                )
 
-        # append to history with prefix
-        for p in parts:
-            thread_context.append(line_prefix + p)
-
-        # capture processed current-message text (without prefix)
-        if message_id is not None and msg.id == message_id:
-            message_text = "\n".join(parts)
+        content = " ".join(parts) if parts else "not understood"
+        thread_context.append(f"[{msg.id}] ({sender_name}): {content}")
 
     # build params (no added French quotes here; they’re already in `parts`)
     task_params = {"thread_context": thread_context}

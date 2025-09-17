@@ -3,81 +3,155 @@
 from typing import Any, List, Optional
 from media_types import MediaItem
 
-# Helper: try several common fields to extract a stable per-file id.
+def iter_media_parts(msg: Any) -> List[MediaItem]:
+    """
+    Return a flat list of MediaItem extracted from a Telegram message.
+    Duck-typed to work with Telethon or Bot API-like objects.
+    """
+    out: List[MediaItem] = []
+    _maybe_add_photo(msg, out)
+    _maybe_add_sticker(msg, out)
+    _maybe_add_gif_or_animation(msg, out)
+    return out
+
+# ---------- helpers ----------
+
 def _get_unique_id(obj: Any) -> Optional[str]:
-    """
-    Return a stable identifier for a Telegram media object if available.
-    Tries Bot API style 'file_unique_id' first, then generic 'unique_id',
-    then Telethon-like 'id'. If none are present, returns None.
-    """
+    # Prefer stable string ids when available; fall back to numeric id.
     for attr in ("file_unique_id", "unique_id", "id"):
-        try:
-            val = getattr(obj, attr)
-        except Exception:
-            val = None
-        if isinstance(val, (str, int)) and val != 0:
-            return str(val)
+        v = getattr(obj, attr, None)
+        if isinstance(v, (str, int)):
+            return str(v)
     return None
 
 def _maybe_add_photo(msg: Any, out: List[MediaItem]) -> None:
-    # Bot API: message.photo (list of sizes) — choose the largest
-    if hasattr(msg, "photo") and msg.photo:
-        photo_obj = msg.photo
-        # If it's a list (Bot API), pick the last/ largest size
-        if isinstance(photo_obj, (list, tuple)) and photo_obj:
-            candidate = photo_obj[-1]
-        else:
-            candidate = photo_obj
-        uid = _get_unique_id(candidate)
-        if uid:
-            out.append(MediaItem(kind="photo", unique_id=uid, file_ref=candidate))
+    photo = getattr(msg, "photo", None)
+    if not photo:
+        return
+    uid = _get_unique_id(photo)
+    if not uid:
+        return
+    mime = getattr(photo, "mime_type", None) or getattr(photo, "mime", None)
+    out.append(
+        MediaItem(
+            kind="photo",
+            unique_id=str(uid),
+            mime=mime,
+            file_ref=photo,
+        )
+    )
 
 def _maybe_add_sticker(msg: Any, out: List[MediaItem]) -> None:
-    # Many client libs expose .sticker directly
-    if hasattr(msg, "sticker") and msg.sticker:
-        st = msg.sticker
+    """
+    Stickers via Telethon: msg.document with a DocumentAttributeSticker in document.attributes.
+    Bot API fallback: msg.sticker object with fields (set_name / set.name / emoji).
+    """
+    # Telethon-style
+    doc = getattr(msg, "document", None)
+    if doc:
+        attrs = getattr(doc, "attributes", None)
+        if isinstance(attrs, (list, tuple)):
+            for a in attrs:
+                if hasattr(a, "stickerset"):  # duck-type DocumentAttributeSticker
+                    uid = _get_unique_id(doc)
+                    if not uid:
+                        return
+                    # sticker name (emoji/alt/file_name)
+                    name = getattr(a, "alt", None) or getattr(doc, "emoji", None) or getattr(doc, "file_name", None)
+                    # sticker set short name if present directly on attribute
+                    ss = getattr(a, "stickerset", None)
+                    set_name = (
+                        getattr(ss, "short_name", None)
+                        or getattr(ss, "name", None)
+                        or getattr(ss, "title", None)
+                    )
+                    mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+                    out.append(
+                        MediaItem(
+                            kind="sticker",
+                            unique_id=str(uid),
+                            mime=mime,
+                            sticker_set=set_name,
+                            sticker_name=name,
+                            file_ref=doc,
+                        )
+                    )
+                    return
+
+    # Bot API-style fallback
+    st = getattr(msg, "sticker", None)
+    if st:
         uid = _get_unique_id(st)
-        if uid:
-            # Try to pick up set/name when available
-            set_name = getattr(getattr(st, "set_name", None), "__str__", lambda: None)()
-            if not set_name and hasattr(st, "set_name"):
-                set_name = st.set_name  # str in some libs
-            name = getattr(st, "emoji", None) or getattr(st, "alt", None) or getattr(st, "file_name", None)
-            out.append(MediaItem(kind="sticker", unique_id=uid, sticker_set=set_name, sticker_name=name, file_ref=st))
+        if not uid:
+            return
+        set_name = getattr(st, "set_name", None)
+        if not set_name:
+            set_obj = getattr(st, "set", None)
+            if set_obj is not None:
+                set_name = (
+                    getattr(set_obj, "name", None)
+                    or getattr(set_obj, "short_name", None)
+                    or getattr(set_obj, "title", None)
+                )
+        name = getattr(st, "emoji", None) or getattr(st, "alt", None) or getattr(st, "file_name", None)
+        mime = getattr(st, "mime_type", None) or getattr(st, "mime", None)
+        out.append(
+            MediaItem(
+                kind="sticker",
+                unique_id=str(uid),
+                mime=mime,
+                sticker_set=set_name,
+                sticker_name=name,
+                file_ref=st,
+            )
+        )
 
 def _maybe_add_gif_or_animation(msg: Any, out: List[MediaItem]) -> None:
-    # Bot API: message.animation, message.document (gif), message.gif, etc.
-    # We prefer a conservative approach: only add if we can extract a unique id.
-    for attr, kind in (("animation", "animation"), ("gif", "gif")):
-        if hasattr(msg, attr) and getattr(msg, attr):
-            obj = getattr(msg, attr)
-            uid = _get_unique_id(obj)
-            if uid:
-                out.append(MediaItem(kind=kind, unique_id=uid, file_ref=obj))
-                return  # one is enough
-
-    # Sometimes GIFs/animations come as a 'document' with a mime-type hint.
-    if hasattr(msg, "document") and msg.document:
-        doc = msg.document
-        mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
-        if isinstance(mime, str) and ("gif" in mime or "animation" in mime):
-            uid = _get_unique_id(doc)
-            if uid:
-                kind = "gif" if "gif" in mime else "animation"
-                out.append(MediaItem(kind=kind, unique_id=uid, file_ref=doc))
-
-def iter_media_parts(telegram_message: Any) -> List[MediaItem]:
     """
-    Telegram-specific media extraction.
-    Returns a list of MediaItem in Telegram-delivery order.
-    If we cannot extract a stable unique id for an item, we skip it.
+    Heuristics:
+      • image/gif OR DocumentAttributeAnimated => kind 'gif'
+      • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'animation'
     """
-    items: List[MediaItem] = []
-    try:
-        _maybe_add_photo(telegram_message, items)
-        _maybe_add_sticker(telegram_message, items)
-        _maybe_add_gif_or_animation(telegram_message, items)
-    except Exception:
-        # Be conservative; media extraction must never break message handling.
-        return []
-    return items
+    # Bot API fallbacks first (simple shapes)
+    anim = getattr(msg, "animation", None)
+    if anim:
+        uid = _get_unique_id(anim)
+        if uid:
+            mime = getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
+            out.append(MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=anim))
+    gif = getattr(msg, "gif", None)
+    if gif:
+        uid = _get_unique_id(gif)
+        if uid:
+            mime = getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
+            out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=gif))
+
+    # Telethon document path
+    doc = getattr(msg, "document", None)
+    if not doc:
+        return
+
+    mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+    attrs = getattr(doc, "attributes", None)
+
+    is_animated = False
+    is_video = False
+    if isinstance(attrs, (list, tuple)):
+        for a in attrs:
+            n = a.__class__.__name__
+            if n == "DocumentAttributeAnimated":
+                is_animated = True
+            elif n == "DocumentAttributeVideo":
+                is_video = True
+
+    uid = _get_unique_id(doc)
+    if not uid:
+        return
+
+    if (mime and "gif" in mime.lower()) or is_animated:
+        out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=doc))
+        return
+
+    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+        out.append(MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=doc))
+        return

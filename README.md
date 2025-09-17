@@ -173,3 +173,58 @@ Keep this prompt fixed for determinism; adjust later if lengths become an issue.
 
 ## License
 Private/experimental; license TBD.
+
+## Media handling (photos, stickers, GIFs)
+
+This repo supports enriching the LLM prompt with **descriptions of media** from Telegram chats. The feature is implemented so it’s robust, shareable across agents, and safe-by-default.
+
+### Overview
+- **Where it runs:** history is fetched in `insert_received_task_for_conversation()` (`task_graph_helpers.py`).
+- **Hook:** the fetched messages pass through `inject_media_descriptions()` (`media_injector.py`).  
+  - By default this is **feature-flagged** via `MEDIA_FEATURE_ENABLED` in `media_injector.py`.
+- **Download:** on cache miss (flag on), media bytes are downloaded once using `telegram_download.download_media_bytes()`.
+- **Describe:** for **raster images** (jpeg/png/webp/gif), we call the agent’s provider: `agent.llm.describe_image(bytes)`.
+  - Implemented for `GeminiLLM`; other providers can add the same method later.
+- **Cache:** descriptions are persisted per-**file_unique_id** in `state/media/<id>.json` via `MediaCache`.  
+  - In-memory TTL avoids disk churn; on-disk cache is shared across agents and survives restarts.
+- **Prompt assembly:** when building history lines & current message:
+  - User text is wrapped in **French quotes** `« … »`.
+  - Media descriptions are wrapped in **single angle quotes** `‹ … ›` (outside the French quotes).
+  - Stickers render as:  
+    `the sticker '<name>' from the sticker set '<set>' that appears as ‹…›`
+
+### Paths & state
+- The **single source of truth** for the state directory is `media_cache.get_state_dir()`.  
+  - Respects `$CINDY_AGENT_STATE_DIR`, falling back to `state/`.
+- Debug copies of downloaded media go to `state/photos/` with byte-sniffed extensions:
+  - PNG/JPEG/GIF/WEBP/MP4/WEBM/TGS recognized; unknown falls back to `.bin`.
+  - Toggle with `MEDIA_DEBUG_SAVE` in `media_injector.py`.
+
+### What’s cached
+- **Hit:** If a description exists, we never re-download; we inject the cached text.
+- **Miss (raster image):** Download → describe via `agent.llm.describe_image()` → write JSON:
+
+```json
+  { "description": "...", "kind": "photo|sticker|gif|png|animation", "sticker_set": "...?", "sticker_name": "...?" }
+```
+
+* **Unsupported formats (e.g., `.tgs`, `.webm`, `.mp4`):**
+  We cache a synthetic text like: `"<kind> not understood (format <ext>)"` so we **don’t re-download** next time.
+
+### Provider ownership
+
+* Vision is **provider-owned**: the injector calls `agent.llm.describe_image(bytes)`.
+
+  * `GeminiLLM.describe_image()` uses Gemini’s REST API; other LLM classes can add API-specific implementations later without changing call sites.
+
+### Design notes / constraints
+
+* **No re-ordering:** Media is injected in Telegram delivery order.
+* **No blocking:** Injector logs on failures and returns the input messages unchanged.
+* **Resilience:** If the on-disk cache is deleted, descriptions are regenerated on demand.
+
+### Quick dev tips
+
+* Flip the flag: set `MEDIA_FEATURE_ENABLED = True` in `media_injector.py` for local runs.
+* Peek artifacts: `state/photos/` for raw bytes, `state/media/` for JSON descriptions.
+* CI: tests do **not** require network/API keys; vision calls are only used at runtime.
