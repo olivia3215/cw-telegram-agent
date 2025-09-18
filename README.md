@@ -230,3 +230,124 @@ This repo supports enriching the LLM prompt with **descriptions of media** from 
 * Flip the flag: set `MEDIA_FEATURE_ENABLED = True` in `media_injector.py` for local runs.
 * Peek artifacts: `state/photos/` for raw bytes, `state/media/` for JSON descriptions.
 * CI: tests do **not** require network/API keys; vision calls are only used at runtime.
+
+# Developer guide (for future us)
+
+## Local dev checklist
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# pre-commit (format/lint on commit)
+pre-commit install
+pre-commit run --all-files   # run hooks manually
+
+# run tests
+PYTHONPATH=. pytest -vv
+
+# run the bot
+export CINDY_AGENT_STATE_DIR="./state"
+export AGENT_DIR="./agents"
+export TELEGRAM_API_ID=...
+export TELEGRAM_API_HASH=...
+python telegram_login.py
+python run.py
+```
+
+### Media feature flags
+
+* `media_injector.py`: `MEDIA_FEATURE_ENABLED = True` to enable media description injection locally.
+* Optional debug: `MEDIA_DEBUG_SAVE = True` to dump downloaded bytes to `state/photos/`.
+
+### Media cache behavior (what we fixed)
+
+* **On-disk cache**: `state/media/<file_unique_id>.json` stores the *whole JSON record* (not just description).
+* **In-memory cache**: sliding TTL; any `get()` both **returns and refreshes** the entry.
+* **Sweep**: evicts only entries that weren’t touched since their last `expires_at`.
+* Unsupported media caches a synthetic `"not understood"` string so we **don’t re-download** repeatedly.
+
+### Description formatting
+
+* User text is wrapped with French quotes: `« … »`.
+* Media descriptions use single angle quotes: `‹ … ›`.
+* If a media item isn’t understood, we say **“that is not understood”** (no angle quotes).
+* Sticker sentence shape:
+
+  ```
+  the sticker '<name>' from the sticker set '<set>' that appears as ‹…›
+  ```
+
+## CI & PRs
+
+* **Workflow**: `.github/workflows/ci.yml`
+
+  * Matrix uses **Python 3.13**.
+  * Runs `pre-commit`, `pytest`, and emits a **coverage summary comment** on PRs (skips for forks without permissions).
+* **Required checks** (in repo rules): `CI / tests (3.13) (pull_request)` must pass before merging.
+* If you see **“Resource not accessible by integration”** on comment steps:
+
+  * It’s usually a fork PR permissions limitation; coverage comment will be skipped, but tests still run.
+* Re-running CI: in the PR “Checks” tab → “Re-run jobs”. If GitHub UI looks stale, close/reopen the PR to refresh.
+
+## Lint & format
+
+We use **Black** and **Ruff** via pre-commit.
+
+* **Ruff config** (`ruff.toml`) uses the new schema:
+
+  ```toml
+  target-version = "py313"
+  line-length = 100
+
+  [lint]
+  select = ["E", "F", "UP", "I"]
+  ignore = []
+
+  [lint.per-file-ignores]
+  "tick.py" = ["E402", "F401"]   # side-effect imports allowed
+  "handle_received.py" = ["F401"] # telemetry imports sometimes side-effecty
+  ```
+* Common fixes:
+
+  * E402 “import not at top” is allowed where we intentionally import for **side effects** (handler registration).
+  * Long log lines: split f-strings across lines; keep log message format readable.
+
+## Tests that matter
+
+* `tests/test_media_cache.py`: validates **sliding TTL** and sweep semantics.
+* `tests/test_media_format.py`: ensures **quote rules** and **“not understood”** wording.
+* `tests/test_tick.py`:
+
+  * Uses a `fake_clock` fixture (see `tests/test_utils.py`) to avoid real sleeping.
+  * If you touch time/sleep behavior, make sure any helper that “advances time” either:
+
+    * awaits the fixture’s async `advance()`; or
+    * injects the clock into the code under test so the test controls time.
+* Don’t remove the **handler registration** import. If you relocate it, keep a small, explicit “ensure registered” call in module import path or guard it with `# noqa: E402,F401` so linters don’t “auto-clean” it away.
+
+## Repository layout recap
+
+* **Media pathing**
+
+  * On-disk cache: `state/media/<id>.json`
+  * Debug media bytes: `state/photos/…`
+* **Where media gets injected**
+
+  * We detect & format media while building history for the LLM, not on receipt.
+  * Stickers carry `sticker_set` and `sticker_name` in the cached JSON.
+
+## Troubleshooting
+
+* **Push rejected: required check missing**
+  You might be pushing directly to `main` while rules require the PR check. Open a PR from a branch; CI will create the **`CI / tests (3.13) (pull_request)`** check automatically.
+* **PR checks look “stuck”**
+  Usually a UI refresh issue; re-run jobs from the Checks tab, or close/reopen the PR.
+* **Pre-commit loops**
+  If Black reformats files, `git add -A` and run `pre-commit` again until hooks are clean.
+
+## Roadmap (near-term)
+
+* Media: finalize provider-specific `describe_image()` for all LLMs in `llm.py`.
+* Expand tests for GIF/animation vs. sticker edge cases.
+* Add an opt-in prompt constraint to cap description lengths for long chat histories.
