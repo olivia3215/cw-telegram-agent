@@ -160,9 +160,20 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
     sticker_name = task.params.get("name")
     in_reply_to = task.params.get("in_reply_to")
 
+    # NEW: prefer a set specified by the task (two-line spec), else fall back
+    set_short = task.params.get("sticker_set") or agent.sticker_set_name
+    if set_short != agent.sticker_set_name:
+        # For now we only have a cache for the agent's canonical set.
+        # Multi-set support (fetching other sets on-demand) will come in a later change.
+        logger.debug(
+            f"[{agent_name}] sticker_set override requested: {set_short!r} "
+            f"(canonical is {agent.sticker_set_name!r}); using canonical cache for now"
+        )
+
     if not sticker_name:
         raise ValueError(f"[{agent_name}] Sticker task missing 'name' parameter.")
 
+    # Current behavior: only the canonical set is cached here.
     file = agent.sticker_cache.get(sticker_name)
     try:
         if file:
@@ -170,7 +181,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
                 channel_id, file=file, file_type="sticker", reply_to=in_reply_to
             )
         else:
-            # Send unknown stickers as a plain message.
+            # Send unknown stickers as a plain message (unchanged behavior).
             await client.send_message(channel_id, sticker_name)
     except Exception as e:
         logger.exception(f"[{agent_name}] Failed to send sticker: {e}")
