@@ -14,6 +14,7 @@ from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from prompt_loader import load_system_prompt
+from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from telegram_util import get_dialog_name
 from tick import register_task_handler
@@ -54,8 +55,19 @@ def parse_llm_reply_from_markdown(
 
         if current_type == "send":
             params["message"] = body
+
         elif current_type == "sticker":
-            params["name"] = body
+            parsed = parse_sticker_body(body, allow_missing_set_during_transition=True)
+            if not parsed:
+                # Silent on Telegram; note in logs only
+                print("[sticker] malformed or empty sticker body; dropping")
+                return
+
+            set_short, sticker_name = parsed
+            params["name"] = sticker_name
+            # During transition we explicitly carry None; tick.py will fall back to agent’s canonical set
+            params["sticker_set"] = set_short
+
         elif current_type == "wait":
             match = re.search(r"delay:\s*(\d+)", body)
             if not match:
@@ -65,15 +77,20 @@ def parse_llm_reply_from_markdown(
             params["delay"] = delay_seconds
             wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
             params["until"] = wait_until_time.strftime(ISO_FORMAT)
+
         elif current_type == "block":
             pass  # No parameters needed
+
         elif current_type == "unblock":
             pass  # No parameters needed
+
         elif current_type == "shutdown":
             if body:
                 params["reason"] = body
+
         elif current_type == "clear-conversation":
             pass  # No parameters needed
+
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
