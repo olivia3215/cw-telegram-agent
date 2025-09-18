@@ -22,7 +22,10 @@ class Agent:
         self.sticker_set_name = sticker_set_name
         self.instructions = instructions
         self.role_prompt_name = role_prompt_name
-        self.sticker_cache = {}  # name -> InputDocument
+        self.sticker_cache = (
+            {}
+        )  # Legacy cache: name -> InputDocument (canonical set only)
+        self.sticker_cache_by_set = {}
         self.client = None
         self.agent_id = None
         self._blocklist_cache = None
