@@ -106,3 +106,42 @@ def parse_first_sticker_trigger(
     return StickerTrigger(
         set_short_name=set_line, sticker_name=name_line, reply_to_message_id=reply_to
     )
+
+
+def parse_sticker_body(
+    body: str,
+    *,
+    allow_missing_set_during_transition: bool = True,
+) -> tuple[str | None, str] | None:
+    """
+    Parse the body of a «sticker» block (header already handled elsewhere).
+
+    Input examples (whitespace/blank lines are allowed and ignored):
+        WendyAI
+        😀
+
+        # During transition, the set line may be omitted:
+        😀
+    Returns:
+        (set_short_name, sticker_name)
+        - set_short_name is None only during the transition window when the set
+          line is omitted.
+        - Returns None if no valid name line is found.
+    """
+    # Normalize to first two non-empty lines
+    lines = [ln.strip() for ln in body.splitlines()]
+    lines = [ln for ln in lines if ln]  # drop empty lines
+
+    if not lines:
+        return None
+
+    if len(lines) == 1:
+        # Old behavior: only the name line present
+        if allow_missing_set_during_transition:
+            return (None, lines[0])
+        return None
+
+    # Two or more lines: take the first as set, second as name
+    set_line = lines[0]
+    name_line = lines[1]
+    return (set_line, name_line)
