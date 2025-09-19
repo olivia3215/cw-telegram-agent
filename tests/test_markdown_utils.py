@@ -40,6 +40,7 @@ delay: 10
 
 # «sticker»
 
+WENDYAI
 👍
 
 # «shutdown»
@@ -86,6 +87,7 @@ This is a reply.
 
 # «sticker» 54321
 
+WENDYAI
 👍
 """
     tasks = parse_llm_reply(md, agent_id="agent1", channel_id="channel1")

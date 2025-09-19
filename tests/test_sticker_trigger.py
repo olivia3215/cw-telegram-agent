@@ -30,26 +30,6 @@ def test_extra_blank_lines_and_whitespace():
     assert trig.reply_to_message_id == 7
 
 
-def test_transition_missing_set_line_enabled():
-    # During development we support the old single-line form after the header
-    text = "# «sticker»\n\n😀\n"
-    trig = st.parse_first_sticker_trigger(
-        text, allow_missing_set_during_transition=True
-    )
-    assert trig is not None
-    assert trig.set_short_name is None
-    assert trig.sticker_name == "😀"
-    assert trig.reply_to_message_id is None
-
-
-def test_transition_missing_set_line_disabled():
-    text = "# «sticker»\n\n😀\n"
-    trig = st.parse_first_sticker_trigger(
-        text, allow_missing_set_during_transition=False
-    )
-    assert trig is None
-
-
 def test_multiple_blocks_first_wins():
     text = (
         "# «sticker»\n\nWendyAI\n😀\n"

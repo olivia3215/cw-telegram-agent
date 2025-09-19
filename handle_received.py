@@ -59,7 +59,7 @@ def parse_llm_reply_from_markdown(
             params["message"] = body
 
         elif current_type == "sticker":
-            parsed = parse_sticker_body(body, allow_missing_set_during_transition=True)
+            parsed = parse_sticker_body(body)
             if not parsed:
                 # Silent on Telegram; note in logs only
                 print("[sticker] malformed or empty sticker body; dropping")

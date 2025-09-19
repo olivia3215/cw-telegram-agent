@@ -111,7 +111,7 @@ def parse_first_sticker_trigger(
 def parse_sticker_body(
     body: str,
     *,
-    allow_missing_set_during_transition: bool = True,
+    allow_missing_set_during_transition: bool = False,
 ) -> tuple[str | None, str] | None:
     """
     Parse the body of a «sticker» block (header already handled elsewhere).

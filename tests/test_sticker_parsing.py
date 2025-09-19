@@ -27,18 +27,6 @@ def test_sticker_two_line_with_reply():
     assert t.params["in_reply_to"] == 1234  # header-provided reply id
 
 
-def test_sticker_transition_name_only():
-    # During development the set line may be omitted; parser should set sticker_set=None
-    md = "# «sticker»\n\n😀\n"
-    tasks = parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
-
-    assert len(tasks) == 1
-    t = tasks[0]
-    assert t.type == "sticker"
-    assert t.params["name"] == "😀"
-    assert t.params.get("sticker_set") is None
-
-
 def test_multiple_sticker_blocks_produce_multiple_tasks_and_sequence():
     md = (
         "# «sticker»\n\nWendyAI\n😀\n\n"
