@@ -114,28 +114,70 @@ async def scan_unread_messages(agent: Agent, work_queue):
 
 
 async def ensure_sticker_cache(agent, client):
-    if agent.sticker_cache:
-        return  # already populated
+    # Build the set of sticker sets we want loaded
+    canonical = getattr(agent, "sticker_set_name", None)
+    extra_sets = getattr(agent, "sticker_set_names", []) or []
+    explicit = getattr(agent, "explicit_stickers", []) or []
+
+    required_sets = set()
+    if canonical:
+        required_sets.add(canonical)
+    required_sets.update(extra_sets)
+    required_sets.update(set_name for (set_name, _name) in explicit if set_name)
+
+    # Ensure the tracking set exists
+    loaded = getattr(agent, "loaded_sticker_sets", None)
+    if loaded is None:
+        agent.loaded_sticker_sets = set()
+    loaded = agent.loaded_sticker_sets
+
+    # If we've already loaded all of them and legacy cache exists, nothing to do
+    if (
+        required_sets
+        and required_sets.issubset(loaded)
+        and getattr(agent, "sticker_cache", {})
+    ):
+        return
 
     try:
-        result = await client(
-            GetStickerSetRequest(
-                stickerset=InputStickerSetShortName(short_name=agent.sticker_set_name),
-                hash=0,
+        for set_short in sorted(required_sets):
+            if set_short in loaded:
+                continue  # already fetched
+
+            result = await client(
+                GetStickerSetRequest(
+                    stickerset=InputStickerSetShortName(short_name=set_short),
+                    hash=0,
+                )
             )
-        )
-        for doc in result.documents:
-            # Use either a stable alt name or index as fallback
-            name = next(
-                (a.alt for a in doc.attributes if hasattr(a, "alt")),
-                f"sticker_{len(agent.sticker_cache) + 1}",
-            )
-            agent.sticker_cache[name] = doc
-            agent.sticker_cache_by_set[(agent.sticker_set_name, name)] = doc
-            logger.debug(f"[{agent.name}] Registered sticker: {repr(name)}")
+
+            for doc in result.documents:
+                name = next(
+                    (a.alt for a in doc.attributes if hasattr(a, "alt")),
+                    f"sticker_{len(getattr(agent, 'sticker_cache_by_set', {})) + 1}",
+                )
+
+                # by-set cache (create if absent)
+                if not hasattr(agent, "sticker_cache_by_set"):
+                    agent.sticker_cache_by_set = {}
+                agent.sticker_cache_by_set[(set_short, name)] = doc
+
+                # legacy cache only for canonical
+                if set_short == canonical:
+                    if not hasattr(agent, "sticker_cache"):
+                        agent.sticker_cache = {}
+                    agent.sticker_cache[name] = doc
+
+                logger.debug(
+                    f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                )
+
+            loaded.add(set_short)
 
     except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to load sticker set for agent: {e}")
+        logger.exception(
+            f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+        )
 
 
 async def run_telegram_loop(agent: Agent, work_queue):
