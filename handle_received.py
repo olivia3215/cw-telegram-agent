@@ -13,6 +13,8 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
+from media_cache import get_media_cache
+from media_injector import get_or_compute_description_for_doc
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
@@ -179,6 +181,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{{user}}", channel_name)
     system_prompt = system_prompt.replace("{user}", channel_name)
 
+    now = datetime.now().astimezone()
+
     if agent.sticker_cache:
         # Build a list of "<SET> :: <NAME>" for the agent's canonical set.
         canonical = agent.sticker_set_name
@@ -191,14 +195,38 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             f"- {canonical} :: {name}" for name in names_in_canonical
         )
 
-        now = datetime.now().astimezone()
-        system_prompt += (
-            f"\n\n# Stickers you may send\n\n"
-            f"{sticker_list}"
-            f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
-            f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
-            "\n"
-        )
+    if agent.sticker_cache_by_set:
+        lines = []
+
+        # Iterate whatever order the cache yields (per your instruction).
+        for (set_short, name), doc in agent.sticker_cache_by_set.items():
+            # Best-effort: fetch/compute description, blocking, then format
+            try:
+                _uid, desc = await get_or_compute_description_for_doc(
+                    client=agent.client,
+                    doc=doc,
+                    llm=agent.llm,
+                    cache=get_media_cache(),
+                    kind="sticker",
+                    set_name=set_short,
+                    sticker_name=name,
+                )
+            except Exception:
+                desc = None
+
+            if desc:
+                lines.append(f"- {set_short} :: {name} - ‹{desc}›")
+            else:
+                lines.append(f"- {set_short} :: {name}")
+
+        sticker_list = "\n".join(lines)
+        system_prompt += f"\n\n# Stickers you may send\n\n" f"{sticker_list}" "\n"
+
+    system_prompt += (
+        f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
+        f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
+        "\n"
+    )
 
     context_lines = task.params.get("thread_context", [])
     formatted_context = "\n".join(context_lines)

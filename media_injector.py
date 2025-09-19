@@ -8,7 +8,7 @@ from typing import Any
 
 from media_cache import get_media_cache
 from telegram_download import download_media_bytes
-from telegram_media import iter_media_parts
+from telegram_media import _get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
 
 logger = logging.getLogger(__name__)
@@ -199,6 +199,71 @@ async def _resolve_sender_and_channel(
 
 
 # ---------- main ----------
+async def get_or_compute_description_for_doc(
+    *,
+    client,
+    doc,
+    llm,
+    cache,  # same cache object you use in this module today
+    kind: str,  # "sticker" | "photo" | "animation" | ...
+    set_name: str | None = None,
+    sticker_name: str | None = None,
+) -> tuple[str, str | None]:
+    """
+    Shared helper extracted from inject_media_descriptions():
+      1) derive unique_id from doc
+      2) try state cache → return if present
+      3) else download bytes, call llm.describe_image(image_bytes), then cache and return
+      4) on failure, return (unique_id, None)
+
+    Returns: (unique_id, description or None)
+    """
+    uid = _get_unique_id(doc)
+
+    # 1) cache hit?
+    try:
+        cached = cache.get(uid)
+        if cached:
+            desc = (cached.get("description") or "").strip()
+            if desc:
+                return uid, desc
+    except Exception:
+        # treat any cache exception as a miss; keep going
+        cached = None
+
+    # 2) download bytes
+    try:
+        data: bytes = await download_media_bytes(client, doc)
+    except Exception as e:
+        logger.debug(f"[media] download failed for {uid}: {e}")
+        return uid, None
+
+    # 3) describe (blocking call to your sync llm entrypoint)
+    try:
+        desc = (llm.describe_image(data) or "").strip()
+    except Exception as e:
+        logger.debug(f"[media] LLM describe failed for {uid}: {e}")
+        return uid, None
+
+    # 4) cache best-effort
+    try:
+        cache.put(
+            uid,
+            {
+                "unique_id": uid,
+                "kind": kind,
+                "set_name": set_name,
+                "sticker_name": sticker_name,
+                "description": desc,
+                "source": "vision" if kind != "sticker" else "sticker",
+            },
+        )
+    except Exception:
+        pass
+
+    return uid, (desc or None)
+
+
 async def inject_media_descriptions(
     messages: Sequence[Any], agent: Any | None = None
 ) -> Sequence[Any]:
