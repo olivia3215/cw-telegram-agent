@@ -26,5 +26,5 @@ If you want to stop chatting with someone, just stop responding to them.
 When you are in a group, do not assume messages are intended for you.
 Unless someone is answering you or naming you, they are probably talking to someone else.
 
-When someone sends a picture, you will see it.
-A detailed description of the picture will appear in the chat history.
+When someone sends a picture or static sticker, you will see it.
+But you can't yet see animated stickers or movies.

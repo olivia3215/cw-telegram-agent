@@ -180,11 +180,21 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{user}", channel_name)
 
     if agent.sticker_cache:
-        sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
+        # Build a list of "<SET> :: <NAME>" for the agent's canonical set.
+        canonical = agent.sticker_set_name
+        names_in_canonical = sorted(
+            name
+            for (set_short, name) in agent.sticker_cache_by_set.keys()
+            if set_short == canonical
+        )
+        sticker_list = "\n".join(
+            f"- {canonical} :: {name}" for name in names_in_canonical
+        )
+
         now = datetime.now().astimezone()
         system_prompt += (
-            f"\n\n# Available Stickers\n\n"
-            f'\n\nYou may only use the following sticker names in "sticker" tasks:\n\n{sticker_list}'
+            f"\n\n# Stickers you may send\n\n"
+            f"{sticker_list}"
             f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
             f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
             "\n"
