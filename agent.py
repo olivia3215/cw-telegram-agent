@@ -195,6 +195,9 @@ class AgentRegistry:
         sticker_set_name: str,
         instructions: str,
         role_prompt_name: str,
+        llm=None,
+        sticker_set_names=None,
+        explicit_stickers=None,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -207,6 +210,9 @@ class AgentRegistry:
             sticker_set_name=sticker_set_name,
             instructions=instructions,
             role_prompt_name=role_prompt_name,
+            llm=llm,
+            sticker_set_names=sticker_set_names,
+            explicit_stickers=explicit_stickers,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
 

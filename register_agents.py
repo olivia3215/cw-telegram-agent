@@ -142,4 +142,6 @@ def register_all_agents():
                 sticker_set_name=parsed["sticker_set_name"],
                 instructions=parsed["instructions"],
                 role_prompt_name=parsed["role_prompt_name"],
+                sticker_set_names=parsed.get("sticker_set_names") or [],
+                explicit_stickers=parsed.get("explicit_stickers") or [],
             )
