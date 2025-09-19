@@ -47,7 +47,7 @@ class Agent:
         # Legacy cache: name -> InputDocument (canonical set only)
         self.sticker_cache = {}
 
-        # New: (set_short_name, sticker_name) -> InputDocument
+        # (set_short_name, sticker_name) -> InputDocument
         self.sticker_cache_by_set = {}
 
         self.client = None
@@ -60,6 +60,9 @@ class Agent:
 
         # Cache for entities: {entity_id: (entity, expiration_time)}
         self._entity_cache = {}
+
+        # Tracks which sticker set short names have been loaded into caches
+        self.loaded_sticker_sets = set()  # e.g., {"WENDYAI", "CINDYAI"}
 
         self._llm = llm
 
