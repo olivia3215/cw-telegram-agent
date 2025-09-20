@@ -177,8 +177,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
 
     # 2) Fetch recent messages
-    history_limit = getattr(agent._llm, "history_size", 50)
-    messages = await client.get_messages(channel_id, limit=history_limit)
+    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
     # 3) One pass, newest → oldest (stickers & photos together)
     try:
@@ -263,8 +262,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         "\n"
     )
 
-    context_lines = task.params.get("thread_context", [])
-    formatted_context = "\n".join(context_lines)
+    # build prompt context directly from processed history
+    # inject_media_descriptions returns the history with media replaced by text lines;
+    # after our recent change it preserves chronological order (oldest → newest).
+    formatted_context = "\n".join(messages)
+
+    # Keep using the message text captured when we enqueued the task
+    # TODO: this parameter is currently never set
     user_message = task.params.get("message_text", "")
 
     user_prompt = (

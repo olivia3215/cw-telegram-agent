@@ -59,55 +59,6 @@ _HEADER_RE = re.compile(
 )
 
 
-def parse_first_sticker_trigger(
-    text: str,
-    *,
-    allow_missing_set_during_transition: bool = True,
-) -> StickerTrigger | None:
-    """
-    Find and parse the FIRST sticker trigger block in `text`.
-
-    Returns:
-        StickerTrigger if a well-formed block is found, else None.
-    """
-    m = _HEADER_RE.search(text)
-    if not m:
-        return None
-
-    reply_to: int | None
-    reply_str = m.group(1)
-    reply_to = int(reply_str) if reply_str is not None else None
-
-    # Slice the text starting just after the matched header line
-    tail = text[m.end() :]
-
-    set_line: str | None = None
-    name_line: str | None = None
-
-    for raw in tail.splitlines():
-        line = raw.strip()
-        if not line:
-            continue  # Skip empty/whitespace-only lines
-        if set_line is None:
-            set_line = line
-            continue
-        if name_line is None:
-            name_line = line
-            break  # We have both lines; stop scanning
-
-    # Transitional old form (single line after header)
-    if name_line is None:
-        if allow_missing_set_during_transition and set_line:
-            return StickerTrigger(
-                set_short_name=None, sticker_name=set_line, reply_to_message_id=reply_to
-            )
-        return None
-
-    return StickerTrigger(
-        set_short_name=set_line, sticker_name=name_line, reply_to_message_id=reply_to
-    )
-
-
 def parse_sticker_body(
     body: str,
     *,

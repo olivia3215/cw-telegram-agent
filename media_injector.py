@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from media_cache import get_media_cache
+from media_format import format_media_description, format_sticker_sentence
 from telegram_download import download_media_bytes
 from telegram_media import _get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
@@ -516,3 +517,70 @@ async def inject_media_descriptions(
         logger.debug("media: injector got non-iterable history chunk; passing through")
 
     return messages
+
+
+async def format_message_for_prompt(msg: Any, *, agent) -> str:
+    """
+    Format a single Telethon message into the exact prompt line we use,
+    substituting stickers/photos/GIFs using the media cache only.
+    Must NOT trigger downloads or LLM calls.
+    """
+    cache = get_media_cache()
+    sender_name = await get_channel_name(agent, msg.sender.id)
+
+    parts = []
+    # include text if present
+    if getattr(msg, "text", None):
+        text = msg.text.strip()
+        if text:
+            parts.append(f"«{text}»")
+
+    # include media (photos/stickers/gif/animation); use cached descriptions & metadata
+    try:
+        items = iter_media_parts(msg) or []
+    except Exception:
+        items = []
+
+    for it in items:
+        meta = cache.get(it.unique_id)
+        desc_text = meta.get("description") if isinstance(meta, dict) else meta
+
+        if it.kind == "sticker":
+            sticker_set = (
+                (meta.get("sticker_set") if isinstance(meta, dict) else None)
+                or getattr(it, "sticker_set", None)
+                or "(unknown)"
+            )
+            sticker_name = (
+                (meta.get("sticker_name") if isinstance(meta, dict) else None)
+                or getattr(it, "sticker_name", None)
+                or "(unnamed)"
+            )
+            parts.append(
+                format_sticker_sentence(
+                    sticker_name=sticker_name,
+                    sticker_set=sticker_set,
+                    description=desc_text or "sticker not understood",
+                )
+            )
+        else:
+            parts.append(
+                f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
+            )
+
+    content = " ".join(parts) if parts else "not understood"
+    return f"[{msg.id}] ({sender_name}): {content}"
+
+
+async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
+    """
+    Convert Telethon messages into the list of prompt lines for the LLM.
+      - Iterate messages in chronological order (oldest → newest)
+      - For each message, consult the media cache populated by inject_media_descriptions
+      - Produce string lines (stickers/photos/gifs substituted with descriptions)
+      - Do NOT download or call the LLM here; cache-only
+    """
+    lines = []
+    for msg in reversed(messages):
+        lines.append(await format_message_for_prompt(msg, agent))
+    return lines

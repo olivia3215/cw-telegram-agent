@@ -126,11 +126,15 @@ async def handle_send(task: TaskNode, graph):
     client = agent.client
     message = task.params.get("message")
 
+    # Be resilient to empty message
+    if not message:
+        return
+
     if not agent_id:
         raise ValueError("Missing 'agent_id' in task graph context")
-    if not channel_id or not message:
+    if not channel_id:
         raise ValueError(
-            f"Missing required 'channel_id' or 'message' fields in task {task.identifier}"
+            f"Missing required 'channel_id' field in task {task.identifier}"
         )
     logger.info(
         f"[{agent_name}] SEND: to=[{await get_channel_name(agent, channel_id)}] message={message!r}"

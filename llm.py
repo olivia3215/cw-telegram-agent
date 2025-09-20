@@ -101,9 +101,9 @@ class GeminiLLM(LLM):
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        # logger.warning(f"=====> prompt: {full_prompt}")
+        logger.warning(f"=====> prompt: {full_prompt}")
         response = await asyncio.to_thread(self.model.generate_content, full_prompt)
-        # logger.warning(f"=====> response: {response}")
+        logger.warning(f"=====> response: {response}")
         return response.text
 
     IMAGE_DESCRIPTION_PROMPT = (
