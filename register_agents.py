@@ -14,7 +14,6 @@ logger = logging.getLogger("register_agents")
 REQUIRED_FIELDS = [
     "Agent Name",
     "Agent Phone",
-    "Agent Sticker Set",
     "Agent Instructions",
     "Role Prompt",
 ]
@@ -102,6 +101,19 @@ def parse_agent_markdown(path):
 
         logger.debug(f"Agent instructions for {name}:\n{instructions}")
 
+        # Helper to normalize optional "set" values (None, "", "none", "null" → None)
+        def _norm_set(val: str | None) -> str | None:
+            if val is None:
+                return None
+            v = val.strip()
+            if not v:
+                return None
+            if v.lower() in {"none", "null"}:
+                return None
+            return v
+
+        primary_set = _norm_set(fields.get("Agent Sticker Set"))
+
         # Optional multi-set fields (safe defaults)
         sticker_set_names = _ensure_list(fields.get("Agent Sticker Sets"))
         explicit_lines = _ensure_list(fields.get("Agent Stickers"))
@@ -110,7 +122,7 @@ def parse_agent_markdown(path):
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
-            "sticker_set_name": str(fields["Agent Sticker Set"]).strip(),
+            "sticker_set_name": primary_set,
             "instructions": instructions,
             "role_prompt_name": str(fields["Role Prompt"]).strip(),
             # new optional outputs:

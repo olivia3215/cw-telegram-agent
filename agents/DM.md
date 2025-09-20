@@ -6,10 +6,6 @@ DungeonMaster
 
 +18625796324
 
-# Agent Sticker Set
-
-WendyDancer
-
 # Role Prompt
 
 Adventure
