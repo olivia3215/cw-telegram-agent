@@ -16,6 +16,8 @@ from telethon.tl.types import SendMessageTypingAction
 from agent import get_agent_for_id
 from media_cache import get_media_cache
 from media_injector import (
+    build_prompt_lines_from_messages,
+    format_message_for_prompt,
     get_or_compute_description_for_doc,
     inject_media_descriptions,
     reset_description_budget,
@@ -178,14 +180,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # 2) Fetch recent messages
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-
-    # 3) One pass, newest → oldest (stickers & photos together)
-    try:
-        messages = sorted(messages, key=lambda m: getattr(m, "date", 0), reverse=True)
-    except Exception:
-        # Fall back to list conversion without sorting if types differ
-        messages = list(messages)
-
     messages = await inject_media_descriptions(messages, agent=agent)
 
     is_callout = task.params.get("callout", False)
@@ -269,7 +263,24 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Keep using the message text captured when we enqueued the task
     # TODO: this parameter is currently never set
-    user_message = task.params.get("message_text", "")
+    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    messages = await inject_media_descriptions(messages, agent=agent)
+    context_lines = build_prompt_lines_from_messages(messages, agent=agent)
+    "\n".join(context_lines)
+
+    # Determine which message is the "newly received" one to present as user_message.
+    message_id = task.params.get("message_id", None)
+    target_msg = None
+    if message_id is not None:
+        for m in reversed(messages):  # quicker search from newest
+            if getattr(m, "id", None) == message_id:
+                target_msg = m
+                break
+    if target_msg is None and messages:
+        target_msg = messages[-1]  # newest
+    user_message = None
+    if target_msg is not None:
+        user_message = format_message_for_prompt(target_msg, agent=agent)
 
     user_prompt = (
         "Here is the conversation so far:\n\n"

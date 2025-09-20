@@ -387,13 +387,13 @@ async def inject_media_descriptions(
     Inspect fetched history:
       • On cache hit: no download, nothing to do.
       • On cache miss (and feature enabled with a usable client):
-          – download once
-          – optional debug save to state/photos/<id>.<ext>
-          – if raster image: describe via agent.llm.describe_image(bytes)
+          - download once
+          - optional debug save to state/photos/<id>.<ext>
+          - if raster image: describe via agent.llm.describe_image(bytes)
             and cache JSON with description + provenance
-          – otherwise: cache a synthetic “not understood (format …)” description
+          - otherwise: cache a synthetic “not understood (format …)” description
             so we never re-download/describe the same item again.
-    Returns the messages unchanged. Prompt mutation happens where the cache is read.
+    Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
     cache = get_media_cache()
     client = getattr(agent, "client", None)

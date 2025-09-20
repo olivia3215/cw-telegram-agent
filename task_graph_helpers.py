@@ -4,7 +4,6 @@ import logging
 import uuid
 
 from agent import get_agent_for_id
-from media_injector import build_prompt_lines_from_messages, inject_media_descriptions
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from telegram_util import get_channel_name
 
@@ -98,25 +97,12 @@ async def insert_received_task_for_conversation(
     if not client:
         raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
 
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-    messages = await inject_media_descriptions(messages, agent=agent)
-
-    # TODO: where will we get the message text?
-    # message_text = None
-
-    # grep thread_context = ...()
-    thread_context = await build_prompt_lines_from_messages(messages, agent=agent)
-
-    # build params (no added French quotes here; they’re already in `parts`)
-    task_params = {"thread_context": thread_context}
+    # build params
+    task_params = {}
     if message_id is not None:
         task_params["message_id"] = message_id
     if is_callout:
         task_params["callout"] = True
-
-    # TODO: where will we get the message text?
-    # if message_text is not None:
-    #     task_params["message_text"] = message_text
 
     assert recipient_id
     recipient_name = await get_channel_name(agent, recipient_id)
