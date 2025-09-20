@@ -36,9 +36,9 @@ def format_sticker_sentence(
 ) -> str:
     """
     Full sticker sentence:
-      the sticker '<name>' from the sticker set '<set>' that appears as ‹…›
+      the sticker `<name>` from the sticker set `<set>` that appears as ‹…›
     Falls back to 'that is not understood' when description is missing/unsupported.
     """
-    base = f"the sticker '{sticker_name}' from the sticker set '{sticker_set}'"
+    base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set}`"
     s = (description or "").strip()
     return f"{base} {format_media_description(s)}"

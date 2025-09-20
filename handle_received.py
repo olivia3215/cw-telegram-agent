@@ -221,6 +221,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
         sticker_list = "\n".join(lines)
         system_prompt += f"\n\n# Stickers you may send\n\n" f"{sticker_list}" "\n"
+        system_prompt += (
+            "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name."
+            "\n"
+        )
 
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"

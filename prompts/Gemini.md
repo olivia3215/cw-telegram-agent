@@ -37,7 +37,7 @@ You may include as many tasks as you like, and they will be executed in order.
 Valid task types:
 
 - `# «send»` — send a text message
-- `# «sticker»` — send a sticker by name (must be from your assigned sticker set)
+- `# «sticker»` — send a sticker by sticker set and sticker name
 - `# «wait»` — wait for a specified number of seconds
 - `# «block»` — block the conversation, preventing either participant from sending a message
 - `# «unblock»` — unblock the conversation, permitting messages to be sent again after being blocked
