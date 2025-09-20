@@ -257,16 +257,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     )
 
     # build prompt context directly from processed history
-    # inject_media_descriptions returns the history with media replaced by text lines;
-    # after our recent change it preserves chronological order (oldest → newest).
-    formatted_context = "\n".join(messages)
-
-    # Keep using the message text captured when we enqueued the task
-    # TODO: this parameter is currently never set
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    # inject_media_descriptions puts media descriptions into the cache
     messages = await inject_media_descriptions(messages, agent=agent)
-    context_lines = build_prompt_lines_from_messages(messages, agent=agent)
-    "\n".join(context_lines)
+    # build_prompt_lines_from_messages uses the media descriptions and produces the history text lines
+    context_lines = await build_prompt_lines_from_messages(messages, agent=agent)
+    formatted_context = "\n".join(context_lines)
 
     # Determine which message is the "newly received" one to present as user_message.
     message_id = task.params.get("message_id", None)
@@ -280,7 +276,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         target_msg = messages[-1]  # newest
     user_message = None
     if target_msg is not None:
-        user_message = format_message_for_prompt(target_msg, agent=agent)
+        user_message = await format_message_for_prompt(target_msg, agent=agent)
 
     user_prompt = (
         "Here is the conversation so far:\n\n"

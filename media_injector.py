@@ -582,5 +582,5 @@ async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> lis
     """
     lines = []
     for msg in reversed(messages):
-        lines.append(await format_message_for_prompt(msg, agent))
+        lines.append(await format_message_for_prompt(msg, agent=agent))
     return lines
