@@ -8,7 +8,7 @@ DungeonMaster
 
 # Agent Sticker Set
 
-AnimatedEmojies
+WendyDancer
 
 # Role Prompt
 

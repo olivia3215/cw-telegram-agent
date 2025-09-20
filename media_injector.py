@@ -1,6 +1,8 @@
 # media_injector.py
 
+import asyncio
 import logging
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +19,10 @@ logger = logging.getLogger(__name__)
 MEDIA_FEATURE_ENABLED = True  # you’ve been keeping this True for manual testing
 MEDIA_DEBUG_SAVE = True  # debug bytes in state/photos/
 
+# Configurable parameters
+_DESCRIBE_TIMEOUT_SECS = 12  # per-item LLM timeout
+
+
 # ---------- path helpers (single source of truth via media_cache) ----------
 _cache = get_media_cache()
 STATE_DIR: Path = _cache.state_dir
@@ -27,6 +33,35 @@ MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
 def _ensure_state_dirs() -> None:
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# --- Per-tick AI description budget ------------------------------------------
+
+# Budget is the number of AI description *attempts* allowed in the current tick.
+# Cache hits do NOT consume budget. We reset this at the start of handling a
+# "received" task in the tick loop (next change).
+_BUDGET_TOTAL: int = 0
+_BUDGET_LEFT: int = 0
+
+
+def reset_description_budget(n: int) -> None:
+    """Reset the per-tick AI description budget."""
+    global _BUDGET_TOTAL, _BUDGET_LEFT
+    _BUDGET_TOTAL = max(0, int(n))
+    _BUDGET_LEFT = _BUDGET_TOTAL
+
+
+def get_remaining_description_budget() -> int:
+    return _BUDGET_LEFT
+
+
+def try_consume_description_budget() -> bool:
+    """Consume 1 unit of budget if available; return True if consumed."""
+    global _BUDGET_LEFT
+    if _BUDGET_LEFT <= 0:
+        return False
+    _BUDGET_LEFT -= 1
+    return True
 
 
 # ---------- format sniffing & support checks ----------
@@ -199,53 +234,123 @@ async def _resolve_sender_and_channel(
 
 
 # ---------- main ----------
+
+
 async def get_or_compute_description_for_doc(
     *,
     client,
     doc,
     llm,
-    cache,  # same cache object you use in this module today
-    kind: str,  # "sticker" | "photo" | "animation" | ...
+    cache,
+    kind: str,
     set_name: str | None = None,
     sticker_name: str | None = None,
 ) -> tuple[str, str | None]:
     """
-    Shared helper extracted from inject_media_descriptions():
-      1) derive unique_id from doc
-      2) try state cache → return if present
-      3) else download bytes, call llm.describe_image(image_bytes), then cache and return
-      4) on failure, return (unique_id, None)
-
-    Returns: (unique_id, description or None)
+    Cache precedence:
+      (1) in-memory/disk hit -> return desc (no budget spent)
+      (2) else, if budget remains -> download + describe (timeout) -> cache and return
+      (3) else, no attempt -> return (uid, None) without cache writes
     """
     uid = _get_unique_id(doc)
 
-    # 1) cache hit?
+    # 1) Cache hit?
     try:
         cached = cache.get(uid)
-        if cached:
-            desc = (cached.get("description") or "").strip()
-            if desc:
-                return uid, desc
     except Exception:
-        # treat any cache exception as a miss; keep going
         cached = None
 
-    # 2) download bytes
+    if cached:
+        desc = (cached.get("description") or "").strip()
+        status = cached.get("status")
+        if desc:
+            logger.debug(f"[media] HIT uid={uid} kind={kind}")
+            return uid, desc
+        # If terminal negative cache exists, skip AI attempt this tick.
+        if status in {"not_understood"}:
+            logger.debug(f"[media] NEG uid={uid} kind={kind} status={status}")
+            return uid, None
+        # If prior timeout/error, we may retry later; continue below to budget check.
+
+    # 2) Budget gate before any AI work
+    if not try_consume_description_budget():
+        logger.debug(f"[media] SKIP uid={uid} kind={kind} (budget exhausted)")
+        return uid, None
+
+    # 2a) Download bytes
+    t0 = time.perf_counter()
     try:
         data: bytes = await download_media_bytes(client, doc)
     except Exception as e:
-        logger.debug(f"[media] download failed for {uid}: {e}")
+        logger.debug(f"[media] DL FAIL uid={uid} kind={kind}: {e}")
+        # Record transient failure for visibility
+        try:
+            cache.put(
+                uid,
+                {
+                    "unique_id": uid,
+                    "kind": kind,
+                    "set_name": set_name,
+                    "sticker_name": sticker_name,
+                    "description": None,
+                    "status": "error",
+                },
+            )
+        except Exception:
+            pass
         return uid, None
+    dl_ms = (time.perf_counter() - t0) * 1000
 
-    # 3) describe (blocking call to your sync llm entrypoint)
+    # 2b) Describe via LLM (run off-loop; enforce timeout)
     try:
-        desc = (llm.describe_image(data) or "").strip()
-    except Exception as e:
-        logger.debug(f"[media] LLM describe failed for {uid}: {e}")
+        t1 = time.perf_counter()
+        desc = await asyncio.wait_for(
+            asyncio.to_thread(llm.describe_image, data, None),
+            timeout=_DESCRIBE_TIMEOUT_SECS,
+        )
+        desc = (desc or "").strip()
+    except TimeoutError:
+        logger.debug(
+            f"[media] TIMEOUT uid={uid} kind={kind} after {_DESCRIBE_TIMEOUT_SECS}s"
+        )
+        try:
+            cache.put(
+                uid,
+                {
+                    "unique_id": uid,
+                    "kind": kind,
+                    "set_name": set_name,
+                    "sticker_name": sticker_name,
+                    "description": None,
+                    "status": "timeout",
+                },
+            )
+        except Exception:
+            pass
         return uid, None
+    except Exception as e:
+        logger.debug(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
+        try:
+            cache.put(
+                uid,
+                {
+                    "unique_id": uid,
+                    "kind": kind,
+                    "set_name": set_name,
+                    "sticker_name": sticker_name,
+                    "description": None,
+                    "status": "error",
+                },
+            )
+        except Exception:
+            pass
+        return uid, None
+    llm_ms = (time.perf_counter() - t1) * 1000
 
-    # 4) cache best-effort
+    # NOTE: If you have a reliable detector for "not understood", set status accordingly:
+    status = "ok" if desc else "not_understood"
+
+    # 2c) Cache best-effort
     try:
         cache.put(
             uid,
@@ -254,12 +359,22 @@ async def get_or_compute_description_for_doc(
                 "kind": kind,
                 "set_name": set_name,
                 "sticker_name": sticker_name,
-                "description": desc,
-                "source": "vision" if kind != "sticker" else "sticker",
+                "description": desc if desc else None,
+                "status": status,
             },
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[media] CACHE PUT FAIL uid={uid}: {e}")
+
+    total_ms = (time.perf_counter() - t0) * 1000
+    if status == "ok":
+        logger.debug(
+            f"[media] MISS uid={uid} kind={kind} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
+        )
+    else:
+        logger.debug(
+            f"[media] NOT_UNDERSTOOD uid={uid} kind={kind} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
+        )
 
     return uid, (desc or None)
 
