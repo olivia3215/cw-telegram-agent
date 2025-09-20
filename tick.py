@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime, timezone
 
 from telethon.errors.rpcerrorlist import PeerIdInvalidError
@@ -11,6 +12,7 @@ from telethon.tl.types import InputStickerSetShortName
 
 from agent import Agent, get_agent_for_id
 from exceptions import ShutdownException
+from media_injector import inject_media_descriptions, reset_description_budget
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from telegram_util import get_channel_name
 

@@ -1,6 +1,7 @@
 # handle_received.py
 
 import logging
+import os
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -14,7 +15,11 @@ from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from media_cache import get_media_cache
-from media_injector import get_or_compute_description_for_doc
+from media_injector import (
+    get_or_compute_description_for_doc,
+    inject_media_descriptions,
+    reset_description_budget,
+)
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
@@ -23,6 +28,9 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+# per-tick AI description budget (default 8; env override)
+MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 
 def parse_llm_reply_from_markdown(
@@ -145,6 +153,13 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
 
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph: TaskGraph):
+    """
+    Process an inbound 'received' event:
+      1) Reset per-tick AI description budget
+      2) Fetch recent messages
+      3) Run media description injection (stickers + photos together), newest→oldest
+      4) Proceed with existing planning/prompt flow (unchanged)
+    """
     channel_id = graph.context.get("channel_id")
     assert channel_id
     agent_id = graph.context.get("agent_id")
@@ -157,6 +172,22 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
+
+    # 1) Reset per-tick AI description budget
+    reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+
+    # 2) Fetch recent messages
+    history_limit = getattr(agent._llm, "history_size", 50)
+    messages = await client.get_messages(channel_id, limit=history_limit)
+
+    # 3) One pass, newest → oldest (stickers & photos together)
+    try:
+        messages = sorted(messages, key=lambda m: getattr(m, "date", 0), reverse=True)
+    except Exception:
+        # Fall back to list conversion without sorting if types differ
+        messages = list(messages)
+
+    messages = await inject_media_descriptions(messages, agent=agent)
 
     is_callout = task.params.get("callout", False)
     dialog = await agent.get_cached_entity(channel_id)
