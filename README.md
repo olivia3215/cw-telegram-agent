@@ -1,10 +1,8 @@
-# Cindy’s World Telegram Agent (cw-telegram-agent)
-
-[![CI](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml)
-
-> **Purpose**: Permit an LLM to act like a regular Telegram user (DMs & groups) by representing behavior as **task graphs** and executing them on a **tick loop** with durable on‑disk state.
+# cw-telegram-agent
 
 This README is written for a future developer (and future ChatGPT) to quickly regain context: what’s here today, how it runs, and where to extend it—especially around media understanding.
+
+[![CI](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml)
 
 ---
 
@@ -15,29 +13,23 @@ This README is written for a future developer (and future ChatGPT) to quickly re
 - `pip install -r requirements.txt`
 
 ### Environment
-Set these before first run (choose your paths):
-```bash
-export CINDY_AGENT_STATE_DIR="./state"    # persistent work queue + sessions
-export AGENT_DIR="./agents"               # agent definition .md files
-export TELEGRAM_API_ID="<from my.telegram.org>"
-export TELEGRAM_API_HASH="<from my.telegram.org>"
-```
-
-### Login once per agent
-```bash
-python telegram_login.py
-```
-You’ll be prompted for Telegram code (and 2FA, if enabled). Sessions are stored under the state dir.
+- `CINDY_AGENT_STATE_DIR` — directory for persisted queues, media cache, etc.
+- `AGENT_DIR` — directory containing agent persona markdown files (one per agent).
+- `GOOGLE_GEMINI_API_KEY` — for image descriptions (Gemini Vision).
+- Optional tuning:
+  - `MEDIA_DESC_BUDGET_PER_TICK` — integer, number of AI description attempts per received task (default 8).
 
 ### Run the agent loop
 ```bash
 python run.py
 ```
-The loop: connect, process unread messages, (LLM planned) build task graphs, and execute one task per tick.
+
+The loop: connect, process unread messages, plan with the LLM, and execute one task per tick.
 
 ### Tests
+
 ```bash
-PYTHONPATH=. pytest
+PYTHONPATH=. pytest -vv
 ```
 
 ---
@@ -45,309 +37,166 @@ PYTHONPATH=. pytest
 ## Mental model
 
 ### Core ideas
-- **Task Graphs**: nodes with dependencies; common types today include `received`, `send`, `wait`.
-- **Tick loop**: at each tick, pick **one eligible task** across all active graphs (round‑robin / fair), execute it, and persist state.
-- **Durable state**: the work queue (graphs, nodes, etc.) is flushed atomically to **Markdown files with embedded JSON** in `CINDY_AGENT_STATE_DIR`. This allows recovery on restart.
+
+* **Task Graphs**: nodes with dependencies; common types today include `received`, `send`, `sticker`, `wait`, `shutdown`, `clear-conversation`.
+* **Tick loop**: at each tick, pick **one eligible task** across all active graphs (round-robin / fair), execute it, and persist state.
+* **Durable state**: the work queue (graphs, nodes, etc.) is flushed atomically to Markdown files with embedded JSON in `CINDY_AGENT_STATE_DIR`. This allows recovery on restart.
 
 ### Typical flow
-1. **Startup**: load agent definitions from `AGENT_DIR`; resume state from `CINDY_AGENT_STATE_DIR`; connect agent sessions to Telegram.
-2. **Inbound**: when new Telegram messages arrive, a minimal **`received`** node is inserted (no immediate analysis).
-3. **Handling**: when a `received` node is later processed, the handler pulls a chunk of **conversation history**, formats it for the LLM, and (as features land) asks the LLM to produce a new task graph.
-4. **Execution**: tasks such as `send` get dispatched to Telegram; `wait` tasks block until their prerequisites are satisfied.
 
-> **Note**: Today, the LLM call path is still evolving; the scaffolding is present.
+1. **Startup**: load agent definitions from `AGENT_DIR`; resume state from `CINDY_AGENT_STATE_DIR`; connect agent sessions to Telegram.
+2. **Inbound**: when new Telegram messages arrive, the system inserts a minimal **`received`** task (no history fetch or LLM work here).
+3. **Handling (`received` task)**: the tick-loop handler fetches recent **history**, warms/uses the **media description cache** (bounded **per-tick AI budget**), formats history and the **specific newly received message**, then asks the LLM to produce a new task graph.
+4. **Execution**: tasks such as `send` / `sticker` / `wait` are dispatched by dedicated handlers; failures retry per policy.
 
 ---
 
 ## Repository map (modules & what to look for)
 
-> File responsibilities are intentionally concise; read the top of each file for specifics.
+* **`agent.py`** – Agent registry and runtime agent state (including sticker caches).
+* **`handle_received.py`** – Prompt assembly helpers used by the received-task handler; builds system/user messages and formats media/sticker lines from cache.
+* **`tick.py`** – Task handlers for all task types (including the `received` handler that runs the media-description pass and then calls into prompt building).
+* **`media_injector.py`** – Media description subsystem:
 
-- **`run.py`** – Entry point. Starts the tick loop, connects agents, drains unread messages.
-- **`telegram_login.py`** – Interactive login per agent (API ID/code/2FA). Creates session files in state dir.
-- **`telegram_util.py`** – Utilities for Telegram I/O (send/receive helpers, formatting, IDs, etc.).
-- **`agent.py`** – Agent‑level glue: persona/config, state, and how an agent participates in graphs.
-- **`handle_received.py`** – Task handler for `received` nodes: assembles conversation history and kicks off downstream actions (LLM integration point).
-- **`llm.py`** – Abstraction layer for LLM calls (provider selection, prompt build, response unwrap). Initially minimal; expand here.
-- **`task_graph.py`** – Core types for graphs and nodes, dependencies, readiness, serialization.
-- **`task_graph_helpers.py`** – Builder/utility functions to construct or transform graphs.
-- **`tick.py`** – Tick scheduling logic (eligible task selection & fairness).
-- **`prompt_loader.py` / `prompts/`** – Load and fill prompt templates (e.g., replacing `{{AGENT_NAME}}`).
-- **`markdown_utils.py`** – Read/write Markdown with embedded JSON blocks; atomic flush.
-- **`register_agents.py`** – Scans `AGENT_DIR` and registers available agents.
-- **`telegram_echo_agent.py`** – Minimal example or diagnostic agent that echoes.
-- **`agents/`** – Your agent persona files in Markdown.
-- **`tests/`** – Pytest suite covering readiness, retries, and persistence (plus mocks and logging checks).
-- **`README.md`** – Overview & setup.
+  * cache-first helpers,
+  * per-tick AI budget,
+  * history processing (newest→oldest iteration internally, but preserving chronological order for the prompt),
+  * single-message and list-of-messages formatters (cache-only).
+* **`telegram_media.py`** – Media detection helpers (photo/sticker/gif/animation) and unique ID extraction.
+* **`telegram_download.py`** – Download helpers (async) for raw media bytes.
+* **`llm.py`** – LLM provider adapter; implements `describe_image(bytes, mime_type)` for image/sticker descriptions.
+* **`run.py`** – Startup utilities, including `ensure_sticker_cache`.
+* **`register_agents.py`** – Persona markdown parsing and agent registration.
+* **`tests/`** – Unit & integration tests, including media cache and budget tests.
 
 ---
 
 ## Agent personas (`AGENT_DIR`)
-Each agent is a **Markdown** file containing top‑level headings like:
 
-```
+An agent is defined by a markdown file with fields:
+
+```markdown
 # Agent Name
-Ivy
+Wendy
 
 # Agent Phone
-+11234567890
++15551234567
 
-# Agent Sticker Set
-MY CUTE STICKERS
+# Role Prompt
+WendyAI
 
 # Agent Instructions
-You are {{AGENT_NAME}}, …
+...long-form instructions to the agent...
+
+# Agent Sticker Set
+MyCuteStickers   # optional; use “None” or omit to disable a primary set
+
+# Agent Sticker Sets
+WENDYAI
+CINDYAI
+
+# Agent Stickers
+WENDYAI :: 😉
+CINDYAI :: 😀
 ```
-- All fields are required.
-- `{{AGENT_NAME}}` is auto‑substituted in prompts.
-- Multiple files → multiple agents can run concurrently.
+
+Notes:
+
+* All fields are required **except** sticker-related fields.
+* Multiple files → multiple agents can run concurrently.
+* The optional **Agent Sticker Sets** and **Agent Stickers** allow listing additional sets and explicit stickers for prompt surfacing (descriptions are filled from cache when available).
 
 ---
 
-## Prompt formatting conventions (current practice)
-- **User text** in the history is wrapped in **French quotes**: `« … »` to make it stand out from system glue.
-- (Planned) **Generated media descriptions** (see below) will be wrapped in **single angle quotes**: `‹ … ›`.
+## Media handling (photos, stickers, GIFs) — current behavior
+
+The agent enriches the LLM prompt by describing images/stickers found in recent history. Descriptions are cached on disk and in memory; a **per-tick AI budget** limits how many new descriptions can be computed each tick.
+
+### Where it runs
+
+* Inside the **`received` task handler** (tick loop), right before building the prompt.
+* We iterate recent history **newest → oldest internally** to prioritize fresh content, but the final prompt preserves chronological order (oldest → newest).
+
+### Per-tick AI budget
+
+* Controlled by `MEDIA_DESC_BUDGET_PER_TICK` (default **8**).
+* **Only AI attempts** consume budget; cache hits do not.
+* When budget is exhausted, items remain undescribed this tick (no writes). They may be picked up in future ticks.
+
+### Timeouts and failures
+
+* Each AI attempt has a **12s timeout**.
+* Cache entry structure (conceptual):
+
+  * `description`: string **or** `null` (no sentinel strings like “not understood” in new writes),
+  * `status`: `"ok"`, `"not_understood"` (terminal negative), `"timeout"`, or `"error"`,
+  * sticker metadata when applicable (`set_name`, `sticker_name`), and `kind`.
+* Absent entry = never attempted; `"not_understood"` = terminal negative (don’t retry); `"timeout"/"error"` = transient (retry in later ticks; backoff policy can be added).
+
+### Prompt assembly conventions
+
+* User text is wrapped with **French quotes**: `« … »`.
+* Media descriptions use **single angle quotes**: `‹ … ›`.
+* Stickers render like:
+  `the sticker '<name>' from the sticker set '<set>' that appears as ‹…›`
+
+### Provider hook
+
+* Descriptions call `agent._llm.describe_image(bytes, mime)`. Gemini is supported; other providers can add the same method signature.
+
+---
+
+## Sticker triggers (LLM → actions)
+
+The LLM triggers stickers using **two-line blocks** (optionally replying to a message):
+
+```markdown
+# «sticker»
+<SET SHORT NAME>
+<STICKER NAME>
+```
+
+Reply form:
+
+```markdown
+# «sticker» <MESSAGE_ID>
+<SET SHORT NAME>
+<STICKER NAME>
+```
+
+During the transition window the parser also accepts the legacy one-line body (`STICKER NAME` only), in which case the handler uses the agent’s primary set if present. The new two-line form is preferred.
 
 ---
 
 ## Operational notes
-- **Single‑threaded task execution**: one task per tick; inserting a `received` node is the only async bit and uses a lock.
-- **Retries**: task execution errors bubble up; the scheduler retries (e.g., up to 10 times) depending on node policy.
-- **Fairness**: the scheduler rotates across active conversation graphs to avoid starvation.
 
----
-
-## Where to extend next: media understanding (design stub)
-> **Status**: not implemented yet; this section records the intended design so we can add it consistently.
-
-Goal: When a message (DM or group) contains images or stickers, replace them **in the LLM prompt** with rich **text descriptions** and cache those descriptions so repeated history windows don’t reprocess the same media.
-
-### Requirements summarized
-- Trigger description **lazily** when we are assembling the prompt for an LLM response (not at receipt time).
-- Cache **on disk** under the state dir (one file per media item named by a stable `file_unique_id`). Also keep a short‑lived **in‑memory TTL cache**.
-- **Share** the cache across all agents.
-- Preserve **raw media files** temporarily under `state/photos/` for debugging (remove later when stable).
-- **Photos / PNG / GIF / stickers** use the **same mechanism**. Stickers also record **sticker set name** and **sticker name**.
-- Unsupported/huge media (e.g., videos) are represented as `'[kind] not understood'` and are **not stored**.
-- **Quoting**: user text uses `«…»`; media descriptions use `‹…›`; sticker mention syntax example:
-
-  `the sticker '😀' from the sticker set 'WENDYAI' that appears as ‹a picture of a woman …›`
-
-### Integration points
-1. **Telegram receive path**: keep it minimal—still just insert a `received` node.
-2. **`handle_received.py`**: when building the history chunk for the prompt, detect media entries. For each media item:
-   - Obtain Telegram’s `file_unique_id` (or equivalent stable ID).
-   - If missing from cache → download media (and save under `state/photos/` while debugging), call the **vision‑capable LLM** (Gemini preferred; ChatGPT fallback) with a fixed “rich scene description” prompt, and write the result to `state/<unique_id>.txt`.
-   - If present in cache → read it from disk (and also serve from the in‑memory TTL cache).
-   - Replace the media element with the formatted description (and sticker metadata, when applicable).
-3. **Error handling**: let exceptions propagate so the scheduler’s standard retry policy applies.
-
-### Minimal prompt for description (example)
-> “You are given a single image. **Describe the scene in rich detail** so a reader can understand it without seeing the image. Include salient objects, colors, relations, actions, and setting. Output **only the description**—no preface or metadata.”
-
-Keep this prompt fixed for determinism; adjust later if lengths become an issue.
+* `ensure_sticker_cache` loads the agent’s own sticker set(s) at startup if configured. This is independent of media descriptions.
+* The description pass happens **only** in the received-task handler; prompt building itself is **cache-only**.
+* The system replaces stickers/photos in the prompt history with cached descriptions; if none yet, the line is shown without a description suffix and will fill in over time as the budget allows.
+* The agent can send stickers from any set by providing `<SET SHORT NAME>` + `<STICKER NAME>` in the trigger; the sender does **not** need that sticker to be in the agent’s curated set.
 
 ---
 
 ## Troubleshooting
-- **Login loops**: delete the stale session for that agent in the state dir and re‑run `telegram_login.py`.
-- **State corruption**: since state is Markdown+JSON, ensure atomic writes; if a file looks truncated, stop the process, fix/restore, then restart.
-- **Rate limits**: if Telegram/LLM providers rate limit, the retry logic and single‑task tick model naturally back off.
+
+* Seeing repeated “Starting direct file download…” lines or the bot appears frozen:
+
+  * Ensure the per-tick budget is set sensibly (`MEDIA_DESC_BUDGET_PER_TICK`).
+  * Confirm description work only happens in the received-task handler.
+  * Check logs for `HIT/MISS/TIMEOUT/ERROR` lines from the description helper.
+
+* Primary sticker set is optional:
+
+  * Omit the *Agent Sticker Set* field or set it to “None” to disable preloading.
+  * The agent can still send stickers from other sets by specifying the set name in the trigger.
 
 ---
 
-## Glossary
-- **Task Graph**: A DAG of actions (`received`, `send`, `wait`, …) for one conversation.
-- **Tick**: One scheduling cycle that executes at most one ready node across all active graphs.
-- **Eligible Task**: A node whose dependencies are satisfied and that is runnable now.
+## Near-term roadmap
+
+* Optional curated description store (read-only) layered above disk cache.
+* Flip all legacy persisted “not understood” strings to `null` + `status` (with test updates).
+* Fine-tune budget/timeout envs and add light metrics.
+* Small test additions around received-task context building and single-message formatting.
 
 ---
-
-## Roadmap (near‑term)
-- [ ] Implement media detection + `file_unique_id` extraction in the history builder.
-- [ ] Add Gemini/ChatGPT vision call in `llm.py` with a `describe_image()` helper.
-- [ ] On‑disk per‑media cache (`state/<unique_id>.txt`) + optional TTL memory cache.
-- [ ] Sticker support (set name + sticker name + description) with `‹…›` quoting.
-- [ ] Logging for cache hits/misses and new generations.
-- [ ] Tests: unit tests for cache, prompt assembly, and “unsupported media” fallbacks.
-
----
-
-## License
-Private/experimental; license TBD.
-
-## Media handling (photos, stickers, GIFs)
-
-This repo supports enriching the LLM prompt with **descriptions of media** from Telegram chats. The feature is implemented so it’s robust, shareable across agents, and safe-by-default.
-
-### Overview
-- **Where it runs:** history is fetched in `insert_received_task_for_conversation()` (`task_graph_helpers.py`).
-- **Hook:** the fetched messages pass through `inject_media_descriptions()` (`media_injector.py`).
-  - By default this is **feature-flagged** via `MEDIA_FEATURE_ENABLED` in `media_injector.py`.
-- **Download:** on cache miss (flag on), media bytes are downloaded once using `telegram_download.download_media_bytes()`.
-- **Describe:** for **raster images** (jpeg/png/webp/gif), we call the agent’s provider: `agent.llm.describe_image(bytes)`.
-  - Implemented for `GeminiLLM`; other providers can add the same method later.
-- **Cache:** descriptions are persisted per-**file_unique_id** in `state/media/<id>.json` via `MediaCache`.
-  - In-memory TTL avoids disk churn; on-disk cache is shared across agents and survives restarts.
-- **Prompt assembly:** when building history lines & current message:
-  - User text is wrapped in **French quotes** `« … »`.
-  - Media descriptions are wrapped in **single angle quotes** `‹ … ›` (outside the French quotes).
-  - Stickers render as:
-    `the sticker '<name>' from the sticker set '<set>' that appears as ‹…›`
-
-### Paths & state
-- The **single source of truth** for the state directory is `media_cache.get_state_dir()`.
-  - Respects `$CINDY_AGENT_STATE_DIR`, falling back to `state/`.
-- Debug copies of downloaded media go to `state/photos/` with byte-sniffed extensions:
-  - PNG/JPEG/GIF/WEBP/MP4/WEBM/TGS recognized; unknown falls back to `.bin`.
-  - Toggle with `MEDIA_DEBUG_SAVE` in `media_injector.py`.
-
-### What’s cached
-- **Hit:** If a description exists, we never re-download; we inject the cached text.
-- **Miss (raster image):** Download → describe via `agent.llm.describe_image()` → write JSON:
-
-```json
-  { "description": "...", "kind": "photo|sticker|gif|png|animation", "sticker_set": "...?", "sticker_name": "...?" }
-```
-
-* **Unsupported formats (e.g., `.tgs`, `.webm`, `.mp4`):**
-  We cache a synthetic text like: `"<kind> not understood (format <ext>)"` so we **don’t re-download** next time.
-
-### Provider ownership
-
-* Vision is **provider-owned**: the injector calls `agent.llm.describe_image(bytes)`.
-
-  * `GeminiLLM.describe_image()` uses Gemini’s REST API; other LLM classes can add API-specific implementations later without changing call sites.
-
-### Design notes / constraints
-
-* **No re-ordering:** Media is injected in Telegram delivery order.
-* **No blocking:** Injector logs on failures and returns the input messages unchanged.
-* **Resilience:** If the on-disk cache is deleted, descriptions are regenerated on demand.
-
-### Quick dev tips
-
-* Flip the flag: set `MEDIA_FEATURE_ENABLED = True` in `media_injector.py` for local runs.
-* Peek artifacts: `state/photos/` for raw bytes, `state/media/` for JSON descriptions.
-* CI: tests do **not** require network/API keys; vision calls are only used at runtime.
-
-# Developer guide (for future us)
-
-## Local dev checklist
-
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# pre-commit (format/lint on commit)
-pre-commit install
-pre-commit run --all-files   # run hooks manually
-
-# run tests
-PYTHONPATH=. pytest -vv
-
-# run the bot
-export CINDY_AGENT_STATE_DIR="./state"
-export AGENT_DIR="./agents"
-export TELEGRAM_API_ID=...
-export TELEGRAM_API_HASH=...
-python telegram_login.py
-python run.py
-```
-
-### Media feature flags
-
-* `media_injector.py`: `MEDIA_FEATURE_ENABLED = True` to enable media description injection locally.
-* Optional debug: `MEDIA_DEBUG_SAVE = True` to dump downloaded bytes to `state/photos/`.
-
-### Media cache behavior (what we fixed)
-
-* **On-disk cache**: `state/media/<file_unique_id>.json` stores the *whole JSON record* (not just description).
-* **In-memory cache**: sliding TTL; any `get()` both **returns and refreshes** the entry.
-* **Sweep**: evicts only entries that weren’t touched since their last `expires_at`.
-* Unsupported media caches a synthetic `"not understood"` string so we **don’t re-download** repeatedly.
-
-### Description formatting
-
-* User text is wrapped with French quotes: `« … »`.
-* Media descriptions use single angle quotes: `‹ … ›`.
-* If a media item isn’t understood, we say **“that is not understood”** (no angle quotes).
-* Sticker sentence shape:
-
-  ```
-  the sticker '<name>' from the sticker set '<set>' that appears as ‹…›
-  ```
-
-## CI & PRs
-
-* **Workflow**: `.github/workflows/ci.yml`
-
-  * Matrix uses **Python 3.13**.
-  * Runs `pre-commit`, `pytest`, and emits a **coverage summary comment** on PRs (skips for forks without permissions).
-* **Required checks** (in repo rules): `CI / tests (3.13) (pull_request)` must pass before merging.
-* If you see **“Resource not accessible by integration”** on comment steps:
-
-  * It’s usually a fork PR permissions limitation; coverage comment will be skipped, but tests still run.
-* Re-running CI: in the PR “Checks” tab → “Re-run jobs”. If GitHub UI looks stale, close/reopen the PR to refresh.
-
-## Lint & format
-
-We use **Black** and **Ruff** via pre-commit.
-
-* **Ruff config** (`ruff.toml`) uses the new schema:
-
-  ```toml
-  target-version = "py313"
-  line-length = 100
-
-  [lint]
-  select = ["E", "F", "UP", "I"]
-  ignore = []
-
-  [lint.per-file-ignores]
-  "tick.py" = ["E402", "F401"]   # side-effect imports allowed
-  "handle_received.py" = ["F401"] # telemetry imports sometimes side-effecty
-  ```
-* Common fixes:
-
-  * E402 “import not at top” is allowed where we intentionally import for **side effects** (handler registration).
-  * Long log lines: split f-strings across lines; keep log message format readable.
-
-## Tests that matter
-
-* `tests/test_media_cache.py`: validates **sliding TTL** and sweep semantics.
-* `tests/test_media_format.py`: ensures **quote rules** and **“not understood”** wording.
-* `tests/test_tick.py`:
-
-  * Uses a `fake_clock` fixture (see `tests/test_utils.py`) to avoid real sleeping.
-  * If you touch time/sleep behavior, make sure any helper that “advances time” either:
-
-    * awaits the fixture’s async `advance()`; or
-    * injects the clock into the code under test so the test controls time.
-* Don’t remove the **handler registration** import. If you relocate it, keep a small, explicit “ensure registered” call in module import path or guard it with `# noqa: E402,F401` so linters don’t “auto-clean” it away.
-
-## Repository layout recap
-
-* **Media pathing**
-
-  * On-disk cache: `state/media/<id>.json`
-  * Debug media bytes: `state/photos/…`
-* **Where media gets injected**
-
-  * We detect & format media while building history for the LLM, not on receipt.
-  * Stickers carry `sticker_set` and `sticker_name` in the cached JSON.
-
-## Troubleshooting
-
-* **Push rejected: required check missing**
-  You might be pushing directly to `main` while rules require the PR check. Open a PR from a branch; CI will create the **`CI / tests (3.13) (pull_request)`** check automatically.
-* **PR checks look “stuck”**
-  Usually a UI refresh issue; re-run jobs from the Checks tab, or close/reopen the PR.
-* **Pre-commit loops**
-  If Black reformats files, `git add -A` and run `pre-commit` again until hooks are clean.
-
-## Roadmap (near-term)
-
-* Media: finalize provider-specific `describe_image()` for all LLMs in `llm.py`.
-* Expand tests for GIF/animation vs. sticker edge cases.
-* Add an opt-in prompt constraint to cap description lengths for long chat histories.
