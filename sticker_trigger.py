@@ -7,20 +7,20 @@ Canonical SPEC:
   (no reply)
     # «sticker»
 
-    WendyAI
+    WendyDancer
     😀
 
   (with reply)
     # «sticker» 1234
 
-    WendyAI
+    WendyDancer
     😘
 
 Rules:
 - Header MUST be exactly "«sticker»" (with guillemets) after a '#' markdown header.
 - Optional decimal reply target may appear on the header line.
 - After the header, skip any number of empty/whitespace-only lines.
-- Next non-empty line = SET short name (e.g., WendyAI).
+- Next non-empty line = SET short name (e.g., WendyDancer).
 - Next non-empty line = STICKER name (emoji or short name).
 - Leading/trailing spaces on those lines are ignored.
 - During development ONLY we allow "missing set line" (old behavior) where
@@ -68,7 +68,7 @@ def parse_sticker_body(
     Parse the body of a «sticker» block (header already handled elsewhere).
 
     Input examples (whitespace/blank lines are allowed and ignored):
-        WendyAI
+        WendyDancer
         😀
 
         # During transition, the set line may be omitted:

@@ -19,7 +19,7 @@ Wendy
 +15551234567
 
 # Agent Sticker Set
-WENDYAI
+WendyDancer
 
 # Agent Instructions
 You are Wendy.
@@ -32,7 +32,7 @@ WendyRole
     assert parsed is not None
     assert parsed["name"] == "Wendy"
     assert parsed["phone"] == "+15551234567"
-    assert parsed["sticker_set_name"] == "WENDYAI"
+    assert parsed["sticker_set_name"] == "WendyDancer"
     assert parsed["role_prompt_name"] == "WendyRole"
     # Optional fields should be present with safe defaults
     assert parsed["sticker_set_names"] == []
@@ -50,7 +50,7 @@ Cindy
 CINDYAI
 
 # Agent Sticker Sets
-WENDYAI
+WendyDancer
   CINDYAI
 # Agent Instructions
 You are Cindy.
@@ -59,7 +59,7 @@ You are Cindy.
 CindyRole
 
 # Agent Stickers
-WENDYAI :: Wink
+WendyDancer :: Wink
 CINDYAI :: HeartEyes
 Malformed line that should be ignored
 """
@@ -72,11 +72,11 @@ Malformed line that should be ignored
     assert parsed["role_prompt_name"] == "CindyRole"
 
     # Order should be preserved; whitespace trimmed
-    assert parsed["sticker_set_names"] == ["WENDYAI", "CINDYAI"]
+    assert parsed["sticker_set_names"] == ["WendyDancer", "CINDYAI"]
 
     # Only well-formed "SET :: NAME" lines are kept
     assert parsed["explicit_stickers"] == [
-        ("WENDYAI", "Wink"),
+        ("WendyDancer", "Wink"),
         ("CINDYAI", "HeartEyes"),
     ]
 

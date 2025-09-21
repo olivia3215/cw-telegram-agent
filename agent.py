@@ -39,10 +39,10 @@ class Agent:
         # Multi-set config (lists)
         self.sticker_set_names = list(
             sticker_set_names or []
-        )  # e.g. ["WENDYAI", "CINDYAI"]
+        )  # e.g. ["WendyDancer", "CINDYAI"]
         self.explicit_stickers = list(
             explicit_stickers or []
-        )  # e.g. [("WENDYAI","Wink")]
+        )  # e.g. [("WendyDancer","Wink")]
 
         # Legacy cache: name -> InputDocument (canonical set only)
         self.sticker_cache = {}
@@ -62,7 +62,7 @@ class Agent:
         self._entity_cache = {}
 
         # Tracks which sticker set short names have been loaded into caches
-        self.loaded_sticker_sets = set()  # e.g., {"WENDYAI", "CINDYAI"}
+        self.loaded_sticker_sets = set()  # e.g., {"WendyDancer", "CINDYAI"}
 
         self._llm = llm
 

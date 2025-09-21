@@ -83,7 +83,7 @@ Wendy
 +15551234567
 
 # Role Prompt
-WendyAI
+Chatbot
 
 # Agent Instructions
 ...long-form instructions to the agent...
@@ -92,11 +92,11 @@ WendyAI
 MyCuteStickers   # optional; use “None” or omit to disable a primary set
 
 # Agent Sticker Sets
-WENDYAI
+WendyDancer
 CINDYAI
 
 # Agent Stickers
-WENDYAI :: 😉
+WendyDancer :: 😉
 CINDYAI :: 😀
 ```
 

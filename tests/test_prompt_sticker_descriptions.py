@@ -24,12 +24,12 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
     # Arrange a fake agent with by-set cache preloaded for two stickers
     agent = SimpleNamespace(
         name="Wendy",
-        sticker_set_name="WENDYAI",
-        sticker_set_names=["WENDYAI"],
+        sticker_set_name="WendyDancer",
+        sticker_set_names=["WendyDancer"],
         explicit_stickers=[],
         sticker_cache_by_set={
-            ("WENDYAI", "😉"): FakeDoc(),
-            ("WENDYAI", "😀"): FakeDoc(),
+            ("WendyDancer", "😉"): FakeDoc(),
+            ("WendyDancer", "😀"): FakeDoc(),
         },
         client=object(),
         _llm=FakeLLM(),
@@ -86,5 +86,5 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
     system_prompt = await build_prompt_like_code(is_group=False)
 
     # Assert both lines present with our formatted description suffix
-    assert "- WENDYAI :: 😉 - ‹desc for 😉›" in system_prompt
-    assert "- WENDYAI :: 😀 - ‹desc for 😀›" in system_prompt
+    assert "- WendyDancer :: 😉 - ‹desc for 😉›" in system_prompt
+    assert "- WendyDancer :: 😀 - ‹desc for 😀›" in system_prompt

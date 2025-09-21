@@ -116,7 +116,7 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch):
         {
             "unique_id": "uid-42",
             "kind": "sticker",
-            "set_name": "WENDYAI",
+            "set_name": "WendyDancer",
             "sticker_name": "😉",
             "description": "cached desc",
             "status": "ok",
@@ -134,7 +134,7 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch):
         llm=llm,
         cache=cache,
         kind="sticker",
-        set_name="WENDYAI",
+        set_name="WendyDancer",
         sticker_name="😉",
     )
 

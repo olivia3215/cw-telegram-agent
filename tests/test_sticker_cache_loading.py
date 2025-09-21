@@ -28,7 +28,7 @@ class FakeClient:
 
 
 class FakeAgent:
-    def __init__(self, name="Wendy", set_name="WENDYAI"):
+    def __init__(self, name="Wendy", set_name="WendyDancer"):
         self.name = name
         self.sticker_set_name = set_name
         self.sticker_cache = {}

@@ -81,7 +81,7 @@ Avoid this syntax outside code blocks if you don't intend to affect the format o
 
 Use this if a sticker captures the essence of your reply. When you send a sticker, the body MUST be exactly two lines:
 
-1) the **sticker set short name** (e.g., `WENDYAI`)
+1) the **sticker set short name** (e.g., `WendyDancer`)
 2) the **sticker name** (emoji or short name exactly as shown in the “Stickers you may send” section or in recent chat history)
 
 Do not add quotes, code fences, or extra commentary.
@@ -93,7 +93,7 @@ Do not add quotes, code fences, or extra commentary.
 ```markdown
 # «sticker»
 
-WENDYAI
+WendyDancer
 👍
 ```
 
@@ -101,7 +101,7 @@ WENDYAI
 ```markdown
 # «sticker» 54321
 
-WENDYAI
+WendyDancer
 😘
 ```
 ### Rules
