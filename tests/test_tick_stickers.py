@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from task_graph import TaskGraph, TaskNode
-from tick import handle_sticker
 
 
 class FakeDoc:
@@ -41,9 +40,9 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     )
 
     # Make get_agent_for_id return our fake agent
-    import tick as tick_mod
+    import handlers.sticker as handle_sticker
 
-    monkeypatch.setattr(tick_mod, "get_agent_for_id", lambda _id: agent)
+    monkeypatch.setattr(handle_sticker, "get_agent_for_id", lambda _id: agent)
 
     # Stub the transient resolver to return a document ONLY for the requested set+name
     async def fake_resolve(client, set_short, sticker_name):
@@ -52,7 +51,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        tick_mod, "_resolve_sticker_doc_in_set", fake_resolve, raising=True
+        handle_sticker, "_resolve_sticker_doc_in_set", fake_resolve, raising=True
     )
 
     # Build a graph context like runtime does
@@ -68,7 +67,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     )
 
     # Act
-    await handle_sticker(task, graph)
+    await handle_sticker.handle_sticker(task, graph)
 
     # Assert: we sent a sticker file (from CINDYAI via resolver), not a fallback text
     assert agent.client.sent_files == [("chat-1", fake_doc, "sticker", None)]

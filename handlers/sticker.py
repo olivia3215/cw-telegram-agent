@@ -1,12 +1,38 @@
-# handle_sticker.py
+# handlers/sticker.py
 
 import logging
 
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import InputStickerSetShortName
+
 from agent import Agent, get_agent_for_id
 from task_graph import TaskGraph, TaskNode
-from tick import _resolve_sticker_doc_in_set, register_task_handler
+from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_sticker_doc_in_set(client, set_short: str, sticker_name: str):
+    """
+    Fetches `set_short` from Telegram and returns the Document whose sticker
+    attribute's .alt matches `sticker_name`. Does NOT cache or mutate Agent.
+    """
+    try:
+        result = await client(
+            GetStickerSetRequest(
+                stickerset=InputStickerSetShortName(short_name=set_short),
+                hash=0,
+            )
+        )
+    except Exception as e:
+        logger.debug(f"[stickers] resolve failed for set={set_short!r}: {e}")
+        return None
+
+    for doc in result.documents:
+        alt = next((a.alt for a in doc.attributes if hasattr(a, "alt")), None)
+        if alt == sticker_name:
+            return doc
+    return None
 
 
 @register_task_handler("sticker")

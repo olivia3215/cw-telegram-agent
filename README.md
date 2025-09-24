@@ -54,7 +54,7 @@ PYTHONPATH=. pytest -vv
 ## Repository map (modules & what to look for)
 
 * **`agent.py`** – Agent registry and runtime agent state (including sticker caches).
-* **`handle_received.py`** – Prompt assembly helpers used by the received-task handler; builds system/user messages and formats media/sticker lines from cache.
+* **`handlers.received.py`** – Prompt assembly helpers used by the received-task handler; builds system/user messages and formats media/sticker lines from cache.
 * **`tick.py`** – Task handlers for all task types (including the `received` handler that runs the media-description pass and then calls into prompt building).
 * **`media_injector.py`** – Media description subsystem:
 

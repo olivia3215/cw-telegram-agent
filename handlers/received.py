@@ -1,4 +1,4 @@
-# handle_received.py
+# handlers/received.py
 
 import logging
 import os

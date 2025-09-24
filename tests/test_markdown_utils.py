@@ -1,4 +1,4 @@
-from handle_received import parse_llm_reply
+from handlers.received import parse_llm_reply
 from markdown_utils import flatten_node_text
 
 

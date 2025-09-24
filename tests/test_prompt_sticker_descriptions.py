@@ -44,7 +44,7 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
 
     import importlib
 
-    hr = importlib.import_module("handle_received")
+    hr = importlib.import_module("handlers.received")
 
     # Patch the helper the prompt code calls
     monkeypatch.setattr(

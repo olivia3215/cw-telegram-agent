@@ -1,6 +1,6 @@
 # test_sticker_parsing.py
 
-from handle_received import parse_llm_reply
+from handlers.received import parse_llm_reply
 
 
 def test_sticker_two_line_no_reply():

@@ -123,7 +123,9 @@ async def test_execute_clear_conversation(monkeypatch):
     mock_agent.client = mock_client
     mock_agent.agent_id = "a1"
 
-    monkeypatch.setattr("tick.get_agent_for_id", lambda x: mock_agent)
+    monkeypatch.setattr(
+        "handlers.clear_conversation.get_agent_for_id", lambda x: mock_agent
+    )
 
     # Run the tick to execute the clear-conversation task
     await run_one_tick(queue)
