@@ -1,79 +1,73 @@
 # cw-telegram-agent
 
-This README is written for a future developer (and future ChatGPT) to quickly regain context: what’s here today, how it runs, and where to extend it—especially around media understanding.
+Conversational Telegram agents powered by an LLM. This README covers how to **set up**, **configure**, and **run** the server. For architecture, internals, and developer workflows, see `DESIGN.md` and `DEVELOPER.md`.
 
-[![CI](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/olivia3215/cw-telegram-agent/actions/workflows/ci.yml)
+---
+
+## Requirements
+
+* **Python 3.13**
+* A Telegram account (for each agent persona you run)
+* A Google Gemini API key (for image/sticker descriptions)
 
 ---
 
 ## Quick start
 
-### Requirements
-- **Python 3.13+**
-- `pip install -r requirements.txt`
+### 1) Create and activate a virtual environment
 
-### Environment
-- `CINDY_AGENT_STATE_DIR` — directory for persisted queues, media cache, etc.
-- `AGENT_DIR` — directory containing agent persona markdown files (one per agent).
-- `GOOGLE_GEMINI_API_KEY` — for image descriptions (Gemini Vision).
-- Optional tuning:
-  - `MEDIA_DESC_BUDGET_PER_TICK` — integer, number of AI description attempts per received task (default 8).
+```bash
+# from the repo root
+python3.13 -m venv venv
+source venv/bin/activate
+# on Windows PowerShell:
+# .\venv\Scripts\Activate.ps1
+```
 
-### Run the agent loop
+### 2) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3) Configure environment
+
+Set these environment variables (example uses a local `./state` dir):
+
+```bash
+export CINDY_AGENT_STATE_DIR="$(pwd)/state"
+export AGENT_DIR="$(pwd)/agents"
+export GOOGLE_GEMINI_API_KEY="your_api_key_here"
+```
+
+Optional tuning:
+
+```bash
+# Number of new AI description attempts per received task (cache hits are free)
+export MEDIA_DESC_BUDGET_PER_TICK=8
+```
+
+### 4) Log in Telegram sessions
+
+Run the helper once per persona to establish Telegram sessions:
+
+```bash
+python telegram_login.py
+```
+
+### 5) Start the agent loop
+
 ```bash
 python run.py
 ```
 
-The loop: connect, process unread messages, plan with the LLM, and execute one task per tick.
-
-### Tests
-
-```bash
-PYTHONPATH=. pytest -vv
-```
+The loop connects, processes unread messages, plans with the LLM, and executes **one task per tick**.
 
 ---
 
-## Mental model
+## Personas (`AGENT_DIR`)
 
-### Core ideas
-
-* **Task Graphs**: nodes with dependencies; common types today include `received`, `send`, `sticker`, `wait`, `shutdown`, `clear-conversation`.
-* **Tick loop**: at each tick, pick **one eligible task** across all active graphs (round-robin / fair), execute it, and persist state.
-* **Durable state**: the work queue (graphs, nodes, etc.) is flushed atomically to Markdown files with embedded JSON in `CINDY_AGENT_STATE_DIR`. This allows recovery on restart.
-
-### Typical flow
-
-1. **Startup**: load agent definitions from `AGENT_DIR`; resume state from `CINDY_AGENT_STATE_DIR`; connect agent sessions to Telegram.
-2. **Inbound**: when new Telegram messages arrive, the system inserts a minimal **`received`** task (no history fetch or LLM work here).
-3. **Handling (`received` task)**: the tick-loop handler fetches recent **history**, warms/uses the **media description cache** (bounded **per-tick AI budget**), formats history and the **specific newly received message**, then asks the LLM to produce a new task graph.
-4. **Execution**: tasks such as `send` / `sticker` / `wait` are dispatched by dedicated handlers; failures retry per policy.
-
----
-
-## Repository map (modules & what to look for)
-
-* **`agent.py`** – Agent registry and runtime agent state (including sticker caches).
-* **`handlers.received.py`** – Prompt assembly helpers used by the received-task handler; builds system/user messages and formats media/sticker lines from cache.
-* **`tick.py`** – Task handlers for all task types (including the `received` handler that runs the media-description pass and then calls into prompt building).
-* **`media_injector.py`** – Media description subsystem:
-
-  * cache-first helpers,
-  * per-tick AI budget,
-  * history processing (newest→oldest iteration internally, but preserving chronological order for the prompt),
-  * single-message and list-of-messages formatters (cache-only).
-* **`telegram_media.py`** – Media detection helpers (photo/sticker/gif/animation) and unique ID extraction.
-* **`telegram_download.py`** – Download helpers (async) for raw media bytes.
-* **`llm.py`** – LLM provider adapter; implements `describe_image(bytes, mime_type)` for image/sticker descriptions.
-* **`run.py`** – Startup utilities, including `ensure_sticker_cache`.
-* **`register_agents.py`** – Persona markdown parsing and agent registration.
-* **`tests/`** – Unit & integration tests, including media cache and budget tests.
-
----
-
-## Agent personas (`AGENT_DIR`)
-
-An agent is defined by a markdown file with fields:
+Create one markdown file per agent, e.g. `agents/Wendy.md`:
 
 ```markdown
 # Agent Name
@@ -83,120 +77,60 @@ Wendy
 +15551234567
 
 # Role Prompt
-Chatbot
+WendyDancer
 
 # Agent Instructions
-...long-form instructions to the agent...
+Write how you want the agent to behave and respond.
 
 # Agent Sticker Set
-MyCuteStickers   # optional; use “None” or omit to disable a primary set
+WendyDancer   # optional; set to “None” or omit to disable a primary curated set
 
 # Agent Sticker Sets
-WendyDancer
-CINDYAI
+WendyDancer   # optional; list any additional curated sets (one per line)
+CindyPainter
 
 # Agent Stickers
-WendyDancer :: 😉
-CINDYAI :: 😀
+WendyDancer :: 😉   # optional; explicit curated stickers (one per line)
+CindyPainter :: 😀
 ```
 
 Notes:
 
-* All fields are required **except** sticker-related fields.
-* Multiple files → multiple agents can run concurrently.
-* The optional **Agent Sticker Sets** and **Agent Stickers** allow listing additional sets and explicit stickers for prompt surfacing (descriptions are filled from cache when available).
+* **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
+* **Optional fields:** `Agent Sticker Set`, `Agent Sticker Sets`, `Agent Stickers`.
+  You may omit these entirely, or set *Agent Sticker Set* to `None`.
+
+> Internals about sticker trigger syntax and LLM task formats are documented in `DESIGN.md` (not needed for basic use).
 
 ---
 
-## Media handling (photos, stickers, GIFs) — current behavior
+## Media descriptions (high level)
 
-The agent enriches the LLM prompt by describing images/stickers found in recent history. Descriptions are cached on disk and in memory; a **per-tick AI budget** limits how many new descriptions can be computed each tick.
+The agent enriches its prompt by describing recent **photos and stickers**. Descriptions are cached in memory and on disk to avoid repeated work. A **per-tick budget** limits how many **new** descriptions are attempted each turn; cache hits do not consume budget.
 
-### Where it runs
-
-* Inside the **`received` task handler** (tick loop), right before building the prompt.
-* We iterate recent history **newest → oldest internally** to prioritize fresh content, but the final prompt preserves chronological order (oldest → newest).
-
-### Per-tick AI budget
-
-* Controlled by `MEDIA_DESC_BUDGET_PER_TICK` (default **8**).
-* **Only AI attempts** consume budget; cache hits do not.
-* When budget is exhausted, items remain undescribed this tick (no writes). They may be picked up in future ticks.
-
-### Timeouts and failures
-
-* Each AI attempt has a **12s timeout**.
-* Cache entry structure (conceptual):
-
-  * `description`: string **or** `null` (no sentinel strings like “not understood” in new writes),
-  * `status`: `"ok"`, `"not_understood"` (terminal negative), `"timeout"`, or `"error"`,
-  * sticker metadata when applicable (`set_name`, `sticker_name`), and `kind`.
-* Absent entry = never attempted; `"not_understood"` = terminal negative (don’t retry); `"timeout"/"error"` = transient (retry in later ticks; backoff policy can be added).
-
-### Prompt assembly conventions
-
-* User text is wrapped with **French quotes**: `« … »`.
-* Media descriptions use **single angle quotes**: `‹ … ›`.
-* Stickers render like:
-  `the sticker '<name>' from the sticker set '<set>' that appears as ‹…›`
-
-### Provider hook
-
-* Descriptions call `agent._llm.describe_image(bytes, mime)`. Gemini is supported; other providers can add the same method signature.
-
----
-
-## Sticker triggers (LLM → actions)
-
-The LLM triggers stickers using **two-line blocks** (optionally replying to a message):
-
-```markdown
-# «sticker»
-<SET SHORT NAME>
-<STICKER NAME>
-```
-
-Reply form:
-
-```markdown
-# «sticker» <MESSAGE_ID>
-<SET SHORT NAME>
-<STICKER NAME>
-```
-
-During the transition window the parser also accepts the legacy one-line body (`STICKER NAME` only), in which case the handler uses the agent’s primary set if present. The new two-line form is preferred.
-
----
-
-## Operational notes
-
-* `ensure_sticker_cache` loads the agent’s own sticker set(s) at startup if configured. This is independent of media descriptions.
-* The description pass happens **only** in the received-task handler; prompt building itself is **cache-only**.
-* The system replaces stickers/photos in the prompt history with cached descriptions; if none yet, the line is shown without a description suffix and will fill in over time as the budget allows.
-* The agent can send stickers from any set by providing `<SET SHORT NAME>` + `<STICKER NAME>` in the trigger; the sender does **not** need that sticker to be in the agent’s curated set.
+You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_API_KEY`.
 
 ---
 
 ## Troubleshooting
 
-* Seeing repeated “Starting direct file download…” lines or the bot appears frozen:
+* **Agent seems slow or idle**
 
-  * Ensure the per-tick budget is set sensibly (`MEDIA_DESC_BUDGET_PER_TICK`).
-  * Confirm description work only happens in the received-task handler.
-  * Check logs for `HIT/MISS/TIMEOUT/ERROR` lines from the description helper.
+  * Check logs for repeated download lines. Consider lowering `MEDIA_DESC_BUDGET_PER_TICK`.
+  * Ensure persona files in `AGENT_DIR` include all **required** fields.
 
-* Primary sticker set is optional:
+* **Sticker appeared as plain text**
 
-  * Omit the *Agent Sticker Set* field or set it to “None” to disable preloading.
-  * The agent can still send stickers from other sets by specifying the set name in the trigger.
+  * The requested sticker may not be resolvable at send time. The agent falls back to sending the sticker **name** as text. This isn’t harmful; it just indicates the sticker doc wasn’t found.
 
----
+* **No LLM output / empty responses**
 
-## Near-term roadmap
-
-* Optional curated description store (read-only) layered above disk cache.
-* Flip all legacy persisted “not understood” strings to `null` + `status` (with test updates).
-* Fine-tune budget/timeout envs and add light metrics.
-* Small test additions around received-task context building and single-message formatting.
+  * Verify `GOOGLE_GEMINI_API_KEY` is valid.
+  * See `DEVELOPER.md` for logging tips and model settings.
 
 ---
+
+## More docs
+
+* **Architecture & design:** `DESIGN.md`
+* **Developer guide:** `DEVELOPER.md`
