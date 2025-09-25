@@ -374,3 +374,119 @@ class GeminiLLM(LLM):
             return parts[0]["text"].strip()
         except Exception as e:
             raise RuntimeError(f"Gemini parse error: {e}") from e
+
+    def _generate_with_contents(
+        self,
+        *,
+        contents: list[dict[str, object]],
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Thin wrapper around the Gemini client for role-structured 'contents'.
+        Returns the model's text ('' on no text). Does not retry; caller controls retries via tick loop.
+        """
+        # Lazy import to avoid hard dependency at import time.
+        try:
+            # If you're already importing the client elsewhere, reuse that instead.
+            client = getattr(self, "client", None) or getattr(self, "_client", None)
+            if client is None:
+                raise RuntimeError("Gemini client not initialized")
+
+            # Choose model: prefer explicit, fall back to whatever the class currently uses.
+            model_name = (
+                model or getattr(self, "model", None) or getattr(self, "_model", None)
+            )
+            if model_name is None:
+                raise RuntimeError("No Gemini model configured")
+
+            # The exact SDK call name may differ in your code; adjust if you already wrap this elsewhere.
+            # We avoid changing behavior if this path is unused.
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                safety_settings=getattr(self, "safety_settings", None),
+                generation_config=getattr(self, "generation_config", None),
+                timeout=timeout_s,
+            )
+
+            # Extract the first candidate's text safely
+            text = ""
+            if response is not None:
+                # Prefer a method/property your code already uses, but keep this defensive.
+                if hasattr(response, "text") and isinstance(response.text, str):
+                    text = response.text
+                elif hasattr(response, "candidates") and response.candidates:
+                    # Be cautious about nesting; varies by SDK version.
+                    cand = response.candidates[0]
+                    # Some SDKs use .content.parts[0].text, others flatten to .text
+                    t = getattr(cand, "text", None)
+                    if isinstance(t, str):
+                        text = t or ""
+                    else:
+                        # Best-effort extraction
+                        content = getattr(cand, "content", None)
+                        if content and getattr(content, "parts", None):
+                            first_part = content.parts[0]
+                            if isinstance(first_part, dict) and "text" in first_part:
+                                text = str(first_part["text"] or "")
+            return text or ""
+        except Exception:
+            # Match existing behavior: on SDK failure, return empty string and let tick retry later.
+            return ""
+
+    def query_structured(
+        self,
+        *,
+        persona_instructions: str,
+        role_prompt: str | None,
+        llm_specific_prompt: str | None,
+        now_iso: str,
+        chat_type: str,  # "direct" | "group"
+        curated_stickers: Iterable[str] | None,
+        history: Iterable[ChatMsg],
+        target_message: ChatMsg | None,
+        history_size: int = 500,
+        include_speaker_prefix: bool = True,
+        include_message_ids: bool = True,
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        New structured path that uses role-structured 'contents' with multi-part messages.
+        Callers (e.g., handlers/received.py) should inject media renderings in 'parts'.
+        """
+        contents = build_gemini_contents(
+            persona_instructions=persona_instructions,
+            role_prompt=role_prompt,
+            llm_specific_prompt=llm_specific_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            curated_stickers=curated_stickers,
+            history=history,
+            target_message=target_message,
+            history_size=history_size,
+            include_speaker_prefix=include_speaker_prefix,
+            include_message_ids=include_message_ids,
+        )
+        # Optionally, lightweight structural logging
+        logger = getattr(self, "logger", None)
+        if logger:
+            try:
+                # system + n history + maybe 1 target
+                total_turns = len(contents)
+                hist_turns = max(
+                    0, total_turns - 1 - (1 if target_message is not None else 0)
+                )
+                logger.debug(
+                    "gemini.contents built: turns=%s (history=%s, target=%s)",
+                    total_turns,
+                    hist_turns,
+                    target_message is not None,
+                )
+            except Exception:
+                pass
+
+        return self._generate_with_contents(
+            contents=contents, model=model, timeout_s=timeout_s
+        )
