@@ -7,7 +7,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 from urllib import error, request
 
 import google.generativeai as genai
@@ -20,22 +20,25 @@ logger = logging.getLogger(__name__)
 # --- Role-structured prompt builder for Gemini (pure helper; parts-aware) ---
 
 
+# --- Role-structured prompt builder for Gemini (parts-aware, sender_id, open media kinds) ---
+
+
 # Each message can have multiple parts in the original order (text, media renderings, etc.)
 class MsgTextPart(TypedDict):
-    kind: Literal["text"]
+    kind: str  # must be "text"
     text: str  # plain text chunk
 
 
 class MsgMediaPart(TypedDict, total=False):
-    kind: Literal["media"]
-    media_kind: Literal["sticker", "photo", "video", "animated_sticker"]
-    rendered_text: (
-        str  # your "beautiful formatting" string from media_format/media_injector
-    )
+    kind: str  # must be "media"
+    # Open-ended media kind (e.g., "sticker", "photo", "video", "animated_sticker", "audio", "music", ...)
+    media_kind: str | None
+    # Your already-rendered description string (preferred)
+    rendered_text: str | None
+    # Optional metadata (for trace/fallbacks)
     unique_id: str | None
     set_name: str | None
     sticker_name: str | None
-    # NOTE: we do not embed binary; only rendered_text is used for the LLM prompt parts.
 
 
 MsgPart = MsgTextPart | MsgMediaPart
@@ -45,18 +48,20 @@ class ChatMsg(TypedDict, total=False):
     """
     Normalized view of a chat message for building LLM history.
 
-    Required for non-empty messages: either:
-      - parts: List[MsgPart] (preferred), or
-      - text: str (fallback; used if 'parts' missing)
+    Content (one of):
+      - parts: List[MsgPart]  (preferred)
+      - text: str             (fallback if 'parts' missing)
 
-    Other fields:
-      - sender: display name or identifier of the human/agent who sent it
-      - is_agent: True if this message was sent by *our* agent persona
-      - msg_id: message id string (if available)
-      - ts_iso: optional ISO-8601 timestamp (trace only; not shown to model)
+    Identity / trace:
+      - sender:    display name
+      - sender_id: stable unique sender id (e.g., Telegram user id)
+      - msg_id:    message id string (if available)
+      - is_agent:  True if this message was sent by *our* agent persona
+      - ts_iso:    optional ISO-8601 timestamp (trace only; not shown to model)
     """
 
     sender: str
+    sender_id: str
     parts: list[MsgPart]
     text: str
     is_agent: bool
@@ -65,7 +70,6 @@ class ChatMsg(TypedDict, total=False):
 
 
 def _mk_text_part(text: str) -> dict[str, str]:
-    # Gemini expects parts like {"text": "..."} inside each role turn.
     return {"text": text}
 
 
@@ -77,15 +81,22 @@ def _normalize_parts_for_message(
 ) -> list[dict[str, str]]:
     """
     Produce the sequence of Gemini text parts for a single message:
-      - Leading metadata header part (From / id), even in DMs.
+      - Leading metadata header part (From / sender_id / msg id), even in DMs.
       - Then each original message part in order (text or rendered media).
+      - If a media part lacks 'rendered_text', emit a succinct placeholder so the model
+        knows media was present.
     """
     parts: list[dict[str, str]] = []
 
     # 1) Metadata header (always, per spec)
     header_bits: list[str] = []
-    if include_speaker_prefix and m.get("sender"):
-        header_bits.append(f"From: {m['sender']}")
+    if include_speaker_prefix:
+        who = m.get("sender") or ""
+        sid = m.get("sender_id") or ""
+        if who and sid:
+            header_bits.append(f"From: {who} ({sid})")
+        elif who or sid:
+            header_bits.append(f"From: {who or sid}")
     if include_message_ids and m.get("msg_id"):
         header_bits.append(f"id: {m['msg_id']}")
     if header_bits:
@@ -96,20 +107,26 @@ def _normalize_parts_for_message(
 
     if raw_parts is not None and len(raw_parts) > 0:
         for p in raw_parts:
-            if p.get("kind") == "text":
+            k = (p.get("kind") or "").lower()
+            if k == "text":
                 txt = (p.get("text") or "").strip()
                 if txt:
                     parts.append(_mk_text_part(txt))
-            elif p.get("kind") == "media":
-                # Use your already-rendered description; do not embed binaries.
+            elif k == "media":
                 rendered = (p.get("rendered_text") or "").strip()
                 if rendered:
                     parts.append(_mk_text_part(rendered))
+                else:
+                    # Fallback: brief placeholder so the LLM knows something was here.
+                    mk = (p.get("media_kind") or "media").strip()
+                    uid = (p.get("unique_id") or "").strip()
+                    placeholder = f"[{mk} present" + (f" uid={uid}]" if uid else "]")
+                    parts.append(_mk_text_part(placeholder))
             else:
-                # Unknown part type: skip silently to keep builder pure/robust.
-                continue
+                # Unknown part type: surface minimally instead of dropping.
+                parts.append(_mk_text_part(f"[{k or 'unknown'} part]"))
     else:
-        # Fallback: single text field
+        # Fallback: single text
         fallback = (m.get("text") or "").strip()
         if fallback:
             parts.append(_mk_text_part(fallback))
