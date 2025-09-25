@@ -6,6 +6,8 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from typing import Any, TypedDict
 from urllib import error, request
 
 import google.generativeai as genai
@@ -13,6 +15,121 @@ import httpx
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
+
+
+# --- Role-structured prompt builder for Gemini (pure helper) ---
+class ChatMsg(TypedDict, total=False):
+    """
+    Normalized view of a past chat message for building LLM history.
+
+    Fields we actually use here:
+      - sender: display name or identifier of the human/agent who sent it
+      - text:   plain text content of the message
+      - is_agent: True if this message was sent by *our* agent persona
+      - msg_id: message id string (if available)
+      - ts_iso: optional ISO-8601 timestamp (for debugging/trace only)
+    """
+
+    sender: str
+    text: str
+    is_agent: bool
+    msg_id: str | None
+    ts_iso: str | None
+
+
+def _mk_text_part(text: str) -> dict[str, str]:
+    # Gemini expects parts like {"text": "..."} inside each role turn.
+    return {"text": text}
+
+
+def build_gemini_contents(
+    *,
+    # System turn inputs
+    persona_instructions: str,
+    role_prompt: str | None,
+    llm_specific_prompt: str | None,
+    now_iso: str,
+    chat_type: str,  # "direct" | "group" (stringly-typed to avoid import cycles)
+    curated_stickers: Iterable[str] | None = None,
+    # History & target
+    history: Iterable[ChatMsg],
+    target_message: ChatMsg | None,  # message we want the model to respond to
+    history_size: int = 500,
+    # Formatting toggles
+    include_speaker_prefix: bool = True,
+    include_message_ids: bool = True,
+) -> list[dict[str, Any]]:
+    """
+    Construct Gemini 'contents' with roles:
+      - One 'system' turn: persona + role prompt + LLM-specific prompt + metadata
+      - Chronological 'user'/'assistant' turns for prior messages (bounded by history_size)
+      - Final 'user' turn for the target message to respond to
+
+    IMPORTANT:
+      - We *do not* mutate inputs.
+      - We *do not* call the network.
+      - We do *not* include any file/image parts here—only text.
+
+    Returns:
+      A list of role turns, e.g.:
+        [
+          {"role": "system", "parts": [{"text": "..."}]},
+          {"role": "user", "parts": [{"text": "From: Alice — ..."}]},
+          {"role": "assistant", "parts": [{"text": "..."}]},
+          {"role": "user", "parts": [{"text": "From: Bob — ..."}]},
+        ]
+    """
+    # --- 1) Build the single system turn ---
+    sys_lines: list[str] = []
+    if persona_instructions:
+        sys_lines.append(persona_instructions.strip())
+
+    # Optional role/LLM-specific prompts (kept distinct for clarity)
+    if role_prompt:
+        sys_lines.append("\n# Role Prompt\n" + role_prompt.strip())
+    if llm_specific_prompt:
+        sys_lines.append("\n# Model-Specific Guidance\n" + llm_specific_prompt.strip())
+
+    # Minimal metadata that helps grounding
+    sys_lines.append(f"\n# Context\nCurrent time: {now_iso}\nChat type: {chat_type}")
+    if curated_stickers:
+        # Keep this succinct; details (like IDs) should live elsewhere if needed.
+        sticker_list = ", ".join(curated_stickers)
+        sys_lines.append(f"Curated stickers available: {sticker_list}")
+
+    contents: list[dict[str, Any]] = [
+        {"role": "system", "parts": [_mk_text_part("\n\n".join(sys_lines).strip())]}
+    ]
+
+    # --- 2) Add bounded chronological history (excluding target for now) ---
+    # We’ll copy to a list to be able to slice safely.
+    hist_list = list(history)
+    if history_size >= 0:
+        hist_list = hist_list[-history_size:]
+
+    def _format_user_text(m: ChatMsg) -> str:
+        prefix_bits: list[str] = []
+        if include_speaker_prefix and m.get("sender"):
+            prefix_bits.append(f"From: {m['sender']}")
+        if include_message_ids and m.get("msg_id"):
+            prefix_bits.append(f"id: {m['msg_id']}")
+        prefix = " — ".join(prefix_bits)
+        return f"{prefix}: {m['text']}" if prefix else m["text"]
+
+    for m in hist_list:
+        role = "assistant" if m.get("is_agent") else "user"
+        text = m["text"] if role == "assistant" else _format_user_text(m)
+        contents.append({"role": role, "parts": [_mk_text_part(text)]})
+
+    # --- 3) Add target message as the final 'user' turn (if provided) ---
+    if target_message is not None:
+        # We intentionally *always* place the target last so the model knows
+        # exactly which message to respond to—even in group chats.
+        tm = target_message
+        final_text = _format_user_text(tm)
+        contents.append({"role": "user", "parts": [_mk_text_part(final_text)]})
+
+    return contents
 
 
 class LLM(ABC):
