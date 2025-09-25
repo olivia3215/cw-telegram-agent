@@ -13,16 +13,43 @@ from llm import GeminiLLM
 logger = logging.getLogger(__name__)
 
 
+# agent.py
+
+
 class Agent:
     def __init__(
-        self, *, name, phone, sticker_set_name, instructions, role_prompt_name, llm=None
+        self,
+        *,
+        name,
+        phone,
+        sticker_set_name,
+        instructions,
+        role_prompt_name,
+        llm=None,
+        # NEW (optional) multi-set config; callers may omit
+        sticker_set_names=None,
+        explicit_stickers=None,
     ):
         self.name = name
         self.phone = phone
         self.sticker_set_name = sticker_set_name
         self.instructions = instructions
         self.role_prompt_name = role_prompt_name
-        self.sticker_cache = {}  # name -> InputDocument
+
+        # Multi-set config (lists)
+        self.sticker_set_names = list(
+            sticker_set_names or []
+        )  # e.g. ["WendyDancer", "CINDYAI"]
+        self.explicit_stickers = list(
+            explicit_stickers or []
+        )  # e.g. [("WendyDancer","Wink")]
+
+        # Legacy cache: name -> InputDocument (canonical set only)
+        self.sticker_cache = {}
+
+        # (set_short_name, sticker_name) -> InputDocument
+        self.sticker_cache_by_set = {}
+
         self.client = None
         self.agent_id = None
         self._blocklist_cache = None
@@ -33,6 +60,9 @@ class Agent:
 
         # Cache for entities: {entity_id: (entity, expiration_time)}
         self._entity_cache = {}
+
+        # Tracks which sticker set short names have been loaded into caches
+        self.loaded_sticker_sets = set()  # e.g., {"WendyDancer", "CINDYAI"}
 
         self._llm = llm
 
@@ -168,6 +198,9 @@ class AgentRegistry:
         sticker_set_name: str,
         instructions: str,
         role_prompt_name: str,
+        llm=None,
+        sticker_set_names=None,
+        explicit_stickers=None,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -180,6 +213,9 @@ class AgentRegistry:
             sticker_set_name=sticker_set_name,
             instructions=instructions,
             role_prompt_name=role_prompt_name,
+            llm=llm,
+            sticker_set_names=sticker_set_names,
+            explicit_stickers=explicit_stickers,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
 

@@ -11,13 +11,42 @@ from markdown_utils import flatten_node_text
 
 logger = logging.getLogger("register_agents")
 
-EXPECTED_FIELDS = [
+REQUIRED_FIELDS = [
     "Agent Name",
     "Agent Phone",
-    "Agent Sticker Set",
     "Agent Instructions",
     "Role Prompt",
 ]
+
+
+def _ensure_list(value) -> list[str]:
+    """Normalize a field value to a clean list of non-empty, stripped lines."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        lines = [ln.strip() for ln in value.splitlines()]
+    elif isinstance(value, list):
+        lines = [str(ln).strip() for ln in value]
+    else:
+        lines = [str(value).strip()]
+    return [ln for ln in lines if ln]
+
+
+def _parse_explicit_stickers(lines: list[str]) -> list[tuple[str, str]]:
+    """
+    Lines formatted as: SET_NAME :: STICKER_NAME
+    Whitespace around tokens is stripped.
+    """
+    out: list[tuple[str, str]] = []
+    for ln in lines:
+        if "::" not in ln:
+            continue
+        left, right = ln.split("::", 1)
+        set_name = left.strip()
+        sticker_name = right.strip()
+        if set_name and sticker_name:
+            out.append((set_name, sticker_name))
+    return out
 
 
 def extract_fields_from_markdown(md_text):
@@ -52,11 +81,14 @@ def extract_fields_from_markdown(md_text):
 
 def parse_agent_markdown(path):
     try:
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         logger.debug("ORIGINAL MARKDOWN:\n" + content)
         fields = extract_fields_from_markdown(content)
 
-        missing = [f for f in EXPECTED_FIELDS if f not in fields]
+        # Validate only legacy, required fields
+        missing = [
+            f for f in REQUIRED_FIELDS if f not in fields or not str(fields[f]).strip()
+        ]
         if missing:
             logger.error(
                 f"Agent config '{path.name}' is missing fields: {', '.join(missing)}"
@@ -64,16 +96,38 @@ def parse_agent_markdown(path):
             logger.debug(f"Parsed agent from {path.name}: {fields}")
             return None
 
-        name = fields["Agent Name"]
-        instructions = fields["Agent Instructions"]
+        name = str(fields["Agent Name"]).strip()
+        instructions = str(fields["Agent Instructions"]).strip()
 
         logger.debug(f"Agent instructions for {name}:\n{instructions}")
+
+        # Helper to normalize optional "set" values (None, "", "none", "null" → None)
+        def _norm_set(val: str | None) -> str | None:
+            if val is None:
+                return None
+            v = val.strip()
+            if not v:
+                return None
+            if v.lower() in {"none", "null"}:
+                return None
+            return v
+
+        primary_set = _norm_set(fields.get("Agent Sticker Set"))
+
+        # Optional multi-set fields (safe defaults)
+        sticker_set_names = _ensure_list(fields.get("Agent Sticker Sets"))
+        explicit_lines = _ensure_list(fields.get("Agent Stickers"))
+        explicit_stickers = _parse_explicit_stickers(explicit_lines)
+
         return {
             "name": name,
-            "phone": fields["Agent Phone"],
-            "sticker_set_name": fields["Agent Sticker Set"],
+            "phone": str(fields["Agent Phone"]).strip(),
+            "sticker_set_name": primary_set,
             "instructions": instructions,
-            "role_prompt_name": fields["Role Prompt"],
+            "role_prompt_name": str(fields["Role Prompt"]).strip(),
+            # new optional outputs:
+            "sticker_set_names": sticker_set_names,  # list[str]
+            "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -100,4 +154,6 @@ def register_all_agents():
                 sticker_set_name=parsed["sticker_set_name"],
                 instructions=parsed["instructions"],
                 role_prompt_name=parsed["role_prompt_name"],
+                sticker_set_names=parsed.get("sticker_set_names") or [],
+                explicit_stickers=parsed.get("explicit_stickers") or [],
             )

@@ -1,6 +1,7 @@
-# handle_received.py
+# handlers/received.py
 
 import logging
+import os
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -13,13 +14,25 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
+from media_cache import get_media_cache
+from media_injector import (
+    build_prompt_lines_from_messages,
+    format_message_for_prompt,
+    get_or_compute_description_for_doc,
+    inject_media_descriptions,
+    reset_description_budget,
+)
 from prompt_loader import load_system_prompt
+from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from telegram_util import get_dialog_name
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+# per-tick AI description budget (default 8; env override)
+MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 
 def parse_llm_reply_from_markdown(
@@ -54,8 +67,19 @@ def parse_llm_reply_from_markdown(
 
         if current_type == "send":
             params["message"] = body
+
         elif current_type == "sticker":
-            params["name"] = body
+            parsed = parse_sticker_body(body)
+            if not parsed:
+                # Silent on Telegram; note in logs only
+                print("[sticker] malformed or empty sticker body; dropping")
+                return
+
+            set_short, sticker_name = parsed
+            params["name"] = sticker_name
+            # During transition we explicitly carry None; tick.py will fall back to agent’s canonical set
+            params["sticker_set"] = set_short
+
         elif current_type == "wait":
             match = re.search(r"delay:\s*(\d+)", body)
             if not match:
@@ -65,15 +89,20 @@ def parse_llm_reply_from_markdown(
             params["delay"] = delay_seconds
             wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
             params["until"] = wait_until_time.strftime(ISO_FORMAT)
+
         elif current_type == "block":
             pass  # No parameters needed
+
         elif current_type == "unblock":
             pass  # No parameters needed
+
         elif current_type == "shutdown":
             if body:
                 params["reason"] = body
+
         elif current_type == "clear-conversation":
             pass  # No parameters needed
+
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
@@ -126,6 +155,13 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
 
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph: TaskGraph):
+    """
+    Process an inbound 'received' event:
+      1) Reset per-tick AI description budget
+      2) Fetch recent messages
+      3) Run media description injection (stickers + photos together), newest→oldest
+      4) Proceed with existing planning/prompt flow (unchanged)
+    """
     channel_id = graph.context.get("channel_id")
     assert channel_id
     agent_id = graph.context.get("agent_id")
@@ -138,6 +174,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
+
+    # 1) Reset per-tick AI description budget
+    reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+
+    # 2) Fetch recent messages
+    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    messages = await inject_media_descriptions(messages, agent=agent)
 
     is_callout = task.params.get("callout", False)
     dialog = await agent.get_cached_entity(channel_id)
@@ -162,20 +205,78 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{{user}}", channel_name)
     system_prompt = system_prompt.replace("{user}", channel_name)
 
+    now = datetime.now().astimezone()
+
     if agent.sticker_cache:
-        sticker_list = "\n".join(f"- {name}" for name in sorted(agent.sticker_cache))
-        now = datetime.now().astimezone()
+        # Build a list of "<SET> :: <NAME>" for the agent's canonical set.
+        canonical = agent.sticker_set_name
+        names_in_canonical = sorted(
+            name
+            for (set_short, name) in agent.sticker_cache_by_set.keys()
+            if set_short == canonical
+        )
+        sticker_list = "\n".join(
+            f"- {canonical} :: {name}" for name in names_in_canonical
+        )
+
+    if agent.sticker_cache_by_set:
+        lines = []
+
+        # Iterate whatever order the cache yields (per your instruction).
+        for (set_short, name), doc in agent.sticker_cache_by_set.items():
+            # Best-effort: fetch/compute description, blocking, then format
+            try:
+                _uid, desc = await get_or_compute_description_for_doc(
+                    client=agent.client,
+                    doc=doc,
+                    llm=agent.llm,
+                    cache=get_media_cache(),
+                    kind="sticker",
+                    set_name=set_short,
+                    sticker_name=name,
+                )
+            except Exception:
+                desc = None
+
+            if desc:
+                lines.append(f"- {set_short} :: {name} - ‹{desc}›")
+            else:
+                lines.append(f"- {set_short} :: {name}")
+
+        sticker_list = "\n".join(lines)
+        system_prompt += f"\n\n# Stickers you may send\n\n" f"{sticker_list}" "\n"
         system_prompt += (
-            f"\n\n# Available Stickers\n\n"
-            f'\n\nYou may only use the following sticker names in "sticker" tasks:\n\n{sticker_list}'
-            f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
-            f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
+            "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name."
             "\n"
         )
 
-    context_lines = task.params.get("thread_context", [])
+    system_prompt += (
+        f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
+        f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
+        "\n"
+    )
+
+    # build prompt context directly from processed history
+    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    # inject_media_descriptions puts media descriptions into the cache
+    messages = await inject_media_descriptions(messages, agent=agent)
+    # build_prompt_lines_from_messages uses the media descriptions and produces the history text lines
+    context_lines = await build_prompt_lines_from_messages(messages, agent=agent)
     formatted_context = "\n".join(context_lines)
-    user_message = task.params.get("message_text", "")
+
+    # Determine which message is the "newly received" one to present as user_message.
+    message_id = task.params.get("message_id", None)
+    target_msg = None
+    if message_id is not None:
+        for m in reversed(messages):  # quicker search from newest
+            if getattr(m, "id", None) == message_id:
+                target_msg = m
+                break
+    if target_msg is None and messages:
+        target_msg = messages[-1]  # newest
+    user_message = None
+    if target_msg is not None:
+        user_message = await format_message_for_prompt(target_msg, agent=agent)
 
     user_prompt = (
         "Here is the conversation so far:\n\n"

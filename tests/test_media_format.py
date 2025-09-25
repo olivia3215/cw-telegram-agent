@@ -42,7 +42,7 @@ def test_format_sticker_sentence_with_desc():
     out = format_sticker_sentence("😊", "HotCherry", "Kermit gives a thumbs up")
     assert (
         out
-        == "the sticker '😊' from the sticker set 'HotCherry' that appears as ‹Kermit gives a thumbs up›"
+        == "the sticker `😊` from the sticker set `HotCherry` that appears as ‹Kermit gives a thumbs up›"
     )
 
 
@@ -53,5 +53,5 @@ def test_format_sticker_sentence_without_desc(desc):
     out = format_sticker_sentence("👋", "WendyDancer", desc)
     assert (
         out
-        == "the sticker '👋' from the sticker set 'WendyDancer' that is not understood"
+        == "the sticker `👋` from the sticker set `WendyDancer` that is not understood"
     )

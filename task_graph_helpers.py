@@ -4,11 +4,7 @@ import logging
 import uuid
 
 from agent import get_agent_for_id
-from media_cache import get_media_cache
-from media_format import format_media_description, format_sticker_sentence
-from media_injector import inject_media_descriptions
 from task_graph import TaskGraph, TaskNode, WorkQueue
-from telegram_media import iter_media_parts
 from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
@@ -101,67 +97,12 @@ async def insert_received_task_for_conversation(
     if not client:
         raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
 
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-    messages = await inject_media_descriptions(messages, agent=agent)
-
-    cache = get_media_cache()
-    message_text = None
-    thread_context = []
-
-    for msg in reversed(messages):
-        sender_name = await get_channel_name(agent, msg.sender.id)
-
-        parts = []
-        # include text if present
-        if getattr(msg, "text", None):
-            text = msg.text.strip()
-            if text:
-                parts.append(f"«{text}»")
-
-        # include media (photos/stickers/gif/animation); use cached descriptions & metadata
-        try:
-            items = iter_media_parts(msg) or []
-        except Exception:
-            items = []
-
-        for it in items:
-            meta = cache.get(it.unique_id)
-            desc_text = meta.get("description") if isinstance(meta, dict) else meta
-
-            if it.kind == "sticker":
-                sticker_set = (
-                    (meta.get("sticker_set") if isinstance(meta, dict) else None)
-                    or getattr(it, "sticker_set", None)
-                    or "(unknown)"
-                )
-                sticker_name = (
-                    (meta.get("sticker_name") if isinstance(meta, dict) else None)
-                    or getattr(it, "sticker_name", None)
-                    or "(unnamed)"
-                )
-                parts.append(
-                    format_sticker_sentence(
-                        sticker_name=sticker_name,
-                        sticker_set=sticker_set,
-                        description=desc_text or "sticker not understood",
-                    )
-                )
-            else:
-                parts.append(
-                    f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
-                )
-
-        content = " ".join(parts) if parts else "not understood"
-        thread_context.append(f"[{msg.id}] ({sender_name}): {content}")
-
-    # build params (no added French quotes here; they’re already in `parts`)
-    task_params = {"thread_context": thread_context}
+    # build params
+    task_params = {}
     if message_id is not None:
         task_params["message_id"] = message_id
     if is_callout:
         task_params["callout"] = True
-    if message_text is not None:
-        task_params["message_text"] = message_text
 
     assert recipient_id
     recipient_name = await get_channel_name(agent, recipient_id)

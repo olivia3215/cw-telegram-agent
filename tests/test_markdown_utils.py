@@ -1,4 +1,4 @@
-from handle_received import parse_llm_reply
+from handlers.received import parse_llm_reply
 from markdown_utils import flatten_node_text
 
 
@@ -40,6 +40,7 @@ delay: 10
 
 # «sticker»
 
+WendyDancer
 👍
 
 # «shutdown»
@@ -86,6 +87,7 @@ This is a reply.
 
 # «sticker» 54321
 
+WendyDancer
 👍
 """
     tasks = parse_llm_reply(md, agent_id="agent1", channel_id="channel1")
