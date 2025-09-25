@@ -13,6 +13,20 @@ import httpx
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
+# --- Gemini config (model + safety) -----------------------------------------
+
+# Use the newer preview model
+# GEMINI_MODEL_DEFAULT = "gemini-2.5-flash-preview-09-2025"
+GEMINI_MODEL_DEFAULT = "gemini-2.0-flash"
+
+# Hard-coded safety settings: disable category blocking (BLOCK_NONE)
+# API expects these exact strings in REST payloads.
+GEMINI_SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
 
 
 class LLM(ABC):
@@ -85,26 +99,141 @@ class OllamaLLM(LLM):
         return data.get("message", {}).get("content", "")
 
 
+def _gemini_payload_with_safety(
+    contents: list, generation_config: dict | None = None
+) -> dict:
+    """
+    Build a Gemini REST payload that always includes our BLOCK_NONE safety settings.
+    `contents` is the usual Gemini "contents" array. `generation_config` is optional.
+    """
+    payload = {
+        "contents": contents,
+        "safetySettings": GEMINI_SAFETY_SETTINGS,
+    }
+    if generation_config:
+        payload["generationConfig"] = generation_config
+    return payload
+
+
+def _log_safety_findings(resp_json, *, context: str):
+    """Log a concise warning if Gemini returns safety blocks/findings."""
+    try:
+        safety = []
+        # candidates[].safetyRatings[] or promptFeedback.safetyRatings[]
+        for c in resp_json.get("candidates") or []:
+            for r in c.get("safetyRatings") or []:
+                if r.get("blocked", False) or (
+                    r.get("probability") in ("HIGH", "MEDIUM")
+                ):
+                    safety.append(f"{r.get('category')}:{r.get('probability')}")
+        pf = resp_json.get("promptFeedback") or {}
+        for r in pf.get("safetyRatings") or []:
+            if r.get("blocked", False) or (r.get("probability") in ("HIGH", "MEDIUM")):
+                safety.append(f"{r.get('category')}:{r.get('probability')}")
+        if safety:
+            logger.warning(f"[gemini][{context}] safety: " + ", ".join(safety))
+    except Exception:
+        pass
+
+
+def _sdk_safety_settings():
+    # Prefer typed settings if available; otherwise fall back to dicts.
+    try:
+        # google.generativeai.types on older SDKs
+        from google.generativeai.types import (
+            HarmBlockThreshold,
+            HarmCategory,
+            SafetySetting,
+        )
+
+        return [
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=HarmBlockThreshold.BLOCK_NONE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=HarmBlockThreshold.BLOCK_NONE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=HarmBlockThreshold.BLOCK_NONE,
+            ),
+            SafetySetting(
+                category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=HarmBlockThreshold.BLOCK_NONE,
+            ),
+        ]
+    except Exception:
+        return GEMINI_SAFETY_SETTINGS
+
+
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
 
-    def __init__(self, model: str = "gemini-2.0-flash", api_key: str | None = None):
-        self.model_name = model
+    def __init__(
+        self, model_name: str = GEMINI_MODEL_DEFAULT, api_key: str | None = None
+    ):
+        self.model_name = model_name
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
             )
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(model)
+        self.model = genai.GenerativeModel(self.model_name)
         self.history_size = 500
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        logger.warning(f"=====> prompt: {full_prompt}")
-        response = await asyncio.to_thread(self.model.generate_content, full_prompt)
-        logger.warning(f"=====> response: {response}")
-        return response.text
+        logger.debug(
+            f"[gemini] prompt chars={len(full_prompt)} model={self.model_name}"
+        )
+
+        # Optional: tune generation settings if you like
+        generation_config = {
+            "temperature": 0.4,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 1024,
+        }
+
+        # Call SDK with safety settings; run off-loop
+        def _call():
+            return self.model.generate_content(
+                full_prompt,
+                safety_settings=(
+                    _sdk_safety_settings()
+                    if " _sdk_safety_settings" in globals()
+                    else GEMINI_SAFETY_SETTINGS
+                ),
+                generation_config=generation_config,
+            )
+
+        response = await asyncio.to_thread(_call)
+
+        # Log safety findings if present (convert SDK object to dict if possible)
+        try:
+            as_dict = response.to_dict() if hasattr(response, "to_dict") else {}
+            if as_dict:
+                _log_safety_findings(as_dict, context="query")
+        except Exception:
+            pass
+
+        # Return the main text result
+        try:
+            return response.text
+        except Exception:
+            # Robust fallback in case .text is missing
+            try:
+                # candidates[0].content.parts[0].text style
+                as_dict = response.to_dict()
+                candidates = as_dict.get("candidates") or []
+                parts = (candidates[0].get("content") or {}).get("parts") or []
+                return (parts[0].get("text") or "").strip()
+            except Exception as e:
+                logger.warning(f"[gemini][query] no text in response: {e}")
+                return ""
 
     IMAGE_DESCRIPTION_PROMPT = (
         "You are given a single image. Describe the scene in rich detail so a reader "
@@ -131,27 +260,24 @@ class GeminiLLM(LLM):
             elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
                 mime_type = "image/webp"
 
-        # Prefer a vision-capable model
-        model = "gemini-2.5-flash-preview-09-2025"
+        # Use the same model we configured at init
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
-
-        payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": self.IMAGE_DESCRIPTION_PROMPT},
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": base64.b64encode(image_bytes).decode("ascii"),
-                            }
-                        },
-                    ],
-                }
-            ]
-        }
+        contents = [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": self.IMAGE_DESCRIPTION_PROMPT},
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": base64.b64encode(image_bytes).decode("ascii"),
+                        }
+                    },
+                ],
+            }
+        ]
+        payload = _gemini_payload_with_safety(contents)
 
         data = json.dumps(payload).encode("utf-8")
         req = request.Request(
@@ -170,6 +296,9 @@ class GeminiLLM(LLM):
 
         try:
             obj = json.loads(body.decode("utf-8"))
+
+            _log_safety_findings(obj, context="describe_image")
+
             # Typical path: candidates[0].content.parts[0].text
             candidates = obj.get("candidates") or []
             if not candidates:
