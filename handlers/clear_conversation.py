@@ -1,0 +1,53 @@
+# handlers/clear_conversation.py
+
+import logging
+
+from telethon.tl.functions.messages import DeleteHistoryRequest
+
+from agent import Agent, get_agent_for_id
+from task_graph import TaskGraph, TaskNode
+from telegram_util import get_channel_name
+from tick import register_task_handler
+
+logger = logging.getLogger(__name__)
+
+
+@register_task_handler("clear-conversation")
+async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
+    agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
+    agent: Agent = get_agent_for_id(agent_id)
+    agent_name = agent.name
+    client = agent.client
+
+    channel = await agent.get_cached_entity(channel_id)
+
+    logger.debug(
+        f"[{agent_name}] Resolved channel for ID [{await get_channel_name(agent, channel_id)}]: {channel} (type: {type(channel)})"
+    )
+
+    if not getattr(channel, "is_user", False):
+        logger.info(
+            f"[{agent_name}] Skipping clear-conversation: channel [{await get_channel_name(agent, channel_id)}] is not a DM."
+        )
+        return
+
+    logger.info(
+        f"[{agent_name}] Clearing conversation history with channel [{await get_channel_name(agent, channel_id)}]."
+    )
+
+    try:
+        await client(
+            DeleteHistoryRequest(
+                peer=channel,
+                max_id=0,  # 0 means delete all messages
+                revoke=True,  # revoke=True removes messages for both sides
+            )
+        )
+        logger.info(
+            f"[{agent_name}] Successfully cleared conversation with [{await get_channel_name(agent, channel_id)}]"
+        )
+    except Exception as e:
+        logger.exception(
+            f"[{agent_name}] Failed to clear conversation with [{await get_channel_name(agent, channel_id)}]: {e}"
+        )

@@ -37,7 +37,7 @@ You may include as many tasks as you like, and they will be executed in order.
 Valid task types:
 
 - `# «send»` — send a text message
-- `# «sticker»` — send a sticker by name (must be from your assigned sticker set)
+- `# «sticker»` — send a sticker by sticker set and sticker name
 - `# «wait»` — wait for a specified number of seconds
 - `# «block»` — block the conversation, preventing either participant from sending a message
 - `# «unblock»` — unblock the conversation, permitting messages to be sent again after being blocked
@@ -79,21 +79,39 @@ Avoid this syntax outside code blocks if you don't intend to affect the format o
 
 ## sticker
 
-Use this if a sticker captures the essence of your reply. The body should be the sticker name (emoji or short name):
+Use this if a sticker captures the essence of your reply. When you send a sticker, the body MUST be exactly two lines:
+
+1) the **sticker set short name** (e.g., `WendyDancer`)
+2) the **sticker name** (emoji or short name exactly as shown in the “Stickers you may send” section or in recent chat history)
+
+Do not add quotes, code fences, or extra commentary.
+
+You can send a sticker from your configured set,
+or you can send a sticker that you have seen in the chat history,
+but you must make sure to use both the _sticker set name_ and _sticker name_ for the sticker.
+
+### Examples
+
+**Send a sticker (no reply target):**
 
 ```markdown
 # «sticker»
 
+WendyDancer
 👍
 ```
 
-A sticker may also be send in response to a particular message.
-
+**Send a sticker in reply to a specific message (id 54321):**
 ```markdown
-# «sticker» 1234
+# «sticker» 54321
 
+WendyDancer
 😘
 ```
+### Rules
+- Choose stickers **only** from the “Stickers you may send” list in this prompt or from stickers visible in the recent chat history.
+- Write the set and name **exactly** as shown; do not change case or add punctuation.
+- Do **not** include any other text in the sticker block. If you also need to send a message, add a separate `# «send»` block.
 
 ## wait
 

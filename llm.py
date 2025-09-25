@@ -101,9 +101,9 @@ class GeminiLLM(LLM):
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        # logger.warning(f"=====> prompt: {full_prompt}")
+        logger.warning(f"=====> prompt: {full_prompt}")
         response = await asyncio.to_thread(self.model.generate_content, full_prompt)
-        # logger.warning(f"=====> response: {response}")
+        logger.warning(f"=====> response: {response}")
         return response.text
 
     IMAGE_DESCRIPTION_PROMPT = (
@@ -131,13 +131,8 @@ class GeminiLLM(LLM):
             elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
                 mime_type = "image/webp"
 
-        # Prefer a vision-capable model; fall back to this instance's model if already 1.5.
-        model = "gemini-1.5-pro"
-        if (
-            isinstance(getattr(self, "model_name", None), str)
-            and "1.5" in self.model_name
-        ):
-            model = self.model_name
+        # Prefer a vision-capable model
+        model = "gemini-2.5-flash-preview-09-2025"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
