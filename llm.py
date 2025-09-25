@@ -78,6 +78,7 @@ def _normalize_parts_for_message(
     *,
     include_speaker_prefix: bool,
     include_message_ids: bool,
+    is_agent: bool,
 ) -> list[dict[str, str]]:
     """
     Produce the sequence of Gemini text parts for a single message:
@@ -89,18 +90,19 @@ def _normalize_parts_for_message(
     parts: list[dict[str, str]] = []
 
     # 1) Metadata header (always, per spec)
-    header_bits: list[str] = []
-    if include_speaker_prefix:
-        who = m.get("sender") or ""
-        sid = m.get("sender_id") or ""
-        if who and sid:
-            header_bits.append(f"From: {who} ({sid})")
-        elif who or sid:
-            header_bits.append(f"From: {who or sid}")
-    if include_message_ids and m.get("msg_id"):
-        header_bits.append(f"id: {m['msg_id']}")
-    if header_bits:
-        parts.append(_mk_text_part(" — ".join(header_bits)))
+    if not is_agent:
+        header_bits: list[str] = []
+        if include_speaker_prefix:
+            who = m.get("sender") or ""
+            sid = m.get("sender_id") or ""
+            if who and sid:
+                header_bits.append(f"From: {who} ({sid})")
+            elif who or sid:
+                header_bits.append(f"From: {who or sid}")
+        if include_message_ids and m.get("msg_id"):
+            header_bits.append(f"id: {m['msg_id']}")
+        if header_bits:
+            parts.append(_mk_text_part(" — ".join(header_bits)))
 
     # 2) Original message content in original order
     raw_parts: list[MsgPart] | None = m.get("parts")
@@ -183,13 +185,14 @@ def build_gemini_contents(
         hist_list = hist_list[-history_size:]
 
     for m in hist_list:
-        role = "assistant" if m.get("is_agent") else "user"
+        is_agent = bool(m.get("is_agent"))
+        role = "assistant" if is_agent else "user"
         parts = _normalize_parts_for_message(
             m,
             include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
+            is_agent=is_agent,
         )
-        # Skip empty turns (e.g., purely-unknown parts)
         if parts:
             contents.append({"role": role, "parts": parts})
 
@@ -199,10 +202,10 @@ def build_gemini_contents(
             target_message,
             include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
+            is_agent=False,
         )
         if tm_parts:
             contents.append({"role": "user", "parts": tm_parts})
-
     return contents
 
 
