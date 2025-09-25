@@ -49,7 +49,7 @@ class ChatMsg(TypedDict, total=False):
     Normalized view of a chat message for building LLM history.
 
     Content (one of):
-      - parts: List[MsgPart]  (preferred)
+      - parts: list[MsgPart]  (preferred)
       - text: str             (fallback if 'parts' missing)
 
     Identity / trace:
