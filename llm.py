@@ -7,7 +7,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 from urllib import error, request
 
 import google.generativeai as genai
@@ -17,20 +17,47 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 
-# --- Role-structured prompt builder for Gemini (pure helper) ---
+# --- Role-structured prompt builder for Gemini (pure helper; parts-aware) ---
+
+
+# Each message can have multiple parts in the original order (text, media renderings, etc.)
+class MsgTextPart(TypedDict):
+    kind: Literal["text"]
+    text: str  # plain text chunk
+
+
+class MsgMediaPart(TypedDict, total=False):
+    kind: Literal["media"]
+    media_kind: Literal["sticker", "photo", "video", "animated_sticker"]
+    rendered_text: (
+        str  # your "beautiful formatting" string from media_format/media_injector
+    )
+    unique_id: str | None
+    set_name: str | None
+    sticker_name: str | None
+    # NOTE: we do not embed binary; only rendered_text is used for the LLM prompt parts.
+
+
+MsgPart = MsgTextPart | MsgMediaPart
+
+
 class ChatMsg(TypedDict, total=False):
     """
-    Normalized view of a past chat message for building LLM history.
+    Normalized view of a chat message for building LLM history.
 
-    Fields we actually use here:
+    Required for non-empty messages: either:
+      - parts: List[MsgPart] (preferred), or
+      - text: str (fallback; used if 'parts' missing)
+
+    Other fields:
       - sender: display name or identifier of the human/agent who sent it
-      - text:   plain text content of the message
       - is_agent: True if this message was sent by *our* agent persona
       - msg_id: message id string (if available)
-      - ts_iso: optional ISO-8601 timestamp (for debugging/trace only)
+      - ts_iso: optional ISO-8601 timestamp (trace only; not shown to model)
     """
 
     sender: str
+    parts: list[MsgPart]
     text: str
     is_agent: bool
     msg_id: str | None
@@ -42,6 +69,54 @@ def _mk_text_part(text: str) -> dict[str, str]:
     return {"text": text}
 
 
+def _normalize_parts_for_message(
+    m: ChatMsg,
+    *,
+    include_speaker_prefix: bool,
+    include_message_ids: bool,
+) -> list[dict[str, str]]:
+    """
+    Produce the sequence of Gemini text parts for a single message:
+      - Leading metadata header part (From / id), even in DMs.
+      - Then each original message part in order (text or rendered media).
+    """
+    parts: list[dict[str, str]] = []
+
+    # 1) Metadata header (always, per spec)
+    header_bits: list[str] = []
+    if include_speaker_prefix and m.get("sender"):
+        header_bits.append(f"From: {m['sender']}")
+    if include_message_ids and m.get("msg_id"):
+        header_bits.append(f"id: {m['msg_id']}")
+    if header_bits:
+        parts.append(_mk_text_part(" — ".join(header_bits)))
+
+    # 2) Original message content in original order
+    raw_parts: list[MsgPart] | None = m.get("parts")
+
+    if raw_parts is not None and len(raw_parts) > 0:
+        for p in raw_parts:
+            if p.get("kind") == "text":
+                txt = (p.get("text") or "").strip()
+                if txt:
+                    parts.append(_mk_text_part(txt))
+            elif p.get("kind") == "media":
+                # Use your already-rendered description; do not embed binaries.
+                rendered = (p.get("rendered_text") or "").strip()
+                if rendered:
+                    parts.append(_mk_text_part(rendered))
+            else:
+                # Unknown part type: skip silently to keep builder pure/robust.
+                continue
+    else:
+        # Fallback: single text field
+        fallback = (m.get("text") or "").strip()
+        if fallback:
+            parts.append(_mk_text_part(fallback))
+
+    return parts
+
+
 def build_gemini_contents(
     *,
     # System turn inputs
@@ -49,7 +124,7 @@ def build_gemini_contents(
     role_prompt: str | None,
     llm_specific_prompt: str | None,
     now_iso: str,
-    chat_type: str,  # "direct" | "group" (stringly-typed to avoid import cycles)
+    chat_type: str,  # "direct" | "group" (stringly typed to avoid import cycles)
     curated_stickers: Iterable[str] | None = None,
     # History & target
     history: Iterable[ChatMsg],
@@ -60,40 +135,24 @@ def build_gemini_contents(
     include_message_ids: bool = True,
 ) -> list[dict[str, Any]]:
     """
-    Construct Gemini 'contents' with roles:
-      - One 'system' turn: persona + role prompt + LLM-specific prompt + metadata
-      - Chronological 'user'/'assistant' turns for prior messages (bounded by history_size)
-      - Final 'user' turn for the target message to respond to
+    Construct Gemini 'contents' with roles and multi-part messages:
+      - One 'system' turn: persona + role prompt + model-specific prompt + metadata
+      - Chronological 'user'/'assistant' turns for prior messages (bounded by history_size),
+        each with an ordered list of 'parts' (metadata header first, then content parts).
+      - Final 'user' turn for the target message (appended last), also parts-based.
 
-    IMPORTANT:
-      - We *do not* mutate inputs.
-      - We *do not* call the network.
-      - We do *not* include any file/image parts here—only text.
-
-    Returns:
-      A list of role turns, e.g.:
-        [
-          {"role": "system", "parts": [{"text": "..."}]},
-          {"role": "user", "parts": [{"text": "From: Alice — ..."}]},
-          {"role": "assistant", "parts": [{"text": "..."}]},
-          {"role": "user", "parts": [{"text": "From: Bob — ..."}]},
-        ]
+    Pure function: no I/O, no network, no mutation of inputs.
     """
-    # --- 1) Build the single system turn ---
+    # --- 1) System turn ---
     sys_lines: list[str] = []
     if persona_instructions:
         sys_lines.append(persona_instructions.strip())
-
-    # Optional role/LLM-specific prompts (kept distinct for clarity)
     if role_prompt:
         sys_lines.append("\n# Role Prompt\n" + role_prompt.strip())
     if llm_specific_prompt:
         sys_lines.append("\n# Model-Specific Guidance\n" + llm_specific_prompt.strip())
-
-    # Minimal metadata that helps grounding
     sys_lines.append(f"\n# Context\nCurrent time: {now_iso}\nChat type: {chat_type}")
     if curated_stickers:
-        # Keep this succinct; details (like IDs) should live elsewhere if needed.
         sticker_list = ", ".join(curated_stickers)
         sys_lines.append(f"Curated stickers available: {sticker_list}")
 
@@ -101,33 +160,31 @@ def build_gemini_contents(
         {"role": "system", "parts": [_mk_text_part("\n\n".join(sys_lines).strip())]}
     ]
 
-    # --- 2) Add bounded chronological history (excluding target for now) ---
-    # We’ll copy to a list to be able to slice safely.
+    # --- 2) Chronological history (bounded) ---
     hist_list = list(history)
     if history_size >= 0:
         hist_list = hist_list[-history_size:]
 
-    def _format_user_text(m: ChatMsg) -> str:
-        prefix_bits: list[str] = []
-        if include_speaker_prefix and m.get("sender"):
-            prefix_bits.append(f"From: {m['sender']}")
-        if include_message_ids and m.get("msg_id"):
-            prefix_bits.append(f"id: {m['msg_id']}")
-        prefix = " — ".join(prefix_bits)
-        return f"{prefix}: {m['text']}" if prefix else m["text"]
-
     for m in hist_list:
         role = "assistant" if m.get("is_agent") else "user"
-        text = m["text"] if role == "assistant" else _format_user_text(m)
-        contents.append({"role": role, "parts": [_mk_text_part(text)]})
+        parts = _normalize_parts_for_message(
+            m,
+            include_speaker_prefix=include_speaker_prefix,
+            include_message_ids=include_message_ids,
+        )
+        # Skip empty turns (e.g., purely-unknown parts)
+        if parts:
+            contents.append({"role": role, "parts": parts})
 
-    # --- 3) Add target message as the final 'user' turn (if provided) ---
+    # --- 3) Target message appended last (if provided) ---
     if target_message is not None:
-        # We intentionally *always* place the target last so the model knows
-        # exactly which message to respond to—even in group chats.
-        tm = target_message
-        final_text = _format_user_text(tm)
-        contents.append({"role": "user", "parts": [_mk_text_part(final_text)]})
+        tm_parts = _normalize_parts_for_message(
+            target_message,
+            include_speaker_prefix=include_speaker_prefix,
+            include_message_ids=include_message_ids,
+        )
+        if tm_parts:
+            contents.append({"role": "user", "parts": tm_parts})
 
     return contents
 
