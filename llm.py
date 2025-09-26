@@ -375,7 +375,7 @@ class GeminiLLM(LLM):
         except Exception as e:
             raise RuntimeError(f"Gemini parse error: {e}") from e
 
-    def _generate_with_contents(
+    async def _generate_with_contents(
         self,
         *,
         contents: list[dict[str, object]],
@@ -389,55 +389,13 @@ class GeminiLLM(LLM):
         # Lazy import to avoid hard dependency at import time.
         try:
             # If you're already importing the client elsewhere, reuse that instead.
-            client = getattr(self, "client", None) or getattr(self, "_client", None)
-            if client is None:
-                raise RuntimeError("Gemini client not initialized")
+            # Use the configured GenerativeModel instance (same one as query()).
+            gm = getattr(self, "model", None)
+            if gm is None:
+                raise RuntimeError("Gemini model not initialized")
 
-            # Choose model: prefer explicit, fall back to whatever the class currently uses.
-            model_name = (
-                model or getattr(self, "model", None) or getattr(self, "_model", None)
-            )
-            if model_name is None:
-                raise RuntimeError("No Gemini model configured")
-
-            # The exact SDK call name may differ in your code; adjust if you already wrap this elsewhere.
-            # We avoid changing behavior if this path is unused.
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                safety_settings=getattr(self, "safety_settings", None),
-                generation_config=getattr(self, "generation_config", None),
-                timeout=timeout_s,
-            )
-
-            # --- Debug: candidate count & finish reason (helps diagnose empty replies) ---
-            try:
-                cand_count = None
-                if hasattr(response, "candidates") and response.candidates is not None:
-                    try:
-                        cand_count = len(response.candidates)
-                    except Exception:
-                        cand_count = None
-                if cand_count is None:
-                    cand_count = (
-                        1 if isinstance(getattr(response, "text", None), str) else 0
-                    )
-
-                finish_reason = None
-                if hasattr(response, "candidates") and response.candidates:
-                    first = response.candidates[0]
-                    # SDKs differ on attribute casing/naming
-                    finish_reason = getattr(first, "finishReason", None) or getattr(
-                        first, "finish_reason", None
-                    )
-                logger.debug(
-                    "gemini.response: candidates=%s finish_reason=%s",
-                    cand_count,
-                    finish_reason,
-                )
-            except Exception:
-                # Never let diagnostics affect control flow
-                pass
+            # Call generate_content with role-structured contents in a thread.
+            response = await asyncio.to_thread(gm.generate_content, contents)
 
             # Extract the first candidate's text safely
             text = ""
@@ -461,11 +419,11 @@ class GeminiLLM(LLM):
                                 text = str(first_part["text"] or "")
             return text or ""
         except Exception as e:
-            logger.exception(f"SDK exception: {e}")
+            logger.error("SDK exception: %s", e)
             # Match existing behavior: on SDK failure, return empty string and let tick retry later.
             return ""
 
-    def query_structured(
+    async def query_structured(
         self,
         *,
         persona_instructions: str,
@@ -500,7 +458,6 @@ class GeminiLLM(LLM):
             include_message_ids=include_message_ids,
         )
         # Optionally, lightweight structural logging
-        logger = getattr(self, "logger", None)
         if logger:
             try:
                 # system + n history + maybe 1 target
@@ -517,6 +474,6 @@ class GeminiLLM(LLM):
             except Exception:
                 pass
 
-        return self._generate_with_contents(
+        return await self._generate_with_contents(
             contents=contents, model=model, timeout_s=timeout_s
         )

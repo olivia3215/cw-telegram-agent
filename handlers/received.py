@@ -60,7 +60,7 @@ def _to_chatmsg_single_text_part(
     }
 
 
-def query_llm_structured_with_rendered_history(
+async def query_llm_structured_with_rendered_history(
     *,
     llm: GeminiLLM,
     persona_instructions: str,
@@ -108,7 +108,7 @@ def query_llm_structured_with_rendered_history(
             is_agent=False,
         )
 
-    return llm.query_structured(
+    return await llm.query_structured(
         persona_instructions=persona_instructions,
         role_prompt=role_prompt,
         llm_specific_prompt=llm_specific_prompt,
