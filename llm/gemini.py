@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import Iterable
 
-from .base import ChatMsg, build_gemini_contents
+from .base import ChatMsg, build_llm_contents
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ class GeminiLLM:
         model: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
-        contents = build_gemini_contents(
+        contents = build_llm_contents(
             persona_instructions=persona_instructions,
             role_prompt=role_prompt,
             llm_specific_prompt=llm_specific_prompt,

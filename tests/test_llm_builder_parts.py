@@ -5,7 +5,7 @@ import datetime as _dt
 import pytest
 
 # Import the pure builder from llm.py
-from llm import build_gemini_contents
+from llm import build_llm_contents
 
 
 def _now_iso():
@@ -34,7 +34,7 @@ def _mk_agent_msg(text="ok", msg_id="a1"):
 
 
 def test_system_turn_includes_persona_role_and_context():
-    contents = build_gemini_contents(
+    contents = build_llm_contents(
         persona_instructions="You are Olivia.",
         role_prompt="Be helpful.",
         llm_specific_prompt="Gemini settings here.",
@@ -83,7 +83,7 @@ def test_history_roles_and_order_with_parts():
         parts=[{"kind": "text", "text": "please respond to me"}],
     )
 
-    contents = build_gemini_contents(
+    contents = build_llm_contents(
         persona_instructions="X",
         role_prompt=None,
         llm_specific_prompt=None,
@@ -132,7 +132,7 @@ def test_placeholder_emitted_when_media_has_no_rendering():
             msg_id="m9",
         )
     ]
-    contents = build_gemini_contents(
+    contents = build_llm_contents(
         persona_instructions="X",
         role_prompt=None,
         llm_specific_prompt=None,
@@ -169,7 +169,7 @@ def test_history_capping_and_target_last():
         msg_id="MT",
         parts=[{"kind": "text", "text": "the target"}],
     )
-    contents = build_gemini_contents(
+    contents = build_llm_contents(
         persona_instructions="X",
         role_prompt=None,
         llm_specific_prompt=None,

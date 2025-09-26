@@ -7,7 +7,7 @@ This document describes the high-level architecture of the Telegram agent, with 
 1. **Inbound message (Telegram)** → `handlers/received.py`
 2. **Media description injection** (stickers/photos/etc.) → `media_injector.py`
 3. **Conversation assembly** → normalized `ChatMsg` records (one per original message), each with ordered `parts`
-4. **Prompt build** → `build_gemini_contents(...)` (in `llm.py`)
+4. **Prompt build** → `build_llm_contents(...)` (in `llm.py`)
 5. **Gemini call** → `GeminiLLM.query_structured(...)`
 6. **Agent reply** → parse markdown task blocks → schedule tasks in the graph → send via Telegram
 

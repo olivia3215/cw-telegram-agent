@@ -34,7 +34,7 @@ We do not allow slow or networked tests. Media, clock, and Gemini calls are mock
 
 ## LLM integration (Gemini)
 
-### Builder: `build_gemini_contents(...)`
+### Builder: `build_llm_contents(...)`
 
 Emits:
 

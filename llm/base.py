@@ -186,33 +186,3 @@ def build_llm_contents(
         out.append({"role": "user", "parts": t_parts})
 
     return out
-
-
-# Back-compat alias for existing imports/tests:
-def build_gemini_contents(
-    *,
-    persona_instructions: str,
-    role_prompt: str | None,
-    llm_specific_prompt: str | None,
-    now_iso: str,
-    chat_type: str,
-    curated_stickers: Iterable[str] | None,
-    history: Iterable[ChatMsg],
-    target_message: ChatMsg | None,
-    history_size: int = 500,
-    include_speaker_prefix: bool = True,
-    include_message_ids: bool = True,
-) -> list[dict]:
-    return build_llm_contents(
-        persona_instructions=persona_instructions,
-        role_prompt=role_prompt,
-        llm_specific_prompt=llm_specific_prompt,
-        now_iso=now_iso,
-        chat_type=chat_type,
-        curated_stickers=curated_stickers,
-        history=history,
-        target_message=target_message,
-        history_size=history_size,
-        include_speaker_prefix=include_speaker_prefix,
-        include_message_ids=include_message_ids,
-    )
