@@ -15,7 +15,7 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
-from llm import GeminiLLM
+from llm import LLM
 from media_injector import (
     build_prompt_lines_from_messages,
     format_message_for_prompt,
@@ -46,7 +46,7 @@ def _to_chatmsg_single_text_part(
 ) -> dict:
     """
     Wrap a single already-rendered message string into the ChatMsg 'parts' shape that
-    GeminiLLM.query_structured() expects. The structured builder will add the 'From: ... — id: ...'
+    LLM.query_structured() expects. The structured builder will add the 'From: ... — id: ...'
     header for non-agent messages, so we do NOT include it here.
     """
     return {
@@ -62,7 +62,7 @@ def _to_chatmsg_single_text_part(
 
 async def query_llm_structured_with_rendered_history(
     *,
-    llm: GeminiLLM,
+    llm: LLM,
     persona_instructions: str,
     role_prompt: str | None,
     llm_specific_prompt: str | None,
