@@ -381,46 +381,77 @@ class GeminiLLM(LLM):
         contents: list[dict[str, object]],
         model: str | None = None,
         timeout_s: float | None = None,
+        system_instruction: str | None = None,
     ) -> str:
         """
         Thin wrapper around the Gemini client for role-structured 'contents'.
-        Returns the model's text ('' on no text). Does not retry; caller controls retries via tick loop.
+        Sends ONLY user/assistant turns in 'contents'. If provided, 'system_instruction'
+        is passed via the model config path (never mixed into message contents).
+        Returns the model's text ('' on no text). No internal retries.
         """
-        # Lazy import to avoid hard dependency at import time.
         try:
-            # If you're already importing the client elsewhere, reuse that instead.
-            # Use the configured GenerativeModel instance (same one as query()).
             gm = getattr(self, "model", None)
             if gm is None:
                 raise RuntimeError("Gemini model not initialized")
 
-            # Call generate_content with role-structured contents in a thread.
-            response = await asyncio.to_thread(gm.generate_content, contents)
+            # Prefer passing system_instruction directly (newer google-genai supports it).
+            response = None
+            if system_instruction:
+                try:
+                    response = await asyncio.to_thread(
+                        gm.generate_content,
+                        contents,
+                        system_instruction=system_instruction,  # preferred path
+                    )
+                except TypeError:
+                    # Older SDKs: construct a temporary GenerativeModel with system_instruction.
+                    try:
+                        model_name = getattr(gm, "model", None) or getattr(
+                            self, "model_name", None
+                        )
+                        if not model_name:
+                            raise RuntimeError(
+                                "No Gemini model name available for re-instantiation"
+                            )
+                        gm2 = gm.__class__(
+                            model_name,
+                            system_instruction=system_instruction,
+                            safety_settings=getattr(self, "safety_settings", None),
+                            generation_config=getattr(self, "generation_config", None),
+                        )
+                        response = await asyncio.to_thread(
+                            gm2.generate_content, contents
+                        )
+                    except Exception:
+                        # If we cannot set system_instruction without mixing content, give up on it
+                        # and proceed without any system instruction (do NOT fold into contents).
+                        response = await asyncio.to_thread(
+                            gm.generate_content, contents
+                        )
+            else:
+                # No system instruction: normal call.
+                response = await asyncio.to_thread(gm.generate_content, contents)
 
             # Extract the first candidate's text safely
             text = ""
             if response is not None:
-                # Prefer a method/property your code already uses, but keep this defensive.
                 if hasattr(response, "text") and isinstance(response.text, str):
                     text = response.text
                 elif hasattr(response, "candidates") and response.candidates:
-                    # Be cautious about nesting; varies by SDK version.
                     cand = response.candidates[0]
-                    # Some SDKs use .content.parts[0].text, others flatten to .text
                     t = getattr(cand, "text", None)
                     if isinstance(t, str):
                         text = t or ""
                     else:
-                        # Best-effort extraction
                         content = getattr(cand, "content", None)
                         if content and getattr(content, "parts", None):
                             first_part = content.parts[0]
                             if isinstance(first_part, dict) and "text" in first_part:
                                 text = str(first_part["text"] or "")
+
             return text or ""
         except Exception as e:
             logger.error("SDK exception: %s", e)
-            # Match existing behavior: on SDK failure, return empty string and let tick retry later.
             return ""
 
     async def query_structured(
@@ -441,8 +472,9 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
     ) -> str:
         """
-        New structured path that uses role-structured 'contents' with multi-part messages.
-        Callers (e.g., handlers/received.py) should inject media renderings in 'parts'.
+        Build contents using the parts-aware builder, extract a system instruction (if present),
+        and call the Gemini model with *only* user/assistant turns. The system instruction is
+        provided via the model config path (preferred) and never mixed into message contents.
         """
         contents = build_gemini_contents(
             persona_instructions=persona_instructions,
@@ -457,23 +489,45 @@ class GeminiLLM(LLM):
             include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
         )
+
+        # Extract system instruction text if the builder produced a leading system turn.
+        system_instruction: str | None = None
+        contents_for_call = contents
+        try:
+            if contents and contents[0].get("role") == "system":
+                parts = contents[0].get("parts") or []
+                texts: list[str] = []
+                for p in parts:
+                    t = p.get("text")
+                    if isinstance(t, str) and t:
+                        texts.append(t)
+                system_instruction = "\n\n".join(texts) if texts else None
+                contents_for_call = contents[1:]
+        except Exception:
+            # If anything goes wrong, fall back to sending whatever we can (no system).
+            system_instruction = None
+            contents_for_call = contents
+
         # Optionally, lightweight structural logging
         if logger:
             try:
-                # system + n history + maybe 1 target
-                total_turns = len(contents)
+                total_turns = len(contents_for_call)
                 hist_turns = max(
-                    0, total_turns - 1 - (1 if target_message is not None else 0)
+                    0, total_turns - (1 if target_message is not None else 0)
                 )
                 logger.debug(
-                    "gemini.contents built: turns=%s (history=%s, target=%s)",
+                    "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
                     total_turns,
                     hist_turns,
                     target_message is not None,
+                    bool(system_instruction),
                 )
             except Exception:
                 pass
 
         return await self._generate_with_contents(
-            contents=contents, model=model, timeout_s=timeout_s
+            contents=contents_for_call,
+            model=model,
+            timeout_s=timeout_s,
+            system_instruction=system_instruction,
         )
