@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Iterable
 
 from .base import ChatMsg, build_llm_contents
 
 logger = logging.getLogger(__name__)
+
+# Defer import error until construction time to keep tests fast/offline.
+try:
+    import google.genai as genai  # type: ignore
+except Exception:  # pragma: no cover - only hit when library missing
+    genai = None
 
 
 class GeminiLLM:
@@ -18,6 +25,50 @@ class GeminiLLM:
     Expected attribute:
       - self.model: a GenerativeModel instance (already configured)
     """
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model_name: str | None = None,
+        safety_settings: object | None = None,
+        generation_config: object | None = None,
+    ) -> None:
+        """
+        Initialize the google-genai client and create a GenerativeModel instance.
+        - api_key: if not provided, will use GOOGLE_API_KEY or GEMINI_API_KEY from env
+        - model_name: if not provided, will use (in order) GEMINI_MODEL, GOOGLE_GENAI_MODEL,
+                      GOOGLE_MODEL, else a reasonable default ("gemini-1.5-flash")
+        - safety_settings / generation_config: passed through to GenerativeModel
+        """
+        if genai is None:
+            raise RuntimeError("google-genai is not installed; install and try again")
+
+        key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "Gemini API key not provided (GOOGLE_API_KEY/GEMINI_API_KEY)"
+            )
+        genai.configure(api_key=key)
+
+        name = (
+            model_name
+            or os.getenv("GEMINI_MODEL")
+            or os.getenv("GOOGLE_GENAI_MODEL")
+            or os.getenv("GOOGLE_MODEL")
+            or "gemini-1.5-flash"
+        )
+
+        self.model_name = name
+        self.safety_settings = safety_settings
+        self.generation_config = generation_config
+
+        # Create the configured GenerativeModel instance
+        self.model = genai.GenerativeModel(
+            name,
+            safety_settings=safety_settings,
+            generation_config=generation_config,
+        )
 
     # --- internal: thin wrapper around the SDK ---
 
