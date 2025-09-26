@@ -1,148 +1,95 @@
-# DEVELOPER GUIDE
+# DEVELOPER
 
-_Last updated: 2025-09._
+This document explains how to work on the codebase, how the Gemini integration is structured, and how to run tests.
 
-This doc is for working on the codebase: local dev, tests, debugging, and common workflows.
+## Setup
 
----
+- Python 3.13
+- Create a venv and install deps.
+- Put your secrets/env in `.env` and `source` it before running.
 
-## Local dev basics
-
-### Python & deps
-- Python 3.11+ recommended (tests currently run on 3.13 fine).
-- Create a venv and install deps as usual.
-
-### Environment you’ll need while developing
-- `CINDY_AGENT_STATE_DIR` – writable dir for queues + media cache (e.g. `./state`).
-- `AGENT_DIR` – folder of persona markdown files.
-- `GOOGLE_GEMINI_API_KEY` – needed for media descriptions and LLM text.
-
-### Run the server
-```bash
-python run.py
-````
-
-### Tests (run these **before each commit**)
+## Run & test
 
 ```bash
+# Run the agent (typical)
+source .env
+PYTHONPATH=. python run.py
+
+# Test
 PYTHONPATH=. pytest -vv
 ```
 
----
+We do not allow slow or networked tests. Media, clock, and Gemini calls are mocked or rendered to compact text.
 
-## Repository structure (dev view)
+## Code style & tooling
 
-* `handlers/` — one task handler per file (registered via `@register_task_handler`).
+* `black` formats on commit (pre-commit hook).
+* `ruff` prefers built-in generics (`list`, `dict`) and fixes unused imports.
+* If needed:
 
-  * `received.py`, `send.py`, `sticker.py`, `wait.py`, `shutdown.py`, `clear_conversation.py`
-* `handle_received.py` — prompt assembly helpers (system/history formatting).
-* `media_injector.py` — description pipeline (per-tick AI budget; cache-first).
-* `telegram_media.py` — media detection + stable IDs.
-* `telegram_download.py` — async media download helper.
-* `llm.py` — Gemini integration (BLOCK\_NONE safety for SDK + REST).
-* `agent.py` — registry and runtime agent state (sticker caches).
-* `run.py` — startup helpers (including sticker cache preload).
-* `register_agents.py` — parse persona markdown.
-* `tests/` — unit + integration tests.
-
-For an architectural overview see `DESIGN.md`.
-
----
-
-## Coding patterns
-
-### Task handlers
-
-* Each handler lives in `handlers/<type>.py`.
-* Decorate with `@register_task_handler("<type>")`.
-* Handler signature:
-
-  ```py
-  async def handle_<type>(task: TaskNode, graph: TaskGraph) -> None: ...
-  ```
-* Pull contextual info from `graph.context` (e.g., `agent_id`, `channel_id`).
-
-### Prompt construction (current)
-
-* Done in the **received** handler using helpers from `handle_received.py`.
-* Media descriptions are **cache-only** at prompt time; warming happens just before via `media_injector.inject_media_descriptions()`.
-
-### Media description budget
-
-* Env: `MEDIA_DESC_BUDGET_PER_TICK` (default 8).
-* Budget is consumed only by **new AI attempts**; cache hits are free.
-* Timeout per item ≈ 12s; transient failures recorded as `timeout`/`error`.
-
-### Sticker triggers (LLM → agent)
-
-* Two-line trigger; optional reply message ID:
-
-  ```markdown
-  # «sticker»
-  <SET SHORT NAME>
-  <STICKER NAME>
+  ```bash
+  ruff check --fix .
+  ruff format .
   ```
 
-  or
+## LLM integration (Gemini)
 
-  ```markdown
-  # «sticker» <MESSAGE_ID>
-  <SET SHORT NAME>
-  <STICKER NAME>
+### Builder: `build_gemini_contents(...)`
+
+Emits:
+
+1. **Leading system turn** (persona, role prompt, model-specific notes, time, chat type, curated stickers)
+2. **Chronological history** (user/model turns with ordered parts)
+3. **Target message** as final `user` turn
+
+> Implementation detail: we **extract** the system text and pass it via `system_instruction`. We never send a `system` role in `contents`.
+
+### Call path: `GeminiLLM.query_structured(...)`
+
+* Extracts system text from the leading system turn.
+* Sends `system_instruction` via Gemini model config; **contents** contain only `user` and `model` turns.
+* Remaps `assistant → model` to satisfy stricter Gemini families.
+* Uses compact rendered media text in parts to keep prompts small.
+
+### Roles
+
+* **user**: all non-agent speakers (group chats may contain many).
+* **model**: the agent’s prior turns (assistant remapped to model).
+
+### Target message selection
+
+* In DMs: last message.
+* In groups: may be earlier; we append it as the final `user` turn so the model focuses on it.
+
+### Logging
+
+* We log a concise summary of built contents and, when available, model candidate counts/finish reasons for diagnosis.
+
+## Adding/changing models
+
+* Update the model string in config/env.
+* The structured path is compatible with both prior defaults and newer families like:
+
   ```
-* Legacy one-line body (`<STICKER NAME>`) is tolerated during transition.
+  gemini-2.5-flash-preview-09-2025
+  ```
+* If you see an empty reply, consult logs:
 
----
+  ```
+  gemini.contents built: turns=… (history=…, target=…)
+  gemini.response: candidates=… finish_reason=…
+  ```
 
-## Live testing tips
+## Tests you’ll care about
 
-* It’s safe to live-test intermediate changes; worst case the agent pauses responding.
-* Prefer testing with a single agent and a small, quiet chat.
-* Watch logs for:
+* `tests/test_llm_builder_parts.py` — core coverage for the structured builder.
+* `tests/test_prompt_sticker_descriptions.py` — ensures sticker descriptions are included.
+* Other tests cover media budget/cache, parsing, task graph behavior, and Telegram media detection.
 
-  * description outcomes: `ok / not_understood / timeout / error`
-  * sticker sending: explicit `(set, name)` vs fallback to plain text
-* If the bot seems “stuck”, check for repeated download logs; ensure the per-tick budget isn’t set too high.
+## Contributing workflow
 
----
-
-## Common workflows
-
-### Add a new task type
-
-1. Create `handlers/<type>.py`.
-2. Register with `@register_task_handler("<type>")`.
-3. Add tests in `tests/test_<type>.py`.
-4. **Run:** `PYTHONPATH=. pytest -vv`, then commit.
-
-### Extend persona fields
-
-1. Update `register_agents.py` parse/normalize.
-2. Thread the new data through `Agent` (optional), then into prompt building if needed.
-3. Add a small parsing test.
-
-### Tweaking Gemini behavior
-
-* `llm.py` sets model default to `gemini-2.5-flash-preview-09-2025`.
-* Safety is **BLOCK\_NONE** across categories for both SDK (`query`) and REST (`describe_image`).
-* If Gemini returns empty text, inspect `_log_safety_findings` output first.
-
----
-
-## Conventions
-
-* Keep handlers small; push formatting and utilities into helpers.
-* Small PRs; one change at a time.
-* Commit discipline:
-
-  1. `PYTHONPATH=. pytest -vv`
-  2. Commit with a focused message
-* Prefer adding a test alongside any non-trivial logic change.
-
----
-
-## Roadmap (developer-facing)
-
-* Switch Gemini prompts to **role-structured** contents (`system`, `user`, optional `assistant`) in `query()`.
-* Curated image description store layered above disk cache.
-* Light metrics around description rates and cache hit ratios.
+* Small, focused PRs.
+* Tests first (or alongside changes).
+* One-file fences when possible.
+* Commit messages in plain English.
+* Run `PYTHONPATH=. pytest -vv` before each commit.

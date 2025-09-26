@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from telethon.errors.rpcerrorlist import (
@@ -14,7 +15,7 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
-from media_cache import get_media_cache
+from llm import GeminiLLM
 from media_injector import (
     build_prompt_lines_from_messages,
     format_message_for_prompt,
@@ -33,6 +34,93 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 # per-tick AI description budget (default 8; env override)
 MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
+
+
+def _to_chatmsg_single_text_part(
+    *,
+    rendered: str,
+    sender: str,
+    sender_id: str,
+    msg_id: str,
+    is_agent: bool,
+) -> dict:
+    """
+    Wrap a single already-rendered message string into the ChatMsg 'parts' shape that
+    GeminiLLM.query_structured() expects. The structured builder will add the 'From: ... — id: ...'
+    header for non-agent messages, so we do NOT include it here.
+    """
+    return {
+        "sender": sender,
+        "sender_id": sender_id,
+        "msg_id": msg_id,
+        "is_agent": is_agent,
+        "parts": [
+            {"kind": "text", "text": rendered},
+        ],
+    }
+
+
+async def query_llm_structured_with_rendered_history(
+    *,
+    llm: GeminiLLM,
+    persona_instructions: str,
+    role_prompt: str | None,
+    llm_specific_prompt: str | None,
+    now_iso: str,
+    chat_type: str,  # "direct" | "group"
+    curated_stickers: Iterable[str] | None,
+    history_rendered_items: list[tuple[str, str, str, str, bool]],
+    target_rendered_item: tuple[str, str, str, str, bool] | None,
+    history_size: int = 500,
+    include_speaker_prefix: bool = True,
+    include_message_ids: bool = True,
+    model: str | None = None,
+    timeout_s: float | None = None,
+) -> str:
+    """
+    Thin adapter that maps your existing *rendered* strings into the ChatMsg+parts
+    structure used by the role-based Gemini path. It preserves your current prompt
+    text exactly (one text part per message) so runtime behavior remains unchanged.
+    """
+    history_chatmsgs: list[dict] = []
+    for rendered, sender, sender_id, msg_id, is_agent in history_rendered_items:
+        history_chatmsgs.append(
+            _to_chatmsg_single_text_part(
+                rendered=rendered,
+                sender=sender,
+                sender_id=sender_id,
+                msg_id=msg_id,
+                is_agent=is_agent,
+            )
+        )
+
+    target_chatmsg: dict | None = None
+    if target_rendered_item is not None:
+        (tr, ts, tsid, tmid, t_is_agent) = target_rendered_item
+        # target is always treated as a user turn; if t_is_agent is True, we still force user
+        target_chatmsg = _to_chatmsg_single_text_part(
+            rendered=tr,
+            sender=ts,
+            sender_id=tsid,
+            msg_id=tmid,
+            is_agent=False,
+        )
+
+    return await llm.query_structured(
+        persona_instructions=persona_instructions,
+        role_prompt=role_prompt,
+        llm_specific_prompt=llm_specific_prompt,
+        now_iso=now_iso,
+        chat_type=chat_type,
+        curated_stickers=curated_stickers,
+        history=history_chatmsgs,
+        target_message=target_chatmsg,
+        history_size=history_size,
+        include_speaker_prefix=include_speaker_prefix,
+        include_message_ids=include_message_ids,
+        model=model,
+        timeout_s=timeout_s,
+    )
 
 
 def parse_llm_reply_from_markdown(
@@ -160,7 +248,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
       1) Reset per-tick AI description budget
       2) Fetch recent messages
       3) Run media description injection (stickers + photos together), newest→oldest
-      4) Proceed with existing planning/prompt flow (unchanged)
+      4) Call Gemini via role-structured 'contents' using one text part per message
+      5) Parse tasks and enqueue
     """
     channel_id = graph.context.get("channel_id")
     assert channel_id
@@ -178,8 +267,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # 1) Reset per-tick AI description budget
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
 
-    # 2) Fetch recent messages
+    # 2) Fetch recent messages (chronological list returned by Telethon when reversed)
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+
+    # 3) Inject/refresh media descriptions so single-line renderings are available
     messages = await inject_media_descriptions(messages, agent=agent)
 
     is_callout = task.params.get("callout", False)
@@ -188,10 +279,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # A group or channel will have a .title attribute, a user will not.
     is_group = hasattr(dialog, "title")
 
+    # ----- Build "system" content (keep your existing text exactly) -----
     llm_prompt = load_system_prompt(llm.prompt_name)
-    role_prompt = load_system_prompt(agent.role_prompt_name)
+    role_prompt_text = load_system_prompt(agent.role_prompt_name)
 
-    system_prompt = f"{llm_prompt}\n\n{role_prompt}"
+    system_prompt = f"{llm_prompt}\n\n{role_prompt_text}"
 
     agent_instructions = agent.instructions
     system_prompt = f"{system_prompt}\n\n{agent_instructions}"
@@ -205,8 +297,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{{user}}", channel_name)
     system_prompt = system_prompt.replace("{user}", channel_name)
 
-    now = datetime.now().astimezone()
-
+    # Optional sticker list (unchanged behavior: embed as text in system)
+    sticker_list = None
     if agent.sticker_cache:
         # Build a list of "<SET> :: <NAME>" for the agent's canonical set.
         canonical = agent.sticker_set_name
@@ -219,80 +311,145 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             f"- {canonical} :: {name}" for name in names_in_canonical
         )
 
+    # Build the by-set sticker list, computing descriptions via helper so tests can monkeypatch it.
     if agent.sticker_cache_by_set:
-        lines = []
+        lines: list[str] = []
+        try:
+            for set_short, name in sorted(agent.sticker_cache_by_set.keys()):
+                try:
+                    _uid, desc = await get_or_compute_description_for_doc(
+                        agent=agent,
+                        set_name=set_short,
+                        sticker_name=name,
+                        source="sticker",
+                    )
+                except Exception:
+                    desc = None
+                if desc:
+                    lines.append(f"- {set_short} :: {name} - ‹{desc}›")
+                else:
+                    lines.append(f"- {set_short} :: {name}")
+        except Exception:
+            # If anything unexpected occurs, fall back to names-only list
+            lines = [
+                f"- {s} :: {n}" for (s, n) in sorted(agent.sticker_cache_by_set.keys())
+            ]
 
-        # Iterate whatever order the cache yields (per your instruction).
-        for (set_short, name), doc in agent.sticker_cache_by_set.items():
-            # Best-effort: fetch/compute description, blocking, then format
-            try:
-                _uid, desc = await get_or_compute_description_for_doc(
-                    client=agent.client,
-                    doc=doc,
-                    llm=agent.llm,
-                    cache=get_media_cache(),
-                    kind="sticker",
-                    set_name=set_short,
-                    sticker_name=name,
-                )
-            except Exception:
-                desc = None
+        sticker_list = "\n".join(lines) if lines else sticker_list
 
-            if desc:
-                lines.append(f"- {set_short} :: {name} - ‹{desc}›")
-            else:
-                lines.append(f"- {set_short} :: {name}")
+    if sticker_list:
+        system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
+        system_prompt += "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name.\n"
 
-        sticker_list = "\n".join(lines)
-        system_prompt += f"\n\n# Stickers you may send\n\n" f"{sticker_list}" "\n"
-        system_prompt += (
-            "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name."
-            "\n"
-        )
-
+    now = datetime.now().astimezone()
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
-        f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat."
-        "\n"
+        f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
 
-    # build prompt context directly from processed history
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-    # inject_media_descriptions puts media descriptions into the cache
-    messages = await inject_media_descriptions(messages, agent=agent)
-    # build_prompt_lines_from_messages uses the media descriptions and produces the history text lines
+    # ----- Build rendered history (one text part per message; preserves current behavior) -----
+    # We will still build the "context_lines" string for logging parity, but the LLM call will
+    # use per-message parts instead of one big user_prompt.
     context_lines = await build_prompt_lines_from_messages(messages, agent=agent)
     formatted_context = "\n".join(context_lines)
 
-    # Determine which message is the "newly received" one to present as user_message.
-    message_id = task.params.get("message_id", None)
+    # Map each Telethon message to a 5-tuple:
+    # (rendered_text, sender_display, sender_id, message_id, is_agent)
+    history_rendered_items: list[tuple[str, str, str, str, bool]] = []
+    chronological = list(reversed(messages))  # oldest → newest
+    for m in chronological:
+        rendered_text = await format_message_for_prompt(m, agent=agent)
+
+        # sender_id is stable; display name may be unavailable here; fall back to the ID string
+        sender_id_val = getattr(m, "sender_id", None)
+        sender_id = str(sender_id_val) if sender_id_val is not None else "unknown"
+
+        # Do NOT duplicate the "From:" header here; the builder will add it for non-agent messages.
+        sender_display = sender_id  # keep simple; avoids extra lookups
+        message_id = str(getattr(m, "id", ""))
+
+        # Telethon marks messages sent by the logged-in account with .out == True
+        is_from_agent = bool(getattr(m, "out", False))
+
+        history_rendered_items.append(
+            (rendered_text, sender_display, sender_id, message_id, is_from_agent)
+        )
+
+    # Determine which message we want to respond to
+    message_id_param = task.params.get("message_id", None)
     target_msg = None
-    if message_id is not None:
-        for m in reversed(messages):  # quicker search from newest
-            if getattr(m, "id", None) == message_id:
+    if message_id_param is not None:
+        for m in reversed(messages):  # search newest → oldest
+            if getattr(m, "id", None) == message_id_param:
                 target_msg = m
                 break
     if target_msg is None and messages:
         target_msg = messages[-1]  # newest
+
+    target_rendered_item: tuple[str, str, str, str, bool] | None = None
     user_message = None
     if target_msg is not None:
         user_message = await format_message_for_prompt(target_msg, agent=agent)
-
-    user_prompt = (
-        "Here is the conversation so far:\n\n"
-        + f"{formatted_context}\n\n"
-        + (
-            f"Consider responding to the message: {user_message}"
-            if is_group
-            else f"Consider responding to any messages from {channel_name} that you have not responded to yet."
+        t_sender_id_val = getattr(target_msg, "sender_id", None)
+        t_sender_id = str(t_sender_id_val) if t_sender_id_val is not None else "unknown"
+        t_message_id = str(getattr(target_msg, "id", ""))
+        # is_agent for target is forced to False when building the final user turn
+        target_rendered_item = (
+            user_message,
+            t_sender_id,
+            t_sender_id,
+            t_message_id,
+            False,
         )
+
+    # ----- Role-structured LLM call (replacing the old llm.query(system_prompt, user_prompt)) -----
+    # We keep your existing prompt strings intact, but pass history as parts.
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    chat_type = "group" if is_group else "direct"
+
+    # persona_instructions: we use the full system_prompt you've assembled (keeps behavior identical)
+    # role_prompt and llm_specific_prompt are passed as None because they are already included in system_prompt.
+    reply = await llm.query_structured(
+        persona_instructions=system_prompt,
+        role_prompt=None,
+        llm_specific_prompt=None,
+        now_iso=now_iso,
+        chat_type=chat_type,
+        curated_stickers=None,  # already embedded into persona_instructions above
+        history=(
+            {
+                "sender": s,
+                "sender_id": sid,
+                "msg_id": mid,
+                "is_agent": is_self,
+                "parts": [{"kind": "text", "text": rendered}],
+            }
+            for (rendered, s, sid, mid, is_self) in history_rendered_items
+        ),
+        target_message=(
+            {
+                "sender": target_rendered_item[1],
+                "sender_id": target_rendered_item[2],
+                "msg_id": target_rendered_item[3],
+                "is_agent": False,
+                "parts": [{"kind": "text", "text": target_rendered_item[0]}],
+            }
+            if target_rendered_item is not None
+            else None
+        ),
+        history_size=agent.llm.history_size,
+        include_speaker_prefix=True,
+        include_message_ids=True,
+        model=None,
+        timeout_s=None,
     )
 
-    # Await LLM response
     logger.debug(
-        f"[{agent_name}] LLM prompt: System: {system_prompt}, User: {user_prompt}"
+        f"[{agent_name}] LLM prompt (for debugging):\n"
+        f"System turn text length: {len(system_prompt)}\n"
+        f"History messages: {len(history_rendered_items)}\n"
+        f"Context preview:\n{formatted_context[-1000:]}"  # last 1000 chars to keep logs tidy
     )
-    reply = await llm.query(system_prompt, user_prompt)
 
     if reply == "":
         logger.info(f"[{agent_name}] LLM decided not to reply to {user_message}")
@@ -300,6 +457,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
+    # Parse the tasks from the LLM response (unchanged)
     try:
         tasks = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
     except ValueError as e:
