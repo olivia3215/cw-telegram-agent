@@ -36,10 +36,13 @@ class GeminiLLM:
     ) -> None:
         """
         Initialize the google-genai client and create a GenerativeModel instance.
-        - api_key: if not provided, will use GOOGLE_API_KEY or GEMINI_API_KEY from env
-        - model_name: if not provided, will use (in order) GEMINI_MODEL, GOOGLE_GENAI_MODEL,
-                      GOOGLE_MODEL, else a reasonable default ("gemini-1.5-flash")
-        - safety_settings / generation_config: passed through to GenerativeModel
+        Supports multiple library shapes:
+          - genai.configure(...) (if present)
+          - genai.Client(api_key=...) + GenerativeModel(..., client=client)
+          - direct GenerativeModel(...) relying on env key
+        Env vars:
+          - API key: GOOGLE_API_KEY or GEMINI_API_KEY
+          - Model: GEMINI_MODEL, GOOGLE_GENAI_MODEL, GOOGLE_MODEL
         """
         if genai is None:
             raise RuntimeError("google-genai is not installed; install and try again")
@@ -49,7 +52,6 @@ class GeminiLLM:
             raise RuntimeError(
                 "Gemini API key not provided (GOOGLE_API_KEY/GEMINI_API_KEY)"
             )
-        genai.configure(api_key=key)
 
         name = (
             model_name
@@ -63,12 +65,41 @@ class GeminiLLM:
         self.safety_settings = safety_settings
         self.generation_config = generation_config
 
+        # Try to configure or create a client across supported API shapes.
+        client = None
+        try:
+            # Newer style (exists in many versions)
+            if hasattr(genai, "configure"):
+                genai.configure(api_key=key)  # type: ignore[attr-defined]
+        except Exception:
+            # If configure fails, we’ll try a client shape below
+            pass
+
+        try:
+            # Client style (present in newer releases)
+            if hasattr(genai, "Client"):
+                client = genai.Client(api_key=key)  # type: ignore[attr-defined]
+        except Exception:
+            client = None
+
         # Create the configured GenerativeModel instance
-        self.model = genai.GenerativeModel(
-            name,
-            safety_settings=safety_settings,
-            generation_config=generation_config,
-        )
+        try:
+            if client is not None:
+                self.model = genai.GenerativeModel(  # type: ignore[attr-defined]
+                    name,
+                    client=client,
+                    safety_settings=safety_settings,
+                    generation_config=generation_config,
+                )
+            else:
+                # Rely on env-configured key or previously-called configure()
+                self.model = genai.GenerativeModel(  # type: ignore[attr-defined]
+                    name,
+                    safety_settings=safety_settings,
+                    generation_config=generation_config,
+                )
+        except Exception as e:
+            raise RuntimeError(f"Failed to construct GenerativeModel: {e}") from e
 
     # --- internal: thin wrapper around the SDK ---
 
