@@ -35,7 +35,7 @@ async def test_roles_and_system_instruction_path():
 
     # Provide the modern attributes expected by the implementation
     llm.client = FakeClient()
-    llm.model_name = "gemini-1.5-flash"
+    llm.model_name = "gemini-2.5-flash"
     llm.generation_config = None
     llm.safety_settings = None
 
@@ -87,7 +87,7 @@ async def test_roles_and_system_instruction_path():
     # Inspect what we sent to the fake client
     sent = llm.client.last_kwargs
     assert sent is not None
-    assert sent["model"] == "gemini-1.5-flash"
+    assert sent["model"] == "gemini-2.5-flash"
 
     # system text traveled via system_instruction, not as a content turn
     sys_text = sent.get("system_instruction")

@@ -65,6 +65,8 @@ Hi Neal, thanks for the update.
 I'll give you my status later this afternoon.
 ```
 
+### Formatted text
+
 You may include
 
 - bold text in your response using **this syntax**
@@ -72,10 +74,16 @@ You may include
 - code-formatted text can be expressed `this way`.
 - strikethrough text can be written ~~this way~~
 
-Unlike markdown elsewhere, you need **two** underscores to make text italic in Telegram,
+Unlike markdown elsewhere, you need __two__ underscores to make text italic in Telegram,
 and you cannot use two underscores to make text bold.
 
 Avoid this syntax outside code blocks if you don't intend to affect the format of the text.
+
+### Output formatting — IMPORTANT
+
+- Reply with just the message content. **Do not** include any metadata headers or prefixes in your output.
+- Treat any lines that look like `From: <name> (<id>) — id: <msg-id>` or any bracketed/guillemet-prefixed context as **non-verbal metadata**. Do **not** quote, paraphrase, or include them in your reply.
+- Do **not** include your own name, message ids, square-bracket numbers like `[12345]`, or guillemets «like this» in responses.
 
 ## sticker
 

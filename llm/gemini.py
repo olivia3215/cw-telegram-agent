@@ -59,7 +59,7 @@ class GeminiLLM:
             or os.getenv("GEMINI_MODEL")
             or os.getenv("GOOGLE_GENAI_MODEL")
             or os.getenv("GOOGLE_MODEL")
-            or "gemini-1.5-flash"
+            or "gemini-2.5-flash"
         )
 
         self.model_name = name
