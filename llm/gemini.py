@@ -299,8 +299,70 @@ class GeminiLLM:
         prompt: str | None = None,
     ) -> str:
         """
-        Stub: we currently use compact rendered descriptions for media. To keep
-        tests fast/offline, we do not invoke a vision model here. Return empty
-        string so callers can fall back to cached renderings/placeholders.
+        Use the modern google.genai client to produce a concise description of an image.
+        Returns "" on any error; callers should fall back to cached/placeholder text.
         """
-        return ""
+        try:
+            client = getattr(self, "client", None)
+            if client is None:
+                return ""
+
+            # Safety: require a plausible mime_type
+            mt = (mime_type or "").lower()
+            if not self.is_supported_image(mime_type=mt):
+                return ""
+
+            # Build a minimal instruction for the caption; keep it short to save tokens.
+            # Caller may pass a prompt; we default to a concise captioning directive.
+            text_instruction = prompt or (
+                "You are given a single image. Describe the scene in rich detail so a reader "
+                "can understand it without seeing the image. Include salient objects, colors, "
+                "relations, actions, and setting. Output only the description."
+            )
+
+            # Modern API: contents is a list of parts; include inline image + brief text.
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": text_instruction},
+                        {"inline_data": {"mime_type": mt, "data": image_bytes}},
+                    ],
+                }
+            ]
+
+            # We do NOT send system_instruction here; this is an isolated captioning call.
+            kwargs = {
+                "model": self.model_name,
+                "contents": contents,
+            }
+
+            # Call; no system_instruction or extra configs to avoid incompatibility here
+            response = await asyncio.to_thread(client.models.generate_content, **kwargs)
+
+            # Extract text defensively
+            if response is None:
+                return ""
+            if hasattr(response, "text") and isinstance(response.text, str):
+                return response.text.strip()
+            if hasattr(response, "output_text") and isinstance(
+                response.output_text, str
+            ):
+                return response.output_text.strip()
+            if hasattr(response, "candidates") and response.candidates:
+                cand = response.candidates[0]
+                t = getattr(cand, "text", None)
+                if isinstance(t, str) and t.strip():
+                    return t.strip()
+                content = getattr(cand, "content", None)
+                parts = getattr(content, "parts", None) if content is not None else None
+                if parts:
+                    for p in parts:
+                        if isinstance(p, dict):
+                            t2 = p.get("text")
+                            if isinstance(t2, str) and t2.strip():
+                                return t2.strip()
+            return ""
+        except Exception as e:
+            logger.error("gemini.describe_image error: %s", e)
+            return ""
