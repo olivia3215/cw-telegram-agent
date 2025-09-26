@@ -1,6 +1,6 @@
 # llm/__init__.py
 
-from .base import LLM, ChatMsg, MsgPart, build_gemini_contents
+from .base import LLM, ChatMsg, MsgPart, build_gemini_contents, build_llm_contents
 from .gemini import GeminiLLM
 
 __all__ = [
@@ -8,5 +8,6 @@ __all__ = [
     "ChatMsg",
     "LLM",
     "build_gemini_contents",
+    "build_llm_contents",
     "GeminiLLM",
 ]

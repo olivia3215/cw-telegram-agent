@@ -89,14 +89,15 @@ def _render_msg_parts(msg: ChatMsg) -> list[dict]:
                 out.append({"text": rt})
             else:
                 mk = p.get("media_kind", "media")
-                out.append({"text": f"[media: {mk} not understood]"})
+                # out.append({"text": f"[media: {mk} not understood]"})
+                out.append({"text": f"[{mk} present]"})
     # Fallback: if no parts but legacy 'text' exists
     if not out and "text" in msg and isinstance(msg["text"], str) and msg["text"]:
         out.append({"text": msg["text"]})
     return out
 
 
-def build_gemini_contents(
+def build_llm_contents(
     *,
     persona_instructions: str,
     role_prompt: str | None,
@@ -124,8 +125,10 @@ def build_gemini_contents(
     if persona_instructions:
         sys_lines.append(str(persona_instructions).strip())
     if role_prompt:
+        sys_lines.append("Role Prompt:")
         sys_lines.append(str(role_prompt).strip())
     if llm_specific_prompt:
+        sys_lines.append("LLM-Specific Prompt:")
         sys_lines.append(str(llm_specific_prompt).strip())
 
     # Current time and chat type
@@ -134,7 +137,7 @@ def build_gemini_contents(
 
     # Curated stickers list (if provided)
     if curated_stickers:
-        sys_lines.append("Curated stickers:")
+        sys_lines.append("Curated stickers available:")
         for s in curated_stickers:
             sys_lines.append(f"- {s}")
 
@@ -183,3 +186,33 @@ def build_gemini_contents(
         out.append({"role": "user", "parts": t_parts})
 
     return out
+
+
+# Back-compat alias for existing imports/tests:
+def build_gemini_contents(
+    *,
+    persona_instructions: str,
+    role_prompt: str | None,
+    llm_specific_prompt: str | None,
+    now_iso: str,
+    chat_type: str,
+    curated_stickers: Iterable[str] | None,
+    history: Iterable[ChatMsg],
+    target_message: ChatMsg | None,
+    history_size: int = 500,
+    include_speaker_prefix: bool = True,
+    include_message_ids: bool = True,
+) -> list[dict]:
+    return build_llm_contents(
+        persona_instructions=persona_instructions,
+        role_prompt=role_prompt,
+        llm_specific_prompt=llm_specific_prompt,
+        now_iso=now_iso,
+        chat_type=chat_type,
+        curated_stickers=curated_stickers,
+        history=history,
+        target_message=target_message,
+        history_size=history_size,
+        include_speaker_prefix=include_speaker_prefix,
+        include_message_ids=include_message_ids,
+    )
