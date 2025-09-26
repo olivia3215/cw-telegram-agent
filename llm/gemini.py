@@ -198,3 +198,34 @@ class GeminiLLM:
             timeout_s=timeout_s,
             system_instruction=system_instruction,
         )
+
+    def is_supported_image(
+        self, *, mime_type: str | None = None, media_kind: str | None = None
+    ) -> bool:
+        if not mime_type:
+            return False
+        mt = mime_type.lower()
+        # Conservative allow-list; broaden as we verify end-to-end behavior.
+        return mt in {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+            "image/heic",
+            "image/heif",
+        }
+
+    async def describe_image(
+        self,
+        *,
+        image_bytes: bytes,
+        mime_type: str | None = None,
+        prompt: str | None = None,
+    ) -> str:
+        """
+        Stub: we currently use compact rendered descriptions for media. To keep
+        tests fast/offline, we do not invoke a vision model here. Return empty
+        string so callers can fall back to cached renderings/placeholders.
+        """
+        return ""

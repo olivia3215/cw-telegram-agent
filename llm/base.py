@@ -61,6 +61,19 @@ class LLM(Protocol):
         timeout_s: float | None = None,
     ) -> str: ...
 
+    # --- Optional image support (provider-specific) ---
+    def is_supported_image(
+        self, *, mime_type: str | None = None, media_kind: str | None = None
+    ) -> bool: ...  # pragma: no cover (interface)
+
+    async def describe_image(
+        self,
+        *,
+        image_bytes: bytes,
+        mime_type: str | None = None,
+        prompt: str | None = None,
+    ) -> str: ...  # pragma: no cover (interface)
+
 
 def _header_part(sender: str, sender_id: str, msg_id: str) -> dict:
     return {
@@ -186,3 +199,42 @@ def build_llm_contents(
         out.append({"role": "user", "parts": t_parts})
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Compatibility module-level helpers for media_injector and existing callers.
+# These are intentionally generic (not provider-specific). They can be removed
+# once all call sites route through an LLM instance.
+# ---------------------------------------------------------------------------
+
+
+def _is_llm_supported_image(mime_type: str | None = None) -> bool:
+    """
+    Generic, conservative support check. Providers may support more formats;
+    this function should *not* throw. Keep it lenient and fast.
+    """
+    if not mime_type:
+        return False
+    mt = mime_type.lower()
+    # Common still-image formats; expand cautiously without introducing deps.
+    return mt in {
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/heic",
+        "image/heif",
+    }
+
+
+async def describe_image(
+    *, image_bytes: bytes, mime_type: str | None = None, prompt: str | None = None
+) -> str:
+    """
+    Generic, no-network stub. Returns empty string so callers can fall back
+    to placeholders or cached renderings. Providers can expose richer paths
+    via their instance methods on the LLM protocol.
+    """
+    # Intentionally returns "" to trigger placeholder paths in callers.
+    return ""
