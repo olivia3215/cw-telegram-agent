@@ -271,7 +271,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
-    messages = await inject_media_descriptions(messages, agent=agent)
+    messages = await inject_media_descriptions(messages, agent=agent, llm=llm)
 
     is_callout = task.params.get("callout", False)
     dialog = await agent.get_cached_entity(channel_id)

@@ -299,7 +299,7 @@ class GeminiLLM:
         prompt: str | None = None,
     ) -> str:
         """
-        Use the modern google.genai client to produce a concise description of an image.
+        Use the modern google.genai client to produce a description of an image.
         Returns "" on any error; callers should fall back to cached/placeholder text.
         """
         try:
@@ -313,7 +313,7 @@ class GeminiLLM:
                 return ""
 
             # Build a minimal instruction for the caption; keep it short to save tokens.
-            # Caller may pass a prompt; we default to a concise captioning directive.
+            # Caller may pass a prompt; we default to a detailed captioning directive.
             text_instruction = prompt or (
                 "You are given a single image. Describe the scene in rich detail so a reader "
                 "can understand it without seeing the image. Include salient objects, colors, "

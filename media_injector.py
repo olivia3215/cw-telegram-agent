@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from llm import LLM
 from media_cache import get_media_cache
 from media_format import format_media_description, format_sticker_sentence
 from telegram_download import download_media_bytes
@@ -109,17 +110,17 @@ def _sniff_ext(data: bytes, kind: str | None = None, mime: str | None = None) ->
     return ".bin"
 
 
-def _is_llm_supported_image(data: bytes) -> bool:
-    """True for raster images we send to the LLM (jpg/png/webp/gif)."""
+def _detect_mime_from_bytes(data: bytes) -> str | None:
+    """Return a MIME type from magic numbers, or None if unknown."""
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return True
+        return "image/png"
     if data[:3] == b"GIF":
-        return True
+        return "image/gif"
     if data.startswith(b"\xff\xd8\xff"):
-        return True
+        return "image/jpeg"
     if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return True
-    return False
+        return "image/webp"
+    return None
 
 
 # ---------- sticker helpers ----------
@@ -381,7 +382,10 @@ async def get_or_compute_description_for_doc(
 
 
 async def inject_media_descriptions(
-    messages: Sequence[Any], agent: Any | None = None
+    messages: Sequence[Any],
+    agent: Any | None = None,
+    *,
+    llm: LLM,
 ) -> Sequence[Any]:
     """
     Inspect fetched history:
@@ -458,37 +462,29 @@ async def inject_media_descriptions(
                         chan_name,
                     ) = await _resolve_sender_and_channel(agent, msg)
 
-                    # Decide LLM vs not-understood
-                    if _is_llm_supported_image(data):
+                    # Decide LLM vs not-understood (bytes → MIME → provider check)
+                    mime = getattr(it, "mime", None) or _detect_mime_from_bytes(data)
+                    desc_text = ""
+
+                    supported = bool(mime) and llm.is_supported_image(
+                        mime_type=mime,
+                        media_kind=getattr(it, "kind", None),
+                    )
+
+                    if supported:
                         try:
-                            if agent is None or getattr(agent, "llm", None) is None:
-                                raise RuntimeError(
-                                    "no agent/LLM available for image description"
-                                )
-                            desc_text = agent.llm.describe_image(data)
-                            record = {
-                                "description": desc_text,
-                                "kind": it.kind,
-                                "llm": getattr(agent.llm, "model_name", None)
-                                or agent.llm.__class__.__name__,
-                                "ts": ts_now,
-                                "media_ts": media_ts,
-                                "sender_id": sender_id,
-                                "sender_name": sender_name,
-                                "channel_id": chan_id,
-                                "channel_name": chan_name,
-                            }
-                            if it.kind == "sticker":
-                                await _attach_sticker_metadata(agent, it, record)
-                            cache.put(it.unique_id, record)
-                            logger.info(
-                                f"media: generated description cached id={it.unique_id}"
+                            desc_text = await llm.describe_image(
+                                image_bytes=data,
+                                mime_type=mime,
                             )
                         except Exception as e_llm:
                             logger.debug(
                                 f"media: LLM describe failed for {it.unique_id}: {e_llm}"
                             )
-                    else:
+                            desc_text = ""
+
+                    if not (isinstance(desc_text, str) and desc_text.strip()):
+                        # Unsupported or empty description → mark as not understood
                         fmt = _sniff_ext(
                             data, kind=it.kind, mime=getattr(it, "mime", None)
                         ).lstrip(".")
@@ -508,6 +504,26 @@ async def inject_media_descriptions(
                         cache.put(it.unique_id, record)
                         logger.info(
                             f"media: cached not-understood id={it.unique_id} ({base_desc})"
+                        )
+                    else:
+                        # Successful caption
+                        record = {
+                            "description": desc_text.strip(),
+                            "kind": it.kind,
+                            "llm": getattr(llm, "model_name", None)
+                            or llm.__class__.__name__,
+                            "ts": ts_now,
+                            "media_ts": media_ts,
+                            "sender_id": sender_id,
+                            "sender_name": sender_name,
+                            "channel_id": chan_id,
+                            "channel_name": chan_name,
+                        }
+                        if it.kind == "sticker":
+                            await _attach_sticker_metadata(agent, it, record)
+                        cache.put(it.unique_id, record)
+                        logger.info(
+                            f"media: generated description cached id={it.unique_id}"
                         )
                 except Exception as e:
                     logger.debug(
