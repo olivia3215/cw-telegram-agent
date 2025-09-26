@@ -40,6 +40,7 @@ class GeminiLLM:
         safety_settings: object | None = None,
         generation_config: object | None = None,
         history_size: int = 500,
+        prompt_name: str | None = None,
     ) -> None:
         """Initialize google-genai Client."""
         if genai is None:
@@ -65,6 +66,15 @@ class GeminiLLM:
         self.safety_settings = safety_settings
         self.generation_config = generation_config
         self.history_size = int(history_size)
+
+        # Which system prompt to load (used by handlers.received.load_system_prompt)
+        # Priority: explicit arg → env → default
+        self.prompt_name = (
+            prompt_name
+            or os.getenv("LLM_PROMPT")
+            or os.getenv("PROMPT_NAME")
+            or "default"
+        )
 
         try:
             self.client = genai.Client(api_key=key)  # type: ignore[attr-defined]
