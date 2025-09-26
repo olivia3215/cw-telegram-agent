@@ -43,6 +43,9 @@ class ChatMsg(TypedDict, total=False):
 
 
 class LLM(Protocol):
+    # Max number of messages to include from history (message-count cap).
+    history_size: int
+
     async def query_structured(  # pragma: no cover (interface)
         self,
         *,

@@ -39,6 +39,7 @@ class GeminiLLM:
         model_name: str | None = None,
         safety_settings: object | None = None,
         generation_config: object | None = None,
+        history_size: int = 500,
     ) -> None:
         """Initialize google-genai Client."""
         if genai is None:
@@ -63,6 +64,7 @@ class GeminiLLM:
         self.model_name = name
         self.safety_settings = safety_settings
         self.generation_config = generation_config
+        self.history_size = int(history_size)
 
         try:
             self.client = genai.Client(api_key=key)  # type: ignore[attr-defined]
