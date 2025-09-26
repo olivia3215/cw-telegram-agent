@@ -282,7 +282,11 @@ class OllamaLLM(LLM):
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
 
-    def __init__(self, model: str = "gemini-2.0-flash", api_key: str | None = None):
+    def __init__(
+        self,
+        model: str = "gemini-2.5-flash-preview-09-2025",
+        api_key: str | None = None,
+    ):
         self.model_name = model
         self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
         if not self.api_key:
@@ -394,14 +398,31 @@ class GeminiLLM(LLM):
             if gm is None:
                 raise RuntimeError("Gemini model not initialized")
 
+            # Normalize roles for Gemini: assistant -> model; only "user" and "model" allowed.
+            try:
+                contents_norm: list[dict[str, object]] = []
+                for turn in contents:
+                    role = turn.get("role")
+                    if role == "assistant":
+                        mapped_role = "model"
+                    elif role == "user":
+                        mapped_role = "user"
+                    else:
+                        # Be conservative: anything unexpected becomes "user"
+                        mapped_role = "user"
+                    parts = turn.get("parts") or []
+                    contents_norm.append({"role": mapped_role, "parts": parts})
+            except Exception:
+                contents_norm = contents
+
             # Prefer passing system_instruction directly (newer google-genai supports it).
             response = None
             if system_instruction:
                 try:
                     response = await asyncio.to_thread(
                         gm.generate_content,
-                        contents,
-                        system_instruction=system_instruction,  # preferred path
+                        contents_norm,
+                        system_instruction=system_instruction,
                     )
                 except TypeError:
                     # Older SDKs: construct a temporary GenerativeModel with system_instruction.
@@ -420,7 +441,7 @@ class GeminiLLM(LLM):
                             generation_config=getattr(self, "generation_config", None),
                         )
                         response = await asyncio.to_thread(
-                            gm2.generate_content, contents
+                            gm2.generate_content, contents_norm
                         )
                     except Exception:
                         # If we cannot set system_instruction without mixing content, give up on it
@@ -430,7 +451,7 @@ class GeminiLLM(LLM):
                         )
             else:
                 # No system instruction: normal call.
-                response = await asyncio.to_thread(gm.generate_content, contents)
+                response = await asyncio.to_thread(gm.generate_content, contents_norm)
 
             # Extract the first candidate's text safely
             text = ""
