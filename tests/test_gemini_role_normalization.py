@@ -7,26 +7,37 @@ import pytest
 from llm import ChatMsg, GeminiLLM
 
 
-class FakeGM:
-    """Fake GenerativeModel; captures inputs and returns text='ok'."""
+class _ModelsShim:
+    """Holds the generate_content method to mimic google.genai Client.models."""
 
-    def __init__(self):
-        self.last_contents = None
-        self.last_kwargs = None
+    def __init__(self, owner):
+        self._owner = owner
 
-    # Called via asyncio.to_thread; keep it sync
-    def generate_content(self, contents, **kwargs):
-        self.last_contents = contents
-        self.last_kwargs = kwargs
+    def generate_content(self, **kwargs):
+        # Record the exact inputs for assertions
+        self._owner.last_kwargs = kwargs
         # Mimic a response object with .text
         return types.SimpleNamespace(text="ok")
+
+
+class FakeClient:
+    """Modern google.genai Client shim with a .models namespace."""
+
+    def __init__(self):
+        self.last_kwargs = None
+        self.models = _ModelsShim(self)
 
 
 @pytest.mark.asyncio
 async def test_roles_and_system_instruction_path():
     # Build a GeminiLLM instance without running its __init__
     llm = object.__new__(GeminiLLM)
-    llm.model = FakeGM()  # the only attribute _generate_with_contents needs
+
+    # Provide the modern attributes expected by the implementation
+    llm.client = FakeClient()
+    llm.model_name = "gemini-1.5-flash"
+    llm.generation_config = None
+    llm.safety_settings = None
 
     # Minimal history: user then agent (assistant)
     history: list[ChatMsg] = [
@@ -70,17 +81,19 @@ async def test_roles_and_system_instruction_path():
         target_message=target,
     )
 
+    # We expect our FakeClient to have returned text="ok"
     assert out == "ok"
 
-    # Inspect what we sent to the fake model
-    sent_contents = llm.model.last_contents
-    sent_kwargs = llm.model.last_kwargs or {}
+    # Inspect what we sent to the fake client
+    sent = llm.client.last_kwargs
+    assert sent is not None
+    assert sent["model"] == "gemini-1.5-flash"
 
     # system text traveled via system_instruction, not as a content turn
-    sys_text = sent_kwargs.get("system_instruction")
+    sys_text = sent.get("system_instruction")
     assert isinstance(sys_text, str) and "SYSTEM HERE" in sys_text
 
     # Contents contain only 'user' and 'model' roles; no 'system'
-    roles = [turn.get("role") for turn in sent_contents]
+    roles = [turn.get("role") for turn in sent["contents"]]
     assert "system" not in roles
     assert set(roles).issubset({"user", "model"})

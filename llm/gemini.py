@@ -11,19 +11,25 @@ from .base import ChatMsg, build_llm_contents
 
 logger = logging.getLogger(__name__)
 
-# Defer import error until construction time to keep tests fast/offline.
+# Import the modern Google client (package: google-genai)
 try:
     import google.genai as genai  # type: ignore
-except Exception:  # pragma: no cover - only hit when library missing
+except Exception:  # pragma: no cover
     genai = None
 
 
 class GeminiLLM:
     """
-    Provider-specific client using google-genai-style GenerativeModel.
+    Provider-specific client using the modern google-genai Client API.
 
-    Expected attribute:
-      - self.model: a GenerativeModel instance (already configured)
+    Call path:
+      client.models.generate_content(
+          model=<model_name>,
+          contents=[...],              # roles: "user" | "model"
+          system_instruction="...",    # optional
+          generation_config=...,       # optional
+          safety_settings=...,         # optional
+      )
     """
 
     def __init__(
@@ -34,18 +40,11 @@ class GeminiLLM:
         safety_settings: object | None = None,
         generation_config: object | None = None,
     ) -> None:
-        """
-        Initialize the google-genai client and create a GenerativeModel instance.
-        Supports multiple library shapes:
-          - genai.configure(...) (if present)
-          - genai.Client(api_key=...) + GenerativeModel(..., client=client)
-          - direct GenerativeModel(...) relying on env key
-        Env vars:
-          - API key: GOOGLE_API_KEY or GEMINI_API_KEY
-          - Model: GEMINI_MODEL, GOOGLE_GENAI_MODEL, GOOGLE_MODEL
-        """
+        """Initialize google-genai Client."""
         if genai is None:
-            raise RuntimeError("google-genai is not installed; install and try again")
+            raise RuntimeError(
+                "google-genai is not installed; pip install google-genai"
+            )
 
         key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not key:
@@ -65,58 +64,31 @@ class GeminiLLM:
         self.safety_settings = safety_settings
         self.generation_config = generation_config
 
-        # Try to configure or create a client across supported API shapes.
-        client = None
         try:
-            # Newer style (exists in many versions)
-            if hasattr(genai, "configure"):
-                genai.configure(api_key=key)  # type: ignore[attr-defined]
-        except Exception:
-            # If configure fails, we’ll try a client shape below
-            pass
-
-        try:
-            # Client style (present in newer releases)
-            if hasattr(genai, "Client"):
-                client = genai.Client(api_key=key)  # type: ignore[attr-defined]
-        except Exception:
-            client = None
-
-        # Create the configured GenerativeModel instance
-        try:
-            if client is not None:
-                self.model = genai.GenerativeModel(  # type: ignore[attr-defined]
-                    name,
-                    client=client,
-                    safety_settings=safety_settings,
-                    generation_config=generation_config,
-                )
-            else:
-                # Rely on env-configured key or previously-called configure()
-                self.model = genai.GenerativeModel(  # type: ignore[attr-defined]
-                    name,
-                    safety_settings=safety_settings,
-                    generation_config=generation_config,
-                )
-        except Exception as e:
-            raise RuntimeError(f"Failed to construct GenerativeModel: {e}") from e
-
-    # --- internal: thin wrapper around the SDK ---
+            self.client = genai.Client(api_key=key)  # type: ignore[attr-defined]
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(f"Failed to initialize google-genai client: {e}") from e
 
     async def _generate_with_contents(
         self,
         *,
         contents: list[dict],
         model: str | None = None,
-        timeout_s: float | None = None,
+        timeout_s: float | None = None,  # unused currently; preserved for API parity
         system_instruction: str | None = None,
     ) -> str:
+        """
+        Send normalized contents to Gemini via client.models.generate_content.
+        - Only roles "user" and "model" are sent (assistant → model).
+        - system_instruction is passed via API kwarg when supported.
+        Returns extracted text ('' if none).
+        """
         try:
-            gm = getattr(self, "model", None)
-            if gm is None:
-                raise RuntimeError("Gemini model not initialized")
+            client = getattr(self, "client", None)
+            if client is None:
+                raise RuntimeError("Gemini client not initialized")
 
-            # Normalize roles for Gemini: assistant -> model; allow only user/model.
+            # Normalize roles for Gemini: assistant -> model; only "user"/"model".
             try:
                 contents_norm: list[dict] = []
                 for turn in contents:
@@ -132,44 +104,48 @@ class GeminiLLM:
             except Exception:
                 contents_norm = contents
 
-            # Prefer passing system_instruction directly; fall back to a temp model if needed.
+            # Prepare kwargs; include optional configs when present.
+            kwargs: dict = {
+                "model": (model or self.model_name),
+                "contents": contents_norm,
+            }
             if system_instruction:
+                kwargs["system_instruction"] = system_instruction
+            if self.generation_config is not None:
+                kwargs["generation_config"] = self.generation_config
+            if self.safety_settings is not None:
+                kwargs["safety_settings"] = self.safety_settings
+
+            # Call the API; drop unsupported kwargs progressively on TypeError.
+            try:
+                response = await asyncio.to_thread(
+                    client.models.generate_content, **kwargs
+                )
+            except TypeError:
+                # Some versions may not accept system_instruction
+                kwargs.pop("system_instruction", None)
                 try:
                     response = await asyncio.to_thread(
-                        gm.generate_content,
-                        contents_norm,
-                        system_instruction=system_instruction,
+                        client.models.generate_content, **kwargs
                     )
                 except TypeError:
-                    # Older SDK: construct a temporary GenerativeModel with system_instruction.
-                    try:
-                        model_name = getattr(gm, "model", None) or getattr(
-                            self, "model_name", None
-                        )
-                        if not model_name:
-                            raise RuntimeError("No Gemini model name available")
-                        gm2 = gm.__class__(
-                            model_name,
-                            system_instruction=system_instruction,
-                            safety_settings=getattr(self, "safety_settings", None),
-                            generation_config=getattr(self, "generation_config", None),
-                        )
-                        response = await asyncio.to_thread(
-                            gm2.generate_content, contents_norm
-                        )
-                    except Exception:
-                        # Last resort: no system instruction; still do not coerce system into contents.
-                        response = await asyncio.to_thread(
-                            gm.generate_content, contents_norm
-                        )
-            else:
-                response = await asyncio.to_thread(gm.generate_content, contents_norm)
+                    # Some versions may not accept safety/generation_config as kwargs
+                    kwargs.pop("generation_config", None)
+                    kwargs.pop("safety_settings", None)
+                    response = await asyncio.to_thread(
+                        client.models.generate_content, **kwargs
+                    )
 
-            # Extract text defensively
+            # Extract text defensively across response shapes.
             text = ""
             if response is not None:
+                # Modern responses frequently expose .text or .output_text
                 if hasattr(response, "text") and isinstance(response.text, str):
-                    text = response.text
+                    text = response.text or ""
+                elif hasattr(response, "output_text") and isinstance(
+                    response.output_text, str
+                ):
+                    text = response.output_text or ""
                 elif hasattr(response, "candidates") and response.candidates:
                     cand = response.candidates[0]
                     t = getattr(cand, "text", None)
@@ -177,24 +153,28 @@ class GeminiLLM:
                         text = t or ""
                     else:
                         content = getattr(cand, "content", None)
-                        if content and getattr(content, "parts", None):
-                            first = content.parts[0]
+                        parts = (
+                            getattr(content, "parts", None)
+                            if content is not None
+                            else None
+                        )
+                        if parts:
+                            first = parts[0]
                             if isinstance(first, dict) and "text" in first:
                                 text = str(first["text"] or "")
 
-            # Optional diagnostics hook (kept lightweight)
+            # Optional diagnostics
             try:
                 cand_count = None
                 if hasattr(response, "candidates") and response.candidates is not None:
                     try:
-                        cand_count = len(response.candidates)
+                        cand_count = len(response.candidates)  # type: ignore[arg-type]
                     except Exception:
                         cand_count = None
                 if cand_count is None:
                     cand_count = (
                         1 if isinstance(getattr(response, "text", None), str) else 0
                     )
-
                 finish_reason = None
                 if hasattr(response, "candidates") and response.candidates:
                     first = response.candidates[0]
@@ -214,8 +194,6 @@ class GeminiLLM:
             logger.error("SDK exception: %s", e)
             return ""
 
-    # --- public API ---
-
     async def query_structured(
         self,
         *,
@@ -233,6 +211,7 @@ class GeminiLLM:
         model: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
+        # Build full contents (includes a leading system turn).
         contents = build_llm_contents(
             persona_instructions=persona_instructions,
             role_prompt=role_prompt,
@@ -247,7 +226,7 @@ class GeminiLLM:
             include_message_ids=include_message_ids,
         )
 
-        # Extract system text; never send a 'system' role in contents
+        # Extract system text; do NOT send role="system" to Gemini.
         system_instruction: str | None = None
         contents_no_system = contents
         if contents and contents[0].get("role") == "system":
@@ -280,6 +259,8 @@ class GeminiLLM:
             timeout_s=timeout_s,
             system_instruction=system_instruction,
         )
+
+    # --- LLM image capability (provider-specific; safe stubs for now) ---
 
     def is_supported_image(
         self, *, mime_type: str | None = None, media_kind: str | None = None
