@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from collections.abc import Iterable
@@ -128,6 +129,42 @@ class GeminiLLM:
             if self.safety_settings is not None:
                 kwargs["safety_settings"] = self.safety_settings
 
+            # --- ultra-simple debug: raw JSON of what we send/receive (opt-in via LLM_DEBUG_JSON)
+            def _json_default(o):
+                # Bytes → "<N bytes>", otherwise try simple representations.
+                if isinstance(o, (bytes, bytearray)):
+                    return f"<{len(o)} bytes>"
+                try:
+                    return dict(o)
+                except Exception:
+                    pass
+                try:
+                    return o.__dict__
+                except Exception:
+                    return str(o)
+
+            if os.getenv("LLM_DEBUG_JSON"):
+                try:
+                    logger.info(
+                        "LLM REQUEST JSON:\n%s",
+                        json.dumps(
+                            {
+                                "model": kwargs.get("model"),
+                                "has_system_instruction": bool(
+                                    kwargs.get("system_instruction")
+                                ),
+                                "generation_config": kwargs.get("generation_config"),
+                                "safety_settings": kwargs.get("safety_settings"),
+                                "contents": contents_norm,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                            default=_json_default,
+                        ),
+                    )
+                except Exception:
+                    logger.debug("LLM REQUEST JSON: <failed to serialize>")
+
             # Call the API; drop unsupported kwargs progressively on TypeError.
             try:
                 response = await asyncio.to_thread(
@@ -174,6 +211,27 @@ class GeminiLLM:
                             first = parts[0]
                             if isinstance(first, dict) and "text" in first:
                                 text = str(first["text"] or "")
+
+            if os.getenv("LLM_DEBUG_JSON"):
+                try:
+                    logger.info(
+                        "LLM RESPONSE JSON:\n%s",
+                        json.dumps(
+                            {
+                                "text": (
+                                    text
+                                    if len(text) <= 2000
+                                    else text[:2000] + "…[truncated]"
+                                ),
+                                "raw": response,
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                            default=_json_default,
+                        ),
+                    )
+                except Exception:
+                    logger.debug("LLM RESPONSE JSON: <failed to serialize>")
 
             # Optional diagnostics
             try:

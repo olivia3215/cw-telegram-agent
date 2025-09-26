@@ -542,14 +542,13 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
     Must NOT trigger downloads or LLM calls.
     """
     cache = get_media_cache()
-    sender_name = await get_channel_name(agent, msg.sender.id)
 
     parts = []
     # include text if present
     if getattr(msg, "text", None):
         text = msg.text.strip()
         if text:
-            parts.append(f"«{text}»")
+            parts.append(text)
 
     # include media (photos/stickers/gif/animation); use cached descriptions & metadata
     try:
@@ -585,7 +584,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
             )
 
     content = " ".join(parts) if parts else "not understood"
-    return f"[{msg.id}] ({sender_name}): {content}"
+    return content
 
 
 async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
