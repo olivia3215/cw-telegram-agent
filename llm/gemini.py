@@ -73,7 +73,7 @@ class GeminiLLM:
             prompt_name
             or os.getenv("LLM_PROMPT")
             or os.getenv("PROMPT_NAME")
-            or "default"
+            or "Gemini"
         )
 
         try:
