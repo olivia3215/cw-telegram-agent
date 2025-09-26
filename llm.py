@@ -410,6 +410,35 @@ class GeminiLLM(LLM):
                 timeout=timeout_s,
             )
 
+            # --- Debug: candidate count & finish reason (helps diagnose empty replies) ---
+            try:
+                cand_count = None
+                if hasattr(response, "candidates") and response.candidates is not None:
+                    try:
+                        cand_count = len(response.candidates)
+                    except Exception:
+                        cand_count = None
+                if cand_count is None:
+                    cand_count = (
+                        1 if isinstance(getattr(response, "text", None), str) else 0
+                    )
+
+                finish_reason = None
+                if hasattr(response, "candidates") and response.candidates:
+                    first = response.candidates[0]
+                    # SDKs differ on attribute casing/naming
+                    finish_reason = getattr(first, "finishReason", None) or getattr(
+                        first, "finish_reason", None
+                    )
+                logger.debug(
+                    "gemini.response: candidates=%s finish_reason=%s",
+                    cand_count,
+                    finish_reason,
+                )
+            except Exception:
+                # Never let diagnostics affect control flow
+                pass
+
             # Extract the first candidate's text safely
             text = ""
             if response is not None:
@@ -431,7 +460,8 @@ class GeminiLLM(LLM):
                             if isinstance(first_part, dict) and "text" in first_part:
                                 text = str(first_part["text"] or "")
             return text or ""
-        except Exception:
+        except Exception as e:
+            logger.exception(f"SDK exception: {e}")
             # Match existing behavior: on SDK failure, return empty string and let tick retry later.
             return ""
 
