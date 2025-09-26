@@ -26,7 +26,7 @@ from media_injector import (
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
-from telegram_util import get_dialog_name
+from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -392,11 +392,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         user_message = await format_message_for_prompt(target_msg, agent=agent)
         t_sender_id_val = getattr(target_msg, "sender_id", None)
         t_sender_id = str(t_sender_id_val) if t_sender_id_val is not None else "unknown"
+        t_sender_name = await get_channel_name(agent, t_sender_id_val)
         t_message_id = str(getattr(target_msg, "id", ""))
         # is_agent for target is forced to False when building the final user turn
         target_rendered_item = (
             user_message,
-            t_sender_id,
+            t_sender_name,
             t_sender_id,
             t_message_id,
             False,
