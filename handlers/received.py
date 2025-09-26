@@ -69,9 +69,7 @@ async def query_llm_structured_with_rendered_history(
     now_iso: str,
     chat_type: str,  # "direct" | "group"
     curated_stickers: Iterable[str] | None,
-    # Each item: (rendered_text: str, sender: str, sender_id: str, msg_id: str, is_agent: bool)
     history_rendered_items: list[tuple[str, str, str, str, bool]],
-    # Target item: same 5-tuple as above, but is_agent should be False
     target_rendered_item: tuple[str, str, str, str, bool] | None,
     history_size: int = 500,
     include_speaker_prefix: bool = True,
