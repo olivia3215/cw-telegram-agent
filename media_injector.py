@@ -535,7 +535,7 @@ async def inject_media_descriptions(
     return messages
 
 
-async def format_message_for_prompt(msg: Any, *, agent) -> str:
+async def format_message_for_prompt(msg: Any, *, agent) -> list[str]:
     """
     Format a single Telethon message into the exact prompt line we use,
     substituting stickers/photos/GIFs using the media cache only.
@@ -583,19 +583,4 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
                 f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
             )
 
-    content = " ".join(parts) if parts else "not understood"
-    return content
-
-
-async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
-    """
-    Convert Telethon messages into the list of prompt lines for the LLM.
-      - Iterate messages in chronological order (oldest → newest)
-      - For each message, consult the media cache populated by inject_media_descriptions
-      - Produce string lines (stickers/photos/gifs substituted with descriptions)
-      - Do NOT download or call the LLM here; cache-only
-    """
-    lines = []
-    for msg in reversed(messages):
-        lines.append(await format_message_for_prompt(msg, agent=agent))
-    return lines
+    return parts if parts else ["not understood"]
