@@ -20,7 +20,7 @@ We never send a `system` role to Gemini. Instead:
   - `user` turns — all non-agent speakers
   - `model` turns — the agent’s prior messages (we remap `assistant → model`)
 
-This is required by newer Gemini families (e.g., `gemini-2.5-flash-preview-09-2025-preview-09-2025`) that reject `system` content and only accept `user`/`model` roles.
+This is required by newer Gemini families (e.g., `gemini-2.5-flash-preview-09-2025`) that reject `system` content and only accept `user`/`model` roles.
 
 ### History ordering and target message
 
