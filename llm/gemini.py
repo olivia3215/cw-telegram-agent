@@ -35,49 +35,31 @@ class GeminiLLM(LLM):
         self.history_size = 500
 
         # Configure safety settings to disable all content filtering
-        # Note: Some categories are not supported by the preview model
+        # Note: Only these 5 categories are supported by the preview model
         self.safety_settings = [
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # These IMAGE_* categories are not supported by the preview model:
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_IMAGE_HATE,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
+            {
+                "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                "threshold": HarmBlockThreshold.OFF,
+            },
             {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
                 "threshold": HarmBlockThreshold.OFF,
             },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_UNSPECIFIED,
-            #     "threshold": HarmBlockThreshold.OFF,
-            # },
+            # These categories are NOT supported by the preview model:
+            # - HARM_CATEGORY_IMAGE_* (all image-related categories)
+            # - HARM_CATEGORY_UNSPECIFIED
         ]
 
         # Cache the REST API format to avoid recomputing it
