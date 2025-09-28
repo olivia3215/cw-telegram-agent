@@ -411,7 +411,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         t_sender_id_val = getattr(target_msg, "sender_id", None)
         t_sender_id = str(t_sender_id_val) if t_sender_id_val is not None else "unknown"
         t_message_id = str(getattr(target_msg, "id", ""))
-        # is_agent for target is forced to False when building the final user turn
+        # is_agent for target is forced to False (target messages are always from users)
         target_rendered_item = (
             user_message,
             t_sender_id,
