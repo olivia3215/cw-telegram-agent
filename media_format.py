@@ -4,13 +4,9 @@
 Formatting helpers for media descriptions and message text.
 
 Conventions (agreed):
-- User text is wrapped in French quotes: « … »
 - Generated media descriptions are wrapped in single angle quotes: ‹ … ›
 - Stickers include set/name plus a description in ‹…›.
 """
-
-FRENCH_OPEN = "«"
-FRENCH_CLOSE = "»"
 
 ANGLE_OPEN = "‹"
 ANGLE_CLOSE = "›"

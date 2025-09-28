@@ -38,11 +38,10 @@ We do not allow slow or networked tests. Media, clock, and Gemini calls are mock
 
 Emits:
 
-1. **Leading system turn** (persona, role prompt, model-specific notes, time, chat type, curated stickers)
+1. **Leading system turn** (persona, role prompt, model-specific notes, time, chat type, curated stickers, target message instruction)
 2. **Chronological history** (user/model turns with ordered parts)
-3. **Target message** as final `user` turn
 
-> Implementation detail: we **extract** the system text and pass it via `system_instruction`. We never send a `system` role in `contents`.
+> Implementation detail: we **extract** the system text and pass it via `system_instruction`. We never send a `system` role in `contents`. The target message is no longer appended as a separate turn; instead, a system instruction is added to respond to the specific message.
 
 ### Call path: `GeminiLLM.query_structured(...)`
 
@@ -59,7 +58,7 @@ Emits:
 ### Target message selection
 
 * In DMs: last message.
-* In groups: may be earlier; we append it as the final `user` turn so the model focuses on it.
+* In groups: may be earlier; we add a system instruction "Consider responding to message with message_id NNNN" so the model focuses on it.
 
 ### Logging
 

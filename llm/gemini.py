@@ -264,7 +264,6 @@ class GeminiLLM(LLM):
         history: Iterable[ChatMsg],
         target_message: ChatMsg | None,
         history_size: int = 500,
-        include_speaker_prefix: bool = True,
         include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
@@ -284,7 +283,6 @@ class GeminiLLM(LLM):
             history=history,
             target_message=target_message,
             history_size=history_size,
-            include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
         )
 
@@ -310,9 +308,8 @@ class GeminiLLM(LLM):
         if logger:
             try:
                 total_turns = len(contents_for_call)
-                hist_turns = max(
-                    0, total_turns - (1 if target_message is not None else 0)
-                )
+                # Target message is no longer appended as a separate turn
+                hist_turns = total_turns
                 logger.debug(
                     "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
                     total_turns,

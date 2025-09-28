@@ -25,7 +25,8 @@ This is required by newer Gemini families (e.g., `gemini-2.5-flash-preview-09-20
 ### History ordering and target message
 
 - History is chronological (oldest → newest), capped by `history_size` (default 500 messages).
-- The **target message** (the one we want a response to) is appended last as a `user` turn.
+- The **target message** (the one we want a response to) is NOT appended as a separate turn.
+  - Instead, a system instruction is added: "Consider responding to message with message_id NNNN."
   - In DMs, the target is the last message.
   - In groups, the target may be an earlier message (e.g., a reply to something above).
 
