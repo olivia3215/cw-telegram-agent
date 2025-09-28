@@ -345,15 +345,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # We need to check this before finalizing the system prompt
     is_conversation_start = False
     if messages:
-        # Check if all messages are from users (not from the agent)
-        is_conversation_start = not any(getattr(m, "out", False) for m in messages)
+        # Check if all messages are from users (not from the agent) AND
+        # there are 10 or fewer messages (to avoid false positives from truncated history)
+        is_conversation_start = len(messages) <= 10 and not any(
+            getattr(m, "out", False) for m in messages
+        )
 
     # Add conversation start instruction if this is the beginning of a conversation
     if is_conversation_start:
         conversation_start_instruction = f"\n\nThis is the beginning of a conversation with {channel_name}. Please respond with your first message."
         system_prompt = system_prompt + conversation_start_instruction
         logger.info(
-            f"[{agent_name}] Detected conversation start with {channel_name}, added first message instruction"
+            f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction"
         )
 
     now = datetime.now().astimezone()
