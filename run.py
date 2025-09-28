@@ -16,6 +16,7 @@ from agent import (
     all_agents,
 )
 from exceptions import ShutdownException
+from message_logging import format_message_content_for_logging
 from register_agents import register_all_agents
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
@@ -55,13 +56,17 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
 
     sender_name = await get_channel_name(agent, sender_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
+
+    # Format message content for logging
+    message_content = format_message_content_for_logging(event.message)
+
     if sender_name == dialog_name:
         logger.info(
-            f"[{agent_name}] Message from [{sender_name}]: {event.raw_text!r} (callout: {is_callout})"
+            f"[{agent_name}] Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
         )
     else:
         logger.info(
-            f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {event.raw_text!r} (callout: {is_callout})"
+            f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
         )
 
     if not muted or is_callout:

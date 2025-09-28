@@ -573,7 +573,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
 
 async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
     """
-    Convert Telethon messages into the list of prompt lines for the LLM.
+    Convert Telethon messages into the list of prompt lines for logging.
       - Iterate messages in chronological order (oldest → newest)
       - For each message, consult the media cache populated by inject_media_descriptions
       - Produce string lines (stickers/photos/gifs substituted with descriptions)
@@ -583,6 +583,5 @@ async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> lis
     lines = []
     for msg in reversed(messages):
         content = await format_message_for_prompt(msg, agent=agent)
-        sender_name = await get_channel_name(agent, msg.sender.id)
-        lines.append(f"[{msg.id}] ({sender_name}): {content}")
+        lines.append(content)
     return lines

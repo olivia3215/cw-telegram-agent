@@ -50,20 +50,6 @@ def _normalize_parts_for_message(
             if k == "text":
                 txt = (p.get("text") or "").strip()
                 if txt:
-                    # Extract just the message content, removing the [msg_id] (sender): prefix
-                    # The format is typically: "[4384] (Wendy): «message content»"
-                    # We want just: "message content"
-                    if (
-                        txt.startswith("[")
-                        and "] (" in txt
-                        and "): «" in txt
-                        and txt.endswith("»")
-                    ):
-                        # Extract content between « and »
-                        start = txt.find("«") + 1
-                        end = txt.rfind("»")
-                        if start > 0 and end > start:
-                            txt = txt[start:end]
                     parts.append(_mk_text_part(txt))
             elif k == "media":
                 rendered = (p.get("rendered_text") or "").strip()
