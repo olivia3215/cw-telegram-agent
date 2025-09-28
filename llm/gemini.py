@@ -9,7 +9,12 @@ from collections.abc import Iterable
 from urllib import error, request
 
 from google import genai
-from google.genai.types import GenerateContentConfig, HarmBlockThreshold, HarmCategory
+from google.genai.types import (
+    FinishReason,
+    GenerateContentConfig,
+    HarmBlockThreshold,
+    HarmCategory,
+)
 
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
@@ -22,7 +27,7 @@ class GeminiLLM(LLM):
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-2.5-flash-preview-09-2025",
         api_key: str | None = None,
     ):
         self.model_name = model
@@ -35,29 +40,29 @@ class GeminiLLM(LLM):
         self.history_size = 500
 
         # Configure safety settings to disable all content filtering
-        # Note: Only these 5 categories are supported by the preview model
+        # Note: Only these 5 categories are supported by the stable model
         self.safety_settings = [
-            {
-                "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-                "threshold": HarmBlockThreshold.OFF,
-            },
-            {
-                "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                "threshold": HarmBlockThreshold.OFF,
-            },
-            {
-                "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-                "threshold": HarmBlockThreshold.OFF,
-            },
-            {
-                "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                "threshold": HarmBlockThreshold.OFF,
-            },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
             {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
                 "threshold": HarmBlockThreshold.OFF,
             },
-            # These categories are NOT supported by the preview model:
+            # These categories are NOT supported by the stable model:
             # - HARM_CATEGORY_IMAGE_* (all image-related categories)
             # - HARM_CATEGORY_UNSPECIFIED
         ]
@@ -103,15 +108,6 @@ class GeminiLLM(LLM):
             system_instruction=system_prompt,
             safety_settings=self.safety_settings,
         )
-
-        # Debug: Log the safety settings being sent
-        logger.info("=== GEMINI DEBUG: QUERY SAFETY SETTINGS ===")
-        logger.info(f"Safety settings count: {len(self.safety_settings)}")
-        for i, setting in enumerate(self.safety_settings):
-            logger.info(f"  Setting {i+1}: {setting}")
-        logger.info(f"Config safety_settings: {config.safety_settings}")
-        logger.info("=== END GEMINI DEBUG: QUERY SAFETY SETTINGS ===")
-
         response = await asyncio.to_thread(
             self.client.models.generate_content,
             model=self.model_name,
@@ -147,7 +143,7 @@ class GeminiLLM(LLM):
                 mime_type = "image/webp"
 
         # Prefer a vision-capable model
-        model = "gemini-2.5-flash"
+        model = "gemini-2.5-flash-preview-09-2025"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
@@ -265,37 +261,39 @@ class GeminiLLM(LLM):
                 safety_settings=self.safety_settings,
             )
 
-            # Debug: Log the safety settings being sent
-            logger.info("=== GEMINI DEBUG: SAFETY SETTINGS ===")
-            logger.info(f"Safety settings count: {len(self.safety_settings)}")
-            for i, setting in enumerate(self.safety_settings):
-                logger.info(f"  Setting {i+1}: {setting}")
-            logger.info(f"Config safety_settings: {config.safety_settings}")
-            logger.info("=== END GEMINI DEBUG: SAFETY SETTINGS ===")
+            for _ in range(3):  # try three times.
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=contents_norm,
+                    config=config,
+                )
 
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=model_name,
-                contents=contents_norm,
-                config=config,
-            )
-
-            # Extract the first candidate's text safely
-            text = ""
-            if response is not None:
-                if hasattr(response, "text") and isinstance(response.text, str):
-                    text = response.text
-                elif hasattr(response, "candidates") and response.candidates:
-                    cand = response.candidates[0]
-                    t = getattr(cand, "text", None)
-                    if isinstance(t, str):
-                        text = t or ""
-                    else:
-                        content = getattr(cand, "content", None)
-                        if content and getattr(content, "parts", None):
-                            first_part = content.parts[0]
-                            if isinstance(first_part, dict) and "text" in first_part:
-                                text = str(first_part["text"] or "")
+                # Extract the first candidate's text safely
+                text = ""
+                if response is not None:
+                    if hasattr(response, "text") and isinstance(response.text, str):
+                        text = response.text
+                    elif hasattr(response, "candidates") and response.candidates:
+                        cand = response.candidates[0]
+                        if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                            logger.warning(
+                                "Gemini returned prohibited content, trying again"
+                            )
+                            continue  # try again
+                        t = getattr(cand, "text", None)
+                        if isinstance(t, str):
+                            text = t or ""
+                        else:
+                            content = getattr(cand, "content", None)
+                            if content and getattr(content, "parts", None):
+                                first_part = content.parts[0]
+                                if (
+                                    isinstance(first_part, dict)
+                                    and "text" in first_part
+                                ):
+                                    text = str(first_part["text"] or "")
+                break
 
             # Optional comprehensive logging for debugging
             if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in ("true", "1", "yes"):

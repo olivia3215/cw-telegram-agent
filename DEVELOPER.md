@@ -70,7 +70,7 @@ Emits:
 * The structured path is compatible with both prior defaults and newer families like:
 
   ```
-  gemini-2.5-flash
+  gemini-2.5-flash-preview-09-2025
   ```
 * If you see an empty reply, consult logs:
 
