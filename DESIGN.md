@@ -42,3 +42,183 @@ We deliberately **render** media to compact, semantic text (e.g., sticker set/na
 ### Speaker & trace metadata
 
 For non-agent messages, we prepend a small header part:
+
+## Task Graph Lifecycle
+
+The system uses a task graph to manage agent actions and responses. Each conversation has its own task graph that contains a sequence of tasks to be executed.
+
+### Replanning Semantics
+
+When a new message arrives, the system **prepares for replanning** by:
+
+1. **Deleting the existing task graph** for that conversation
+2. **Creating a new `received` task** to process the new message
+3. **Queuing the task** for processing in the next tick
+
+The **LLM is called** when the `received` task is handled during the tick loop, not immediately when the message arrives. This design minimizes LLM calls when people send multiple messages in rapid succession, as only the most recent message triggers a new plan.
+
+This ensures that the agent's planned actions remain relevant to the current conversation context while being efficient with LLM usage.
+
+### Callout vs Regular Tasks
+
+- **Callout tasks**: Messages that explicitly mention the agent (e.g., `@agent_name` in groups)
+- **Regular tasks**: Messages that don't explicitly mention the agent
+
+**Current behavior:**
+- In **group chats**: Only callout tasks trigger replanning; background chatter is ignored
+- In **direct messages**: All messages trigger replanning (effectively treating all as callouts)
+
+**Rationale:** Callouts ensure the agent only responds when directly addressed, preventing it from being derailed by background conversation in groups.
+
+### Task Dependencies and Failure Handling
+
+Tasks can depend on other tasks using the `depends_on` field. When a task fails:
+
+1. **Retry logic**: Failed tasks are retried up to 10 times with 10-second intervals
+2. **Graph deletion**: If a task exceeds max retries, the entire graph is deleted
+3. **Replanning**: The agent waits for the next message to create a new plan
+
+**Why delete the entire graph?** Later tasks may depend on failed tasks, so it's better to start fresh rather than leave the conversation in an inconsistent state.
+
+## Media Processing Pipeline
+
+The system enriches conversations by describing photos and stickers using AI. This process is managed through a budget system to control resource usage.
+
+### Budget System
+
+- **Per-tick budget**: Default 8 AI description attempts per tick (configurable via `MEDIA_DESC_BUDGET_PER_TICK`)
+- **Cache hits**: Do not consume budget (descriptions are cached in memory and on disk)
+- **Budget reset**: Currently reset in the received handler (should be moved to start of each tick)
+
+**Purpose:** Rate-limit LLM usage to maintain agent responsiveness and control costs.
+
+### Description Workflow
+
+1. **Media detection**: Photos and stickers are identified in incoming messages
+2. **Cache check**: Check if description already exists
+3. **Budget check**: Ensure budget is available for new descriptions
+4. **AI description**: Use Gemini to generate rich descriptions
+5. **Cache storage**: Store descriptions for future use
+
+### Known Issues
+
+- **AnimatedEmojies sticker set**: Causes repeated description attempts due to data fetch failures
+- **Budget reset timing**: Should be moved to start of each tick for proper per-tick budgeting
+
+## Sticker System Architecture
+
+The sticker system supports multiple sticker sets per agent with a migration strategy from the legacy single-set approach.
+
+### Multi-Set Configuration
+
+Agents can be configured with:
+- **Primary set**: `Agent Sticker Set` (legacy, being phased out)
+- **Additional sets**: `Agent Sticker Sets` (list of set names)
+- **Explicit stickers**: `Agent Stickers` (specific set::sticker combinations)
+
+### Resolution Strategy
+
+1. **Task-specified set**: Use the set specified in the sticker task
+2. **Fallback to canonical**: Use the agent's primary set if no set specified
+3. **Cache lookup**: Check both legacy cache and by-set cache
+4. **Telegram fetch**: Fetch from Telegram if not cached
+
+### Migration Status
+
+**Legacy system (being removed):**
+- `sticker_cache`: Single set cache (canonical set only)
+- `sticker_set_name`: Single designated set per agent
+
+**New system:**
+- `sticker_cache_by_set`: Multi-set cache `(set_name, sticker_name) -> document`
+- `sticker_set_names`: List of available sets
+- `explicit_stickers`: Specific set::sticker mappings
+
+**Transition period:**
+- Missing set lines in sticker triggers are temporarily supported
+- Will be removed in future version
+
+## Caching Strategy
+
+The system uses multiple caches to minimize API calls and improve performance.
+
+### Cache Types and TTLs
+
+| Cache | TTL | Purpose | Invalidation |
+|-------|-----|---------|--------------|
+| Entity cache | 5 minutes | Telegram entities (users, chats) | On `PeerIdInvalidError` |
+| Mute cache | 60 seconds | Mute status per peer | Automatic expiration |
+| Blocklist cache | 60 seconds | Blocked users | Automatic expiration |
+| Media description cache | Persistent | AI-generated descriptions | Manual cache clear |
+| Sticker cache | Session | Sticker documents | Session restart |
+
+**Rationale:** Different TTLs balance freshness with API call minimization. Shorter TTLs for frequently changing data, longer for stable data.
+
+## Error Recovery
+
+The system implements comprehensive error recovery to handle various failure scenarios.
+
+### Retry Logic
+
+- **Max retries**: 10 attempts per task
+- **Retry interval**: 10 seconds between attempts
+- **Retry task creation**: Failed tasks create a `wait` task before retrying
+- **Graph deletion**: After max retries, entire graph is deleted
+
+**Purpose:** Handle transient failures while preventing infinite retry loops.
+
+### Failure Scenarios
+
+1. **Telegram API errors**: Retry with exponential backoff
+2. **LLM failures**: Retry the entire planning process
+3. **Media fetch failures**: Retry description attempts
+4. **Network issues**: Retry with standard intervals
+
+## Concurrency Model
+
+The system uses a combination of async/await and threading to coordinate between Telegram events and task execution.
+
+### Architecture
+
+- **Telegram event handlers**: Async, add `received` tasks to work queue
+- **Tick loop**: Synchronous, processes one task per tick
+- **Work queue**: Thread-safe with locks for concurrent access
+- **Round-robin scheduling**: Ensures fairness across conversations
+
+### Coordination
+
+1. **Event handlers**: Only add `received` tasks; no other processing
+2. **Tick loop**: Processes all task types sequentially
+3. **Locking**: Work queue uses locks to prevent race conditions
+4. **State persistence**: Work queue state is saved after each task
+
+**Benefits:** Simple coordination model with clear separation of concerns between event handling and task execution.
+
+## LLM Integration Details
+
+The system integrates with Google Gemini using a structured approach that separates system instructions from conversation content.
+
+### System Instruction Handling
+
+**Current approach:**
+- System instructions are built from scratch for each LLM request
+- Passed via the `system_instruction` parameter (not in message contents)
+- Includes: persona instructions, role prompt, model-specific notes, current time, chat type, curated stickers
+
+**Rationale:** System instructions are not part of the Telegram conversation and should be kept separate from message content.
+
+### Role Mapping
+
+- **Input**: `assistant` role (agent's prior messages)
+- **Output**: `model` role (Gemini API requirement)
+- **User messages**: Remain as `user` role
+
+**Purpose:** Compatibility with newer Gemini model families that reject `system` roles and require `user`/`model` roles only.
+
+### API Compatibility
+
+The system is designed to work with both legacy and newer Gemini API versions:
+- **Legacy**: Supports `system` roles in contents
+- **Newer**: Requires `system_instruction` parameter and `user`/`model` roles only
+
+**Migration path:** The structured approach ensures compatibility with both versions while preparing for future API changes.
