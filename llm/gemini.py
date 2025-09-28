@@ -37,6 +37,10 @@ class GeminiLLM(LLM):
         # Configure safety settings to disable all content filtering
         self.safety_settings = [
             {
+                "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
                 "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
                 "threshold": HarmBlockThreshold.OFF,
             },
@@ -49,7 +53,27 @@ class GeminiLLM(LLM):
                 "threshold": HarmBlockThreshold.OFF,
             },
             {
+                "category": HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_IMAGE_HATE,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_UNSPECIFIED,
                 "threshold": HarmBlockThreshold.OFF,
             },
         ]
