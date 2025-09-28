@@ -8,7 +8,7 @@ import os
 from collections.abc import Iterable
 from urllib import error, request
 
-import google.generativeai as genai
+from google import genai
 
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
@@ -30,14 +30,17 @@ class GeminiLLM(LLM):
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
             )
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(model)
+        self.client = genai.Client(api_key=self.api_key)
         self.history_size = 500
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         logger.warning(f"=====> prompt: {full_prompt}")
-        response = await asyncio.to_thread(self.model.generate_content, full_prompt)
+        response = await asyncio.to_thread(
+            self.client.models.generate_content,
+            model=self.model_name,
+            contents=[{"role": "user", "parts": [{"text": full_prompt}]}],
+        )
         logger.warning(f"=====> response: {response}")
         return response.text
 
@@ -131,9 +134,9 @@ class GeminiLLM(LLM):
         Returns the model's text ('' on no text). No internal retries.
         """
         try:
-            gm = getattr(self, "model", None)
-            if gm is None:
-                raise RuntimeError("Gemini model not initialized")
+            client = getattr(self, "client", None)
+            if client is None:
+                raise RuntimeError("Gemini client not initialized")
 
             # Normalize roles for Gemini: assistant -> model; only "user" and "model" allowed.
             try:
@@ -172,43 +175,14 @@ class GeminiLLM(LLM):
                             logger.info(f"    Part {j+1}: {part}")
                 logger.info("=== END GEMINI DEBUG: PROMPT ===")
 
-            # Prefer passing system_instruction directly (newer google-genai supports it).
-            response = None
-            if system_instruction:
-                try:
-                    response = await asyncio.to_thread(
-                        gm.generate_content,
-                        contents_norm,
-                        system_instruction=system_instruction,
-                    )
-                except TypeError:
-                    # Older SDKs: construct a temporary GenerativeModel with system_instruction.
-                    try:
-                        model_name = getattr(gm, "model", None) or getattr(
-                            self, "model_name", None
-                        )
-                        if not model_name:
-                            raise RuntimeError(
-                                "No Gemini model name available for re-instantiation"
-                            )
-                        gm2 = gm.__class__(
-                            model_name,
-                            system_instruction=system_instruction,
-                            safety_settings=getattr(self, "safety_settings", None),
-                            generation_config=getattr(self, "generation_config", None),
-                        )
-                        response = await asyncio.to_thread(
-                            gm2.generate_content, contents_norm
-                        )
-                    except Exception:
-                        # If we cannot set system_instruction without mixing content, give up on it
-                        # and proceed without any system instruction (do NOT fold into contents).
-                        response = await asyncio.to_thread(
-                            gm.generate_content, contents
-                        )
-            else:
-                # No system instruction: normal call.
-                response = await asyncio.to_thread(gm.generate_content, contents_norm)
+            # Use the new client.models.generate_content API
+            model_name = model or self.model_name
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
+                contents=contents_norm,
+                system_instruction=system_instruction,
+            )
 
             # Extract the first candidate's text safely
             text = ""

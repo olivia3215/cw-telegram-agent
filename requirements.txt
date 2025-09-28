@@ -9,4 +9,4 @@ pytest
 telethon
 pytest-asyncio
 mistune
-google-generativeai
+google-genai

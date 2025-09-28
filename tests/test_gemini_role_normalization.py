@@ -7,26 +7,37 @@ import pytest
 from llm import ChatMsg, GeminiLLM
 
 
-class FakeGM:
-    """Fake GenerativeModel; captures inputs and returns text='ok'."""
+class FakeClient:
+    """Fake Client; captures inputs and returns text='ok'."""
 
     def __init__(self):
+        self.last_model = None
         self.last_contents = None
         self.last_kwargs = None
 
-    # Called via asyncio.to_thread; keep it sync
-    def generate_content(self, contents, **kwargs):
-        self.last_contents = contents
-        self.last_kwargs = kwargs
-        # Mimic a response object with .text
-        return types.SimpleNamespace(text="ok")
+    class Models:
+        def __init__(self, client):
+            self.client = client
+
+        # Called via asyncio.to_thread; keep it sync
+        def generate_content(self, model, contents, **kwargs):
+            self.client.last_model = model
+            self.client.last_contents = contents
+            self.client.last_kwargs = kwargs
+            # Mimic a response object with .text
+            return types.SimpleNamespace(text="ok")
+
+    @property
+    def models(self):
+        return self.Models(self)
 
 
 @pytest.mark.asyncio
 async def test_roles_and_system_instruction_path():
     # Build a GeminiLLM instance without running its __init__
     llm = object.__new__(GeminiLLM)
-    llm.model = FakeGM()  # the only attribute _generate_with_contents needs
+    llm.client = FakeClient()  # the only attribute _generate_with_contents needs
+    llm.model_name = "test-model"  # needed for the new API
 
     # Minimal history: user then agent (assistant)
     history: list[ChatMsg] = [
@@ -72,9 +83,9 @@ async def test_roles_and_system_instruction_path():
 
     assert out == "ok"
 
-    # Inspect what we sent to the fake model
-    sent_contents = llm.model.last_contents
-    sent_kwargs = llm.model.last_kwargs or {}
+    # Inspect what we sent to the fake client
+    sent_contents = llm.client.last_contents
+    sent_kwargs = llm.client.last_kwargs or {}
 
     # system text traveled via system_instruction, not as a content turn
     sys_text = sent_kwargs.get("system_instruction")
