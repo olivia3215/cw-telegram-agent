@@ -13,7 +13,6 @@ def _mk_text_part(text: str) -> dict[str, str]:
 def _normalize_parts_for_message(
     m: ChatMsg,
     *,
-    include_speaker_prefix: bool,
     include_message_ids: bool,
     is_agent: bool,
 ) -> list[dict[str, str]]:
@@ -29,13 +28,12 @@ def _normalize_parts_for_message(
     # 1) Metadata header (always, per spec)
     if not is_agent:
         header_bits: list[str] = []
-        if include_speaker_prefix:
-            who = m.get("sender") or ""
-            sid = m.get("sender_id") or ""
-            if who and sid:
-                header_bits.append(f'sender="{who}" sender_id={sid}')
-            elif who or sid:
-                header_bits.append(f"sender_id={who or sid}")
+        who = m.get("sender") or ""
+        sid = m.get("sender_id") or ""
+        if who and sid:
+            header_bits.append(f'sender="{who}" sender_id={sid}')
+        elif who or sid:
+            header_bits.append(f"sender_id={who or sid}")
         if include_message_ids and m.get("msg_id"):
             header_bits.append(f'message_id={m["msg_id"]}')
         if header_bits:
@@ -87,7 +85,6 @@ def build_gemini_contents(
     target_message: ChatMsg | None,  # message we want the model to respond to
     history_size: int = 500,
     # Formatting toggles
-    include_speaker_prefix: bool = True,
     include_message_ids: bool = True,
 ) -> list[dict[str, Any]]:
     """
@@ -133,7 +130,6 @@ def build_gemini_contents(
         role = "assistant" if is_agent else "user"
         parts = _normalize_parts_for_message(
             m,
-            include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
             is_agent=is_agent,
         )

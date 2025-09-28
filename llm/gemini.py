@@ -264,7 +264,6 @@ class GeminiLLM(LLM):
         history: Iterable[ChatMsg],
         target_message: ChatMsg | None,
         history_size: int = 500,
-        include_speaker_prefix: bool = True,
         include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
@@ -284,7 +283,6 @@ class GeminiLLM(LLM):
             history=history,
             target_message=target_message,
             history_size=history_size,
-            include_speaker_prefix=include_speaker_prefix,
             include_message_ids=include_message_ids,
         )
 

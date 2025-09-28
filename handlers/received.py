@@ -72,7 +72,6 @@ async def query_llm_structured_with_rendered_history(
     history_rendered_items: list[tuple[str, str, str, str, bool]],
     target_rendered_item: tuple[str, str, str, str, bool] | None,
     history_size: int = 500,
-    include_speaker_prefix: bool = True,
     include_message_ids: bool = True,
     model: str | None = None,
     timeout_s: float | None = None,
@@ -116,7 +115,6 @@ async def query_llm_structured_with_rendered_history(
         history=history_chatmsgs,
         target_message=target_chatmsg,
         history_size=history_size,
-        include_speaker_prefix=include_speaker_prefix,
         include_message_ids=include_message_ids,
         model=model,
         timeout_s=timeout_s,
@@ -456,7 +454,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             else None
         ),
         history_size=agent.llm.history_size,
-        include_speaker_prefix=True,
         include_message_ids=True,
         model=None,
         timeout_s=None,

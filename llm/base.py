@@ -83,7 +83,6 @@ class LLM(ABC):
         history: Iterable[ChatMsg],
         target_message: ChatMsg | None,
         history_size: int = 500,
-        include_speaker_prefix: bool = True,
         include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
