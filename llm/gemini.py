@@ -310,9 +310,8 @@ class GeminiLLM(LLM):
         if logger:
             try:
                 total_turns = len(contents_for_call)
-                hist_turns = max(
-                    0, total_turns - (1 if target_message is not None else 0)
-                )
+                # Target message is no longer appended as a separate turn
+                hist_turns = total_turns
                 logger.debug(
                     "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
                     total_turns,

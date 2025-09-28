@@ -19,7 +19,7 @@ def _normalize_parts_for_message(
 ) -> list[dict[str, str]]:
     """
     Produce the sequence of Gemini text parts for a single message:
-      - Leading metadata header part (From / sender_id / msg id), even in DMs.
+      - Leading metadata header part (sender/sender_id/message_id), even in DMs.
       - Then each original message part in order (text or rendered media).
       - If a media part lacks 'rendered_text', emit a succinct placeholder so the model
         knows media was present.
@@ -33,13 +33,13 @@ def _normalize_parts_for_message(
             who = m.get("sender") or ""
             sid = m.get("sender_id") or ""
             if who and sid:
-                header_bits.append(f"From: {who} ({sid})")
+                header_bits.append(f'sender="{who}" sender_id={sid}')
             elif who or sid:
-                header_bits.append(f"From: {who or sid}")
+                header_bits.append(f"sender_id={who or sid}")
         if include_message_ids and m.get("msg_id"):
-            header_bits.append(f"id: {m['msg_id']}")
+            header_bits.append(f'message_id={m["msg_id"]}')
         if header_bits:
-            parts.append(_mk_text_part(" — ".join(header_bits)))
+            parts.append(_mk_text_part(f"[metadata] {' '.join(header_bits)}"))
 
     # 2) Original message content in original order
     raw_parts: list[MsgPart] | None = m.get("parts")
@@ -50,6 +50,20 @@ def _normalize_parts_for_message(
             if k == "text":
                 txt = (p.get("text") or "").strip()
                 if txt:
+                    # Extract just the message content, removing the [msg_id] (sender): prefix
+                    # The format is typically: "[4384] (Wendy): «message content»"
+                    # We want just: "message content"
+                    if (
+                        txt.startswith("[")
+                        and "] (" in txt
+                        and "): «" in txt
+                        and txt.endswith("»")
+                    ):
+                        # Extract content between « and »
+                        start = txt.find("«") + 1
+                        end = txt.rfind("»")
+                        if start > 0 and end > start:
+                            txt = txt[start:end]
                     parts.append(_mk_text_part(txt))
             elif k == "media":
                 rendered = (p.get("rendered_text") or "").strip()
@@ -92,10 +106,11 @@ def build_gemini_contents(
 ) -> list[dict[str, Any]]:
     """
     Construct Gemini 'contents' with roles and multi-part messages:
-      - One 'system' turn: persona + role prompt + model-specific prompt + metadata
+      - One 'system' turn: persona + role prompt + model-specific prompt + metadata + target instruction
       - Chronological 'user'/'assistant' turns for prior messages (bounded by history_size),
         each with an ordered list of 'parts' (metadata header first, then content parts).
-      - Final 'user' turn for the target message (appended last), also parts-based.
+      - Target message is NOT appended as a separate turn; instead, a system instruction
+        is added to respond to the specific message.
 
     Pure function: no I/O, no network, no mutation of inputs.
     """
@@ -111,6 +126,12 @@ def build_gemini_contents(
     if curated_stickers:
         sticker_list = ", ".join(curated_stickers)
         sys_lines.append(f"Curated stickers available: {sticker_list}")
+
+    # Add target message instruction if provided
+    if target_message is not None and target_message.get("msg_id"):
+        sys_lines.append(
+            f"\n# Target Message\nConsider responding to message with message_id {target_message['msg_id']}."
+        )
 
     contents: list[dict[str, Any]] = [
         {"role": "system", "parts": [_mk_text_part("\n\n".join(sys_lines).strip())]}
@@ -133,14 +154,5 @@ def build_gemini_contents(
         if parts:
             contents.append({"role": role, "parts": parts})
 
-    # --- 3) Target message appended last (if provided) ---
-    if target_message is not None:
-        tm_parts = _normalize_parts_for_message(
-            target_message,
-            include_speaker_prefix=include_speaker_prefix,
-            include_message_ids=include_message_ids,
-            is_agent=False,
-        )
-        if tm_parts:
-            contents.append({"role": "user", "parts": tm_parts})
+    # Note: Target message is no longer appended as a separate turn
     return contents
