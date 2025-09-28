@@ -45,6 +45,9 @@ Optional tuning:
 ```bash
 # Number of new AI description attempts per received task (cache hits are free)
 export MEDIA_DESC_BUDGET_PER_TICK=8
+
+# Enable comprehensive LLM prompt/response logging for debugging
+export GEMINI_DEBUG_LOGGING=true
 ```
 
 ### 4) Log in Telegram sessions
@@ -127,6 +130,12 @@ You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_
 
   * Verify `GOOGLE_GEMINI_API_KEY` is valid.
   * See `DEVELOPER.md` for logging tips and model settings.
+  * Enable `GEMINI_DEBUG_LOGGING=true` to see complete prompts and responses for debugging.
+
+* **Debugging LLM behavior**
+
+  * Set `GEMINI_DEBUG_LOGGING=true` to log complete prompts sent to Gemini and full responses received.
+  * This will show system instructions, conversation history, and detailed response metadata.
 
 ---
 
