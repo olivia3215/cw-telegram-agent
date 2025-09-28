@@ -22,7 +22,7 @@ class GeminiLLM(LLM):
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash-preview-09-2025",
+        model: str = "gemini-2.5-flash",
         api_key: str | None = None,
     ):
         self.model_name = model
@@ -147,7 +147,7 @@ class GeminiLLM(LLM):
                 mime_type = "image/webp"
 
         # Prefer a vision-capable model
-        model = "gemini-2.5-flash-preview-09-2025"
+        model = "gemini-2.5-flash"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
