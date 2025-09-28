@@ -38,6 +38,8 @@ async def test_roles_and_system_instruction_path():
     llm = object.__new__(GeminiLLM)
     llm.client = FakeClient()  # the only attribute _generate_with_contents needs
     llm.model_name = "test-model"  # needed for the new API
+    llm.safety_settings = []  # needed for safety settings
+    llm._safety_settings_rest_cache = []  # needed for cached REST format
 
     # Minimal history: user then agent (assistant)
     history: list[ChatMsg] = [

@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from urllib import error, request
 
 from google import genai
+from google.genai.types import HarmBlockThreshold, HarmCategory
 
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
@@ -33,6 +34,60 @@ class GeminiLLM(LLM):
         self.client = genai.Client(api_key=self.api_key)
         self.history_size = 500
 
+        # Configure safety settings to disable all content filtering
+        self.safety_settings = [
+            {
+                "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+                "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
+            },
+        ]
+
+        # Cache the REST API format to avoid recomputing it
+        self._safety_settings_rest_cache = self._safety_settings_to_rest_format()
+
+    def _safety_settings_to_rest_format(self) -> list[dict[str, str]]:
+        """
+        Convert client API safety settings to REST API format.
+        Returns safety settings in the format expected by the REST API.
+        """
+        rest_settings = []
+        for setting in self.safety_settings:
+            category = setting["category"]
+            threshold = setting["threshold"]
+
+            # Convert category from enum to string
+            if hasattr(category, "name"):
+                category_str = category.name
+            else:
+                category_str = str(category)
+
+            # Convert threshold from enum to string
+            if hasattr(threshold, "name"):
+                threshold_str = threshold.name
+            else:
+                threshold_str = str(threshold)
+
+            rest_settings.append(
+                {
+                    "category": category_str,
+                    "threshold": threshold_str,
+                }
+            )
+
+        return rest_settings
+
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         logger.warning(f"=====> prompt: {full_prompt}")
@@ -40,6 +95,7 @@ class GeminiLLM(LLM):
             self.client.models.generate_content,
             model=self.model_name,
             contents=[{"role": "user", "parts": [{"text": full_prompt}]}],
+            safety_settings=self.safety_settings,
         )
         logger.warning(f"=====> response: {response}")
         return response.text
@@ -74,6 +130,9 @@ class GeminiLLM(LLM):
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
+        # Use cached REST API format safety settings
+        safety_settings_rest = self._safety_settings_rest_cache
+
         payload = {
             "contents": [
                 {
@@ -88,7 +147,8 @@ class GeminiLLM(LLM):
                         },
                     ],
                 }
-            ]
+            ],
+            "safety_settings": safety_settings_rest,
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -182,6 +242,7 @@ class GeminiLLM(LLM):
                 model=model_name,
                 contents=contents_norm,
                 system_instruction=system_instruction,
+                safety_settings=self.safety_settings,
             )
 
             # Extract the first candidate's text safely
