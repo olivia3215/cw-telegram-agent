@@ -521,19 +521,18 @@ async def inject_media_descriptions(
 
 async def format_message_for_prompt(msg: Any, *, agent) -> str:
     """
-    Format a single Telethon message into the exact prompt line we use,
-    substituting stickers/photos/GIFs using the media cache only.
+    Format a single Telethon message content for the structured prompt system.
+    Returns clean content without metadata prefixes - just the message content.
     Must NOT trigger downloads or LLM calls.
     """
     cache = get_media_cache()
-    sender_name = await get_channel_name(agent, msg.sender.id)
 
     parts = []
     # include text if present
     if getattr(msg, "text", None):
         text = msg.text.strip()
         if text:
-            parts.append(f"«{text}»")
+            parts.append(text)
 
     # include media (photos/stickers/gif/animation); use cached descriptions & metadata
     try:
@@ -569,7 +568,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
             )
 
     content = " ".join(parts) if parts else "not understood"
-    return f"[{msg.id}] ({sender_name}): {content}"
+    return content
 
 
 async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
@@ -579,8 +578,11 @@ async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> lis
       - For each message, consult the media cache populated by inject_media_descriptions
       - Produce string lines (stickers/photos/gifs substituted with descriptions)
       - Do NOT download or call the LLM here; cache-only
+      - Note: This is used for logging only; the actual LLM uses structured format
     """
     lines = []
     for msg in reversed(messages):
-        lines.append(await format_message_for_prompt(msg, agent=agent))
+        content = await format_message_for_prompt(msg, agent=agent)
+        sender_name = await get_channel_name(agent, msg.sender.id)
+        lines.append(f"[{msg.id}] ({sender_name}): {content}")
     return lines
