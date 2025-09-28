@@ -38,19 +38,19 @@ class GeminiLLM(LLM):
         self.safety_settings = [
             {
                 "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
             {
                 "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
             {
                 "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
             {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
         ]
 
@@ -95,6 +95,15 @@ class GeminiLLM(LLM):
             system_instruction=system_prompt,
             safety_settings=self.safety_settings,
         )
+
+        # Debug: Log the safety settings being sent
+        logger.info("=== GEMINI DEBUG: QUERY SAFETY SETTINGS ===")
+        logger.info(f"Safety settings count: {len(self.safety_settings)}")
+        for i, setting in enumerate(self.safety_settings):
+            logger.info(f"  Setting {i+1}: {setting}")
+        logger.info(f"Config safety_settings: {config.safety_settings}")
+        logger.info("=== END GEMINI DEBUG: QUERY SAFETY SETTINGS ===")
+
         response = await asyncio.to_thread(
             self.client.models.generate_content,
             model=self.model_name,
@@ -247,6 +256,15 @@ class GeminiLLM(LLM):
                 system_instruction=system_instruction,
                 safety_settings=self.safety_settings,
             )
+
+            # Debug: Log the safety settings being sent
+            logger.info("=== GEMINI DEBUG: SAFETY SETTINGS ===")
+            logger.info(f"Safety settings count: {len(self.safety_settings)}")
+            for i, setting in enumerate(self.safety_settings):
+                logger.info(f"  Setting {i+1}: {setting}")
+            logger.info(f"Config safety_settings: {config.safety_settings}")
+            logger.info("=== END GEMINI DEBUG: SAFETY SETTINGS ===")
+
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model=model_name,
