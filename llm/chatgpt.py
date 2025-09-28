@@ -24,7 +24,7 @@ class ChatGPT(LLM):
             raise ValueError(
                 "Missing ChatGPT API key. Set OPENAI_API_KEY or pass it explicitly."
             )
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=self.api_key)
         self.model = model
         self.temperature = temperature
         self.history_size = 120
