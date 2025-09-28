@@ -134,9 +134,9 @@ Agents can be configured with:
 - `sticker_set_names`: List of available sets
 - `explicit_stickers`: Specific set::sticker mappings
 
-**Transition period:**
-- Missing set lines in sticker triggers are temporarily supported
-- Will be removed in future version
+**Current requirements:**
+- Both set name and sticker name are required in sticker triggers
+- Single-line sticker triggers (missing set name) are no longer supported
 
 ## Caching Strategy
 
