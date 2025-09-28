@@ -83,7 +83,6 @@ class LLM(ABC):
         history: Iterable[ChatMsg],
         target_message: ChatMsg | None,
         history_size: int = 500,
-        include_speaker_prefix: bool = True,
         include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
@@ -103,6 +102,18 @@ class LLM(ABC):
         # Simple conversion of history to text
         user_prompt = f"Current time: {now_iso}\nChat type: {chat_type}\n\n"
         if target_message:
-            user_prompt += f"Latest message: {target_message.get('text', '')}"
+            # Extract text from parts if available, otherwise fall back to text field
+            message_text = ""
+            parts = target_message.get("parts")
+            if parts:
+                # Extract text from all text parts
+                text_parts = []
+                for part in parts:
+                    if part.get("kind") == "text" and part.get("text"):
+                        text_parts.append(part["text"])
+                message_text = " ".join(text_parts)
+            else:
+                message_text = target_message.get("text", "")
+            user_prompt += f"Latest message: {message_text}"
 
         return await self.query(system_prompt, user_prompt)

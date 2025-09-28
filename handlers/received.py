@@ -26,7 +26,7 @@ from media_injector import (
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
-from telegram_util import get_dialog_name
+from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,6 @@ async def query_llm_structured_with_rendered_history(
     history_rendered_items: list[tuple[str, str, str, str, bool]],
     target_rendered_item: tuple[str, str, str, str, bool] | None,
     history_size: int = 500,
-    include_speaker_prefix: bool = True,
     include_message_ids: bool = True,
     model: str | None = None,
     timeout_s: float | None = None,
@@ -116,7 +115,6 @@ async def query_llm_structured_with_rendered_history(
         history=history_chatmsgs,
         target_message=target_chatmsg,
         history_size=history_size,
-        include_speaker_prefix=include_speaker_prefix,
         include_message_ids=include_message_ids,
         model=model,
         timeout_s=timeout_s,
@@ -378,12 +376,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     for m in chronological:
         rendered_text = await format_message_for_prompt(m, agent=agent)
 
-        # sender_id is stable; display name may be unavailable here; fall back to the ID string
+        # sender_id is stable; get display name for better context
         sender_id_val = getattr(m, "sender_id", None)
         sender_id = str(sender_id_val) if sender_id_val is not None else "unknown"
 
-        # Do NOT duplicate the "From:" header here; the builder will add it for non-agent messages.
-        sender_display = sender_id  # keep simple; avoids extra lookups
+        # Get actual sender name for better context in prompts
+        sender_display = (
+            await get_channel_name(agent, sender_id_val) if sender_id_val else "unknown"
+        )
         message_id = str(getattr(m, "id", ""))
 
         # Telethon marks messages sent by the logged-in account with .out == True
@@ -411,10 +411,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         t_sender_id_val = getattr(target_msg, "sender_id", None)
         t_sender_id = str(t_sender_id_val) if t_sender_id_val is not None else "unknown"
         t_message_id = str(getattr(target_msg, "id", ""))
-        # is_agent for target is forced to False when building the final user turn
+
+        # Get actual sender name for target message
+        t_sender_display = (
+            await get_channel_name(agent, t_sender_id_val)
+            if t_sender_id_val
+            else "unknown"
+        )
+
+        # is_agent for target is forced to False (target messages are always from users)
         target_rendered_item = (
             user_message,
-            t_sender_id,
+            t_sender_display,
             t_sender_id,
             t_message_id,
             False,
@@ -456,7 +464,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             else None
         ),
         history_size=agent.llm.history_size,
-        include_speaker_prefix=True,
         include_message_ids=True,
         model=None,
         timeout_s=None,
