@@ -14,16 +14,18 @@ class FakeClient:
         self.last_model = None
         self.last_contents = None
         self.last_kwargs = None
+        self.last_config = None
 
     class Models:
         def __init__(self, client):
             self.client = client
 
         # Called via asyncio.to_thread; keep it sync
-        def generate_content(self, model, contents, **kwargs):
+        def generate_content(self, model, contents, config=None, **kwargs):
             self.client.last_model = model
             self.client.last_contents = contents
             self.client.last_kwargs = kwargs
+            self.client.last_config = config
             # Mimic a response object with .text
             return types.SimpleNamespace(text="ok")
 
@@ -87,10 +89,11 @@ async def test_roles_and_system_instruction_path():
 
     # Inspect what we sent to the fake client
     sent_contents = llm.client.last_contents
-    sent_kwargs = llm.client.last_kwargs or {}
+    sent_config = llm.client.last_config
 
-    # system text traveled via system_instruction, not as a content turn
-    sys_text = sent_kwargs.get("system_instruction")
+    # system text traveled via config.system_instruction, not as a content turn
+    assert sent_config is not None
+    sys_text = getattr(sent_config, "system_instruction", None)
     assert isinstance(sys_text, str) and "SYSTEM HERE" in sys_text
 
     # Contents contain only 'user' and 'model' roles; no 'system'

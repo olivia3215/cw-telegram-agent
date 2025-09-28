@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from urllib import error, request
 
 from google import genai
-from google.genai.types import HarmBlockThreshold, HarmCategory
+from google.genai.types import GenerateContentConfig, HarmBlockThreshold, HarmCategory
 
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
@@ -91,11 +91,15 @@ class GeminiLLM(LLM):
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         logger.warning(f"=====> prompt: {full_prompt}")
+        config = GenerateContentConfig(
+            system_instruction=system_prompt,
+            safety_settings=self.safety_settings,
+        )
         response = await asyncio.to_thread(
             self.client.models.generate_content,
             model=self.model_name,
-            contents=[{"role": "user", "parts": [{"text": full_prompt}]}],
-            safety_settings=self.safety_settings,
+            contents=[{"role": "user", "parts": [{"text": user_prompt}]}],
+            config=config,
         )
         logger.warning(f"=====> response: {response}")
         return response.text
@@ -227,6 +231,8 @@ class GeminiLLM(LLM):
                     for j, part in enumerate(parts):
                         if isinstance(part, dict) and "text" in part:
                             text = part["text"]
+                            # Replace newlines with \n for better log readability
+                            text = text.replace("\n", "\\n")
                             # Truncate very long text for readability
                             if len(text) > 1000:
                                 text = text[:1000] + "... [truncated]"
@@ -237,12 +243,15 @@ class GeminiLLM(LLM):
 
             # Use the new client.models.generate_content API
             model_name = model or self.model_name
+            config = GenerateContentConfig(
+                system_instruction=system_instruction,
+                safety_settings=self.safety_settings,
+            )
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model=model_name,
                 contents=contents_norm,
-                system_instruction=system_instruction,
-                safety_settings=self.safety_settings,
+                config=config,
             )
 
             # Extract the first candidate's text safely
