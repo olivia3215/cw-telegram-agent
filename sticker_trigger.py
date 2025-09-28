@@ -23,9 +23,7 @@ Rules:
 - Next non-empty line = SET short name (e.g., WendyDancer).
 - Next non-empty line = STICKER name (emoji or short name).
 - Leading/trailing spaces on those lines are ignored.
-- During development ONLY we allow "missing set line" (old behavior) where
-  only one non-empty line follows the header; in that case it is taken as the
-  sticker NAME and set is None. This will be disabled before merge.
+- Both set name and sticker name are required.
 
 This module is PURE parsing; no Telegram/Telethon calls here.
 """
@@ -38,7 +36,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class StickerTrigger:
-    set_short_name: str | None  # None only during transition window (missing set line)
+    set_short_name: (
+        str | None
+    )  # Set name (required for parsing, may be None if not found)
     sticker_name: str
     reply_to_message_id: int | None
 
@@ -61,8 +61,6 @@ _HEADER_RE = re.compile(
 
 def parse_sticker_body(
     body: str,
-    *,
-    allow_missing_set_during_transition: bool = False,
 ) -> tuple[str | None, str] | None:
     """
     Parse the body of a «sticker» block (header already handled elsewhere).
@@ -71,13 +69,10 @@ def parse_sticker_body(
         WendyDancer
         😀
 
-        # During transition, the set line may be omitted:
-        😀
     Returns:
         (set_short_name, sticker_name)
-        - set_short_name is None only during the transition window when the set
-          line is omitted.
-        - Returns None if no valid name line is found.
+        - Both set_short_name and sticker_name are required.
+        - Returns None if no valid name lines are found or if only one line is provided.
     """
     # Normalize to first two non-empty lines
     lines = [ln.strip() for ln in body.splitlines()]
@@ -87,9 +82,7 @@ def parse_sticker_body(
         return None
 
     if len(lines) == 1:
-        # Old behavior: only the name line present
-        if allow_missing_set_during_transition:
-            return (None, lines[0])
+        # Require both set name and sticker name
         return None
 
     # Two or more lines: take the first as set, second as name
