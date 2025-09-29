@@ -493,7 +493,6 @@ async def inject_media_descriptions(
                         sticker_name = getattr(it, "sticker_name", None)
 
                     # Get provenance metadata
-                    datetime.now(UTC).isoformat()
                     media_ts = None
                     if getattr(msg, "date", None):
                         try:
