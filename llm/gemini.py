@@ -8,7 +8,13 @@ import os
 from collections.abc import Iterable
 from urllib import error, request
 
-import google.generativeai as genai
+from google import genai
+from google.genai.types import (
+    FinishReason,
+    GenerateContentConfig,
+    HarmBlockThreshold,
+    HarmCategory,
+)
 
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
@@ -30,14 +36,84 @@ class GeminiLLM(LLM):
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
             )
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(model)
+        self.client = genai.Client(api_key=self.api_key)
         self.history_size = 500
+
+        # Configure safety settings to disable all content filtering
+        # Note: Only these 5 categories are supported by the stable model
+        self.safety_settings = [
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
+            {
+                "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                "threshold": HarmBlockThreshold.OFF,
+            },
+            # These categories are NOT supported by the stable model:
+            # - HARM_CATEGORY_IMAGE_* (all image-related categories)
+            # - HARM_CATEGORY_UNSPECIFIED
+        ]
+
+        # Cache the REST API format to avoid recomputing it
+        self._safety_settings_rest_cache = self._safety_settings_to_rest_format()
+
+    def _safety_settings_to_rest_format(self) -> list[dict[str, str]]:
+        """
+        Convert client API safety settings to REST API format.
+        Returns safety settings in the format expected by the REST API.
+        """
+        rest_settings = []
+        for setting in self.safety_settings:
+            category = setting["category"]
+            threshold = setting["threshold"]
+
+            # Convert category from enum to string
+            if hasattr(category, "name"):
+                category_str = category.name
+            else:
+                category_str = str(category)
+
+            # Convert threshold from enum to string
+            if hasattr(threshold, "name"):
+                threshold_str = threshold.name
+            else:
+                threshold_str = str(threshold)
+
+            rest_settings.append(
+                {
+                    "category": category_str,
+                    "threshold": threshold_str,
+                }
+            )
+
+        return rest_settings
 
     async def query(self, system_prompt: str, user_prompt: str) -> str:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         logger.warning(f"=====> prompt: {full_prompt}")
-        response = await asyncio.to_thread(self.model.generate_content, full_prompt)
+        config = GenerateContentConfig(
+            system_instruction=system_prompt,
+            safety_settings=self.safety_settings,
+        )
+        response = await asyncio.to_thread(
+            self.client.models.generate_content,
+            model=self.model_name,
+            contents=[{"role": "user", "parts": [{"text": user_prompt}]}],
+            config=config,
+        )
         logger.warning(f"=====> response: {response}")
         return response.text
 
@@ -71,6 +147,9 @@ class GeminiLLM(LLM):
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
+        # Use cached REST API format safety settings
+        safety_settings_rest = self._safety_settings_rest_cache
+
         payload = {
             "contents": [
                 {
@@ -85,7 +164,8 @@ class GeminiLLM(LLM):
                         },
                     ],
                 }
-            ]
+            ],
+            "safety_settings": safety_settings_rest,
         }
 
         data = json.dumps(payload).encode("utf-8")
@@ -131,9 +211,9 @@ class GeminiLLM(LLM):
         Returns the model's text ('' on no text). No internal retries.
         """
         try:
-            gm = getattr(self, "model", None)
-            if gm is None:
-                raise RuntimeError("Gemini model not initialized")
+            client = getattr(self, "client", None)
+            if client is None:
+                raise RuntimeError("Gemini client not initialized")
 
             # Normalize roles for Gemini: assistant -> model; only "user" and "model" allowed.
             try:
@@ -164,6 +244,8 @@ class GeminiLLM(LLM):
                     for j, part in enumerate(parts):
                         if isinstance(part, dict) and "text" in part:
                             text = part["text"]
+                            # Replace newlines with \n for better log readability
+                            text = text.replace("\n", "\\n")
                             # Truncate very long text for readability
                             if len(text) > 1000:
                                 text = text[:1000] + "... [truncated]"
@@ -172,60 +254,46 @@ class GeminiLLM(LLM):
                             logger.info(f"    Part {j+1}: {part}")
                 logger.info("=== END GEMINI DEBUG: PROMPT ===")
 
-            # Prefer passing system_instruction directly (newer google-genai supports it).
-            response = None
-            if system_instruction:
-                try:
-                    response = await asyncio.to_thread(
-                        gm.generate_content,
-                        contents_norm,
-                        system_instruction=system_instruction,
-                    )
-                except TypeError:
-                    # Older SDKs: construct a temporary GenerativeModel with system_instruction.
-                    try:
-                        model_name = getattr(gm, "model", None) or getattr(
-                            self, "model_name", None
-                        )
-                        if not model_name:
-                            raise RuntimeError(
-                                "No Gemini model name available for re-instantiation"
-                            )
-                        gm2 = gm.__class__(
-                            model_name,
-                            system_instruction=system_instruction,
-                            safety_settings=getattr(self, "safety_settings", None),
-                            generation_config=getattr(self, "generation_config", None),
-                        )
-                        response = await asyncio.to_thread(
-                            gm2.generate_content, contents_norm
-                        )
-                    except Exception:
-                        # If we cannot set system_instruction without mixing content, give up on it
-                        # and proceed without any system instruction (do NOT fold into contents).
-                        response = await asyncio.to_thread(
-                            gm.generate_content, contents
-                        )
-            else:
-                # No system instruction: normal call.
-                response = await asyncio.to_thread(gm.generate_content, contents_norm)
+            # Use the new client.models.generate_content API
+            model_name = model or self.model_name
+            config = GenerateContentConfig(
+                system_instruction=system_instruction,
+                safety_settings=self.safety_settings,
+            )
 
-            # Extract the first candidate's text safely
-            text = ""
-            if response is not None:
-                if hasattr(response, "text") and isinstance(response.text, str):
-                    text = response.text
-                elif hasattr(response, "candidates") and response.candidates:
-                    cand = response.candidates[0]
-                    t = getattr(cand, "text", None)
-                    if isinstance(t, str):
-                        text = t or ""
-                    else:
-                        content = getattr(cand, "content", None)
-                        if content and getattr(content, "parts", None):
-                            first_part = content.parts[0]
-                            if isinstance(first_part, dict) and "text" in first_part:
-                                text = str(first_part["text"] or "")
+            for _ in range(3):  # try three times.
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=contents_norm,
+                    config=config,
+                )
+
+                # Extract the first candidate's text safely
+                text = ""
+                if response is not None:
+                    if hasattr(response, "text") and isinstance(response.text, str):
+                        text = response.text
+                    elif hasattr(response, "candidates") and response.candidates:
+                        cand = response.candidates[0]
+                        if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                            logger.warning(
+                                "Gemini returned prohibited content, trying again"
+                            )
+                            continue  # try again
+                        t = getattr(cand, "text", None)
+                        if isinstance(t, str):
+                            text = t or ""
+                        else:
+                            content = getattr(cand, "content", None)
+                            if content and getattr(content, "parts", None):
+                                first_part = content.parts[0]
+                                if (
+                                    isinstance(first_part, dict)
+                                    and "text" in first_part
+                                ):
+                                    text = str(first_part["text"] or "")
+                break
 
             # Optional comprehensive logging for debugging
             if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in ("true", "1", "yes"):

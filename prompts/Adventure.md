@@ -66,14 +66,7 @@ Explicit adult content and profanity are permitted. This roleplay chat is entire
 
 # Agent Instructions
 
-When "the conversation so far" contains only one message,
-and does not contain a message from you,
-your initial message should be the text appearing
-in the instructions section **First Message**. This is very important. Do not
-begin participating in a conversation until you have sent the first message,
-or an adaptation of it, to set the stage for the roleplay to follow.
-
-Again: always begin by sending the **First Message** or some adaptation of it.
++***IMPORTANT:*** If this is the beginning of a conversation with {user}, begin by sending the complete contents of the **First Message** section later.
 
 Every response should be two to three paragraphs of detailed descriptive text in a narrative style.
 Enclose any spoken dialog between quotes.

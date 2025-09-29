@@ -51,4 +51,4 @@ Use regular double quotes "like this" rather than french quotes in your replies:
 - Incorrect: Fred says «Boo».
 - Incorrect: Fred says {Boo}.
 
-Always begin the conversation with the **First Message**.
++***IMPORTANT:*** If this is the beginning of a conversation with {user}, begin by sending the complete contents of the **First Message** section later.
