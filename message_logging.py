@@ -28,11 +28,13 @@ def format_message_content_for_logging(message) -> str:
         sticker_name = getattr(message.sticker, "alt", None)
 
         if sticker_set and hasattr(sticker_set, "short_name"):
-            set_name = sticker_set.short_name
+            sticker_set_name = sticker_set.short_name
             if sticker_name:
-                media_parts.append(f"‹sticker '{sticker_name}' from set '{set_name}'›")
+                media_parts.append(
+                    f"‹sticker '{sticker_name}' from set '{sticker_set_name}'›"
+                )
             else:
-                media_parts.append(f"‹sticker from set '{set_name}'›")
+                media_parts.append(f"‹sticker from set '{sticker_set_name}'›")
         else:
             media_parts.append("‹sticker›")
     elif hasattr(message, "photo") and message.photo:

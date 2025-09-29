@@ -586,15 +586,13 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
                 or getattr(it, "sticker_name", None)
                 or "(unnamed)"
             )
-            # Use the new cache-based formatting
-            from media_format import format_media_description_from_cache
-
-            desc_clause = format_media_description_from_cache(meta)
+            # Get raw description from cache for format_sticker_sentence
+            desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(
                 format_sticker_sentence(
                     sticker_name=sticker_name,
                     sticker_set=sticker_set,
-                    description=desc_clause,
+                    description=desc_text,
                 )
             )
         else:

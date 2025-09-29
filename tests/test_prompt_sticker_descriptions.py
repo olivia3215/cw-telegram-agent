@@ -72,7 +72,7 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
                     llm=agent._llm,
                     cache=hr.media_cache if hasattr(hr, "media_cache") else object(),
                     kind="sticker",
-                    set_name=set_short,
+                    sticker_set_name=set_short,
                     sticker_name=name,
                 )
                 if desc:
