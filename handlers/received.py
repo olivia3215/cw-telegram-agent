@@ -312,6 +312,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             for set_short, name in sorted(agent.sticker_cache_by_set.keys()):
                 try:
                     if set_short == "AnimatedEmojies":
+                        # Don't describe these - they are just animated emojis
                         desc = None
                     else:
                         # Get the document from the sticker cache

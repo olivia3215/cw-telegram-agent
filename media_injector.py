@@ -382,7 +382,7 @@ async def get_or_compute_description_for_doc(
                     "kind": kind,
                     "set_name": set_name,
                     "sticker_name": sticker_name,
-                    "description": f"download failed: {str(e)[:100]}",
+                    "description": f"description failed: {str(e)[:100]}",
                     "status": "error",
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
