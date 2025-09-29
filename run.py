@@ -128,7 +128,9 @@ async def ensure_sticker_cache(agent, client):
     if canonical:
         required_sets.add(canonical)
     required_sets.update(extra_sets)
-    required_sets.update(set_name for (set_name, _name) in explicit if set_name)
+    required_sets.update(
+        sticker_set_name for (sticker_set_name, _name) in explicit if sticker_set_name
+    )
 
     # Ensure the tracking set exists
     loaded = getattr(agent, "loaded_sticker_sets", None)

@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from media_cache import get_media_cache
-from media_format import format_media_description, format_sticker_sentence
+from media_format import (
+    format_media_sentence,
+    format_sticker_sentence,
+)
 from telegram_download import download_media_bytes
 from telegram_media import _get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
@@ -31,9 +34,28 @@ PHOTOS_DIR: Path = STATE_DIR / "photos"
 MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
 
 
-def _ensure_state_dirs() -> None:
-    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+def _debug_save_media(
+    data: bytes, unique_id: str, kind: str, mime: str | None = None
+) -> None:
+    """
+    Save media data to disk for debugging purposes.
+    Only saves if MEDIA_DEBUG_SAVE is True and the save is successful.
+    """
+
+    if not MEDIA_DEBUG_SAVE:
+        return
+
+    try:
+        # Ensure the photos directory exists
+        PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+        ext = _sniff_ext(data, kind=kind, mime=mime)
+        out_path = Path(PHOTOS_DIR) / f"{unique_id}{ext}"
+        out_path.write_bytes(data)
+        size = out_path.stat().st_size
+        logger.info(f"media: saved debug copy {out_path} ({size} bytes)")
+    except Exception as e:
+        logger.warning(f"media: debug save failed for {unique_id}: {e}")
 
 
 # --- Per-tick AI description budget ------------------------------------------
@@ -109,19 +131,6 @@ def _sniff_ext(data: bytes, kind: str | None = None, mime: str | None = None) ->
     return ".bin"
 
 
-def _is_llm_supported_image(data: bytes) -> bool:
-    """True for raster images we send to the LLM (jpg/png/webp/gif)."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return True
-    if data[:3] == b"GIF":
-        return True
-    if data.startswith(b"\xff\xd8\xff"):
-        return True
-    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return True
-    return False
-
-
 # ---------- sticker helpers ----------
 async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
     """
@@ -182,22 +191,10 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
         )
         if isinstance(resolved, str) and resolved.strip():
             return resolved.strip()
-    except Exception:
+    except Exception as e:
+        logger.exception(f"Failed to get sticker set short name: {e}")
         return None
     return None
-
-
-async def _attach_sticker_metadata(agent, it, record: dict) -> None:
-    """Attach best-available sticker metadata to the cache record."""
-    set_name = await _maybe_get_sticker_set_short_name(agent, it)
-    if not set_name:
-        set_name = getattr(it, "sticker_set", None)
-    if isinstance(set_name, str) and set_name.strip():
-        record["sticker_set"] = set_name.strip()
-
-    name = getattr(it, "sticker_name", None)
-    if isinstance(name, str) and name.strip():
-        record["sticker_name"] = name.strip()
 
 
 # ---------- provenance helpers ----------
@@ -212,7 +209,8 @@ async def _resolve_sender_and_channel(
             if isinstance(sender_id, int)
             else None
         )
-    except Exception:
+    except Exception as e:
+        logger.exception(f"Failed to get sender name: {e}")
         sender_name = None
 
     # channel/chat
@@ -228,7 +226,8 @@ async def _resolve_sender_and_channel(
         chan_name = (
             await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None
         )
-    except Exception:
+    except Exception as e:
+        logger.exception(f"Failed to get channel name: {e}")
         chan_name = None
 
     return sender_id, sender_name, chan_id, chan_name
@@ -244,8 +243,14 @@ async def get_or_compute_description_for_doc(
     llm,
     cache,
     kind: str,
-    set_name: str | None = None,
+    sticker_set_name: str | None = None,
     sticker_name: str | None = None,
+    # Provenance metadata (optional)
+    sender_id: int | None = None,
+    sender_name: str | None = None,
+    channel_id: int | None = None,
+    channel_name: str | None = None,
+    media_ts: str | None = None,
 ) -> tuple[str, str | None]:
     """
     Cache precedence:
@@ -268,10 +273,13 @@ async def get_or_compute_description_for_doc(
             logger.debug(f"[media] HIT uid={uid} kind={kind}")
             return uid, desc
         # If terminal negative cache exists, skip AI attempt this tick.
-        if status in {"not_understood"}:
-            logger.debug(f"[media] NEG uid={uid} kind={kind} status={status}")
+        # Only retry if explicitly marked as retryable (field present and true)
+        if "retryable" not in cached or not cached.get("retryable", False):
+            logger.debug(
+                f"[media] NEG uid={uid} kind={kind} status={status} (not retryable)"
+            )
             return uid, None
-        # If prior timeout/error, we may retry later; continue below to budget check.
+        # If retryable is true, we may retry later; continue below to budget check.
 
     # 2) Budget gate before any AI work
     if not try_consume_description_budget():
@@ -283,7 +291,7 @@ async def get_or_compute_description_for_doc(
     try:
         data: bytes = await download_media_bytes(client, doc)
     except Exception as e:
-        logger.debug(f"[media] DL FAIL uid={uid} kind={kind}: {e}")
+        logger.exception(f"[media] DL FAIL uid={uid} kind={kind}: {e}")
         # Record transient failure for visibility
         try:
             cache.put(
@@ -291,14 +299,22 @@ async def get_or_compute_description_for_doc(
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
+                    "failure_reason": f"download failed: {str(e)[:100]}",
                     "status": "error",
+                    "retryable": True,  # Download failures might be temporary
+                    "ts": datetime.now(UTC).isoformat(),
+                    "media_ts": media_ts,
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "channel_id": channel_id,
+                    "channel_name": channel_name,
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     dl_ms = (time.perf_counter() - t0) * 1000
 
@@ -314,58 +330,110 @@ async def get_or_compute_description_for_doc(
         logger.debug(
             f"[media] TIMEOUT uid={uid} kind={kind} after {_DESCRIBE_TIMEOUT_SECS}s"
         )
+
+        # Debug save the downloaded media even if description timed out
+        _debug_save_media(data, uid, kind)
+
         try:
             cache.put(
                 uid,
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
+                    "failure_reason": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
                     "status": "timeout",
+                    "retryable": True,  # Timeouts might be temporary
+                    "ts": datetime.now(UTC).isoformat(),
+                    "media_ts": media_ts,
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "channel_id": channel_id,
+                    "channel_name": channel_name,
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     except Exception as e:
-        logger.debug(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
+        logger.exception(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
+
+        # Debug save the downloaded media even if description failed
+        _debug_save_media(data, uid, kind)
+
         try:
             cache.put(
                 uid,
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
+                    "failure_reason": f"description failed: {str(e)[:100]}",
                     "status": "error",
+                    # No retryable field - LLM errors are usually permanent (invalid format, etc.)
+                    "ts": datetime.now(UTC).isoformat(),
+                    "media_ts": media_ts,
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "channel_id": channel_id,
+                    "channel_name": channel_name,
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     llm_ms = (time.perf_counter() - t1) * 1000
 
     # NOTE: If you have a reliable detector for "not understood", set status accordingly:
     status = "ok" if desc else "not_understood"
 
-    # 2c) Cache best-effort
+    # 2c) Debug save all downloaded media
+    _debug_save_media(data, uid, kind)
+
+    # 2d) Cache best-effort
     try:
-        cache.put(
-            uid,
-            {
+        if desc:
+            # Valid description - cache with description
+            cache_record = {
                 "unique_id": uid,
                 "kind": kind,
-                "set_name": set_name,
+                "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
-                "description": desc if desc else None,
+                "description": desc,
                 "status": status,
-            },
-        )
+                # No retryable field - success means no retry needed
+                "ts": datetime.now(UTC).isoformat(),
+                "media_ts": media_ts,
+                "sender_id": sender_id,
+                "sender_name": sender_name,
+                "channel_id": channel_id,
+                "channel_name": channel_name,
+            }
+        else:
+            # No valid description - cache with failure_reason
+            cache_record = {
+                "unique_id": uid,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": None,
+                "failure_reason": "LLM returned empty or invalid description",
+                "status": status,
+                # No retryable field - LLM couldn't understand, permanent failure
+                "ts": datetime.now(UTC).isoformat(),
+                "media_ts": media_ts,
+                "sender_id": sender_id,
+                "sender_name": sender_name,
+                "channel_id": channel_id,
+                "channel_name": channel_name,
+            }
+        cache.put(uid, cache_record)
     except Exception as e:
-        logger.debug(f"[media] CACHE PUT FAIL uid={uid}: {e}")
+        logger.exception(f"[media] CACHE PUT FAIL uid={uid}: {e}")
 
     total_ms = (time.perf_counter() - t0) * 1000
     if status == "ok":
@@ -384,19 +452,23 @@ async def inject_media_descriptions(
     messages: Sequence[Any], agent: Any | None = None
 ) -> Sequence[Any]:
     """
-    Inspect fetched history:
-      • On cache hit: no download, nothing to do.
-      • On cache miss (and feature enabled with a usable client):
-          - download once
-          - optional debug save to state/photos/<id>.<ext>
-          - if raster image: describe via agent.llm.describe_image(bytes)
-            and cache JSON with description + provenance
-          - otherwise: cache a synthetic “not understood (format …)” description
-            so we never re-download/describe the same item again.
+    Unified media description processing using get_or_compute_description_for_doc.
+
+    This function processes all media items in the given messages and ensures
+    they have descriptions cached. It uses the same robust error handling,
+    budget management, and caching logic as the newer get_or_compute_description_for_doc function.
+
     Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
+    if not MEDIA_FEATURE_ENABLED or agent is None:
+        return messages
+
     cache = get_media_cache()
     client = getattr(agent, "client", None)
+    llm = getattr(agent, "llm", None)
+
+    if not client or not llm:
+        return messages
 
     try:
         for msg in messages:
@@ -409,42 +481,30 @@ async def inject_media_descriptions(
                 continue
 
             for it in items:
+                # Skip if already cached
                 if cache.get(it.unique_id):
                     logger.debug(f"media: cache-hit kind={it.kind} id={it.unique_id}")
                     continue
 
-                logger.debug(f"media: cache-miss kind={it.kind} id={it.unique_id}")
-
-                if not (
-                    MEDIA_FEATURE_ENABLED
-                    and client is not None
-                    and getattr(it, "file_ref", None) is not None
-                ):
+                # Skip if no file_ref available
+                if not getattr(it, "file_ref", None):
+                    logger.debug(f"media: no file_ref for {it.unique_id}")
                     continue
 
+                logger.debug(f"media: cache-miss kind={it.kind} id={it.unique_id}")
+
+                # Use the unified function for processing
                 try:
-                    _ensure_state_dirs()
-                    data = await download_media_bytes(client, it.file_ref)
+                    # Get sticker metadata if applicable
+                    sticker_set_name = None
+                    sticker_name = None
+                    if it.kind == "sticker":
+                        sticker_set_name = await _maybe_get_sticker_set_short_name(
+                            agent, it
+                        )
+                        sticker_name = getattr(it, "sticker_name", None)
 
-                    # Debug save
-                    if MEDIA_DEBUG_SAVE:
-                        try:
-                            ext = _sniff_ext(
-                                data, kind=it.kind, mime=getattr(it, "mime", None)
-                            )
-                            out_path = Path(PHOTOS_DIR) / f"{it.unique_id}{ext}"
-                            out_path.write_bytes(data)
-                            size = out_path.stat().st_size
-                            logger.info(
-                                f"media: saved debug copy {out_path} ({size} bytes)"
-                            )
-                        except Exception as e_dbg:
-                            logger.warning(
-                                f"media: debug save failed for {it.unique_id}: {e_dbg}"
-                            )
-
-                    # Provenance timestamps
-                    ts_now = datetime.now(UTC).isoformat()
+                    # Get provenance metadata
                     media_ts = None
                     if getattr(msg, "date", None):
                         try:
@@ -458,61 +518,30 @@ async def inject_media_descriptions(
                         chan_name,
                     ) = await _resolve_sender_and_channel(agent, msg)
 
-                    # Decide LLM vs not-understood
-                    if _is_llm_supported_image(data):
-                        try:
-                            if agent is None or getattr(agent, "llm", None) is None:
-                                raise RuntimeError(
-                                    "no agent/LLM available for image description"
-                                )
-                            desc_text = agent.llm.describe_image(data)
-                            record = {
-                                "description": desc_text,
-                                "kind": it.kind,
-                                "llm": getattr(agent.llm, "model_name", None)
-                                or agent.llm.__class__.__name__,
-                                "ts": ts_now,
-                                "media_ts": media_ts,
-                                "sender_id": sender_id,
-                                "sender_name": sender_name,
-                                "channel_id": chan_id,
-                                "channel_name": chan_name,
-                            }
-                            if it.kind == "sticker":
-                                await _attach_sticker_metadata(agent, it, record)
-                            cache.put(it.unique_id, record)
-                            logger.info(
-                                f"media: generated description cached id={it.unique_id}"
-                            )
-                        except Exception as e_llm:
-                            logger.debug(
-                                f"media: LLM describe failed for {it.unique_id}: {e_llm}"
-                            )
-                    else:
-                        fmt = _sniff_ext(
-                            data, kind=it.kind, mime=getattr(it, "mime", None)
-                        ).lstrip(".")
-                        base_desc = f"{it.kind} not understood (format {fmt})"
-                        record = {
-                            "description": base_desc,
-                            "kind": it.kind,
-                            "ts": ts_now,
-                            "media_ts": media_ts,
-                            "sender_id": sender_id,
-                            "sender_name": sender_name,
-                            "channel_id": chan_id,
-                            "channel_name": chan_name,
-                        }
-                        if it.kind == "sticker":
-                            await _attach_sticker_metadata(agent, it, record)
-                        cache.put(it.unique_id, record)
-                        logger.info(
-                            f"media: cached not-understood id={it.unique_id} ({base_desc})"
-                        )
-                except Exception as e:
-                    logger.debug(
-                        f"media: download/describe failed for {it.unique_id}: {e}"
+                    # Process using the unified function
+                    uid, desc = await get_or_compute_description_for_doc(
+                        client=client,
+                        doc=it.file_ref,
+                        llm=llm,
+                        cache=cache,
+                        kind=it.kind,
+                        sticker_set_name=sticker_set_name,
+                        sticker_name=sticker_name,
+                        sender_id=sender_id,
+                        sender_name=sender_name,
+                        channel_id=chan_id,
+                        channel_name=chan_name,
+                        media_ts=media_ts,
                     )
+
+                    # Note: Debug save is now handled inside get_or_compute_description_for_doc
+
+                except Exception as e:
+                    logger.exception(
+                        f"media: processing failed for {it.unique_id}: {e}"
+                    )
+                    # The unified function already handles caching failures, so we don't need to do anything here
+
     except TypeError:
         logger.debug("media: injector got non-iterable history chunk; passing through")
 
@@ -542,11 +571,10 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
 
     for it in items:
         meta = cache.get(it.unique_id)
-        desc_text = meta.get("description") if isinstance(meta, dict) else meta
 
         if it.kind == "sticker":
             sticker_set = (
-                (meta.get("sticker_set") if isinstance(meta, dict) else None)
+                (meta.get("sticker_set_name") if isinstance(meta, dict) else None)
                 or getattr(it, "sticker_set", None)
                 or "(unknown)"
             )
@@ -555,17 +583,19 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
                 or getattr(it, "sticker_name", None)
                 or "(unnamed)"
             )
+            # Get raw description from cache for format_sticker_sentence
+            desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(
                 format_sticker_sentence(
                     sticker_name=sticker_name,
                     sticker_set=sticker_set,
-                    description=desc_text or "sticker not understood",
+                    description=desc_text,
                 )
             )
         else:
-            parts.append(
-                f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
-            )
+            # For non-stickers, get description from cache record
+            desc_text = meta.get("description") if isinstance(meta, dict) else None
+            parts.append(format_media_sentence(it.kind, desc_text))
 
     content = " ".join(parts) if parts else "not understood"
     return content

@@ -24,7 +24,7 @@ class MsgMediaPart(TypedDict, total=False):
     rendered_text: str | None
     # Optional metadata (for trace/fallbacks)
     unique_id: str | None
-    set_name: str | None
+    sticker_set_name: str | None
     sticker_name: str | None
 
 

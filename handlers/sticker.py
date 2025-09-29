@@ -25,7 +25,7 @@ async def _resolve_sticker_doc_in_set(client, set_short: str, sticker_name: str)
             )
         )
     except Exception as e:
-        logger.debug(f"[stickers] resolve failed for set={set_short!r}: {e}")
+        logger.exception(f"[stickers] resolve failed for set={set_short!r}: {e}")
         return None
 
     for doc in result.documents:

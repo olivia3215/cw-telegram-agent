@@ -46,7 +46,7 @@ def test_detect_sticker_telethonish():
     assert m.kind == "sticker"
     assert m.unique_id == "123"
     assert m.mime == "image/webp"
-    assert m.sticker_set == "HotCherry"
+    assert m.sticker_set_name == "HotCherry"
     assert m.sticker_name == "👋"
     assert m.file_ref is doc
 
@@ -62,7 +62,7 @@ def test_detect_sticker_botapi():
     m = parts[0]
     assert m.kind == "sticker"
     assert m.unique_id == "st_u2"
-    assert m.sticker_set == "HotCherry"
+    assert m.sticker_set_name == "HotCherry"
     assert m.sticker_name == "😊"
     assert m.mime == "image/webp"
     assert m.file_ref is st

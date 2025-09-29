@@ -72,11 +72,11 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
                     llm=agent._llm,
                     cache=hr.media_cache if hasattr(hr, "media_cache") else object(),
                     kind="sticker",
-                    set_name=set_short,
+                    sticker_set_name=set_short,
                     sticker_name=name,
                 )
                 if desc:
-                    lines.append(f"- {set_short} :: {name} - ‹{desc}›")
+                    lines.append(f"- {set_short} :: {name} - {desc}")
                 else:
                     lines.append(f"- {set_short} :: {name}")
             sticker_list = "\n".join(lines)
@@ -86,5 +86,5 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
     system_prompt = await build_prompt_like_code(is_group=False)
 
     # Assert both lines present with our formatted description suffix
-    assert "- WendyDancer :: 😉 - ‹desc for 😉›" in system_prompt
-    assert "- WendyDancer :: 😀 - ‹desc for 😀›" in system_prompt
+    assert "- WendyDancer :: 😉 - desc for 😉" in system_prompt
+    assert "- WendyDancer :: 😀 - desc for 😀" in system_prompt
