@@ -108,25 +108,42 @@ class MediaCache:
             logger.error(f"MEDIA CACHE READ ERROR {unique_id}: {e}")
             return None
 
-        if (
-            isinstance(payload, dict)
-            and isinstance(payload.get("description"), str)
-            and payload["description"]
-        ):
-            self._mem[unique_id] = _MemEntry(value=payload, expires_at=now + self.ttl)
-            logger.debug(f"MEDIA CACHE HIT (disk) {unique_id}")
-            return payload
+        if isinstance(payload, dict):
+            # Accept records with either valid description or failure_reason
+            desc = payload.get("description")
+            failure_reason = payload.get("failure_reason")
+            has_valid_description = isinstance(desc, str) and desc.strip()
+            has_failure_reason = (
+                isinstance(failure_reason, str) and failure_reason.strip()
+            )
+
+            if has_valid_description or has_failure_reason:
+                self._mem[unique_id] = _MemEntry(
+                    value=payload, expires_at=now + self.ttl
+                )
+                logger.debug(f"MEDIA CACHE HIT (disk) {unique_id}")
+                return payload
 
         logger.debug(f"MEDIA CACHE EMPTY/BAD RECORD {unique_id}")
         return None
 
     def put(self, unique_id: str, record: dict[str, Any]) -> None:
         """
-        Save a full record (dict) to disk and memory. Must include 'description': str (non-empty).
+        Save a full record (dict) to disk and memory.
+        Must include either:
+        - 'description': str (non-empty) for successful descriptions
+        - 'failure_reason': str (non-empty) for failed attempts
         """
         desc = record.get("description")
-        if not isinstance(desc, str) or not desc.strip():
-            raise ValueError("record must include a non-empty 'description' string")
+        failure_reason = record.get("failure_reason")
+
+        has_valid_description = isinstance(desc, str) and desc.strip()
+        has_failure_reason = isinstance(failure_reason, str) and failure_reason.strip()
+
+        if not has_valid_description and not has_failure_reason:
+            raise ValueError(
+                "record must include either a non-empty 'description' string or a non-empty 'failure_reason' string"
+            )
 
         text = json.dumps(record, ensure_ascii=False, indent=2)
         path = self._file_for(unique_id)

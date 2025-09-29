@@ -50,7 +50,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
             agent = get_agent_for_id(agent_id)
             agent_name = getattr(agent, "name", f"agent:{agent_id}")
         except Exception as e:
-            logger.debug(f"run_one_tick: could not resolve agent {agent_id}: {e}")
+            logger.exception(f"run_one_tick: could not resolve agent {agent_id}: {e}")
 
     logger.info(f"[{agent_name}] Running task {task.identifier} of type {task.type}")
 

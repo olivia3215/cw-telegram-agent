@@ -42,10 +42,10 @@ def _parse_explicit_stickers(lines: list[str]) -> list[tuple[str, str]]:
         if "::" not in ln:
             continue
         left, right = ln.split("::", 1)
-        set_name = left.strip()
+        sticker_set_name = left.strip()
         sticker_name = right.strip()
-        if set_name and sticker_name:
-            out.append((set_name, sticker_name))
+        if sticker_set_name and sticker_name:
+            out.append((sticker_set_name, sticker_name))
     return out
 
 

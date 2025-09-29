@@ -68,17 +68,30 @@ def test_media_cache_sliding_ttl(monkeypatch, tmp_path):
     assert "u1" in cache._mem
 
 
-def test_media_cache_put_requires_description(tmp_path):
+def test_media_cache_put_requires_description_or_failure_reason(tmp_path):
     cache = media_cache.MediaCache(state_dir=tmp_path, ttl=60.0)
     with pytest.raises(ValueError):
-        cache.put("bad", {"kind": "photo"})  # missing description
+        cache.put("bad", {"kind": "photo"})  # missing description and failure_reason
 
     with pytest.raises(ValueError):
-        cache.put("also_bad", {"description": "   "})  # empty after strip
+        cache.put(
+            "also_bad", {"description": "   "}
+        )  # empty description, no failure_reason
 
-    # Good record writes to disk
+    # Good record with description writes to disk
     cache.put("good", {"description": "ok", "kind": "photo"})
     p: Path = cache.media_dir / "good.json"
     assert p.exists()
     payload = json.loads(p.read_text(encoding="utf-8"))
     assert payload["description"] == "ok"
+
+    # Good record with failure_reason writes to disk
+    cache.put(
+        "failed",
+        {"description": None, "failure_reason": "download failed", "kind": "photo"},
+    )
+    p2: Path = cache.media_dir / "failed.json"
+    assert p2.exists()
+    payload2 = json.loads(p2.read_text(encoding="utf-8"))
+    assert payload2["description"] is None
+    assert payload2["failure_reason"] == "download failed"

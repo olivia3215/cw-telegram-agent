@@ -131,7 +131,7 @@ Agents can be configured with:
 - `sticker_set_name`: Single designated set per agent
 
 **New system:**
-- `sticker_cache_by_set`: Multi-set cache `(set_name, sticker_name) -> document`
+- `sticker_cache_by_set`: Multi-set cache `(sticker_set_name, sticker_name) -> document`
 - `sticker_set_names`: List of available sets
 - `explicit_stickers`: Specific set::sticker mappings
 
