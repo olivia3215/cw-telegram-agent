@@ -346,7 +346,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                                 llm=agent.llm,
                                 cache=get_media_cache(),
                                 kind="sticker",
-                                set_name=set_short,
+                                sticker_set_name=set_short,
                                 sticker_name=name,
                             )
                             # Get the description from the cache record
@@ -360,7 +360,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                         else:
                             desc = None
                 except Exception as e:
-                    logger.debug(f"Failed to process sticker {set_short}::{name}: {e}")
+                    logger.exception(
+                        f"Failed to process sticker {set_short}::{name}: {e}"
+                    )
                     desc = None
                 if desc:
                     lines.append(f"- {set_short} :: {name} - {desc}")

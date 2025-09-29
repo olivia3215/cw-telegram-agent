@@ -45,10 +45,14 @@ def _debug_save_media(
     Save media data to disk for debugging purposes.
     Only saves if MEDIA_DEBUG_SAVE is True and the save is successful.
     """
+
     if not MEDIA_DEBUG_SAVE:
         return
 
     try:
+        # Ensure the photos directory exists
+        PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+
         ext = _sniff_ext(data, kind=kind, mime=mime)
         out_path = Path(PHOTOS_DIR) / f"{unique_id}{ext}"
         out_path.write_bytes(data)
@@ -205,18 +209,18 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
         if isinstance(resolved, str) and resolved.strip():
             return resolved.strip()
     except Exception as e:
-        logger.debug(f"Failed to get sticker set short name: {e}")
+        logger.exception(f"Failed to get sticker set short name: {e}")
         return None
     return None
 
 
 async def _attach_sticker_metadata(agent, it, record: dict) -> None:
     """Attach best-available sticker metadata to the cache record."""
-    set_name = await _maybe_get_sticker_set_short_name(agent, it)
-    if not set_name:
-        set_name = getattr(it, "sticker_set", None)
-    if isinstance(set_name, str) and set_name.strip():
-        record["sticker_set"] = set_name.strip()
+    sticker_set_name = await _maybe_get_sticker_set_short_name(agent, it)
+    if not sticker_set_name:
+        sticker_set_name = getattr(it, "sticker_set", None)
+    if isinstance(sticker_set_name, str) and sticker_set_name.strip():
+        record["sticker_set"] = sticker_set_name.strip()
 
     name = getattr(it, "sticker_name", None)
     if isinstance(name, str) and name.strip():
@@ -236,7 +240,7 @@ async def _resolve_sender_and_channel(
             else None
         )
     except Exception as e:
-        logger.debug(f"Failed to get sender name: {e}")
+        logger.exception(f"Failed to get sender name: {e}")
         sender_name = None
 
     # channel/chat
@@ -253,7 +257,7 @@ async def _resolve_sender_and_channel(
             await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None
         )
     except Exception as e:
-        logger.debug(f"Failed to get channel name: {e}")
+        logger.exception(f"Failed to get channel name: {e}")
         chan_name = None
 
     return sender_id, sender_name, chan_id, chan_name
@@ -269,7 +273,7 @@ async def get_or_compute_description_for_doc(
     llm,
     cache,
     kind: str,
-    set_name: str | None = None,
+    sticker_set_name: str | None = None,
     sticker_name: str | None = None,
     # Provenance metadata (optional)
     sender_id: int | None = None,
@@ -314,7 +318,7 @@ async def get_or_compute_description_for_doc(
     try:
         data: bytes = await download_media_bytes(client, doc)
     except Exception as e:
-        logger.debug(f"[media] DL FAIL uid={uid} kind={kind}: {e}")
+        logger.exception(f"[media] DL FAIL uid={uid} kind={kind}: {e}")
         # Record transient failure for visibility
         try:
             cache.put(
@@ -322,7 +326,7 @@ async def get_or_compute_description_for_doc(
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
                     "failure_reason": f"download failed: {str(e)[:100]}",
@@ -336,7 +340,7 @@ async def get_or_compute_description_for_doc(
                 },
             )
         except Exception as e:
-            logger.debug(f"Failed to cache download failure for {uid}: {e}")
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     dl_ms = (time.perf_counter() - t0) * 1000
 
@@ -362,7 +366,7 @@ async def get_or_compute_description_for_doc(
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
                     "failure_reason": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
@@ -376,10 +380,10 @@ async def get_or_compute_description_for_doc(
                 },
             )
         except Exception as e:
-            logger.debug(f"Failed to cache download failure for {uid}: {e}")
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     except Exception as e:
-        logger.debug(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
+        logger.exception(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
 
         # Debug save the downloaded media even if description failed
         _debug_save_media(data, uid, kind)
@@ -390,7 +394,7 @@ async def get_or_compute_description_for_doc(
                 {
                     "unique_id": uid,
                     "kind": kind,
-                    "set_name": set_name,
+                    "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
                     "description": None,
                     "failure_reason": f"description failed: {str(e)[:100]}",
@@ -404,7 +408,7 @@ async def get_or_compute_description_for_doc(
                 },
             )
         except Exception as e:
-            logger.debug(f"Failed to cache download failure for {uid}: {e}")
+            logger.exception(f"Failed to cache download failure for {uid}: {e}")
         return uid, None
     llm_ms = (time.perf_counter() - t1) * 1000
 
@@ -416,25 +420,23 @@ async def get_or_compute_description_for_doc(
 
     # 2d) Cache best-effort
     try:
-        cache.put(
-            uid,
-            {
-                "unique_id": uid,
-                "kind": kind,
-                "set_name": set_name,
-                "sticker_name": sticker_name,
-                "description": desc if desc else "not understood",
-                "status": status,
-                "ts": datetime.now(UTC).isoformat(),
-                "media_ts": media_ts,
-                "sender_id": sender_id,
-                "sender_name": sender_name,
-                "channel_id": channel_id,
-                "channel_name": channel_name,
-            },
-        )
+        cache_record = {
+            "unique_id": uid,
+            "kind": kind,
+            "sticker_set_name": sticker_set_name,
+            "sticker_name": sticker_name,
+            "description": desc if desc else "not understood",
+            "status": status,
+            "ts": datetime.now(UTC).isoformat(),
+            "media_ts": media_ts,
+            "sender_id": sender_id,
+            "sender_name": sender_name,
+            "channel_id": channel_id,
+            "channel_name": channel_name,
+        }
+        cache.put(uid, cache_record)
     except Exception as e:
-        logger.debug(f"[media] CACHE PUT FAIL uid={uid}: {e}")
+        logger.exception(f"[media] CACHE PUT FAIL uid={uid}: {e}")
 
     total_ms = (time.perf_counter() - t0) * 1000
     if status == "ok":
@@ -497,10 +499,12 @@ async def inject_media_descriptions(
                 # Use the unified function for processing
                 try:
                     # Get sticker metadata if applicable
-                    set_name = None
+                    sticker_set_name = None
                     sticker_name = None
                     if it.kind == "sticker":
-                        set_name = getattr(it, "sticker_set", None)
+                        sticker_set_name = await _maybe_get_sticker_set_short_name(
+                            agent, it
+                        )
                         sticker_name = getattr(it, "sticker_name", None)
 
                     # Get provenance metadata
@@ -524,7 +528,7 @@ async def inject_media_descriptions(
                         llm=llm,
                         cache=cache,
                         kind=it.kind,
-                        set_name=set_name,
+                        sticker_set_name=sticker_set_name,
                         sticker_name=sticker_name,
                         sender_id=sender_id,
                         sender_name=sender_name,
@@ -536,7 +540,9 @@ async def inject_media_descriptions(
                     # Note: Debug save is now handled inside get_or_compute_description_for_doc
 
                 except Exception as e:
-                    logger.debug(f"media: processing failed for {it.unique_id}: {e}")
+                    logger.exception(
+                        f"media: processing failed for {it.unique_id}: {e}"
+                    )
                     # The unified function already handles caching failures, so we don't need to do anything here
 
     except TypeError:
@@ -571,7 +577,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
 
         if it.kind == "sticker":
             sticker_set = (
-                (meta.get("sticker_set") if isinstance(meta, dict) else None)
+                (meta.get("sticker_set_name") if isinstance(meta, dict) else None)
                 or getattr(it, "sticker_set", None)
                 or "(unknown)"
             )
