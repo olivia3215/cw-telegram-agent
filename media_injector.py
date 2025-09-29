@@ -273,10 +273,13 @@ async def get_or_compute_description_for_doc(
             logger.debug(f"[media] HIT uid={uid} kind={kind}")
             return uid, desc
         # If terminal negative cache exists, skip AI attempt this tick.
-        if status in {"not_understood"}:
-            logger.debug(f"[media] NEG uid={uid} kind={kind} status={status}")
+        # Only retry if explicitly marked as retryable (field present and true)
+        if "retryable" not in cached or not cached.get("retryable", False):
+            logger.debug(
+                f"[media] NEG uid={uid} kind={kind} status={status} (not retryable)"
+            )
             return uid, None
-        # If prior timeout/error, we may retry later; continue below to budget check.
+        # If retryable is true, we may retry later; continue below to budget check.
 
     # 2) Budget gate before any AI work
     if not try_consume_description_budget():
@@ -301,6 +304,7 @@ async def get_or_compute_description_for_doc(
                     "description": None,
                     "failure_reason": f"download failed: {str(e)[:100]}",
                     "status": "error",
+                    "retryable": True,  # Download failures might be temporary
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
                     "sender_id": sender_id,
@@ -341,6 +345,7 @@ async def get_or_compute_description_for_doc(
                     "description": None,
                     "failure_reason": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
                     "status": "timeout",
+                    "retryable": True,  # Timeouts might be temporary
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
                     "sender_id": sender_id,
@@ -369,6 +374,7 @@ async def get_or_compute_description_for_doc(
                     "description": None,
                     "failure_reason": f"description failed: {str(e)[:100]}",
                     "status": "error",
+                    # No retryable field - LLM errors are usually permanent (invalid format, etc.)
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
                     "sender_id": sender_id,
@@ -390,20 +396,41 @@ async def get_or_compute_description_for_doc(
 
     # 2d) Cache best-effort
     try:
-        cache_record = {
-            "unique_id": uid,
-            "kind": kind,
-            "sticker_set_name": sticker_set_name,
-            "sticker_name": sticker_name,
-            "description": desc if desc else "not understood",
-            "status": status,
-            "ts": datetime.now(UTC).isoformat(),
-            "media_ts": media_ts,
-            "sender_id": sender_id,
-            "sender_name": sender_name,
-            "channel_id": channel_id,
-            "channel_name": channel_name,
-        }
+        if desc:
+            # Valid description - cache with description
+            cache_record = {
+                "unique_id": uid,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": desc,
+                "status": status,
+                # No retryable field - success means no retry needed
+                "ts": datetime.now(UTC).isoformat(),
+                "media_ts": media_ts,
+                "sender_id": sender_id,
+                "sender_name": sender_name,
+                "channel_id": channel_id,
+                "channel_name": channel_name,
+            }
+        else:
+            # No valid description - cache with failure_reason
+            cache_record = {
+                "unique_id": uid,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": None,
+                "failure_reason": "LLM returned empty or invalid description",
+                "status": status,
+                # No retryable field - LLM couldn't understand, permanent failure
+                "ts": datetime.now(UTC).isoformat(),
+                "media_ts": media_ts,
+                "sender_id": sender_id,
+                "sender_name": sender_name,
+                "channel_id": channel_id,
+                "channel_name": channel_name,
+            }
         cache.put(uid, cache_record)
     except Exception as e:
         logger.exception(f"[media] CACHE PUT FAIL uid={uid}: {e}")

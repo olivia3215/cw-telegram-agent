@@ -28,7 +28,7 @@ def format_media_description(description: str | None) -> str:
 
 
 def format_sticker_sentence(
-    sticker_name: str, sticker_set_name: str, description: str
+    sticker_name: str, sticker_set_name: str, description: str | None
 ) -> str:
     """
     Full sticker sentence:
