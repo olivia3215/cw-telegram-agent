@@ -27,38 +27,15 @@ def format_media_description(description: str | None) -> str:
     return f"that appears as {s}"
 
 
-def format_media_description_from_cache(cache_record: dict | None) -> str:
-    """
-    Returns a clause beginning with 'that ...' based on cache record.
-    Uses failure_reason field if description is not available.
-    """
-    if not isinstance(cache_record, dict):
-        return "that is not understood"
-
-    description = cache_record.get("description")
-    failure_reason = cache_record.get("failure_reason")
-
-    # If we have a valid description, use it
-    if isinstance(description, str) and description.strip():
-        return f"that appears as {description.strip()}"
-
-    # If we have a failure reason, indicate it's not understood
-    if isinstance(failure_reason, str) and failure_reason.strip():
-        return "that is not understood"
-
-    # Default case
-    return "that is not understood"
-
-
 def format_sticker_sentence(
-    sticker_name: str, sticker_set: str, description: str
+    sticker_name: str, sticker_set_name: str, description: str
 ) -> str:
     """
     Full sticker sentence:
       the sticker `<name>` from the sticker set `<set>` that appears as ‹…›
     Falls back to 'that is not understood' when description is missing/unsupported.
     """
-    base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set}`"
+    base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set_name}`"
     s = (description or "").strip()
     return f"[media] {ANGLE_OPEN}{base} {format_media_description(s)}{ANGLE_CLOSE}"
 

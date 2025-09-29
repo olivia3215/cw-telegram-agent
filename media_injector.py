@@ -34,10 +34,6 @@ PHOTOS_DIR: Path = STATE_DIR / "photos"
 MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
 
 
-def _ensure_state_dirs() -> None:
-    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-
-
 def _debug_save_media(
     data: bytes, unique_id: str, kind: str, mime: str | None = None
 ) -> None:
@@ -135,19 +131,6 @@ def _sniff_ext(data: bytes, kind: str | None = None, mime: str | None = None) ->
     return ".bin"
 
 
-def _is_llm_supported_image(data: bytes) -> bool:
-    """True for raster images we send to the LLM (jpg/png/webp/gif)."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return True
-    if data[:3] == b"GIF":
-        return True
-    if data.startswith(b"\xff\xd8\xff"):
-        return True
-    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return True
-    return False
-
-
 # ---------- sticker helpers ----------
 async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
     """
@@ -212,19 +195,6 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
         logger.exception(f"Failed to get sticker set short name: {e}")
         return None
     return None
-
-
-async def _attach_sticker_metadata(agent, it, record: dict) -> None:
-    """Attach best-available sticker metadata to the cache record."""
-    sticker_set_name = await _maybe_get_sticker_set_short_name(agent, it)
-    if not sticker_set_name:
-        sticker_set_name = getattr(it, "sticker_set", None)
-    if isinstance(sticker_set_name, str) and sticker_set_name.strip():
-        record["sticker_set"] = sticker_set_name.strip()
-
-    name = getattr(it, "sticker_name", None)
-    if isinstance(name, str) and name.strip():
-        record["sticker_name"] = name.strip()
 
 
 # ---------- provenance helpers ----------

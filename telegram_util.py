@@ -77,9 +77,5 @@ async def get_channel_name(agent: Agent, channel_id: int):
         return f"Unknown ({channel_id})"
 
 
-async def get_user_name(agent, channel_id):
-    return await get_channel_name(agent, channel_id)
-
-
 async def get_dialog_name(agent, channel_id):
     return await get_channel_name(agent, channel_id)

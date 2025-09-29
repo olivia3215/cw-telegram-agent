@@ -4,7 +4,6 @@ import pytest
 
 from media_format import (
     format_media_description,
-    format_media_description_from_cache,
     format_media_sentence,
     format_sticker_sentence,
 )
@@ -78,27 +77,3 @@ def test_format_media_sentence_without_description():
 def test_format_media_sentence_not_understood(desc):
     out = format_media_sentence("audio", desc)
     assert out == "[media] ‹the audio that is not understood›"
-
-
-def test_format_media_description_from_cache_with_description():
-    cache_record = {"description": "A beautiful sunset", "kind": "photo"}
-    out = format_media_description_from_cache(cache_record)
-    assert out == "that appears as A beautiful sunset"
-
-
-def test_format_media_description_from_cache_with_failure_reason():
-    cache_record = {
-        "description": None,
-        "failure_reason": "download failed",
-        "kind": "photo",
-    }
-    out = format_media_description_from_cache(cache_record)
-    assert out == "that is not understood"
-
-
-def test_format_media_description_from_cache_empty():
-    out = format_media_description_from_cache(None)
-    assert out == "that is not understood"
-
-    out = format_media_description_from_cache({})
-    assert out == "that is not understood"
