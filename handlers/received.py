@@ -221,22 +221,17 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
         text = text.removeprefix("```markdown\n").removesuffix("```\n")
 
     # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
-    if text.startswith("# "):
-        return parse_llm_reply_from_markdown(
-            text, agent_id=agent_id, channel_id=channel_id
-        )
+    if not text.startswith("# "):
+        text = "# «send»\n\n" + text
+    return parse_llm_reply_from_markdown(text, agent_id=agent_id, channel_id=channel_id)
 
-    # Dumb models might reply with just the reply text and not understand the task machinery.
-    if text.startswith("You: "):
-        text = text.removeprefix("You: ")
-    if text.startswith("«") and text.endswith("»"):
-        text = text.removeprefix("«").removesuffix("»")
-    task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
-    params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
-    task_nodes = [
-        TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
-    ]
-    return task_nodes
+    # # Dumb models might reply with just the reply text and not understand the task machinery.
+    # task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
+    # params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
+    # task_nodes = [
+    #     TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
+    # ]
+    # return task_nodes
 
 
 @register_task_handler("received")
