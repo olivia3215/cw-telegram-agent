@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from media_cache import get_media_cache
-from media_format import format_media_description, format_sticker_sentence
+from media_format import (
+    format_media_sentence,
+    format_sticker_sentence,
+)
 from telegram_download import download_media_bytes
 from telegram_media import _get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
@@ -563,9 +566,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
                 )
             )
         else:
-            parts.append(
-                f"the {it.kind} {format_media_description(desc_text or 'not understood')}"
-            )
+            parts.append(format_media_sentence(it.kind, desc_text))
 
     content = " ".join(parts) if parts else "not understood"
     return content

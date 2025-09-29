@@ -24,7 +24,7 @@ def format_media_description(description: str | None) -> str:
         or s.lower().startswith("sticker not understood")
     ):
         return "that is not understood"
-    return f"that appears as ‹{s}›"
+    return f"that appears as {s}"
 
 
 def format_sticker_sentence(
@@ -38,3 +38,13 @@ def format_sticker_sentence(
     base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set}`"
     s = (description or "").strip()
     return f"{base} {format_media_description(s)}"
+
+
+def format_media_sentence(kind: str, description: str | None) -> str:
+    """
+    Format a general media sentence with angle quotes:
+      ‹the <kind> that appears as <description>›
+    Falls back to 'that is not understood' when description is missing/unsupported.
+    """
+    media_desc = format_media_description(description or "not understood")
+    return f"{ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"
