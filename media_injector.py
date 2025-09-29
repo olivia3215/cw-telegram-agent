@@ -352,6 +352,10 @@ async def get_or_compute_description_for_doc(
         logger.debug(
             f"[media] TIMEOUT uid={uid} kind={kind} after {_DESCRIBE_TIMEOUT_SECS}s"
         )
+
+        # Debug save the downloaded media even if description timed out
+        _debug_save_media(data, uid, kind)
+
         try:
             cache.put(
                 uid,
@@ -376,6 +380,10 @@ async def get_or_compute_description_for_doc(
         return uid, None
     except Exception as e:
         logger.debug(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
+
+        # Debug save the downloaded media even if description failed
+        _debug_save_media(data, uid, kind)
+
         try:
             cache.put(
                 uid,
