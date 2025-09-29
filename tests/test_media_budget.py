@@ -32,6 +32,16 @@ class FakeLLM:
     def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
         return self.text
 
+    def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
+        # For testing, support common image formats
+        return mime_type.lower() in {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+        }
+
 
 class FakeClient:
     """We don't use the client directly; download helper is monkeypatched."""
