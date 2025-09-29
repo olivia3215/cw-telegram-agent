@@ -362,20 +362,16 @@ class GeminiLLM(LLM):
             contents_for_call = contents
 
         # Optionally, lightweight structural logging
-        if logger:
-            try:
-                total_turns = len(contents_for_call)
-                # Target message is no longer appended as a separate turn
-                hist_turns = total_turns
-                logger.debug(
-                    "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
-                    total_turns,
-                    hist_turns,
-                    target_message is not None,
-                    bool(system_instruction),
-                )
-            except Exception:
-                pass
+        total_turns = len(contents_for_call)
+        # Target message is no longer appended as a separate turn
+        hist_turns = total_turns
+        logger.debug(
+            "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
+            total_turns,
+            hist_turns,
+            target_message is not None,
+            bool(system_instruction),
+        )
 
         return await self._generate_with_contents(
             contents=contents_for_call,

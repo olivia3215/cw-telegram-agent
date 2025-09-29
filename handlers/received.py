@@ -310,31 +310,36 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         lines: list[str] = []
         try:
             for set_short, name in sorted(agent.sticker_cache_by_set.keys()):
-                if set_short == "AnimatedEmojies":
-                    continue
                 try:
-                    # Get the document from the sticker cache
-                    doc = agent.sticker_cache_by_set.get((set_short, name))
-                    if doc:
-                        _uid, desc = await get_or_compute_description_for_doc(
-                            client=agent.client,
-                            doc=doc,
-                            llm=agent.llm,
-                            cache=get_media_cache(),
-                            kind="sticker",
-                            set_name=set_short,
-                            sticker_name=name,
-                        )
-                    else:
+                    if set_short == "AnimatedEmojies":
                         desc = None
-                except Exception:
+                    else:
+                        # Get the document from the sticker cache
+                        doc = agent.sticker_cache_by_set.get((set_short, name))
+                        if doc:
+                            _uid, desc = await get_or_compute_description_for_doc(
+                                client=agent.client,
+                                doc=doc,
+                                llm=agent.llm,
+                                cache=get_media_cache(),
+                                kind="sticker",
+                                set_name=set_short,
+                                sticker_name=name,
+                            )
+                        else:
+                            desc = None
+                except Exception as e:
+                    logger.debug(f"Failed to process sticker {set_short}::{name}: {e}")
                     desc = None
                 if desc:
-                    lines.append(f"- {set_short} :: {name} - ‹{desc}›")
+                    lines.append(f"- {set_short} :: {name} - {desc}")
                 else:
                     lines.append(f"- {set_short} :: {name}")
-        except Exception:
+        except Exception as e:
             # If anything unexpected occurs, fall back to names-only list
+            logger.warning(
+                f"Failed to build sticker descriptions, falling back to names-only: {e}"
+            )
             lines = [
                 f"- {s} :: {n}" for (s, n) in sorted(agent.sticker_cache_by_set.keys())
             ]

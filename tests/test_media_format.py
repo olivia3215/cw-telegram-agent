@@ -46,7 +46,7 @@ def test_format_sticker_sentence_with_desc():
     out = format_sticker_sentence("😊", "HotCherry", "Kermit gives a thumbs up")
     assert (
         out
-        == "the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up"
+        == "[media] ‹the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up›"
     )
 
 
@@ -57,21 +57,23 @@ def test_format_sticker_sentence_without_desc(desc):
     out = format_sticker_sentence("👋", "WendyDancer", desc)
     assert (
         out
-        == "the sticker `👋` from the sticker set `WendyDancer` that is not understood"
+        == "[media] ‹the sticker `👋` from the sticker set `WendyDancer` that is not understood›"
     )
 
 
 def test_format_media_sentence_with_description():
     out = format_media_sentence("photo", "A beautiful sunset over mountains")
-    assert out == "‹the photo that appears as A beautiful sunset over mountains›"
+    assert (
+        out == "[media] ‹the photo that appears as A beautiful sunset over mountains›"
+    )
 
 
 def test_format_media_sentence_without_description():
     out = format_media_sentence("video", None)
-    assert out == "‹the video that is not understood›"
+    assert out == "[media] ‹the video that is not understood›"
 
 
 @pytest.mark.parametrize("desc", ["", "   ", "not understood"])
 def test_format_media_sentence_not_understood(desc):
     out = format_media_sentence("audio", desc)
-    assert out == "‹the audio that is not understood›"
+    assert out == "[media] ‹the audio that is not understood›"

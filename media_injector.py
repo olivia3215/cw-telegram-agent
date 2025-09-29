@@ -36,7 +36,26 @@ MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
 
 def _ensure_state_dirs() -> None:
     PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _debug_save_media(
+    data: bytes, unique_id: str, kind: str, mime: str | None = None
+) -> None:
+    """
+    Save media data to disk for debugging purposes.
+    Only saves if MEDIA_DEBUG_SAVE is True and the save is successful.
+    """
+    if not MEDIA_DEBUG_SAVE:
+        return
+
+    try:
+        ext = _sniff_ext(data, kind=kind, mime=mime)
+        out_path = Path(PHOTOS_DIR) / f"{unique_id}{ext}"
+        out_path.write_bytes(data)
+        size = out_path.stat().st_size
+        logger.info(f"media: saved debug copy {out_path} ({size} bytes)")
+    except Exception as e:
+        logger.warning(f"media: debug save failed for {unique_id}: {e}")
 
 
 # --- Per-tick AI description budget ------------------------------------------
@@ -185,7 +204,8 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
         )
         if isinstance(resolved, str) and resolved.strip():
             return resolved.strip()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to get sticker set short name: {e}")
         return None
     return None
 
@@ -215,7 +235,8 @@ async def _resolve_sender_and_channel(
             if isinstance(sender_id, int)
             else None
         )
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to get sender name: {e}")
         sender_name = None
 
     # channel/chat
@@ -231,7 +252,8 @@ async def _resolve_sender_and_channel(
         chan_name = (
             await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None
         )
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to get channel name: {e}")
         chan_name = None
 
     return sender_id, sender_name, chan_id, chan_name
@@ -378,7 +400,10 @@ async def get_or_compute_description_for_doc(
     # NOTE: If you have a reliable detector for "not understood", set status accordingly:
     status = "ok" if desc else "not_understood"
 
-    # 2c) Cache best-effort
+    # 2c) Debug save all downloaded media
+    _debug_save_media(data, uid, kind)
+
+    # 2d) Cache best-effort
     try:
         cache.put(
             uid,
@@ -498,24 +523,7 @@ async def inject_media_descriptions(
                         media_ts=media_ts,
                     )
 
-                    # Debug save if successful
-                    if desc and MEDIA_DEBUG_SAVE:
-                        try:
-                            # Download the data for debug save
-                            data = await download_media_bytes(client, it.file_ref)
-                            ext = _sniff_ext(
-                                data, kind=it.kind, mime=getattr(it, "mime", None)
-                            )
-                            out_path = Path(PHOTOS_DIR) / f"{it.unique_id}{ext}"
-                            out_path.write_bytes(data)
-                            size = out_path.stat().st_size
-                            logger.info(
-                                f"media: saved debug copy {out_path} ({size} bytes)"
-                            )
-                        except Exception as e_dbg:
-                            logger.warning(
-                                f"media: debug save failed for {it.unique_id}: {e_dbg}"
-                            )
+                    # Note: Debug save is now handled inside get_or_compute_description_for_doc
 
                 except Exception as e:
                     logger.debug(f"media: processing failed for {it.unique_id}: {e}")
