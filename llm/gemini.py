@@ -307,7 +307,8 @@ class GeminiLLM(LLM):
             return text or ""
         except Exception as e:
             logger.error("SDK exception: %s", e)
-            return ""
+            # Return the exception so we can determine if it's retryable
+            raise e
 
     async def query_structured(
         self,

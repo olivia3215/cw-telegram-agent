@@ -37,6 +37,28 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 
+def is_retryable_llm_error(error: Exception) -> bool:
+    """
+    Determine if an LLM error is temporary and should be retried.
+    Returns True for temporary errors (503, rate limits, timeouts), False for permanent errors.
+    """
+    error_str = str(error).lower()
+
+    # Temporary errors that should be retried
+    retryable_indicators = [
+        "503",  # Service Unavailable
+        "overloaded",  # Model overloaded
+        "try again later",  # Generic retry message
+        "rate limit",  # Rate limiting
+        "quota exceeded",  # Quota issues
+        "timeout",  # Timeout errors
+        "connection",  # Connection issues
+        "temporary",  # Generic temporary error
+    ]
+
+    return any(indicator in error_str for indicator in retryable_indicators)
+
+
 def _to_chatmsg_single_text_part(
     *,
     rendered: str,
@@ -455,39 +477,77 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # persona_instructions: we use the full system_prompt you've assembled (keeps behavior identical)
     # role_prompt and llm_specific_prompt are passed as None because they are already included in system_prompt.
-    reply = await llm.query_structured(
-        persona_instructions=system_prompt,
-        role_prompt=None,
-        llm_specific_prompt=None,
-        now_iso=now_iso,
-        chat_type=chat_type,
-        curated_stickers=None,  # already embedded into persona_instructions above
-        history=(
-            {
-                "sender": s,
-                "sender_id": sid,
-                "msg_id": mid,
-                "is_agent": is_self,
-                "parts": [{"kind": "text", "text": rendered}],
-            }
-            for (rendered, s, sid, mid, is_self) in history_rendered_items
-        ),
-        target_message=(
-            {
-                "sender": target_rendered_item[1],
-                "sender_id": target_rendered_item[2],
-                "msg_id": target_rendered_item[3],
-                "is_agent": False,
-                "parts": [{"kind": "text", "text": target_rendered_item[0]}],
-            }
-            if target_rendered_item is not None
-            else None
-        ),
-        history_size=agent.llm.history_size,
-        include_message_ids=True,
-        model=None,
-        timeout_s=None,
-    )
+    try:
+        reply = await llm.query_structured(
+            persona_instructions=system_prompt,
+            role_prompt=None,
+            llm_specific_prompt=None,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            curated_stickers=None,  # already embedded into persona_instructions above
+            history=(
+                {
+                    "sender": s,
+                    "sender_id": sid,
+                    "msg_id": mid,
+                    "is_agent": is_self,
+                    "parts": [{"kind": "text", "text": rendered}],
+                }
+                for (rendered, s, sid, mid, is_self) in history_rendered_items
+            ),
+            target_message=(
+                {
+                    "sender": target_rendered_item[1],
+                    "sender_id": target_rendered_item[2],
+                    "msg_id": target_rendered_item[3],
+                    "is_agent": False,
+                    "parts": [{"kind": "text", "text": target_rendered_item[0]}],
+                }
+                if target_rendered_item is not None
+                else None
+            ),
+            history_size=agent.llm.history_size,
+            include_message_ids=True,
+            model=None,
+            timeout_s=None,
+        )
+    except Exception as e:
+        if is_retryable_llm_error(e):
+            logger.warning(
+                f"[{agent_name}] LLM temporary failure, scheduling retry: {e}"
+            )
+
+            # Create a wait task for 15 seconds
+            wait_task_id = f"wait-{uuid.uuid4().hex[:8]}"
+            wait_until_time = datetime.now(UTC) + timedelta(seconds=15)
+            wait_task = TaskNode(
+                identifier=wait_task_id,
+                type="wait",
+                params={"delay": 15, "until": wait_until_time.strftime(ISO_FORMAT)},
+                depends_on=[],
+            )
+
+            # Create a new received task that depends on the wait task
+            retry_task_id = f"received-{uuid.uuid4().hex[:8]}"
+            retry_task = TaskNode(
+                identifier=retry_task_id,
+                type="received",
+                params=task.params,  # Copy all original parameters
+                depends_on=[wait_task_id],
+            )
+
+            # Add both tasks to the graph
+            graph.add_task(wait_task)
+            graph.add_task(retry_task)
+
+            logger.info(
+                f"[{agent_name}] Scheduled retry: wait task {wait_task_id}, retry task {retry_task_id}"
+            )
+            return
+        else:
+            # Permanent error - log and give up
+            logger.error(f"[{agent_name}] LLM permanent failure: {e}")
+            return
 
     logger.debug(
         f"[{agent_name}] LLM prompt (for debugging):\n"
