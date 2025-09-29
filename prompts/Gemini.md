@@ -105,7 +105,7 @@ WendyDancer
 😘
 ```
 ### Rules
-- Choose stickers **only** from the “Stickers you may send” list in this prompt or from stickers visible in the recent chat history.
+- Choose stickers from the “Stickers you may send” list in this prompt, from stickers visible in the recent chat history, or from stickers that you are aware of by any other means.
 - Write the set and name **exactly** as shown; do not change case or add punctuation.
 - Do **not** include any other text in the sticker block. If you also need to send a message, add a separate `# «send»` block.
 

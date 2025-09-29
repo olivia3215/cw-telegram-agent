@@ -16,6 +16,8 @@ from google.genai.types import (
     HarmCategory,
 )
 
+from mime_utils import detect_mime_type_from_bytes
+
 from .base import LLM, ChatMsg
 from .prompt_builder import build_gemini_contents
 
@@ -112,6 +114,21 @@ class GeminiLLM(LLM):
         "relations, actions, and setting. Output only the description."
     )
 
+    @staticmethod
+    def is_mime_type_supported_by_llm(mime_type: str) -> bool:
+        """
+        Check if a MIME type is supported by the LLM for image description.
+        Returns True for static image formats that Gemini can process.
+        """
+        supported_types = {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+        }
+        return mime_type.lower() in supported_types
+
     def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -121,15 +138,15 @@ class GeminiLLM(LLM):
         if not self.api_key:
             raise ValueError("Missing Gemini API key (GOOGLE_GEMINI_API_KEY)")
 
-        # Minimal mime sniffing; refine later if needed.
+        # Use centralized MIME type detection if not provided
         if not mime_type:
-            mime_type = "image/jpeg"
-            if image_bytes.startswith(b"\x89PNG"):
-                mime_type = "image/png"
-            elif image_bytes[:3] == b"GIF":
-                mime_type = "image/gif"
-            elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
-                mime_type = "image/webp"
+            mime_type = detect_mime_type_from_bytes(image_bytes)
+
+        # Check if this MIME type is supported by the LLM
+        if not self.is_mime_type_supported_by_llm(mime_type):
+            raise ValueError(
+                f"MIME type {mime_type} is not supported by Gemini for image description"
+            )
 
         # Use gemini-2.0-flash for image descriptions
         model = "gemini-2.0-flash"
