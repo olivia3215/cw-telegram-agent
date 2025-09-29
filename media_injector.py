@@ -324,7 +324,8 @@ async def get_or_compute_description_for_doc(
                     "kind": kind,
                     "set_name": set_name,
                     "sticker_name": sticker_name,
-                    "description": f"download failed: {str(e)[:100]}",
+                    "description": None,
+                    "failure_reason": f"download failed: {str(e)[:100]}",
                     "status": "error",
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
@@ -359,7 +360,8 @@ async def get_or_compute_description_for_doc(
                     "kind": kind,
                     "set_name": set_name,
                     "sticker_name": sticker_name,
-                    "description": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
+                    "description": None,
+                    "failure_reason": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
                     "status": "timeout",
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
@@ -382,7 +384,8 @@ async def get_or_compute_description_for_doc(
                     "kind": kind,
                     "set_name": set_name,
                     "sticker_name": sticker_name,
-                    "description": f"description failed: {str(e)[:100]}",
+                    "description": None,
+                    "failure_reason": f"description failed: {str(e)[:100]}",
                     "status": "error",
                     "ts": datetime.now(UTC).isoformat(),
                     "media_ts": media_ts,
@@ -557,7 +560,6 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
 
     for it in items:
         meta = cache.get(it.unique_id)
-        desc_text = meta.get("description") if isinstance(meta, dict) else meta
 
         if it.kind == "sticker":
             sticker_set = (
@@ -570,14 +572,20 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
                 or getattr(it, "sticker_name", None)
                 or "(unnamed)"
             )
+            # Use the new cache-based formatting
+            from media_format import format_media_description_from_cache
+
+            desc_clause = format_media_description_from_cache(meta)
             parts.append(
                 format_sticker_sentence(
                     sticker_name=sticker_name,
                     sticker_set=sticker_set,
-                    description=desc_text or "sticker not understood",
+                    description=desc_clause,
                 )
             )
         else:
+            # For non-stickers, get description from cache record
+            desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(format_media_sentence(it.kind, desc_text))
 
     content = " ".join(parts) if parts else "not understood"

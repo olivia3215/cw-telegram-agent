@@ -318,7 +318,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                         # Get the document from the sticker cache
                         doc = agent.sticker_cache_by_set.get((set_short, name))
                         if doc:
-                            _uid, desc = await get_or_compute_description_for_doc(
+                            _uid, _ = await get_or_compute_description_for_doc(
                                 client=agent.client,
                                 doc=doc,
                                 llm=agent.llm,
@@ -326,6 +326,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                                 kind="sticker",
                                 set_name=set_short,
                                 sticker_name=name,
+                            )
+                            # Get the description from the cache record
+                            cache = get_media_cache()
+                            cache_record = cache.get(_uid)
+                            desc = (
+                                cache_record.get("description")
+                                if cache_record
+                                else None
                             )
                         else:
                             desc = None
