@@ -37,7 +37,7 @@ def format_sticker_sentence(
     """
     base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set}`"
     s = (description or "").strip()
-    return f"{base} {format_media_description(s)}"
+    return f"[media] {ANGLE_OPEN}{base} {format_media_description(s)}{ANGLE_CLOSE}"
 
 
 def format_media_sentence(kind: str, description: str | None) -> str:
@@ -47,4 +47,4 @@ def format_media_sentence(kind: str, description: str | None) -> str:
     Falls back to 'that is not understood' when description is missing/unsupported.
     """
     media_desc = format_media_description(description or "not understood")
-    return f"{ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"
+    return f"[media] {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"

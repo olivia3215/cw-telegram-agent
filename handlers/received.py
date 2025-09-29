@@ -16,6 +16,7 @@ from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from llm import GeminiLLM
+from media_cache import get_media_cache
 from media_injector import (
     build_prompt_lines_from_messages,
     format_message_for_prompt,
@@ -309,13 +310,23 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         lines: list[str] = []
         try:
             for set_short, name in sorted(agent.sticker_cache_by_set.keys()):
+                if set_short == "AnimatedEmojies":
+                    continue
                 try:
-                    _uid, desc = await get_or_compute_description_for_doc(
-                        agent=agent,
-                        set_name=set_short,
-                        sticker_name=name,
-                        source="sticker",
-                    )
+                    # Get the document from the sticker cache
+                    doc = agent.sticker_cache_by_set.get((set_short, name))
+                    if doc:
+                        _uid, desc = await get_or_compute_description_for_doc(
+                            client=agent.client,
+                            doc=doc,
+                            llm=agent.llm,
+                            cache=get_media_cache(),
+                            kind="sticker",
+                            set_name=set_short,
+                            sticker_name=name,
+                        )
+                    else:
+                        desc = None
                 except Exception:
                     desc = None
                 if desc:

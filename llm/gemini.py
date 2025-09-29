@@ -39,29 +39,18 @@ class GeminiLLM(LLM):
         self.client = genai.Client(api_key=self.api_key)
         self.history_size = 500
 
-        # Configure safety settings to disable all content filtering
-        # Note: Only these 5 categories are supported by the stable model
+        # Configure safety settings to disable content filtering
+        # Note: Only disable HARM_CATEGORY_SEXUALLY_EXPLICIT as other categories may cause issues
         self.safety_settings = [
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
-            # },
-            # {
-            #     "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
-            # },
             {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                "threshold": HarmBlockThreshold.OFF,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
             },
+            # Other categories commented out as they may cause problems:
+            # - HARM_CATEGORY_CIVIC_INTEGRITY
+            # - HARM_CATEGORY_DANGEROUS_CONTENT
+            # - HARM_CATEGORY_HARASSMENT
+            # - HARM_CATEGORY_HATE_SPEECH
             # These categories are NOT supported by the stable model:
             # - HARM_CATEGORY_IMAGE_* (all image-related categories)
             # - HARM_CATEGORY_UNSPECIFIED
@@ -142,8 +131,8 @@ class GeminiLLM(LLM):
             elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
                 mime_type = "image/webp"
 
-        # Prefer a vision-capable model
-        model = "gemini-2.5-flash-preview-09-2025"
+        # Use gemini-2.0-flash for image descriptions
+        model = "gemini-2.0-flash"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
