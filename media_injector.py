@@ -242,11 +242,6 @@ async def get_or_compute_description_for_doc(
             return uid, None
         # If retryable is true, we may retry later; continue below to budget check.
 
-    # 2) Budget gate before any AI work
-    if not try_consume_description_budget():
-        logger.debug(f"[media] SKIP uid={uid} kind={kind} (budget exhausted)")
-        return uid, None
-
     # 2a) Download bytes
     t0 = time.perf_counter()
     try:
@@ -298,6 +293,7 @@ async def get_or_compute_description_for_doc(
                     "kind": kind,
                     "sticker_set_name": sticker_set_name,
                     "sticker_name": sticker_name,
+                    "description": None,
                     "failure_reason": f"MIME type {detected_mime_type} not supported by LLM",
                     "status": "unsupported_format",
                     "mime_type": detected_mime_type,
@@ -317,7 +313,12 @@ async def get_or_compute_description_for_doc(
 
         return uid, None
 
-    # 2c) Describe via LLM (run off-loop; enforce timeout)
+    # 2c) Budget gate before any AI work (after MIME type check)
+    if not try_consume_description_budget():
+        logger.debug(f"[media] SKIP uid={uid} kind={kind} (budget exhausted)")
+        return uid, None
+
+    # 2d) Describe via LLM (run off-loop; enforce timeout)
     try:
         t1 = time.perf_counter()
         desc = await asyncio.wait_for(
@@ -392,11 +393,11 @@ async def get_or_compute_description_for_doc(
     # NOTE: If you have a reliable detector for "not understood", set status accordingly:
     status = "ok" if desc else "not_understood"
 
-    # 2c) Debug save all downloaded media
+    # 2e) Debug save all downloaded media
     file_ext = get_file_extension_for_mime_type(detected_mime_type)
     _debug_save_media(data, uid, file_ext)
 
-    # 2d) Cache best-effort
+    # 2f) Cache best-effort
     try:
         if desc:
             # Valid description - cache with description
