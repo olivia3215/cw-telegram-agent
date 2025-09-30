@@ -36,7 +36,7 @@ Set these environment variables (example uses a local `./state` dir):
 
 ```bash
 export CINDY_AGENT_STATE_DIR="$(pwd)/state"
-export CONFIG_DIRS="$(pwd)/samples"
+export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
 export TELEGRAM_API_ID="your_api_id_here"
 export TELEGRAM_API_HASH="your_api_hash_here"
@@ -44,7 +44,7 @@ export TELEGRAM_API_HASH="your_api_hash_here"
 
 For multiple configuration directories, separate them with colons:
 ```bash
-export CONFIG_DIRS="$(pwd)/samples:$(pwd)/custom-configs"
+export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/custom-configs"
 ```
 
 #### Obtaining API Keys
@@ -150,7 +150,7 @@ Notes:
 
 ## Configuration Directory Structure
 
-Each configuration directory (specified in `CONFIG_DIRS`) should contain:
+Each configuration directory (specified in `CINDY_AGENT_CONFIG_PATH`) should contain:
 
 ```
 config-dir/
@@ -158,9 +158,9 @@ config-dir/
 └── prompts/         # System prompts (.md files)
 ```
 
-**Multiple directories:** You can specify multiple config directories separated by colons in `CONFIG_DIRS`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
+**Multiple directories:** You can specify multiple config directories separated by colons in `CINDY_AGENT_CONFIG_PATH`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
 
-**Default location:** If `CONFIG_DIRS` is not set, the system defaults to the `samples` directory.
+**Default location:** If `CINDY_AGENT_CONFIG_PATH` is not set, the system defaults to the `samples` directory.
 
 ---
 
