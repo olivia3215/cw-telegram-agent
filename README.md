@@ -40,9 +40,9 @@ export CONFIG_DIRS="$(pwd)/samples"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
 ```
 
-For multiple configuration directories, separate them with commas:
+For multiple configuration directories, separate them with colons:
 ```bash
-export CONFIG_DIRS="$(pwd)/samples,$(pwd)/custom-configs"
+export CONFIG_DIRS="$(pwd)/samples:$(pwd)/custom-configs"
 ```
 
 Optional tuning:
@@ -120,7 +120,7 @@ config-dir/
 └── prompts/         # System prompts (.md files)
 ```
 
-**Multiple directories:** You can specify multiple config directories separated by commas in `CONFIG_DIRS`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
+**Multiple directories:** You can specify multiple config directories separated by colons in `CONFIG_DIRS`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
 
 **Default location:** If `CONFIG_DIRS` is not set, the system defaults to the `samples` directory.
 

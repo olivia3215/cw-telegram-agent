@@ -9,12 +9,12 @@ _prompt_cache = {}
 def get_config_directories():
     """
     Get configuration directories from environment variables.
-    Supports multiple directories via CONFIG_DIRS (comma-separated).
+    Supports multiple directories via CONFIG_DIRS (colon-separated).
     """
     config_dirs = os.environ.get("CONFIG_DIRS")
     if config_dirs:
-        # Split by comma and strip whitespace
-        dirs = [d.strip() for d in config_dirs.split(",") if d.strip()]
+        # Split by colon and strip whitespace
+        dirs = [d.strip() for d in config_dirs.split(":") if d.strip()]
         return dirs
 
     # Default to samples directory if CONFIG_DIRS is not set
