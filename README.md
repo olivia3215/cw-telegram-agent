@@ -36,8 +36,13 @@ Set these environment variables (example uses a local `./state` dir):
 
 ```bash
 export CINDY_AGENT_STATE_DIR="$(pwd)/state"
-export AGENT_DIR="$(pwd)/agents"
+export CONFIG_DIRS="$(pwd)/samples"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
+```
+
+For multiple configuration directories, separate them with commas:
+```bash
+export CONFIG_DIRS="$(pwd)/samples,$(pwd)/custom-configs"
 ```
 
 Optional tuning:
@@ -68,9 +73,9 @@ The loop connects, processes unread messages, plans with the LLM, and executes *
 
 ---
 
-## Personas (`AGENT_DIR`)
+## Personas (Configuration Directories)
 
-Create one markdown file per agent, e.g. `agents/Wendy.md`:
+Create one markdown file per agent in the `agents` subdirectory of each config directory, e.g. `samples/agents/Wendy.md`:
 
 ```markdown
 # Agent Name
@@ -105,6 +110,22 @@ Notes:
 
 ---
 
+## Configuration Directory Structure
+
+Each configuration directory (specified in `CONFIG_DIRS`) should contain:
+
+```
+config-dir/
+├── agents/          # Agent definitions (.md files)
+└── prompts/         # System prompts (.md files)
+```
+
+**Multiple directories:** You can specify multiple config directories separated by commas in `CONFIG_DIRS`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
+
+**Default location:** If `CONFIG_DIRS` is not set, the system defaults to the `samples` directory.
+
+---
+
 ## Media descriptions (high level)
 
 The agent enriches its prompt by describing recent **photos and stickers**. Descriptions are cached in memory and on disk to avoid repeated work. A **per-tick budget** limits how many **new** descriptions are attempted each turn; cache hits do not consume budget.
@@ -118,7 +139,7 @@ You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_
 * **Agent seems slow or idle**
 
   * Check logs for repeated download lines. Consider lowering `MEDIA_DESC_BUDGET_PER_TICK`.
-  * Ensure persona files in `AGENT_DIR` include all **required** fields.
+  * Ensure persona files in your configuration directories include all **required** fields.
 
 * **Sticker appeared as plain text**
 

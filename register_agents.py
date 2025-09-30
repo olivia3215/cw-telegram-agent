@@ -133,25 +133,57 @@ def parse_agent_markdown(path):
         return None
 
 
+def get_config_directories():
+    """
+    Get configuration directories from environment variables.
+    Supports multiple directories via CONFIG_DIRS (comma-separated).
+    """
+    config_dirs = os.environ.get("CONFIG_DIRS")
+    if config_dirs:
+        # Split by comma and strip whitespace
+        dirs = [d.strip() for d in config_dirs.split(",") if d.strip()]
+        return dirs
+
+    # Default to samples directory if CONFIG_DIRS is not set
+    return ["samples"]
+
+
 def register_all_agents():
-    agent_dir = os.environ.get("AGENT_DIR")
-    if not agent_dir:
-        raise RuntimeError("Environment variable AGENT_DIR is required")
+    config_dirs = get_config_directories()
 
-    path = Path(agent_dir)
-    if not path.exists() or not path.is_dir():
-        raise RuntimeError(
-            f"AGENT_DIR does not exist or is not a directory: {agent_dir}"
-        )
+    registered_agents = set()  # Track registered agent names to avoid duplicates
 
-    for file in path.glob("*.md"):
-        parsed = parse_agent_markdown(file)
-        if parsed:
-            register_telegram_agent(
-                name=parsed["name"],
-                phone=parsed["phone"],
-                instructions=parsed["instructions"],
-                role_prompt_name=parsed["role_prompt_name"],
-                sticker_set_names=parsed.get("sticker_set_names") or [],
-                explicit_stickers=parsed.get("explicit_stickers") or [],
+    for config_dir in config_dirs:
+        path = Path(config_dir)
+        if not path.exists() or not path.is_dir():
+            logger.warning(
+                f"Config directory does not exist or is not a directory: {config_dir}"
             )
+            continue
+
+        agents_dir = path / "agents"
+        if not agents_dir.exists():
+            logger.warning(
+                f"Agents directory not found in config directory: {config_dir}"
+            )
+            continue
+
+        for file in agents_dir.glob("*.md"):
+            parsed = parse_agent_markdown(file)
+            if parsed:
+                agent_name = parsed["name"]
+                if agent_name in registered_agents:
+                    logger.warning(
+                        f"Agent '{agent_name}' already registered, skipping duplicate from {file}"
+                    )
+                    continue
+
+                register_telegram_agent(
+                    name=agent_name,
+                    phone=parsed["phone"],
+                    instructions=parsed["instructions"],
+                    role_prompt_name=parsed["role_prompt_name"],
+                    sticker_set_names=parsed.get("sticker_set_names") or [],
+                    explicit_stickers=parsed.get("explicit_stickers") or [],
+                )
+                registered_agents.add(agent_name)
