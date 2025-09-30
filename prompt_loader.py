@@ -15,9 +15,11 @@ def get_config_directories():
     if config_dirs:
         # Split by colon and strip whitespace
         dirs = [d.strip() for d in config_dirs.split(":") if d.strip()]
-        return dirs
+        # If we have valid directories after filtering, return them
+        if dirs:
+            return dirs
 
-    # Default to samples directory if CONFIG_DIRS is not set
+    # Default to samples directory if CONFIG_DIRS is not set or contains only whitespace/separators
     return ["samples"]
 
 
@@ -41,7 +43,7 @@ def load_system_prompt(prompt_name: str):
             continue
 
         prompts_dir_path = path / "prompts"
-        if not prompts_dir_path.exists():
+        if not prompts_dir_path.exists() or not prompts_dir_path.is_dir():
             continue
 
         file_path = prompts_dir_path / f"{prompt_name}.md"

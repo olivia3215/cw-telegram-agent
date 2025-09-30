@@ -142,9 +142,11 @@ def get_config_directories():
     if config_dirs:
         # Split by colon and strip whitespace
         dirs = [d.strip() for d in config_dirs.split(":") if d.strip()]
-        return dirs
+        # If we have valid directories after filtering, return them
+        if dirs:
+            return dirs
 
-    # Default to samples directory if CONFIG_DIRS is not set
+    # Default to samples directory if CONFIG_DIRS is not set or contains only whitespace/separators
     return ["samples"]
 
 
@@ -152,6 +154,7 @@ def register_all_agents():
     config_dirs = get_config_directories()
 
     registered_agents = set()  # Track registered agent names to avoid duplicates
+    valid_config_dirs = []  # Track valid config directories found
 
     for config_dir in config_dirs:
         path = Path(config_dir)
@@ -162,11 +165,13 @@ def register_all_agents():
             continue
 
         agents_dir = path / "agents"
-        if not agents_dir.exists():
+        if not agents_dir.exists() or not agents_dir.is_dir():
             logger.warning(
-                f"Agents directory not found in config directory: {config_dir}"
+                f"Agents directory not found or is not a directory in config directory: {config_dir}"
             )
             continue
+
+        valid_config_dirs.append(config_dir)
 
         for file in agents_dir.glob("*.md"):
             parsed = parse_agent_markdown(file)
@@ -187,3 +192,14 @@ def register_all_agents():
                     explicit_stickers=parsed.get("explicit_stickers") or [],
                 )
                 registered_agents.add(agent_name)
+
+    # Fail fast if no valid config directories were found
+    if not valid_config_dirs:
+        raise RuntimeError(
+            f"No valid configuration directories found. Checked: {config_dirs}. "
+            f"Each directory must exist and contain an 'agents' subdirectory."
+        )
+
+    logger.info(
+        f"Successfully registered {len(registered_agents)} agents from {len(valid_config_dirs)} config directories"
+    )
