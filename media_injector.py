@@ -65,8 +65,8 @@ def _debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
 # --- Per-tick AI description budget ------------------------------------------
 
 # Budget is the number of AI description *attempts* allowed in the current tick.
-# Cache hits do NOT consume budget. We reset this at the start of handling a
-# "received" task in the tick loop (next change).
+# Cache hits do NOT consume budget. We reset this at the start of each tick
+# in the tick loop to ensure proper per-tick budgeting.
 _BUDGET_TOTAL: int = 0
 _BUDGET_LEFT: int = 0
 

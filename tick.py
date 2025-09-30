@@ -2,15 +2,20 @@
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime, timezone
 
 from telethon.errors.rpcerrorlist import PeerIdInvalidError
 
 from agent import get_agent_for_id
 from exceptions import ShutdownException
+from media_injector import reset_description_budget
 from task_graph import WorkQueue
 
 logger = logging.getLogger(__name__)
+
+# per-tick AI description budget (default 8; env override)
+MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 # Dispatch table for task type handlers
 _dispatch_table = {}
@@ -31,6 +36,10 @@ def is_graph_complete(graph) -> bool:
 
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     datetime.now(UTC)
+
+    # Reset per-tick AI description budget at start of each tick
+    reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+
     task = work_queue.round_robin_one_task()
 
     if not task:
