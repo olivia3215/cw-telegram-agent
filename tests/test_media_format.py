@@ -33,7 +33,7 @@ def test_format_media_description_missing_or_blank(raw):
 )
 def test_format_media_description_not_understood_variants(raw):
     out = format_media_description(raw)
-    assert out == "that is not understood"
+    assert out == f"that appears as {raw}"
     assert "‹" not in out and "›" not in out
 
 
@@ -50,14 +50,23 @@ def test_format_sticker_sentence_with_desc():
     )
 
 
-@pytest.mark.parametrize(
-    "desc", ["", "   ", "not understood", "sticker not understood (format tgs)"]
-)
+@pytest.mark.parametrize("desc", ["", "   "])
 def test_format_sticker_sentence_without_desc(desc):
     out = format_sticker_sentence("👋", "WendyDancer", desc)
     assert (
         out
         == "[media] ‹the sticker `👋` from the sticker set `WendyDancer` that is not understood›"
+    )
+
+
+@pytest.mark.parametrize(
+    "desc", ["not understood", "sticker not understood (format tgs)"]
+)
+def test_format_sticker_sentence_with_not_understood_text(desc):
+    out = format_sticker_sentence("👋", "WendyDancer", desc)
+    assert (
+        out
+        == f"[media] ‹the sticker `👋` from the sticker set `WendyDancer` that appears as {desc}›"
     )
 
 
@@ -73,7 +82,12 @@ def test_format_media_sentence_without_description():
     assert out == "[media] ‹the video that is not understood›"
 
 
-@pytest.mark.parametrize("desc", ["", "   ", "not understood"])
+@pytest.mark.parametrize("desc", ["", "   "])
 def test_format_media_sentence_not_understood(desc):
     out = format_media_sentence("audio", desc)
     assert out == "[media] ‹the audio that is not understood›"
+
+
+def test_format_media_sentence_with_not_understood_text():
+    out = format_media_sentence("audio", "not understood")
+    assert out == "[media] ‹the audio that appears as not understood›"
