@@ -120,13 +120,10 @@ async def scan_unread_messages(agent: Agent, work_queue):
 
 async def ensure_sticker_cache(agent, client):
     # Build the set of sticker sets we want loaded
-    canonical = getattr(agent, "sticker_set_name", None)
     extra_sets = getattr(agent, "sticker_set_names", []) or []
     explicit = getattr(agent, "explicit_stickers", []) or []
 
     required_sets = set()
-    if canonical:
-        required_sets.add(canonical)
     required_sets.update(extra_sets)
     required_sets.update(
         sticker_set_name for (sticker_set_name, _name) in explicit if sticker_set_name
@@ -138,12 +135,8 @@ async def ensure_sticker_cache(agent, client):
         agent.loaded_sticker_sets = set()
     loaded = agent.loaded_sticker_sets
 
-    # If we've already loaded all of them and legacy cache exists, nothing to do
-    if (
-        required_sets
-        and required_sets.issubset(loaded)
-        and getattr(agent, "sticker_cache", {})
-    ):
+    # If we've already loaded all required sets, nothing to do
+    if required_sets and required_sets.issubset(loaded):
         return
 
     try:
@@ -168,12 +161,6 @@ async def ensure_sticker_cache(agent, client):
                 if not hasattr(agent, "sticker_cache_by_set"):
                     agent.sticker_cache_by_set = {}
                 agent.sticker_cache_by_set[(set_short, name)] = doc
-
-                # legacy cache only for canonical
-                if set_short == canonical:
-                    if not hasattr(agent, "sticker_cache"):
-                        agent.sticker_cache = {}
-                    agent.sticker_cache[name] = doc
 
                 logger.debug(
                     f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"

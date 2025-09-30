@@ -33,8 +33,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     fake_doc = FakeDoc()
     agent = SimpleNamespace(
         name="Wendy",
-        sticker_set_name="WendyDancer",  # canonical set
-        sticker_cache={},  # empty legacy cache
+        sticker_set_names=["WendyDancer"],  # multi-set config
         sticker_cache_by_set={},  # empty by-set cache
         client=FakeClient(),
     )

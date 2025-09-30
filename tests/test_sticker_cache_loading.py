@@ -28,11 +28,11 @@ class FakeClient:
 
 
 class FakeAgent:
-    def __init__(self, name="Wendy", sticker_set_name="WendyDancer"):
+    def __init__(self, name="Wendy", sticker_set_names=None):
         self.name = name
-        self.sticker_set_name = sticker_set_name
-        self.sticker_cache = {}
+        self.sticker_set_names = sticker_set_names or ["WendyDancer"]
         self.sticker_cache_by_set = {}
+        self.loaded_sticker_sets = set()
 
 
 @pytest.mark.asyncio
@@ -50,13 +50,9 @@ async def test_ensure_sticker_cache_populates_both_caches(monkeypatch, tmp_path)
 
     await ensure_sticker_cache(agent, client)
 
-    # Legacy cache by name
-    assert "Wink" in agent.sticker_cache
-    assert "Smile" in agent.sticker_cache
-
-    # New cache by (set, name)
-    assert (agent.sticker_set_name, "Wink") in agent.sticker_cache_by_set
-    assert (agent.sticker_set_name, "Smile") in agent.sticker_cache_by_set
+    # Cache by (set, name)
+    assert ("WendyDancer", "Wink") in agent.sticker_cache_by_set
+    assert ("WendyDancer", "Smile") in agent.sticker_cache_by_set
 
     # Idempotent
     await ensure_sticker_cache(agent, client)

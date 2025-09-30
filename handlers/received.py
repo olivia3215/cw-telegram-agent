@@ -186,7 +186,6 @@ def parse_llm_reply_from_markdown(
 
             set_short, sticker_name = parsed
             params["name"] = sticker_name
-            # During transition we explicitly carry None; tick.py will fall back to agent’s canonical set
             params["sticker_set"] = set_short
 
         elif current_type == "wait":
@@ -313,21 +312,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{{user}}", channel_name)
     system_prompt = system_prompt.replace("{user}", channel_name)
 
-    # Optional sticker list (unchanged behavior: embed as text in system)
-    sticker_list = None
-    if agent.sticker_cache:
-        # Build a list of "<SET> :: <NAME>" for the agent's canonical set.
-        canonical = agent.sticker_set_name
-        names_in_canonical = sorted(
-            name
-            for (set_short, name) in agent.sticker_cache_by_set.keys()
-            if set_short == canonical
-        )
-        sticker_list = "\n".join(
-            f"- {canonical} :: {name}" for name in names_in_canonical
-        )
-
     # Build the by-set sticker list, computing descriptions via helper so tests can monkeypatch it.
+    sticker_list = None
     if agent.sticker_cache_by_set:
         lines: list[str] = []
         try:
