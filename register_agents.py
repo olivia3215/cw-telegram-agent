@@ -136,27 +136,27 @@ def parse_agent_markdown(path):
 def get_config_directories():
     """
     Get configuration directories from environment variables.
-    Supports multiple directories via CONFIG_DIRS (colon-separated).
+    Supports multiple directories via CINDY_AGENT_CONFIG_PATH (colon-separated).
     """
-    config_dirs = os.environ.get("CONFIG_DIRS")
-    if config_dirs:
+    config_path = os.environ.get("CINDY_AGENT_CONFIG_PATH")
+    if config_path:
         # Split by colon and strip whitespace
-        dirs = [d.strip() for d in config_dirs.split(":") if d.strip()]
+        dirs = [d.strip() for d in config_path.split(":") if d.strip()]
         # If we have valid directories after filtering, return them
         if dirs:
             return dirs
 
-    # Default to samples directory if CONFIG_DIRS is not set or contains only whitespace/separators
+    # Default to samples directory if CINDY_AGENT_CONFIG_PATH is not set or contains only whitespace/separators
     return ["samples"]
 
 
 def register_all_agents():
-    config_dirs = get_config_directories()
+    config_path = get_config_directories()
 
     registered_agents = set()  # Track registered agent names to avoid duplicates
     valid_config_dirs = []  # Track valid config directories found
 
-    for config_dir in config_dirs:
+    for config_dir in config_path:
         path = Path(config_dir)
         if not path.exists() or not path.is_dir():
             logger.warning(
@@ -196,7 +196,7 @@ def register_all_agents():
     # Fail fast if no valid config directories were found
     if not valid_config_dirs:
         raise RuntimeError(
-            f"No valid configuration directories found. Checked: {config_dirs}. "
+            f"No valid configuration directories found. Checked: {config_path}. "
             f"Each directory must exist and contain an 'agents' subdirectory."
         )
 
