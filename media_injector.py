@@ -21,8 +21,9 @@ from telegram_util import get_channel_name  # for sender/channel names
 logger = logging.getLogger(__name__)
 
 # Feature flags
-MEDIA_FEATURE_ENABLED = True  # you’ve been keeping this True for manual testing
-MEDIA_DEBUG_SAVE = True  # debug bytes in state/media/
+MEDIA_FEATURE_ENABLED = True  # you've been keeping this True for manual testing
+# Automatically disable debug saving during tests
+MEDIA_DEBUG_SAVE = True and "pytest" not in __import__("sys").modules
 
 # Configurable parameters
 _DESCRIBE_TIMEOUT_SECS = 12  # per-item LLM timeout
