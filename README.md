@@ -99,6 +99,7 @@ Notes:
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
 * **Optional fields:** `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely to disable sticker support.
+* **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
 > Internals about sticker trigger syntax and LLM task formats are documented in `DESIGN.md` (not needed for basic use).
 

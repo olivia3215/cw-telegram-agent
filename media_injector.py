@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Feature flags
 MEDIA_FEATURE_ENABLED = True  # you’ve been keeping this True for manual testing
-MEDIA_DEBUG_SAVE = True  # debug bytes in state/photos/
+MEDIA_DEBUG_SAVE = True  # debug bytes in state/media/
 
 # Configurable parameters
 _DESCRIBE_TIMEOUT_SECS = 12  # per-item LLM timeout
@@ -31,8 +31,9 @@ _DESCRIBE_TIMEOUT_SECS = 12  # per-item LLM timeout
 # ---------- path helpers (single source of truth via media_cache) ----------
 _cache = get_media_cache()
 STATE_DIR: Path = _cache.state_dir
-PHOTOS_DIR: Path = STATE_DIR / "photos"
-MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
+MEDIA_DIR: Path = (
+    _cache.media_dir
+)  # created by MediaCache - used for both JSON and media files
 
 
 def _debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
@@ -45,14 +46,14 @@ def _debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
         return
 
     try:
-        # Ensure the photos directory exists
-        PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+        # Ensure the media directory exists (MediaCache already creates it)
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
         # Ensure extension starts with a dot
         if not extension.startswith("."):
             extension = f".{extension}"
 
-        out_path = Path(PHOTOS_DIR) / f"{unique_id}{extension}"
+        out_path = Path(MEDIA_DIR) / f"{unique_id}{extension}"
         out_path.write_bytes(data)
         size = out_path.stat().st_size
         logger.info(f"media: saved debug copy {out_path} ({size} bytes)")

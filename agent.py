@@ -201,6 +201,13 @@ class AgentRegistry:
         if phone == "":
             raise RuntimeError("No agent phone provided")
 
+        # Check for reserved names that conflict with state directory structure
+        reserved_names = {"media"}
+        if name.lower() in reserved_names:
+            raise RuntimeError(
+                f"Agent name '{name}' is reserved for system use. Please choose a different name."
+            )
+
         self._registry[name] = Agent(
             name=name,
             phone=phone,

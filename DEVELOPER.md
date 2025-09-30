@@ -21,6 +21,23 @@ PYTHONPATH=. pytest -vv
 
 We do not allow slow or networked tests. Media, clock, and Gemini calls are mocked or rendered to compact text.
 
+## State directory structure
+
+The system uses a state directory (configured via `CINDY_AGENT_STATE_DIR`) with the following structure:
+
+```
+state/
+├── media/              # Media cache (JSON descriptions + debug media files)
+│   ├── <unique_id>.json     # AI-generated descriptions
+│   └── <unique_id>.<ext>    # Debug media files (.webp, .tgs, etc.)
+├── <agent_name>/       # Agent session directories
+│   └── telegram.session
+├── work_queue.md       # Task queue state
+└── work_queue.md.bak.md
+```
+
+**Important:** Agent names cannot be `media` as this conflicts with the reserved media directory.
+
 ## Code style & tooling
 
 * `black` formats on commit (pre-commit hook).
