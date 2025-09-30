@@ -39,7 +39,7 @@ jobs:
           pip install pytest pytest-asyncio anyio telethon pytest-cov
 
       - name: Prepare state dir
-        run: mkdir -p state/photos state/media
+        run: mkdir -p state/media
 
       - name: Run tests (with coverage)
         env:
