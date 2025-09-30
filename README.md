@@ -51,7 +51,7 @@ export CONFIG_DIRS="$(pwd)/samples:$(pwd)/custom-configs"
 
 **Google Gemini API Key (`GOOGLE_GEMINI_API_KEY`)**
 
-Required for image and sticker descriptions. To obtain:
+Required for image and sticker descriptions and for composing the LLM responses for the agents. To obtain:
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and sign in with your Google account
 2. Click "Get API Key" and create a new key
@@ -68,8 +68,8 @@ Required for Telegram authentication. To obtain:
 1. Visit [Telegram API Development Tools](https://my.telegram.org/apps) and log in with your Telegram account
 2. Click "Create New Application"
 3. Fill in the required details:
-   - **App title**: Your application name (e.g., "CW Telegram Agent")
-   - **Short name**: A short identifier (e.g., "cw-telegram-agent")
+   - **App title**: Your application name (e.g., "My CW Telegram Agent")
+   - **Short name**: A short identifier (e.g., "my-cw-telegram-agent")
    - **Platform**: Choose "Desktop" or appropriate platform
    - **Description**: Brief description of your application
 4. After submission, you'll receive:
@@ -83,10 +83,10 @@ Required for Telegram authentication. To obtain:
 
 **Security Note**: Never commit these API keys to version control. Consider using a `.env` file or your shell's environment configuration (e.g., `~/.bashrc`, `~/.zshrc`) for persistent storage.
 
-Optional tuning:
+### Optional tuning
 
 ```bash
-# Number of new AI description attempts per received task (cache hits are free)
+# Number of new AI description attempts per tick (cache hits are free)
 export MEDIA_DESC_BUDGET_PER_TICK=8
 
 # Enable comprehensive LLM prompt/response logging for debugging
@@ -141,7 +141,7 @@ Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
 * **Optional fields:** `Agent Sticker Sets`, `Agent Stickers`.
-  You may omit these entirely to disable sticker support.
+  You may omit these entirely.
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
 > Internals about sticker trigger syntax and LLM task formats are documented in `DESIGN.md` (not needed for basic use).
