@@ -18,7 +18,7 @@ Wendy
 # Agent Phone
 +15551234567
 
-# Agent Sticker Set
+# Agent Sticker Sets
 WendyDancer
 
 # Agent Instructions
@@ -32,10 +32,9 @@ WendyRole
     assert parsed is not None
     assert parsed["name"] == "Wendy"
     assert parsed["phone"] == "+15551234567"
-    assert parsed["sticker_set_name"] == "WendyDancer"
     assert parsed["role_prompt_name"] == "WendyRole"
-    # Optional fields should be present with safe defaults
-    assert parsed["sticker_set_names"] == []
+    # Multi-set fields should be present with safe defaults
+    assert parsed["sticker_set_names"] == ["WendyDancer"]
     assert parsed["explicit_stickers"] == []
 
 
@@ -45,9 +44,6 @@ Cindy
 
 # Agent Phone
 +15557654321
-
-# Agent Sticker Set
-CINDYAI
 
 # Agent Sticker Sets
 WendyDancer
@@ -68,7 +64,6 @@ Malformed line that should be ignored
     assert parsed is not None
     assert parsed["name"] == "Cindy"
     assert parsed["phone"] == "+15557654321"
-    assert parsed["sticker_set_name"] == "CINDYAI"
     assert parsed["role_prompt_name"] == "CindyRole"
 
     # Order should be preserved; whitespace trimmed
@@ -87,9 +82,6 @@ Olivia
 
 # Agent Phone
 +19998887777
-
-# Agent Sticker Set
-OLIVIAAI
 
 # Agent Sticker Sets
 

@@ -45,14 +45,15 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
     sticker_name = task.params.get("name")
     in_reply_to = task.params.get("in_reply_to")
 
-    # prefer the task-specified set (new two-line spec), else canonical
-    set_short = task.params.get("sticker_set") or agent.sticker_set_name
-    set_explicit = (
-        "sticker_set" in task.params
-    )  # track whether LLM explicitly chose a set
+    # Require sticker set to be specified in task (no fallback)
+    set_short = task.params.get("sticker_set")
 
     if not sticker_name:
         raise ValueError(f"[{agent_name}] Sticker task missing 'name' parameter.")
+    if not set_short:
+        raise ValueError(
+            f"[{agent_name}] Sticker task missing 'sticker_set' parameter."
+        )
 
     # 1) Try by-set cache
     by_set = getattr(agent, "sticker_cache_by_set", {})
@@ -64,20 +65,6 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
             f"[{agent_name}] sticker miss: set={set_short!r} name={sticker_name!r}; attempting transient resolve"
         )
         file = await _resolve_sticker_doc_in_set(client, set_short, sticker_name)
-
-    # 3) Legacy fallback ONLY if the set was not explicitly specified
-    if file is None and not set_explicit:
-        # Last-ditch: canonical cache by name only
-        file = agent.sticker_cache.get(sticker_name)
-        if file is not None:
-            logger.debug(
-                f"[{agent_name}] using legacy fallback from canonical set for name={sticker_name!r}"
-            )
-    elif file is None and set_explicit:
-        logger.debug(
-            f"[{agent_name}] not sending fallback from canonical set "
-            f"because sticker_set was explicitly {set_short!r}"
-        )
 
     try:
         if file:

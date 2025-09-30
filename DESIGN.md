@@ -108,36 +108,28 @@ The system enriches conversations by describing photos and stickers using AI. Th
 
 ## Sticker System Architecture
 
-The sticker system supports multiple sticker sets per agent with a migration strategy from the legacy single-set approach.
+The sticker system supports multiple sticker sets per agent.
 
 ### Multi-Set Configuration
 
 Agents can be configured with:
-- **Primary set**: `Agent Sticker Set` (legacy, being phased out)
-- **Additional sets**: `Agent Sticker Sets` (list of set names)
+- **Sticker sets**: `Agent Sticker Sets` (list of set names)
 - **Explicit stickers**: `Agent Stickers` (specific set::sticker combinations)
 
 ### Resolution Strategy
 
 1. **Task-specified set**: Use the set specified in the sticker task
-2. **Fallback to canonical**: Use the agent's primary set if no set specified
-3. **Cache lookup**: Check both legacy cache and by-set cache
-4. **Telegram fetch**: Fetch from Telegram if not cached
+2. **Cache lookup**: Check multi-set cache by (set_name, sticker_name)
+3. **Telegram fetch**: Fetch from Telegram if not cached
 
-### Migration Status
-
-**Legacy system (being removed):**
-- `sticker_cache`: Single set cache (canonical set only)
-- `sticker_set_name`: Single designated set per agent
-
-**New system:**
+**Current system:**
 - `sticker_cache_by_set`: Multi-set cache `(sticker_set_name, sticker_name) -> document`
 - `sticker_set_names`: List of available sets
 - `explicit_stickers`: Specific set::sticker mappings
 
-**Current requirements:**
+**Requirements:**
 - Both set name and sticker name are required in sticker triggers
-- Single-line sticker triggers (missing set name) are no longer supported
+- All sticker triggers must specify the sticker set name
 
 ## Caching Strategy
 
