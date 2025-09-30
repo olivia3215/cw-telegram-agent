@@ -89,7 +89,7 @@ The system enriches conversations by describing photos and stickers using AI. Th
 
 - **Per-tick budget**: Default 8 AI description attempts per tick (configurable via `MEDIA_DESC_BUDGET_PER_TICK`)
 - **Cache hits**: Do not consume budget (descriptions are cached in memory and on disk)
-- **Budget reset**: Currently reset in the received handler (should be moved to start of each tick)
+- **Budget reset**: Reset at the start of each tick for proper per-tick budgeting
 
 **Purpose:** Rate-limit LLM usage to maintain agent responsiveness and control costs.
 
@@ -104,7 +104,6 @@ The system enriches conversations by describing photos and stickers using AI. Th
 ### Known Issues
 
 - **AnimatedEmojies sticker set**: Causes repeated description attempts due to data fetch failures
-- **Budget reset timing**: Should be moved to start of each tick for proper per-tick budgeting
 
 ## Sticker System Architecture
 
