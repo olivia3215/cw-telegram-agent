@@ -15,14 +15,10 @@ ANGLE_CLOSE = "›"
 def format_media_description(description: str | None) -> str:
     """
     Returns a clause beginning with 'that ...'.
-    If there's no usable description (unsupported/unknown), avoid angle quotes.
+    If there's no usable description, return a generic fallback.
     """
     s = (description or "").strip()
-    if (
-        not s
-        or s.lower().startswith("not understood")
-        or s.lower().startswith("sticker not understood")
-    ):
+    if not s:
         return "that is not understood"
     return f"that appears as {s}"
 
@@ -44,7 +40,7 @@ def format_media_sentence(kind: str, description: str | None) -> str:
     """
     Format a general media sentence with angle quotes:
       ‹the <kind> that appears as <description>›
-    Falls back to 'that is not understood' when description is missing/unsupported.
+    Falls back to 'that is not understood' when description is missing.
     """
-    media_desc = format_media_description(description or "not understood")
+    media_desc = format_media_description(description)
     return f"[media] {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"

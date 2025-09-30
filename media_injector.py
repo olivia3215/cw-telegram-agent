@@ -13,6 +13,7 @@ from media_format import (
     format_media_sentence,
     format_sticker_sentence,
 )
+from mime_utils import detect_mime_type_from_bytes, get_file_extension_for_mime_type
 from telegram_download import download_media_bytes
 from telegram_media import _get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
@@ -34,9 +35,7 @@ PHOTOS_DIR: Path = STATE_DIR / "photos"
 MEDIA_DIR: Path = _cache.media_dir  # created by MediaCache
 
 
-def _debug_save_media(
-    data: bytes, unique_id: str, kind: str, mime: str | None = None
-) -> None:
+def _debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
     """
     Save media data to disk for debugging purposes.
     Only saves if MEDIA_DEBUG_SAVE is True and the save is successful.
@@ -49,8 +48,11 @@ def _debug_save_media(
         # Ensure the photos directory exists
         PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 
-        ext = _sniff_ext(data, kind=kind, mime=mime)
-        out_path = Path(PHOTOS_DIR) / f"{unique_id}{ext}"
+        # Ensure extension starts with a dot
+        if not extension.startswith("."):
+            extension = f".{extension}"
+
+        out_path = Path(PHOTOS_DIR) / f"{unique_id}{extension}"
         out_path.write_bytes(data)
         size = out_path.stat().st_size
         logger.info(f"media: saved debug copy {out_path} ({size} bytes)")
@@ -88,47 +90,6 @@ def try_consume_description_budget() -> bool:
 
 
 # ---------- format sniffing & support checks ----------
-def _sniff_ext(data: bytes, kind: str | None = None, mime: str | None = None) -> str:
-    """Decide extension from magic bytes; fall back to mime, then kind."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
-        return ".png"
-    if data[:3] == b"GIF":  # GIF87a/89a
-        return ".gif"
-    if data.startswith(b"\xff\xd8\xff"):  # JPEG/JFIF
-        return ".jpg"
-    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":  # WEBP
-        return ".webp"
-    if data[4:8] == b"ftyp":  # MP4 family
-        return ".mp4"
-    if data[:4] == b"\x1a\x45\xdf\xa3":  # WebM/Matroska (EBML)
-        return ".webm"
-    if data[:2] == b"\x1f\x8b":  # gzip (TGS is gzipped Lottie)
-        return ".tgs"
-
-    if isinstance(mime, str):
-        m = mime.lower()
-        if "png" in m:
-            return ".png"
-        if "jpeg" in m or "jpg" in m:
-            return ".jpg"
-        if "gif" in m:
-            return ".gif"
-        if "webp" in m:
-            return ".webp"
-        if "mp4" in m:
-            return ".mp4"
-        if "webm" in m:
-            return ".webm"
-
-    if kind == "photo":
-        return ".jpg"
-    if kind == "gif":
-        return ".gif"
-    if kind == "animation":
-        return ".mp4"
-    if kind == "sticker":
-        return ".webp"
-    return ".bin"
 
 
 # ---------- sticker helpers ----------
@@ -281,11 +242,6 @@ async def get_or_compute_description_for_doc(
             return uid, None
         # If retryable is true, we may retry later; continue below to budget check.
 
-    # 2) Budget gate before any AI work
-    if not try_consume_description_budget():
-        logger.debug(f"[media] SKIP uid={uid} kind={kind} (budget exhausted)")
-        return uid, None
-
     # 2a) Download bytes
     t0 = time.perf_counter()
     try:
@@ -318,11 +274,55 @@ async def get_or_compute_description_for_doc(
         return uid, None
     dl_ms = (time.perf_counter() - t0) * 1000
 
-    # 2b) Describe via LLM (run off-loop; enforce timeout)
+    # 2b) Check MIME type support before calling LLM
+    # Use centralized MIME type detection
+    detected_mime_type = detect_mime_type_from_bytes(data)
+
+    # Check if this MIME type is supported by the LLM
+    if not llm.is_mime_type_supported_by_llm(detected_mime_type):
+        logger.debug(
+            f"[media] SKIP uid={uid} kind={kind} mime={detected_mime_type} (not supported by LLM)"
+        )
+
+        # Cache the unsupported format with failure reason
+        try:
+            cache.put(
+                uid,
+                {
+                    "unique_id": uid,
+                    "kind": kind,
+                    "sticker_set_name": sticker_set_name,
+                    "sticker_name": sticker_name,
+                    "description": None,
+                    "failure_reason": f"MIME type {detected_mime_type} not supported by LLM",
+                    "status": "unsupported_format",
+                    "mime_type": detected_mime_type,
+                    "ts": datetime.now(UTC).isoformat(),
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "channel_id": channel_id,
+                    "channel_name": channel_name,
+                },
+            )
+        except Exception as e:
+            logger.exception(f"Failed to cache unsupported format for {uid}: {e}")
+
+        # Debug save with proper extension
+        file_ext = get_file_extension_for_mime_type(detected_mime_type)
+        _debug_save_media(data, uid, file_ext)
+
+        return uid, None
+
+    # 2c) Budget gate before any AI work (after MIME type check)
+    if not try_consume_description_budget():
+        logger.debug(f"[media] SKIP uid={uid} kind={kind} (budget exhausted)")
+        return uid, None
+
+    # 2d) Describe via LLM (run off-loop; enforce timeout)
     try:
         t1 = time.perf_counter()
         desc = await asyncio.wait_for(
-            asyncio.to_thread(llm.describe_image, data, None),
+            asyncio.to_thread(llm.describe_image, data, detected_mime_type),
             timeout=_DESCRIBE_TIMEOUT_SECS,
         )
         desc = (desc or "").strip()
@@ -332,7 +332,8 @@ async def get_or_compute_description_for_doc(
         )
 
         # Debug save the downloaded media even if description timed out
-        _debug_save_media(data, uid, kind)
+        file_ext = get_file_extension_for_mime_type(detected_mime_type)
+        _debug_save_media(data, uid, file_ext)
 
         try:
             cache.put(
@@ -361,7 +362,8 @@ async def get_or_compute_description_for_doc(
         logger.exception(f"[media] LLM FAIL uid={uid} kind={kind}: {e}")
 
         # Debug save the downloaded media even if description failed
-        _debug_save_media(data, uid, kind)
+        file_ext = get_file_extension_for_mime_type(detected_mime_type)
+        _debug_save_media(data, uid, file_ext)
 
         try:
             cache.put(
@@ -391,10 +393,11 @@ async def get_or_compute_description_for_doc(
     # NOTE: If you have a reliable detector for "not understood", set status accordingly:
     status = "ok" if desc else "not_understood"
 
-    # 2c) Debug save all downloaded media
-    _debug_save_media(data, uid, kind)
+    # 2e) Debug save all downloaded media
+    file_ext = get_file_extension_for_mime_type(detected_mime_type)
+    _debug_save_media(data, uid, file_ext)
 
-    # 2d) Cache best-effort
+    # 2f) Cache best-effort
     try:
         if desc:
             # Valid description - cache with description
@@ -573,7 +576,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
         meta = cache.get(it.unique_id)
 
         if it.kind == "sticker":
-            sticker_set = (
+            sticker_set_name = (
                 (meta.get("sticker_set_name") if isinstance(meta, dict) else None)
                 or getattr(it, "sticker_set", None)
                 or "(unknown)"
@@ -588,7 +591,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
             parts.append(
                 format_sticker_sentence(
                     sticker_name=sticker_name,
-                    sticker_set=sticker_set,
+                    sticker_set_name=sticker_set_name,
                     description=desc_text,
                 )
             )
@@ -597,7 +600,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(format_media_sentence(it.kind, desc_text))
 
-    content = " ".join(parts) if parts else "not understood"
+    content = " ".join(parts) if parts else "[no content]"
     return content
 
 
