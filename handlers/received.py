@@ -1,7 +1,6 @@
 # handlers/received.py
 
 import logging
-import os
 import re
 import uuid
 from collections.abc import Iterable
@@ -22,7 +21,6 @@ from media_injector import (
     format_message_for_prompt,
     get_or_compute_description_for_doc,
     inject_media_descriptions,
-    reset_description_budget,
 )
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
@@ -32,9 +30,6 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
-
-# per-tick AI description budget (default 8; env override)
-MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -260,11 +255,10 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
 async def handle_received(task: TaskNode, graph: TaskGraph):
     """
     Process an inbound 'received' event:
-      1) Reset per-tick AI description budget
-      2) Fetch recent messages
-      3) Run media description injection (stickers + photos together), newest→oldest
-      4) Call Gemini via role-structured 'contents' using one text part per message
-      5) Parse tasks and enqueue
+      1) Fetch recent messages
+      2) Run media description injection (stickers + photos together), newest→oldest
+      3) Call Gemini via role-structured 'contents' using one text part per message
+      4) Parse tasks and enqueue
     """
     channel_id = graph.context.get("channel_id")
     assert channel_id
@@ -279,10 +273,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
-    # 1) Reset per-tick AI description budget
-    reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
-
-    # 2) Fetch recent messages (chronological list returned by Telethon when reversed)
+    # 1) Fetch recent messages (chronological list returned by Telethon when reversed)
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
