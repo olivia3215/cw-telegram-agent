@@ -33,6 +33,8 @@ class MediaCache:
     Disk-backed + in-memory (TTL) cache for media descriptions/metadata.
 
     - JSON stored on disk at: <state_dir>/media/<unique_id>.json
+    - Media files (debug saves) also stored in: <state_dir>/media/<unique_id>.<ext>
+    - The media directory is shared for both JSON descriptions and actual media files
     - In-memory entries hold the **full record** (dict), not just description text.
     - Sliding TTL:
         * If an entry is present in memory, it is returned **even if** its
