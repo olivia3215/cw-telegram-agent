@@ -112,7 +112,7 @@ def parse_agent_markdown(path):
                 return None
             return v
 
-        primary_set = _norm_set(fields.get("Agent Sticker Set"))
+        _norm_set(fields.get("Agent Sticker Set"))
 
         # Optional multi-set fields (safe defaults)
         sticker_set_names = _ensure_list(fields.get("Agent Sticker Sets"))
@@ -122,10 +122,9 @@ def parse_agent_markdown(path):
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
-            "sticker_set_name": primary_set,
             "instructions": instructions,
             "role_prompt_name": str(fields["Role Prompt"]).strip(),
-            # new optional outputs:
+            # multi-set config:
             "sticker_set_names": sticker_set_names,  # list[str]
             "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
         }
@@ -151,7 +150,6 @@ def register_all_agents():
             register_telegram_agent(
                 name=parsed["name"],
                 phone=parsed["phone"],
-                sticker_set_name=parsed["sticker_set_name"],
                 instructions=parsed["instructions"],
                 role_prompt_name=parsed["role_prompt_name"],
                 sticker_set_names=parsed.get("sticker_set_names") or [],

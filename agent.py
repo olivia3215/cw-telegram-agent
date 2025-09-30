@@ -22,17 +22,15 @@ class Agent:
         *,
         name,
         phone,
-        sticker_set_name,
         instructions,
         role_prompt_name,
         llm=None,
-        # NEW (optional) multi-set config; callers may omit
+        # Multi-set config
         sticker_set_names=None,
         explicit_stickers=None,
     ):
         self.name = name
         self.phone = phone
-        self.sticker_set_name = sticker_set_name
         self.instructions = instructions
         self.role_prompt_name = role_prompt_name
 
@@ -43,9 +41,6 @@ class Agent:
         self.explicit_stickers = list(
             explicit_stickers or []
         )  # e.g. [("WendyDancer","Wink")]
-
-        # Legacy cache: name -> InputDocument (canonical set only)
-        self.sticker_cache = {}
 
         # (set_short_name, sticker_name) -> InputDocument
         self.sticker_cache_by_set = {}
@@ -195,7 +190,6 @@ class AgentRegistry:
         *,
         name: str,
         phone: str,
-        sticker_set_name: str,
         instructions: str,
         role_prompt_name: str,
         llm=None,
@@ -210,7 +204,6 @@ class AgentRegistry:
         self._registry[name] = Agent(
             name=name,
             phone=phone,
-            sticker_set_name=sticker_set_name,
             instructions=instructions,
             role_prompt_name=role_prompt_name,
             llm=llm,

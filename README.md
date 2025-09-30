@@ -85,11 +85,8 @@ WendyDancer
 # Agent Instructions
 Write how you want the agent to behave and respond.
 
-# Agent Sticker Set
-WendyDancer   # optional; set to “None” or omit to disable a primary curated set
-
 # Agent Sticker Sets
-WendyDancer   # optional; list any additional curated sets (one per line)
+WendyDancer   # optional; list of sticker sets (one per line)
 CindyPainter
 
 # Agent Stickers
@@ -100,8 +97,8 @@ CindyPainter :: 😀
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
-* **Optional fields:** `Agent Sticker Set`, `Agent Sticker Sets`, `Agent Stickers`.
-  You may omit these entirely, or set *Agent Sticker Set* to `None`.
+* **Optional fields:** `Agent Sticker Sets`, `Agent Stickers`.
+  You may omit these entirely to disable sticker support.
 
 > Internals about sticker trigger syntax and LLM task formats are documented in `DESIGN.md` (not needed for basic use).
 
