@@ -82,6 +82,18 @@ def get_remaining_description_budget() -> int:
     return _BUDGET_LEFT
 
 
+def has_description_budget() -> bool:
+    """Check if budget is available without consuming it."""
+    return _BUDGET_LEFT > 0
+
+
+def consume_description_budget() -> None:
+    """Consume 1 unit of budget. Should only be called after has_description_budget()."""
+    global _BUDGET_LEFT
+    if _BUDGET_LEFT > 0:
+        _BUDGET_LEFT -= 1
+
+
 def try_consume_description_budget() -> bool:
     """Consume 1 unit of budget if available; return True if consumed."""
     global _BUDGET_LEFT
