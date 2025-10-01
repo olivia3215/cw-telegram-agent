@@ -122,11 +122,17 @@ def parse_agent_markdown(path):
         explicit_lines = _ensure_list(fields.get("Agent Stickers"))
         explicit_stickers = _parse_explicit_stickers(explicit_lines)
 
+        # Parse role prompts - split by newlines and filter out empty lines
+        role_prompt_text = str(fields["Role Prompt"]).strip()
+        role_prompt_names = [
+            line.strip() for line in role_prompt_text.split("\n") if line.strip()
+        ]
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
             "instructions": instructions,
-            "role_prompt_names": [str(fields["Role Prompt"]).strip()],
+            "role_prompt_names": role_prompt_names,
             # multi-set config:
             "sticker_set_names": sticker_set_names,  # list[str]
             "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
