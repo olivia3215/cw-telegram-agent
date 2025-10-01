@@ -1,5 +1,8 @@
 # handlers/send.py
 
+# Copyright (c) 2025 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+
 import logging
 
 from agent import get_agent_for_id

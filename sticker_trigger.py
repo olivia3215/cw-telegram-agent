@@ -1,5 +1,8 @@
 # sticker_trigger.py
 
+# Copyright (c) 2025 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+
 """
 Parser for the sticker trigger block emitted by the LLM.
 
