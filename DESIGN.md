@@ -128,20 +128,27 @@ The system builds prioritized chains:
 
 ```
 CompositeMediaSource([
-    DirectoryMediaSource(config_dir1/agents/Wendy/conversations/12345/media),  # Conversation curated
-    DirectoryMediaSource(config_dir1/agents/Wendy/media),                      # Agent curated
-    DirectoryMediaSource(config_dir1/media),                                   # Global curated
-    DirectoryMediaSource(config_dir2/agents/Wendy/conversations/12345/media),  # Conversation curated (config 2)
-    DirectoryMediaSource(config_dir2/agents/Wendy/media),                      # Agent curated (config 2)
-    DirectoryMediaSource(config_dir2/media),                                   # Global curated (config 2)
-    DirectoryMediaSource(state/media),                                         # AI cache
-    BudgetExhaustedMediaSource(),                                              # Budget gate
-    AIGeneratingMediaSource()                                                  # Always succeeds
+    # All conversation-specific curated (all config dirs)
+    DirectoryMediaSource(config_dir1/agents/Wendy/conversations/12345/media),
+    DirectoryMediaSource(config_dir2/agents/Wendy/conversations/12345/media),
+
+    # All agent-specific curated (all config dirs)
+    DirectoryMediaSource(config_dir1/agents/Wendy/media),
+    DirectoryMediaSource(config_dir2/agents/Wendy/media),
+
+    # All global curated (all config dirs)
+    DirectoryMediaSource(config_dir1/media),
+    DirectoryMediaSource(config_dir2/media),
+
+    # AI cache and generation
+    DirectoryMediaSource(state/media),        # AI cache
+    BudgetExhaustedMediaSource(),             # Budget gate
+    AIGeneratingMediaSource()                 # Always succeeds
 ])
 ```
 
-**Order within each config directory**: conversation > agent > global
-**Order across config directories**: Earlier directories in `CINDY_AGENT_CONFIG_PATH` take precedence
+**Priority order**: All conversation-specific > All agent-specific > All global > AI cache
+**Within each level**: Earlier config directories in `CINDY_AGENT_CONFIG_PATH` take precedence
 
 ### Directory Hierarchy
 
