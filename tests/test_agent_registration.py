@@ -16,7 +16,7 @@ def test_agent_registration_valid_name():
         name="ValidAgent",
         phone="+15551234567",
         instructions="Test instructions",
-        role_prompt_name="TestPrompt",
+        role_prompt_names=["TestPrompt"],
     )
 
     assert "ValidAgent" in registry.all_agent_names()
@@ -31,7 +31,7 @@ def test_agent_registration_empty_name():
             name="",
             phone="+15551234567",
             instructions="Test instructions",
-            role_prompt_name="TestPrompt",
+            role_prompt_names=["TestPrompt"],
         )
 
 
@@ -44,7 +44,7 @@ def test_agent_registration_empty_phone():
             name="ValidAgent",
             phone="",
             instructions="Test instructions",
-            role_prompt_name="TestPrompt",
+            role_prompt_names=["TestPrompt"],
         )
 
 
@@ -59,7 +59,7 @@ def test_agent_registration_reserved_name_media():
             name="media",
             phone="+15551234567",
             instructions="Test instructions",
-            role_prompt_name="TestPrompt",
+            role_prompt_names=["TestPrompt"],
         )
 
 
@@ -77,7 +77,7 @@ def test_agent_registration_reserved_name_case_insensitive():
                 name=name,
                 phone="+15551234567",
                 instructions="Test instructions",
-                role_prompt_name="TestPrompt",
+                role_prompt_names=["TestPrompt"],
             )
 
 
@@ -99,6 +99,6 @@ def test_agent_registration_allows_media_in_other_names():
             name=name,
             phone="+15551234567",
             instructions="Test instructions",
-            role_prompt_name="TestPrompt",
+            role_prompt_names=["TestPrompt"],
         )
         assert name in registry.all_agent_names()

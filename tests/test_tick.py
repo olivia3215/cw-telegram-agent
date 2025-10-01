@@ -120,7 +120,7 @@ async def test_execute_clear_conversation(monkeypatch):
         phone="123",
         sticker_set_names=[],
         instructions="(none)",
-        role_prompt_name="TestRole",
+        role_prompt_names=["TestRole"],
     )
 
     mock_agent.client = mock_client

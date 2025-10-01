@@ -280,6 +280,36 @@ The system integrates with Google Gemini using a structured approach that separa
 
 **Rationale:** System instructions are not part of the Telegram conversation and should be kept separate from message content.
 
+### Role Prompts Architecture
+
+The system supports multiple role prompts that are combined to create complex agent personalities:
+
+**Loading Process:**
+1. **Agent-specific prompts** (highest priority): `samples/agents/{AgentName}/prompts/{PromptName}.md`
+2. **Global prompts** (fallback): `samples/prompts/{PromptName}.md`
+
+**Combination Order:**
+1. LLM-specific prompt (e.g., `Gemini.md`)
+2. Role prompts (in the order specified in agent configuration)
+3. Agent instructions (specific behavior instructions)
+
+**Implementation Details:**
+- Role prompts are loaded via `prompt_loader.load_system_prompt()`
+- Multiple prompts are combined with double newlines (`\n\n`)
+- Agent-specific prompts override global prompts for the same name
+- No caching is used - prompts are loaded fresh for each agent instance
+
+**Example System Prompt Structure:**
+```
+[LLM-specific prompt content]
+
+[First role prompt content]
+
+[Second role prompt content]
+
+[Agent-specific instructions]
+```
+
 ### Role Mapping
 
 - **Input**: `assistant` role (agent's prior messages)
