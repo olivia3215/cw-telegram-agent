@@ -1,6 +1,6 @@
 # cw-telegram-agent
 
-Conversational Telegram agents powered by an LLM. This README covers how to **set up**, **configure**, and **run** the server. For architecture, internals, and developer workflows, see `DESIGN.md` and `DEVELOPER.md`.
+Conversational Telegram agents powered by an LLM. This README covers how to **set up**, **configure**, and **run** the server. For architecture, internals, and developer workflows, see [DESIGN.md](DESIGN.md) and [DEVELOPER.md](DEVELOPER.md).
 
 ---
 
@@ -144,7 +144,7 @@ Notes:
   You may omit these entirely.
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
-> Internals about sticker trigger syntax and LLM task formats are documented in `DESIGN.md` (not needed for basic use).
+> Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
 
 ---
 
@@ -168,7 +168,21 @@ config-dir/
 
 The agent enriches its prompt by describing recent **photos and stickers**. Descriptions are cached in memory and on disk to avoid repeated work. A **per-tick budget** limits how many **new** descriptions are attempted each turn; cache hits do not consume budget.
 
-You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_API_KEY`.
+You generally don't need to configure anything for this beyond `GOOGLE_GEMINI_API_KEY`.
+
+### Curated media descriptions (optional)
+
+You can provide **curated descriptions** for specific media items that override AI-generated descriptions. This is useful for:
+- Providing more accurate or context-specific descriptions
+- Describing media in a way that aligns with your agent's personality
+- Overriding descriptions for frequently-used stickers
+
+Curated descriptions can be provided at three levels:
+1. **Global**: Shared by all agents (`{config_dir}/media/`)
+2. **Agent-specific**: Specific to one agent (`{config_dir}/agents/{AgentName}/media/`)
+3. **Conversation-specific**: Specific to an agent's conversation with a particular user (`{config_dir}/agents/{AgentName}/conversations/{peer_id}/media/`)
+
+**See [samples/media/README.md](samples/media/README.md) for complete details on curated media descriptions, including directory structure, file format, and examples.**
 
 ---
 
@@ -191,7 +205,7 @@ You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_
 * **No LLM output / empty responses**
 
   * Verify `GOOGLE_GEMINI_API_KEY` is valid.
-  * See `DEVELOPER.md` for logging tips and model settings.
+  * See [DEVELOPER.md](DEVELOPER.md) for logging tips and model settings.
   * Enable `GEMINI_DEBUG_LOGGING=true` to see complete prompts and responses for debugging.
 
 * **Telegram login issues**
@@ -209,5 +223,6 @@ You generally don’t need to configure anything for this beyond `GOOGLE_GEMINI_
 
 ## More docs
 
-* **Architecture & design:** `DESIGN.md`
-* **Developer guide:** `DEVELOPER.md`
+* **Architecture & design:** [DESIGN.md](DESIGN.md)
+* **Developer guide:** [DEVELOPER.md](DEVELOPER.md)
+* **Curated media descriptions:** [samples/media/README.md](samples/media/README.md)

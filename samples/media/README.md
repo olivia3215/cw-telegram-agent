@@ -58,6 +58,54 @@ Then:
 **Important**: Curated descriptions are configuration data and should NEVER be placed in the `state/` directory.
 The `state/` directory is only for runtime state like AI-generated cache files.
 
+## Full directory structure example
+
+Here's a complete example showing how to organize curated media descriptions:
+
+```
+samples/                                    # Config directory (or your custom config dir)
+├── agents/
+│   ├── Wendy.md                           # Agent configuration file
+│   ├── Wendy/
+│   │   ├── media/                         # Wendy-specific curated media
+│   │   │   ├── 123456789.json            # Curated description for this sticker
+│   │   │   └── 987654321.json
+│   │   └── conversations/
+│   │       └── 555123456/                 # Conversation with user/channel 555123456
+│   │           └── media/                 # Conversation-specific curated media
+│   │               └── 111222333.json
+│   ├── Heidi.md
+│   └── Heidi/
+│       └── media/                         # Heidi-specific curated media
+│           └── 444555666.json
+└── media/                                  # Global curated media (all agents)
+    ├── 901422453274706125.json            # Example: MrRibbit 💻
+    └── 901422453274706125.webp
+
+state/                                      # State directory (runtime only)
+└── media/                                  # AI-generated cache (created automatically)
+    ├── 777888999.json                     # AI-generated description
+    └── 777888999.webp
+```
+
+### Directory purposes
+
+- **Global curated** (`samples/media/`): Descriptions shared by all agents
+- **Agent curated** (`samples/agents/Wendy/media/`): Descriptions specific to Wendy
+- **Conversation curated** (`samples/agents/Wendy/conversations/555123456/media/`): Descriptions for Wendy's conversation with user 555123456
+- **AI cache** (`state/media/`): AI-generated descriptions (not version-controlled)
+
+### Precedence example
+
+If agent Wendy is in conversation with user 555123456, and they send sticker with unique_id `123456789`:
+
+1. Check `samples/agents/Wendy/conversations/555123456/media/123456789.json` (highest priority)
+2. Check `samples/agents/Wendy/media/123456789.json`
+3. Check `samples/media/123456789.json`
+4. Check `state/media/123456789.json` (AI cache)
+5. If not found and budget available: Generate with AI and cache to `state/media/123456789.json`
+6. If budget exhausted: Return fallback without description
+
 ## Usage
 
 1. Find the unique ID of the media item you want to curate (check the logs or existing cache files in `state/media/`)
