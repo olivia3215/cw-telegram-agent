@@ -81,25 +81,94 @@ Tasks can depend on other tasks using the `depends_on` field. When a task fails:
 
 **Why delete the entire graph?** Later tasks may depend on failed tasks, so it's better to start fresh rather than leave the conversation in an inconsistent state.
 
-## Media Processing Pipeline
+## Media Description Architecture
 
-The system enriches conversations by describing photos and stickers using AI. This process is managed through a budget system to control resource usage.
+The system enriches conversations by describing photos and stickers using AI. This is managed through a composable chain of description sources with clear precedence and budget control.
+
+### MediaSource Abstraction
+
+All media description sources implement the `MediaSource` interface:
+
+```python
+class MediaSource:
+    async def get(self, unique_id, agent, doc, kind, ...) -> dict | None:
+        """Return description or None if not found"""
+```
+
+### Core Source Types
+
+1. **`DirectoryMediaSource`**: Reads JSON files from a directory
+   - Single directory responsibility
+   - TTL-based in-memory cache (default 1 hour)
+   - Used for curated descriptions and AI cache
+
+2. **`CompositeMediaSource`**: Chains multiple sources
+   - Checks sources in order
+   - Returns first non-`None` result
+   - Immutable (configured at creation)
+
+3. **`BudgetExhaustedMediaSource`**: Budget management
+   - Consumes budget if available (returns `None` to continue)
+   - Returns fallback if budget exhausted
+   - Limits processing per tick (downloads + LLM calls)
+
+4. **`AIGeneratingMediaSource`**: LLM-based generation
+   - Downloads media and calls LLM
+   - Caches successful results to disk
+   - Caches unsupported formats (no repeated checks)
+   - Always succeeds (never returns `None`)
+
+5. **`NothingMediaSource`**: Always returns `None`
+   - Used when directories don't exist
+   - Simplifies agent caching logic
+
+### Chain Structure
+
+The system builds prioritized chains:
+
+```
+CompositeMediaSource([
+    DirectoryMediaSource(config_dir1/media),     # Curated
+    DirectoryMediaSource(config_dir2/media),     # Curated
+    DirectoryMediaSource(agent_curated),         # Agent-specific
+    DirectoryMediaSource(conversation),          # Conversation-specific
+    DirectoryMediaSource(ai_cache),              # Cached AI results
+    BudgetExhaustedMediaSource(),                # Budget gate
+    AIGeneratingMediaSource()                    # Always succeeds
+])
+```
+
+### Directory Hierarchy
+
+1. **Config directories**: `{config_dir}/media/` (curated, multiple via `CINDY_AGENT_CONFIG_PATH`)
+2. **Agent-specific**: `state/{agent_id}/media/` (if exists)
+3. **Conversation-specific**: `state/{agent_id}/conversations/{user_id}/media/` (if exists)
+4. **AI cache**: `state/media/` (generated descriptions)
 
 ### Budget System
 
 - **Per-tick budget**: Default 8 AI description attempts per tick (configurable via `MEDIA_DESC_BUDGET_PER_TICK`)
-- **Cache hits**: Do not consume budget (descriptions are cached in memory and on disk)
-- **Budget reset**: Reset at the start of each tick for proper per-tick budgeting
+- **Cache hits**: Do not consume budget (early chain exit)
+- **Budget reset**: Reset at the start of each tick
+- **Budget scope**: Covers downloads AND LLM calls (limits total processing)
 
-**Purpose:** Rate-limit LLM usage to maintain agent responsiveness and control costs.
+**Purpose:** Rate-limit resource usage to maintain agent responsiveness and control costs.
 
-### Description Workflow
+### Curated Descriptions
 
-1. **Media detection**: Photos and stickers are identified in incoming messages
-2. **Cache check**: Check if description already exists
-3. **Budget check**: Ensure budget is available for new descriptions
-4. **AI description**: Use Gemini to generate rich descriptions
-5. **Cache storage**: Store descriptions for future use
+Manual descriptions are stored as JSON files in config directories:
+
+```json
+{
+  "unique_id": "901422453274706125",
+  "kind": "sticker",
+  "sticker_set_name": "MrRibbit",
+  "sticker_name": "💻",
+  "description": "A cartoon frog with a grumpy expression..."
+}
+```
+
+Curated descriptions override AI-generated ones and are checked first in the chain.
 
 ### Known Issues
 
