@@ -394,6 +394,18 @@ class GeminiLLM(LLM):
             bool(system_instruction),
         )
 
+        # Ensure we have at least one user turn for Gemini's requirements
+        # Only add special user turn if we have no conversation history at all
+        if not contents_for_call or not any(
+            turn.get("role") == "user" for turn in contents_for_call
+        ):
+            # Add a special user turn if we don't have any user turns
+            # This indicates the start of a new conversation
+            special_user_message = "[special] This is the start of a new conversation. The user has noticed that you are a contact."
+            contents_for_call = [
+                {"role": "user", "parts": [{"text": special_user_message}]}
+            ]
+
         return await self._generate_with_contents(
             contents=contents_for_call,
             model=model,
