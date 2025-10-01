@@ -23,10 +23,6 @@ logger = logging.getLogger(__name__)
 # Constants moved to media_budget.py to avoid circular imports
 MEDIA_FEATURE_ENABLED = True  # you've been keeping this True for manual testing
 
-# Configurable parameters
-_DESCRIBE_TIMEOUT_SECS = 12  # per-item LLM timeout
-
-
 # debug_save_media moved to media_budget.py to avoid circular imports
 
 

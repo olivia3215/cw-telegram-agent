@@ -31,6 +31,9 @@ from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
 
+# Timeout for LLM description
+_DESCRIBE_TIMEOUT_SECS = 12
+
 
 class MediaSource(ABC):
     """
@@ -319,9 +322,6 @@ class AIGeneratingMediaSource(MediaSource):
         and unsupported formats to disk.
         """
 
-        # Timeout for LLM description
-        _DESCRIBE_TIMEOUT_SECS = 30
-
         def make_error_record(
             status: str, failure_reason: str, retryable: bool = False, **extra
         ) -> dict[str, Any]:
@@ -472,7 +472,12 @@ class AIGeneratingMediaSource(MediaSource):
         """Write a record to disk cache and update in-memory cache if available."""
         try:
             file_path = self.cache_directory / f"{unique_id}.json"
-            file_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            temp_path = self.cache_directory / f"{unique_id}.json.tmp"
+
+            # Write to temporary file first, then atomically rename
+            temp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            temp_path.replace(file_path)
+
             logger.debug(f"AIGeneratingMediaSource: cached {unique_id} to disk")
 
             # Also update the in-memory cache if we have a reference to it
