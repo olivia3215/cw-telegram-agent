@@ -84,4 +84,4 @@ class LLM(ABC):
         Structured query method for conversation-aware LLMs.
         Default implementation falls back to basic query method.
         """
-        pass
+        ...
