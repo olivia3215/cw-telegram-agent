@@ -25,7 +25,6 @@ from media_injector import (
 )
 
 # Media source is now accessed via agent.get_media_source()
-from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from telegram_media import get_unique_id
@@ -296,20 +295,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # A group or channel will have a .title attribute, a user will not.
     is_group = hasattr(dialog, "title")
 
-    # ----- Build "system" content (keep your existing text exactly) -----
-    llm_prompt = load_system_prompt(llm.prompt_name)
-    # Load all role prompts and combine them
-    role_prompt_parts = []
-    for role_prompt_name in agent.role_prompt_names:
-        role_prompt_text = load_system_prompt(role_prompt_name, agent_name=agent.name)
-        role_prompt_parts.append(role_prompt_text)
-    role_prompt_text = "\n\n".join(role_prompt_parts)
+    # ----- Build "system" content using agent's cached system prompt -----
+    system_prompt = agent.get_system_prompt()
 
-    system_prompt = f"{llm_prompt}\n\n{role_prompt_text}"
-
-    agent_instructions = agent.instructions
-    system_prompt = f"{system_prompt}\n\n{agent_instructions}"
-
+    # Apply template substitution to the cached system prompt
     system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
     system_prompt = system_prompt.replace("{{character}}", agent.name)
     system_prompt = system_prompt.replace("{character}", agent.name)
