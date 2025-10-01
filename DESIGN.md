@@ -143,8 +143,8 @@ CompositeMediaSource([
 Curated descriptions (human-generated) are in **config directories**, NOT state:
 
 For each config directory in `CINDY_AGENT_CONFIG_PATH`:
-1. **Conversation-specific curated**: `{config_dir}/conversations/{agent_id}_{peer_id}/media/` (if exists)
-2. **Agent-specific curated**: `{config_dir}/agents/{agent_id}/media/` (if exists)
+1. **Conversation-specific curated**: `{config_dir}/agents/{AgentName}/conversations/{peer_id}/media/` (if exists)
+2. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
 3. **Global curated**: `{config_dir}/media/` (if exists)
 
 Then:

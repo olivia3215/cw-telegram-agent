@@ -527,7 +527,7 @@ def _create_default_chain() -> CompositeMediaSource:
 
 
 def create_conversation_media_chain(
-    agent_id: str | None = None, peer_id: int | None = None
+    agent_name: str | None = None, peer_id: int | None = None
 ) -> CompositeMediaSource:
     """
     Create a conversation-specific media source chain.
@@ -538,7 +538,7 @@ def create_conversation_media_chain(
     3. Global curated + AI cache + budget + AI generation (from default chain)
 
     Args:
-        agent_id: Agent identifier for agent-specific curated descriptions
+        agent_name: Agent name (e.g., "Wendy") for agent-specific curated descriptions
         peer_id: Peer ID (user_id or channel_id) for conversation-specific descriptions
 
     Returns:
@@ -546,17 +546,22 @@ def create_conversation_media_chain(
     """
     from prompt_loader import get_config_directories
 
-    # If no agent_id and no peer_id, just use the default chain
-    if not agent_id and not peer_id:
+    # If no agent_name and no peer_id, just use the default chain
+    if not agent_name and not peer_id:
         return get_default_media_source_chain()
 
     sources: list[MediaSource] = []
 
     # Add conversation-specific curated descriptions (highest priority)
-    if agent_id and peer_id:
+    if agent_name and peer_id:
         for config_dir in get_config_directories():
             conversation_media_dir = (
-                Path(config_dir) / "conversations" / f"{agent_id}_{peer_id}" / "media"
+                Path(config_dir)
+                / "agents"
+                / agent_name
+                / "conversations"
+                / str(peer_id)
+                / "media"
             )
             if conversation_media_dir.exists() and conversation_media_dir.is_dir():
                 sources.append(DirectoryMediaSource(conversation_media_dir))
@@ -565,9 +570,9 @@ def create_conversation_media_chain(
                 )
 
     # Add agent-specific curated descriptions
-    if agent_id:
+    if agent_name:
         for config_dir in get_config_directories():
-            agent_media_dir = Path(config_dir) / "agents" / agent_id / "media"
+            agent_media_dir = Path(config_dir) / "agents" / agent_name / "media"
             if agent_media_dir.exists() and agent_media_dir.is_dir():
                 sources.append(DirectoryMediaSource(agent_media_dir))
                 logger.debug(f"Added agent curated media: {agent_media_dir}")

@@ -278,7 +278,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # 2) Create conversation-specific media chain (used for all media operations)
     media_chain = create_conversation_media_chain(
-        agent_id=agent.agent_id, peer_id=channel_id
+        agent_name=agent.name, peer_id=channel_id
     )
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
