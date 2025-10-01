@@ -15,13 +15,12 @@ from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from llm import GeminiLLM
-from media_cache import get_media_cache
 from media_injector import (
     build_prompt_lines_from_messages,
     format_message_for_prompt,
-    get_or_compute_description_for_doc,
     inject_media_descriptions,
 )
+from media_source import get_default_media_source_chain
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
@@ -317,18 +316,21 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                         # Get the document from the sticker cache
                         doc = agent.sticker_cache_by_set.get((set_short, name))
                         if doc:
-                            _uid, _ = await get_or_compute_description_for_doc(
-                                client=agent.client,
+                            # Get unique_id from document
+                            from media_injector import _get_unique_id
+
+                            _uid = _get_unique_id(doc)
+
+                            # Use media source chain to get/generate description
+                            media_chain = get_default_media_source_chain()
+                            cache_record = await media_chain.get(
+                                unique_id=_uid,
+                                agent=agent,
                                 doc=doc,
-                                llm=agent.llm,
-                                cache=get_media_cache(),
                                 kind="sticker",
                                 sticker_set_name=set_short,
                                 sticker_name=name,
                             )
-                            # Get the description from the cache record
-                            cache = get_media_cache()
-                            cache_record = cache.get(_uid)
                             desc = (
                                 cache_record.get("description")
                                 if cache_record

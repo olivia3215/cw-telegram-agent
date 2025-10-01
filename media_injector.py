@@ -469,18 +469,22 @@ async def inject_media_descriptions(
     messages: Sequence[Any], agent: Any | None = None
 ) -> Sequence[Any]:
     """
-    Unified media description processing using get_or_compute_description_for_doc.
+    Process media items in messages using the media source chain.
 
     This function processes all media items in the given messages and ensures
-    they have descriptions cached. It uses the same robust error handling,
-    budget management, and caching logic as the newer get_or_compute_description_for_doc function.
+    they have descriptions cached using the media source chain architecture.
 
     Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
     if not MEDIA_FEATURE_ENABLED or agent is None:
         return messages
 
-    cache = get_media_cache()
+    from media_source import get_default_media_source_chain
+
+    # Get the media source chain for this agent
+    # TODO: Eventually use agent.get_conversation_media_chain(user_id) for conversation-specific chains
+    media_chain = get_default_media_source_chain()
+
     client = getattr(agent, "client", None)
     llm = getattr(agent, "llm", None)
 
@@ -498,19 +502,12 @@ async def inject_media_descriptions(
                 continue
 
             for it in items:
-                # Skip if already cached
-                if cache.get(it.unique_id):
-                    logger.debug(f"media: cache-hit kind={it.kind} id={it.unique_id}")
-                    continue
-
                 # Skip if no file_ref available
                 if not getattr(it, "file_ref", None):
                     logger.debug(f"media: no file_ref for {it.unique_id}")
                     continue
 
-                logger.debug(f"media: cache-miss kind={it.kind} id={it.unique_id}")
-
-                # Use the unified function for processing
+                # Process using the media source chain
                 try:
                     # Get sticker metadata if applicable
                     sticker_set_name = None
@@ -535,12 +532,12 @@ async def inject_media_descriptions(
                         chan_name,
                     ) = await _resolve_sender_and_channel(agent, msg)
 
-                    # Process using the unified function
-                    uid, desc = await get_or_compute_description_for_doc(
-                        client=client,
+                    # Process using the media source chain
+                    # The chain handles: cache lookup, budget, AI generation, disk caching
+                    record = await media_chain.get(
+                        unique_id=it.unique_id,
+                        agent=agent,
                         doc=it.file_ref,
-                        llm=llm,
-                        cache=cache,
                         kind=it.kind,
                         sticker_set_name=sticker_set_name,
                         sticker_name=sticker_name,
@@ -551,13 +548,20 @@ async def inject_media_descriptions(
                         media_ts=media_ts,
                     )
 
-                    # Note: Debug save is now handled inside get_or_compute_description_for_doc
+                    if record:
+                        desc = record.get("description")
+                        status = record.get("status")
+                        if desc:
+                            logger.debug(f"media: got description for {it.unique_id}")
+                        else:
+                            logger.debug(
+                                f"media: no description for {it.unique_id} (status={status})"
+                            )
 
                 except Exception as e:
                     logger.exception(
                         f"media: processing failed for {it.unique_id}: {e}"
                     )
-                    # The unified function already handles caching failures, so we don't need to do anything here
 
     except TypeError:
         logger.debug("media: injector got non-iterable history chunk; passing through")
@@ -571,7 +575,9 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
     Returns clean content without metadata prefixes - just the message content.
     Must NOT trigger downloads or LLM calls.
     """
-    cache = get_media_cache()
+    from media_source import get_default_media_source_chain
+
+    media_chain = get_default_media_source_chain()
 
     parts = []
     # include text if present
@@ -587,7 +593,7 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
         items = []
 
     for it in items:
-        meta = cache.get(it.unique_id)
+        meta = await media_chain.get(it.unique_id, agent=agent)
 
         if it.kind == "sticker":
             sticker_set_name = (
