@@ -314,31 +314,33 @@ class AIGeneratingMediaSource(MediaSource):
         # Timeout for LLM description
         _DESCRIBE_TIMEOUT_SECS = 30
 
-        if agent is None:
-            logger.error("AIGeneratingMediaSource: agent is required but was None")
-            return {
+        def make_error_record(
+            status: str, failure_reason: str, retryable: bool = False, **extra
+        ) -> dict[str, Any]:
+            """Helper to create an error record, capturing context from enclosing scope."""
+            record = {
                 "unique_id": unique_id,
                 "kind": kind,
                 "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
                 "description": None,
-                "status": "error",
-                "failure_reason": "agent is None",
+                "failure_reason": failure_reason,
+                "status": status,
                 "ts": datetime.now(UTC).isoformat(),
+                **metadata,
+                **extra,
             }
+            if retryable:
+                record["retryable"] = True
+            return record
+
+        if agent is None:
+            logger.error("AIGeneratingMediaSource: agent is required but was None")
+            return make_error_record("error", "agent is None")
 
         if doc is None:
             logger.error("AIGeneratingMediaSource: doc is required but was None")
-            return {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "status": "error",
-                "failure_reason": "doc is None",
-                "ts": datetime.now(UTC).isoformat(),
-            }
+            return make_error_record("error", "doc is None")
 
         client = getattr(agent, "client", None)
         llm = getattr(agent, "llm", None)
@@ -347,16 +349,7 @@ class AIGeneratingMediaSource(MediaSource):
             logger.error(
                 f"AIGeneratingMediaSource: agent missing client or llm for {unique_id}"
             )
-            return {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "status": "error",
-                "failure_reason": "agent missing client or llm",
-                "ts": datetime.now(UTC).isoformat(),
-            }
+            return make_error_record("error", "agent missing client or llm")
 
         t0 = time.perf_counter()
 
@@ -368,18 +361,9 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: download failed for {unique_id}: {e}"
             )
             # Transient failure - don't cache to disk
-            return {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "failure_reason": f"download failed: {str(e)[:100]}",
-                "status": "error",
-                "retryable": True,  # Download failures might be temporary
-                "ts": datetime.now(UTC).isoformat(),
-                **metadata,
-            }
+            return make_error_record(
+                "error", f"download failed: {str(e)[:100]}", retryable=True
+            )
         dl_ms = (time.perf_counter() - t0) * 1000
 
         # Check MIME type support
@@ -391,18 +375,11 @@ class AIGeneratingMediaSource(MediaSource):
             )
 
             # Cache unsupported format to disk
-            record = {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "failure_reason": f"MIME type {detected_mime_type} not supported by LLM",
-                "status": "unsupported_format",
-                "mime_type": detected_mime_type,
-                "ts": datetime.now(UTC).isoformat(),
-                **metadata,
-            }
+            record = make_error_record(
+                "unsupported_format",
+                f"MIME type {detected_mime_type} not supported by LLM",
+                mime_type=detected_mime_type,
+            )
             self._write_to_disk(unique_id, record)
 
             # Debug save
@@ -429,18 +406,9 @@ class AIGeneratingMediaSource(MediaSource):
             _debug_save_media(data, unique_id, file_ext)
 
             # Transient failure - don't cache to disk
-            return {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "failure_reason": f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
-                "status": "timeout",
-                "retryable": True,  # Timeouts might be temporary
-                "ts": datetime.now(UTC).isoformat(),
-                **metadata,
-            }
+            return make_error_record(
+                "timeout", f"timeout after {_DESCRIBE_TIMEOUT_SECS}s", retryable=True
+            )
         except Exception as e:
             logger.exception(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
@@ -451,17 +419,7 @@ class AIGeneratingMediaSource(MediaSource):
             _debug_save_media(data, unique_id, file_ext)
 
             # Cache permanent failure to disk
-            record = {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "failure_reason": f"description failed: {str(e)[:100]}",
-                "status": "error",
-                "ts": datetime.now(UTC).isoformat(),
-                **metadata,
-            }
+            record = make_error_record("error", f"description failed: {str(e)[:100]}")
             self._write_to_disk(unique_id, record)
             return record
 
