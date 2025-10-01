@@ -499,6 +499,8 @@ async def inject_media_descriptions(
         return messages
 
     try:
+        # Process messages in order received (newest→oldest from get_messages)
+        # This prioritizes recent message media for budget consumption
         for msg in messages:
             try:
                 items = iter_media_parts(msg)

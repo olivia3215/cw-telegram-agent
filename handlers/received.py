@@ -282,6 +282,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     )
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
+    # Priority: Process messages newest→oldest (messages from get_messages are newest-first)
+    # This ensures recent message media gets described before budget is exhausted
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
     )
@@ -311,6 +313,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = system_prompt.replace("{user}", channel_name)
 
     # Build the by-set sticker list, computing descriptions via helper so tests can monkeypatch it.
+    # Priority: Stickers already described in messages (step 3) will be cache hits (no budget consumed)
+    # Only new stickers not in messages will consume remaining budget
     sticker_list = None
     if agent.sticker_cache_by_set:
         lines: list[str] = []
