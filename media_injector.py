@@ -486,10 +486,8 @@ async def inject_media_descriptions(
         return messages
 
     # Get the conversation-specific media source chain
-    # This includes: conversation curated -> agent curated -> config curated -> AI cache -> budget -> AI gen
-    media_chain = create_conversation_media_chain(
-        agent_name=agent.name, peer_id=peer_id
-    )
+    # This includes: conversation curated -> agent curated (cached) -> global curated -> AI cache -> budget -> AI gen
+    media_chain = create_conversation_media_chain(agent=agent, peer_id=peer_id)
 
     client = getattr(agent, "client", None)
     llm = getattr(agent, "llm", None)

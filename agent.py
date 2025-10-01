@@ -3,12 +3,15 @@
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from telethon.tl.functions.account import GetNotifySettingsRequest
 from telethon.tl.functions.contacts import GetBlockedRequest
 
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
+from media_source import CompositeMediaSource, DirectoryMediaSource, NothingMediaSource
+from prompt_loader import get_config_directories
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,9 @@ class Agent:
         # Tracks which sticker set short names have been loaded into caches
         self.loaded_sticker_sets = set()  # e.g., {"WendyDancer", "CINDYAI"}
 
+        # Cache for agent-specific media source (preserves in-memory cache across ticks)
+        self._agent_media_source = None
+
         self._llm = llm
 
     @property
@@ -81,6 +87,41 @@ class Agent:
             self._llm = GeminiLLM(api_key=api_key)
 
         return self._llm
+
+    def get_agent_media_source(self):
+        """
+        Get the agent-specific media source, creating and caching it if needed.
+
+        This source includes agent-specific curated descriptions from all config directories.
+        It's cached on the agent to preserve the in-memory cache across ticks.
+
+        Returns:
+            CompositeMediaSource with agent-specific curated descriptions, or
+            NothingMediaSource if no agent-specific directories exist.
+        """
+        if self._agent_media_source is None:
+            sources = []
+
+            # Check all config directories for agent-specific media
+            for config_dir in get_config_directories():
+                agent_media_dir = Path(config_dir) / "agents" / self.name / "media"
+                if agent_media_dir.exists() and agent_media_dir.is_dir():
+                    sources.append(DirectoryMediaSource(agent_media_dir))
+                    logger.debug(
+                        f"Agent {self.name}: Added curated media from {agent_media_dir}"
+                    )
+
+            # If we found any agent-specific directories, create a composite
+            # Otherwise, use NothingMediaSource to avoid special case handling
+            if sources:
+                self._agent_media_source = CompositeMediaSource(sources)
+            else:
+                self._agent_media_source = NothingMediaSource()
+                logger.debug(
+                    f"Agent {self.name}: No agent-specific media directories found"
+                )
+
+        return self._agent_media_source
 
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""

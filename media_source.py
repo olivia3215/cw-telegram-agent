@@ -527,18 +527,18 @@ def _create_default_chain() -> CompositeMediaSource:
 
 
 def create_conversation_media_chain(
-    agent_name: str | None = None, peer_id: int | None = None
+    agent=None, peer_id: int | None = None
 ) -> CompositeMediaSource:
     """
     Create a conversation-specific media source chain.
 
     This includes:
     1. Conversation-specific curated descriptions (if exists)
-    2. Agent-specific curated descriptions (if exists)
+    2. Agent-specific curated descriptions (cached on agent)
     3. Global curated + AI cache + budget + AI generation (from default chain)
 
     Args:
-        agent_name: Agent name (e.g., "Wendy") for agent-specific curated descriptions
+        agent: Agent instance (provides name and cached agent-specific media source)
         peer_id: Peer ID (user_id or channel_id) for conversation-specific descriptions
 
     Returns:
@@ -546,11 +546,12 @@ def create_conversation_media_chain(
     """
     from prompt_loader import get_config_directories
 
-    # If no agent_name and no peer_id, just use the default chain
-    if not agent_name and not peer_id:
+    # If no agent and no peer_id, just use the default chain
+    if not agent and not peer_id:
         return get_default_media_source_chain()
 
     sources: list[MediaSource] = []
+    agent_name = agent.name if agent else None
 
     # Add conversation-specific curated descriptions (highest priority)
     if agent_name and peer_id:
@@ -569,13 +570,10 @@ def create_conversation_media_chain(
                     f"Added conversation curated media: {conversation_media_dir}"
                 )
 
-    # Add agent-specific curated descriptions
-    if agent_name:
-        for config_dir in get_config_directories():
-            agent_media_dir = Path(config_dir) / "agents" / agent_name / "media"
-            if agent_media_dir.exists() and agent_media_dir.is_dir():
-                sources.append(DirectoryMediaSource(agent_media_dir))
-                logger.debug(f"Added agent curated media: {agent_media_dir}")
+    # Add agent-specific curated descriptions (cached on agent)
+    if agent:
+        agent_media_source = agent.get_agent_media_source()
+        sources.append(agent_media_source)
 
     # Add the default chain (global curated + AI cache + budget + AI generation)
     # This is a singleton, so we reuse the same instance everywhere

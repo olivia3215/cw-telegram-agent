@@ -277,9 +277,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
     # 2) Create conversation-specific media chain (used for all media operations)
-    media_chain = create_conversation_media_chain(
-        agent_name=agent.name, peer_id=channel_id
-    )
+    media_chain = create_conversation_media_chain(agent=agent, peer_id=channel_id)
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
     # Priority: Process messages newest→oldest (messages from get_messages are newest-first)
