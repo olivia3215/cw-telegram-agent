@@ -167,10 +167,9 @@ class CompositeMediaSource(MediaSource):
         Initialize the composite source.
 
         Args:
-            sources: List of MediaSource instances, checked in order
+            sources: List of MediaSource instances, checked in order.
+                    Can be empty (will always return None).
         """
-        if not sources:
-            raise ValueError("CompositeMediaSource must have at least one source")
         self.sources = tuple(sources)  # Immutable
 
     async def get(

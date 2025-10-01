@@ -10,7 +10,7 @@ from telethon.tl.functions.contacts import GetBlockedRequest
 
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
-from media_source import CompositeMediaSource, DirectoryMediaSource, NothingMediaSource
+from media_source import CompositeMediaSource, DirectoryMediaSource
 from prompt_loader import get_config_directories
 
 logger = logging.getLogger(__name__)
@@ -96,8 +96,8 @@ class Agent:
         It's cached on the agent to preserve the in-memory cache across ticks.
 
         Returns:
-            CompositeMediaSource with agent-specific curated descriptions, or
-            NothingMediaSource if no agent-specific directories exist.
+            CompositeMediaSource with agent-specific curated descriptions
+            (may be empty if no agent-specific directories exist).
         """
         if self._agent_media_source is None:
             sources = []
@@ -111,15 +111,8 @@ class Agent:
                         f"Agent {self.name}: Added curated media from {agent_media_dir}"
                     )
 
-            # If we found any agent-specific directories, create a composite
-            # Otherwise, use NothingMediaSource to avoid special case handling
-            if sources:
-                self._agent_media_source = CompositeMediaSource(sources)
-            else:
-                self._agent_media_source = NothingMediaSource()
-                logger.debug(
-                    f"Agent {self.name}: No agent-specific media directories found"
-                )
+            # Create composite (empty list is allowed, will always return None)
+            self._agent_media_source = CompositeMediaSource(sources)
 
         return self._agent_media_source
 
