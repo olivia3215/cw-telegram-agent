@@ -298,7 +298,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # ----- Build "system" content (keep your existing text exactly) -----
     llm_prompt = load_system_prompt(llm.prompt_name)
-    role_prompt_text = load_system_prompt(agent.role_prompt_name)
+    # Load all role prompts and combine them
+    role_prompt_parts = []
+    for role_prompt_name in agent.role_prompt_names:
+        role_prompt_text = load_system_prompt(role_prompt_name, agent_name=agent.name)
+        role_prompt_parts.append(role_prompt_text)
+    role_prompt_text = "\n\n".join(role_prompt_parts)
 
     system_prompt = f"{llm_prompt}\n\n{role_prompt_text}"
 

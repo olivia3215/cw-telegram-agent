@@ -35,7 +35,7 @@ WendyRole
     assert parsed is not None
     assert parsed["name"] == "Wendy"
     assert parsed["phone"] == "+15551234567"
-    assert parsed["role_prompt_name"] == "WendyRole"
+    assert parsed["role_prompt_names"] == ["WendyRole"]
     # Multi-set fields should be present with safe defaults
     assert parsed["sticker_set_names"] == ["WendyDancer"]
     assert parsed["explicit_stickers"] == []
@@ -67,7 +67,7 @@ Malformed line that should be ignored
     assert parsed is not None
     assert parsed["name"] == "Cindy"
     assert parsed["phone"] == "+15557654321"
-    assert parsed["role_prompt_name"] == "CindyRole"
+    assert parsed["role_prompt_names"] == ["CindyRole"]
 
     # Order should be preserved; whitespace trimmed
     assert parsed["sticker_set_names"] == ["WendyDancer", "CINDYAI"]
