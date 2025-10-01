@@ -1,4 +1,8 @@
 # prompt_loader.py
+
+# Copyright (c) 2025 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+
 import os
 from pathlib import Path
 
