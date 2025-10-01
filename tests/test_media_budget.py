@@ -4,25 +4,22 @@ from types import SimpleNamespace
 
 import pytest
 
-# We test the public helpers we added in media_injector
-from media_injector import (
-    get_or_compute_description_for_doc,
+import media_injector as mi
+
+# We test the public helpers we added in media_budget
+from media_budget import (
     get_remaining_description_budget,
     reset_description_budget,
 )
+from media_source import (
+    AIGeneratingMediaSource,
+    BudgetExhaustedMediaSource,
+    CompositeMediaSource,
+    DirectoryMediaSource,
+    NothingMediaSource,
+)
 
-
-class FakeCache:
-    """Minimal cache stub with get/put like the real one."""
-
-    def __init__(self):
-        self._store = {}
-
-    def get(self, uid):
-        return self._store.get(uid)
-
-    def put(self, uid, payload):
-        self._store[uid] = dict(payload)  # shallow copy for safety
+# FakeCache removed - no longer needed with MediaSource architecture
 
 
 class FakeLLM:
@@ -46,22 +43,21 @@ class FakeLLM:
 class FakeClient:
     """We don't use the client directly; download helper is monkeypatched."""
 
+    async def download_media(self, doc, file=None):
+        """Mock download_media method."""
+        return b"\x89PNG..."
+
 
 @pytest.mark.asyncio
-async def test_budget_exhaustion_returns_none_after_limit(monkeypatch):
+async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_path):
     """
     With a budget of 1, the first item gets an AI description,
-    the second (distinct uid) returns None without calling the LLM.
+    the second (distinct uid) returns a fallback record without calling the LLM.
     """
     # Arrange
-    cache = FakeCache()
     llm = FakeLLM("first desc")
     client = FakeClient()
-
-    # Force deterministic UIDs for two docs
-    import media_injector as mi
-
-    monkeypatch.setattr(mi, "_get_unique_id", lambda doc: doc.uid, raising=True)
+    agent = SimpleNamespace(client=client, llm=llm)
 
     # Prevent real network; return small bytes (async)
     async def _fake_download_media_bytes(client, doc):
@@ -71,83 +67,158 @@ async def test_budget_exhaustion_returns_none_after_limit(monkeypatch):
         mi, "download_media_bytes", _fake_download_media_bytes, raising=True
     )
 
-    # Two distinct "docs" with unique ids
-    doc1 = SimpleNamespace(uid="uid-1")
-    doc2 = SimpleNamespace(uid="uid-2")
+    # Create a media source chain with budget management
+    ai_cache_dir = tmp_path / "media"
+    ai_cache_dir.mkdir()
+
+    media_chain = CompositeMediaSource(
+        [
+            NothingMediaSource(),  # No curated descriptions
+            BudgetExhaustedMediaSource(),  # Budget management
+            AIGeneratingMediaSource(cache_directory=ai_cache_dir),  # AI generation
+        ]
+    )
 
     # Budget = 1 AI attempt
     reset_description_budget(1)
 
     # Act
-    uid1, desc1 = await get_or_compute_description_for_doc(
-        client=client, doc=doc1, llm=llm, cache=cache, kind="photo"
+    result1 = await media_chain.get(
+        unique_id="uid-1", agent=agent, doc=SimpleNamespace(uid="uid-1"), kind="photo"
     )
-    uid2, desc2 = await get_or_compute_description_for_doc(
-        client=client, doc=doc2, llm=llm, cache=cache, kind="photo"
+    result2 = await media_chain.get(
+        unique_id="uid-2", agent=agent, doc=SimpleNamespace(uid="uid-2"), kind="photo"
     )
 
-    # Assert: first consumed budget and produced a cached description
-    assert uid1 == "uid-1"
-    # We only require that the cache has the desc; the helper may return None on some branches.
-    assert cache.get("uid-1")["description"] == "first desc"
+    # Assert: first consumed budget and produced a description
+    assert result1["unique_id"] == "uid-1"
+    assert result1["description"] == "first desc"
+    assert result1["status"] == "ok"
 
-    # Second should be skipped due to budget exhaustion
-    assert uid2 == "uid-2"
-    assert desc2 is None
-
-    # Cache should contain only uid-1 with a description
-    assert cache.get("uid-1")["description"] == "first desc"
-    assert cache.get("uid-2") is None
+    # Second should return fallback due to budget exhaustion
+    assert result2["unique_id"] == "uid-2"
+    assert result2["description"] is None
+    assert result2["status"] == "budget_exhausted"
 
     # Budget should now be 0
     assert get_remaining_description_budget() == 0
 
 
 @pytest.mark.asyncio
-async def test_cache_hit_does_not_consume_budget(monkeypatch):
+async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
     """
-    If the cache already has a description for the uid, returning it should not
-    consume any budget.
+    If a curated description exists, returning it should not consume any budget.
     """
-    cache = FakeCache()
     llm = FakeLLM("should not be called")
     client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
 
-    import media_injector as mi
-
-    monkeypatch.setattr(mi, "_get_unique_id", lambda doc: doc.uid, raising=True)
-    monkeypatch.setattr(
-        mi, "download_media_bytes", lambda c, d: b"IGNORED", raising=True
+    # Create a curated description file
+    curated_dir = tmp_path / "curated"
+    curated_dir.mkdir()
+    curated_file = curated_dir / "uid-42.json"
+    curated_file.write_text(
+        """{
+        "unique_id": "uid-42",
+        "kind": "sticker",
+        "sticker_set_name": "WendyDancer",
+        "sticker_name": "😉",
+        "description": "cached desc",
+        "status": "ok"
+    }"""
     )
 
-    # Pre-populate cache for uid-42
-    cache.put(
-        "uid-42",
-        {
-            "unique_id": "uid-42",
-            "kind": "sticker",
-            "sticker_set_name": "WendyDancer",
-            "sticker_name": "😉",
-            "description": "cached desc",
-            "status": "ok",
-        },
-    )
+    # Create a media source chain with curated descriptions
 
-    doc = SimpleNamespace(uid="uid-42")
+    ai_cache_dir = tmp_path / "media"
+    ai_cache_dir.mkdir()
+
+    media_chain = CompositeMediaSource(
+        [
+            DirectoryMediaSource(curated_dir),  # Curated descriptions (cache hit)
+            BudgetExhaustedMediaSource(),  # Budget management
+            AIGeneratingMediaSource(cache_directory=ai_cache_dir),  # AI generation
+        ]
+    )
 
     # Start with budget 1; a cache HIT should not reduce it.
     reset_description_budget(1)
 
-    uid, desc = await get_or_compute_description_for_doc(
-        client=client,
-        doc=doc,
-        llm=llm,
-        cache=cache,
+    result = await media_chain.get(
+        unique_id="uid-42",
+        agent=agent,
+        doc=SimpleNamespace(uid="uid-42"),
         kind="sticker",
         sticker_set_name="WendyDancer",
         sticker_name="😉",
     )
 
-    assert uid == "uid-42"
-    assert desc == "cached desc"
+    assert result["unique_id"] == "uid-42"
+    assert result["description"] == "cached desc"
+    assert result["status"] == "ok"
     assert get_remaining_description_budget() == 1  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_ai_generation_updates_in_memory_cache(monkeypatch, tmp_path):
+    """
+    When AIGeneratingMediaSource generates a new description, it should update
+    the in-memory cache of the DirectoryMediaSource that reads from the same directory.
+    """
+    # Arrange
+    llm = FakeLLM("generated description")
+    client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
+
+    # Prevent real network; return small bytes (async)
+    async def _fake_download_media_bytes(client, doc):
+        return b"\x89PNG..."
+
+    monkeypatch.setattr(
+        mi, "download_media_bytes", _fake_download_media_bytes, raising=True
+    )
+
+    # Create AI cache directory and sources
+    ai_cache_dir = tmp_path / "media"
+    ai_cache_dir.mkdir()
+
+    # Create DirectoryMediaSource for AI cache
+    ai_cache_source = DirectoryMediaSource(ai_cache_dir)
+
+    # Create AIGeneratingMediaSource with reference to the cache source
+    ai_generator = AIGeneratingMediaSource(
+        cache_directory=ai_cache_dir, cache_source=ai_cache_source
+    )
+
+    # Budget = 1 AI attempt
+    reset_description_budget(1)
+
+    # Act: Generate a description
+    result = await ai_generator.get(
+        unique_id="test-uid-123",
+        agent=agent,
+        doc=SimpleNamespace(uid="test-uid-123"),
+        kind="photo",
+    )
+
+    # Assert: Description was generated and cached
+    assert result["unique_id"] == "test-uid-123"
+    assert result["description"] == "generated description"
+    assert result["status"] == "ok"
+
+    # Assert: File was written to disk
+    cache_file = ai_cache_dir / "test-uid-123.json"
+    assert cache_file.exists()
+
+    # Assert: In-memory cache was updated
+    assert "test-uid-123" in ai_cache_source._mem_cache
+    cached_record = ai_cache_source._mem_cache["test-uid-123"]
+    assert cached_record["description"] == "generated description"
+    assert cached_record["status"] == "ok"
+
+    # Assert: DirectoryMediaSource can now return the cached result without disk I/O
+    # (We can verify this by checking that the record is in memory cache)
+    assert (
+        ai_cache_source._mem_cache["test-uid-123"]["description"]
+        == "generated description"
+    )

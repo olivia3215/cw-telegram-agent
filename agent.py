@@ -10,7 +10,11 @@ from telethon.tl.functions.contacts import GetBlockedRequest
 
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
-from media_source import CompositeMediaSource, DirectoryMediaSource
+from media_source import (
+    CompositeMediaSource,
+    DirectoryMediaSource,
+    get_default_media_source_chain,
+)
 from prompt_loader import get_config_directories
 
 logger = logging.getLogger(__name__)
@@ -62,8 +66,8 @@ class Agent:
         # Tracks which sticker set short names have been loaded into caches
         self.loaded_sticker_sets = set()  # e.g., {"WendyDancer", "CINDYAI"}
 
-        # Cache for agent-specific media source (preserves in-memory cache across ticks)
-        self._agent_media_source = None
+        # Cache for the complete media source chain (includes all sources)
+        self._media_source = None
 
         self._llm = llm
 
@@ -88,21 +92,22 @@ class Agent:
 
         return self._llm
 
-    def get_agent_media_source(self):
+    def get_media_source(self):
         """
-        Get the agent-specific media source, creating and caching it if needed.
+        Get the complete media source chain for this agent, creating and caching it if needed.
 
-        This source includes agent-specific curated descriptions from all config directories.
-        It's cached on the agent to preserve the in-memory cache across ticks.
+        This source includes:
+        1. Agent-specific curated descriptions (highest priority)
+        2. Global curated + AI cache + budget + AI generation (from default chain)
 
         Returns:
-            CompositeMediaSource with agent-specific curated descriptions
-            (may be empty if no agent-specific directories exist).
+            CompositeMediaSource with all media sources for this agent
         """
-        if self._agent_media_source is None:
+        if self._media_source is None:
+
             sources = []
 
-            # Check all config directories for agent-specific media
+            # Add agent-specific curated descriptions (highest priority)
             for config_dir in get_config_directories():
                 agent_media_dir = Path(config_dir) / "agents" / self.name / "media"
                 if agent_media_dir.exists() and agent_media_dir.is_dir():
@@ -111,10 +116,13 @@ class Agent:
                         f"Agent {self.name}: Added curated media from {agent_media_dir}"
                     )
 
-            # Create composite (empty list is allowed, will always return None)
-            self._agent_media_source = CompositeMediaSource(sources)
+            # Add the default chain (global curated + AI cache + budget + AI generation)
+            # This is a singleton, so we reuse the same instance everywhere
+            sources.append(get_default_media_source_chain())
 
-        return self._agent_media_source
+            self._media_source = CompositeMediaSource(sources)
+
+        return self._media_source
 
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""

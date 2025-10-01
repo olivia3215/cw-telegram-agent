@@ -177,10 +177,9 @@ You can provide **curated descriptions** for specific media items that override 
 - Describing media in a way that aligns with your agent's personality
 - Overriding descriptions for frequently-used stickers
 
-Curated descriptions can be provided at three levels:
+Curated descriptions can be provided at two levels:
 1. **Global**: Shared by all agents (`{config_dir}/media/`)
-2. **Agent-specific**: Specific to one agent (`{config_dir}/agents/{AgentName}/media/`)
-3. **Conversation-specific**: Specific to an agent's conversation with a particular user (`{config_dir}/agents/{AgentName}/conversations/{peer_id}/media/`)
+2. **Agent-specific**: Specific to a particular agent (`{config_dir}/agents/{AgentName}/media/`)
 
 **See [samples/media/README.md](samples/media/README.md) for complete details on curated media descriptions, including directory structure, file format, and examples.**
 

@@ -46,14 +46,13 @@ The curated descriptions directory is determined by the configuration system:
 The system checks these directories in order of precedence (all in config directories, NOT state):
 
 For each config directory in `CINDY_AGENT_CONFIG_PATH`:
-1. **Conversation-specific curated**: `{config_dir}/agents/{AgentName}/conversations/{peer_id}/media/` (if exists)
-2. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
-3. **Global curated**: `{config_dir}/media/` (if exists)
+1. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
+2. **Global curated**: `{config_dir}/media/` (if exists)
 
 Then:
-4. **AI cache** (state, not config): `state/media/` (cached AI-generated descriptions)
-5. **Budget management**: Returns fallback if budget exhausted
-6. **AI generation**: Always succeeds (generates new description or returns fallback)
+3. **AI cache** (state, not config): `state/media/` (cached AI-generated descriptions)
+4. **Budget management**: Returns fallback if budget exhausted
+5. **AI generation**: Always succeeds (generates new description or returns fallback)
 
 **Important**: Curated descriptions are configuration data and should NEVER be placed in the `state/` directory.
 The `state/` directory is only for runtime state like AI-generated cache files.
@@ -67,13 +66,9 @@ samples/                                    # Config directory (or your custom c
 ├── agents/
 │   ├── Wendy.md                           # Agent configuration file
 │   ├── Wendy/
-│   │   ├── media/                         # Wendy-specific curated media
-│   │   │   ├── 123456789.json            # Curated description for this sticker
-│   │   │   └── 987654321.json
-│   │   └── conversations/
-│   │       └── 555123456/                 # Conversation with user/channel 555123456
-│   │           └── media/                 # Conversation-specific curated media
-│   │               └── 111222333.json
+│   │   └── media/                         # Wendy-specific curated media
+│   │       ├── 123456789.json            # Curated description for this sticker
+│   │       └── 987654321.json
 │   ├── Heidi.md
 │   └── Heidi/
 │       └── media/                         # Heidi-specific curated media
@@ -92,19 +87,17 @@ state/                                      # State directory (runtime only)
 
 - **Global curated** (`samples/media/`): Descriptions shared by all agents
 - **Agent curated** (`samples/agents/Wendy/media/`): Descriptions specific to Wendy
-- **Conversation curated** (`samples/agents/Wendy/conversations/555123456/media/`): Descriptions for Wendy's conversation with user 555123456
 - **AI cache** (`state/media/`): AI-generated descriptions (not version-controlled)
 
 ### Precedence example
 
-If agent Wendy is in conversation with user 555123456, and they send sticker with unique_id `123456789`:
+If agent Wendy receives a sticker with unique_id `123456789`:
 
-1. Check `samples/agents/Wendy/conversations/555123456/media/123456789.json` (highest priority)
-2. Check `samples/agents/Wendy/media/123456789.json`
-3. Check `samples/media/123456789.json`
-4. Check `state/media/123456789.json` (AI cache)
-5. If not found and budget available: Generate with AI and cache to `state/media/123456789.json`
-6. If budget exhausted: Return fallback without description
+1. Check `samples/agents/Wendy/media/123456789.json` (highest priority)
+2. Check `samples/media/123456789.json`
+3. Check `state/media/123456789.json` (AI cache)
+4. If not found and budget available: Generate with AI and cache to `state/media/123456789.json`
+5. If budget exhausted: Return fallback without description
 
 ## Usage
 

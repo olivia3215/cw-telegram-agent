@@ -99,7 +99,7 @@ class MediaSource:
 
 1. **`DirectoryMediaSource`**: Reads JSON files from a directory
    - Single directory responsibility
-   - TTL-based in-memory cache (default 1 hour)
+   - Loads all files into memory at creation time (no TTL)
    - Used for curated descriptions and AI cache
 
 2. **`CompositeMediaSource`**: Chains multiple sources
@@ -114,7 +114,7 @@ class MediaSource:
 
 4. **`AIGeneratingMediaSource`**: LLM-based generation
    - Downloads media and calls LLM
-   - Caches successful results to disk
+   - Caches successful results to disk and in-memory
    - Caches unsupported formats (no repeated checks)
    - Always succeeds (never returns `None`)
 
@@ -128,10 +128,6 @@ The system builds prioritized chains:
 
 ```
 CompositeMediaSource([
-    # All conversation-specific curated (all config dirs)
-    DirectoryMediaSource(config_dir1/agents/Wendy/conversations/12345/media),
-    DirectoryMediaSource(config_dir2/agents/Wendy/conversations/12345/media),
-
     # All agent-specific curated (all config dirs)
     DirectoryMediaSource(config_dir1/agents/Wendy/media),
     DirectoryMediaSource(config_dir2/agents/Wendy/media),
@@ -147,7 +143,7 @@ CompositeMediaSource([
 ])
 ```
 
-**Priority order**: All conversation-specific > All agent-specific > All global > AI cache
+**Priority order**: All agent-specific > All global > AI cache
 **Within each level**: Earlier config directories in `CINDY_AGENT_CONFIG_PATH` take precedence
 
 ### Directory Hierarchy
@@ -155,12 +151,11 @@ CompositeMediaSource([
 Curated descriptions (human-generated) are in **config directories**, NOT state:
 
 For each config directory in `CINDY_AGENT_CONFIG_PATH`:
-1. **Conversation-specific curated**: `{config_dir}/agents/{AgentName}/conversations/{peer_id}/media/` (if exists)
-2. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
-3. **Global curated**: `{config_dir}/media/` (if exists)
+1. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
+2. **Global curated**: `{config_dir}/media/` (if exists)
 
 Then:
-4. **AI cache** (state directory): `state/media/` (AI-generated descriptions, runtime state)
+3. **AI cache** (state directory): `state/media/` (AI-generated descriptions, runtime state)
 
 ### Budget System
 

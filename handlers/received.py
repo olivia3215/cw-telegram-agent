@@ -20,7 +20,8 @@ from media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
 )
-from media_source import create_conversation_media_chain
+
+# Media source is now accessed via agent.get_media_source()
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
@@ -276,8 +277,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # 1) Fetch recent messages (chronological list returned by Telethon when reversed)
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
-    # 2) Create conversation-specific media chain (used for all media operations)
-    media_chain = create_conversation_media_chain(agent=agent, peer_id=channel_id)
+    # 2) Get agent's media source chain (used for all media operations)
+    media_chain = agent.get_media_source()
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
     # Priority: Process messages newest→oldest (messages from get_messages are newest-first)
@@ -329,7 +330,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                             # Get unique_id from document
                             _uid = get_unique_id(doc)
 
-                            # Use conversation-specific media chain
+                            # Use agent's media source chain
                             cache_record = await media_chain.get(
                                 unique_id=_uid,
                                 agent=agent,

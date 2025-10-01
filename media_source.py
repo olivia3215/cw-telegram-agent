@@ -5,13 +5,27 @@ This module provides a clean abstraction for different sources of media descript
 including curated descriptions, cached AI-generated descriptions, and on-demand AI generation.
 """
 
+import asyncio
 import json
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from media_budget import (
+    consume_description_budget,
+    debug_save_media,
+    has_description_budget,
+)
+from mime_utils import (
+    detect_mime_type_from_bytes,
+    get_file_extension_for_mime_type,
+)
+from prompt_loader import get_config_directories
+from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -78,22 +92,51 @@ class DirectoryMediaSource(MediaSource):
     """
     Wraps a directory containing media description JSON files.
 
-    Provides an in-memory cache with TTL for fast lookups without
-    repeated disk I/O.
+    Loads all JSON files into memory at creation time for fast lookups
+    without repeated disk I/O. Cache never expires.
     """
 
-    def __init__(self, directory: Path, ttl: float = 3600.0):
+    def __init__(self, directory: Path):
         """
         Initialize the directory media source.
 
         Args:
             directory: Path to the directory containing JSON files
-            ttl: Time-to-live for in-memory cache entries (seconds)
         """
         self.directory = Path(directory)
-        self.ttl = ttl
         self._mem_cache: dict[str, dict[str, Any]] = {}
-        self._cache_timestamps: dict[str, float] = {}
+        self._load_cache()
+
+    def _load_cache(self) -> None:
+        """Load all JSON files from the directory into memory cache."""
+        if not self.directory.exists() or not self.directory.is_dir():
+            logger.debug(
+                f"DirectoryMediaSource: directory {self.directory} does not exist"
+            )
+            return
+
+        loaded_count = 0
+        for json_file in self.directory.glob("*.json"):
+            try:
+                unique_id = json_file.stem
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    self._mem_cache[unique_id] = data
+                    loaded_count += 1
+                else:
+                    logger.error(
+                        f"DirectoryMediaSource: invalid data type in {json_file}, expected dict"
+                    )
+            except json.JSONDecodeError as e:
+                logger.error(
+                    f"DirectoryMediaSource: corrupted JSON in {json_file}: {e}"
+                )
+            except Exception as e:
+                logger.error(f"DirectoryMediaSource: error reading {json_file}: {e}")
+
+        logger.info(
+            f"DirectoryMediaSource: loaded {loaded_count} entries from {self.directory}"
+        )
 
     async def get(
         self,
@@ -108,50 +151,19 @@ class DirectoryMediaSource(MediaSource):
         """
         Get a media description from this directory.
 
-        Checks in-memory cache first, then reads from disk if not found.
+        Returns cached data if available, otherwise None.
         Only uses unique_id - other parameters are ignored by this source.
         """
-        # Check in-memory cache with TTL
-        now = time.time()
         if unique_id in self._mem_cache:
-            cache_time = self._cache_timestamps.get(unique_id, 0)
-            if now - cache_time < self.ttl:
-                logger.debug(
-                    f"DirectoryMediaSource: memory cache hit for {unique_id} in {self.directory.name}"
-                )
-                return self._mem_cache[unique_id]
-            else:
-                # Expired, remove from cache
-                del self._mem_cache[unique_id]
-                del self._cache_timestamps[unique_id]
-
-        # Read from disk
-        file_path = self.directory / f"{unique_id}.json"
-        if not file_path.exists():
-            return None
-
-        try:
-            data = json.loads(file_path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                logger.error(
-                    f"DirectoryMediaSource: invalid data type in {file_path}, expected dict"
-                )
-                return None
-
-            # Cache in memory
-            self._mem_cache[unique_id] = data
-            self._cache_timestamps[unique_id] = now
             logger.debug(
-                f"DirectoryMediaSource: disk read and cached {unique_id} from {self.directory.name}"
+                f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
             )
-            return data
+            return self._mem_cache[unique_id]
 
-        except json.JSONDecodeError as e:
-            logger.error(f"DirectoryMediaSource: corrupted JSON in {file_path}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"DirectoryMediaSource: error reading {file_path}: {e}")
-            return None
+        logger.debug(
+            f"DirectoryMediaSource: cache miss for {unique_id} in {self.directory.name}"
+        )
+        return None
 
 
 class CompositeMediaSource(MediaSource):
@@ -241,7 +253,6 @@ class BudgetExhaustedMediaSource(MediaSource):
         If budget is available: consumes budget and returns None
         If budget is exhausted: returns a simple fallback record
         """
-        from media_injector import consume_description_budget, has_description_budget
 
         if has_description_budget():
             # Budget available - consume it and return None
@@ -275,15 +286,19 @@ class AIGeneratingMediaSource(MediaSource):
     3. Returns a transient failure fallback (no disk cache)
     """
 
-    def __init__(self, cache_directory: Path):
+    def __init__(
+        self, cache_directory: Path, cache_source: DirectoryMediaSource | None = None
+    ):
         """
         Initialize the AI generating source.
 
         Args:
             cache_directory: Directory to store generated descriptions
+            cache_source: Optional DirectoryMediaSource to update in-memory cache
         """
         self.cache_directory = Path(cache_directory)
         self.cache_directory.mkdir(parents=True, exist_ok=True)
+        self.cache_source = cache_source
 
     async def get(
         self,
@@ -301,15 +316,6 @@ class AIGeneratingMediaSource(MediaSource):
         Always returns a dict (never None). Caches successful results
         and unsupported formats to disk.
         """
-        import asyncio
-        import time
-
-        from media_injector import debug_save_media
-        from mime_utils import (
-            detect_mime_type_from_bytes,
-            get_file_extension_for_mime_type,
-        )
-        from telegram_download import download_media_bytes
 
         # Timeout for LLM description
         _DESCRIBE_TIMEOUT_SECS = 30
@@ -461,11 +467,19 @@ class AIGeneratingMediaSource(MediaSource):
         return record
 
     def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
-        """Write a record to disk cache."""
+        """Write a record to disk cache and update in-memory cache if available."""
         try:
             file_path = self.cache_directory / f"{unique_id}.json"
             file_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
             logger.debug(f"AIGeneratingMediaSource: cached {unique_id} to disk")
+
+            # Also update the in-memory cache if we have a reference to it
+            if self.cache_source is not None:
+                self.cache_source._mem_cache[unique_id] = record
+                logger.debug(
+                    f"AIGeneratingMediaSource: updated in-memory cache for {unique_id}"
+                )
+
         except Exception as e:
             logger.exception(
                 f"AIGeneratingMediaSource: failed to cache {unique_id} to disk: {e}"
@@ -498,9 +512,6 @@ def _create_default_chain() -> CompositeMediaSource:
 
     Internal helper for get_default_media_source_chain.
     """
-    import os
-
-    from prompt_loader import get_config_directories
 
     sources: list[MediaSource] = []
 
@@ -515,67 +526,16 @@ def _create_default_chain() -> CompositeMediaSource:
     state_dir = Path(os.environ.get("CINDY_AGENT_STATE_DIR", "state"))
     ai_cache_dir = state_dir / "media"
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
-    sources.append(DirectoryMediaSource(ai_cache_dir))
+    ai_cache_source = DirectoryMediaSource(ai_cache_dir)
+    sources.append(ai_cache_source)
     logger.info(f"Added AI cache directory: {ai_cache_dir}")
 
     # Add budget management and AI generation
     sources.append(BudgetExhaustedMediaSource())
-    sources.append(AIGeneratingMediaSource(cache_directory=ai_cache_dir))
-
-    return CompositeMediaSource(sources)
-
-
-def create_conversation_media_chain(
-    agent=None, peer_id: int | None = None
-) -> CompositeMediaSource:
-    """
-    Create a conversation-specific media source chain.
-
-    This includes:
-    1. Conversation-specific curated descriptions (if exists)
-    2. Agent-specific curated descriptions (cached on agent)
-    3. Global curated + AI cache + budget + AI generation (from default chain)
-
-    Args:
-        agent: Agent instance (provides name and cached agent-specific media source)
-        peer_id: Peer ID (user_id or channel_id) for conversation-specific descriptions
-
-    Returns:
-        CompositeMediaSource with conversation-specific sources
-    """
-    from prompt_loader import get_config_directories
-
-    # If no agent and no peer_id, just use the default chain
-    if not agent and not peer_id:
-        return get_default_media_source_chain()
-
-    sources: list[MediaSource] = []
-    agent_name = agent.name if agent else None
-
-    # Add conversation-specific curated descriptions (highest priority)
-    if agent_name and peer_id:
-        for config_dir in get_config_directories():
-            conversation_media_dir = (
-                Path(config_dir)
-                / "agents"
-                / agent_name
-                / "conversations"
-                / str(peer_id)
-                / "media"
-            )
-            if conversation_media_dir.exists() and conversation_media_dir.is_dir():
-                sources.append(DirectoryMediaSource(conversation_media_dir))
-                logger.debug(
-                    f"Added conversation curated media: {conversation_media_dir}"
-                )
-
-    # Add agent-specific curated descriptions (cached on agent)
-    if agent:
-        agent_media_source = agent.get_agent_media_source()
-        sources.append(agent_media_source)
-
-    # Add the default chain (global curated + AI cache + budget + AI generation)
-    # This is a singleton, so we reuse the same instance everywhere
-    sources.append(get_default_media_source_chain())
+    sources.append(
+        AIGeneratingMediaSource(
+            cache_directory=ai_cache_dir, cache_source=ai_cache_source
+        )
+    )
 
     return CompositeMediaSource(sources)
