@@ -13,6 +13,7 @@ from media_format import (
     format_media_sentence,
     format_sticker_sentence,
 )
+from media_source import create_conversation_media_chain, get_default_media_source_chain
 from mime_utils import detect_mime_type_from_bytes, get_file_extension_for_mime_type
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id, iter_media_parts
@@ -484,8 +485,6 @@ async def inject_media_descriptions(
     if not MEDIA_FEATURE_ENABLED or agent is None:
         return messages
 
-    from media_source import create_conversation_media_chain
-
     # Get the conversation-specific media source chain
     # This includes: conversation curated -> agent curated -> config curated -> AI cache -> budget -> AI gen
     media_chain = create_conversation_media_chain(
@@ -591,8 +590,6 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
                     If None, uses default global chain (not recommended).
     """
     if media_chain is None:
-        from media_source import get_default_media_source_chain
-
         media_chain = get_default_media_source_chain()
 
     parts = []

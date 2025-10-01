@@ -20,9 +20,11 @@ from media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
 )
+from media_source import create_conversation_media_chain
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
+from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name
 from tick import register_task_handler
 
@@ -275,8 +277,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
     # 2) Create conversation-specific media chain (used for all media operations)
-    from media_source import create_conversation_media_chain
-
     media_chain = create_conversation_media_chain(
         agent_id=agent.agent_id, peer_id=channel_id
     )
@@ -329,8 +329,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                         doc = agent.sticker_cache_by_set.get((set_short, name))
                         if doc:
                             # Get unique_id from document
-                            from telegram_media import get_unique_id
-
                             _uid = get_unique_id(doc)
 
                             # Use conversation-specific media chain
