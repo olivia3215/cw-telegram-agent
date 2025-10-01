@@ -15,7 +15,7 @@ from media_format import (
 )
 from mime_utils import detect_mime_type_from_bytes, get_file_extension_for_mime_type
 from telegram_download import download_media_bytes
-from telegram_media import _get_unique_id, iter_media_parts
+from telegram_media import get_unique_id, iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ MEDIA_DIR: Path = (
 )  # created by MediaCache - used for both JSON and media files
 
 
-def _debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
+def debug_save_media(data: bytes, unique_id: str, extension: str) -> None:
     """
     Save media data to disk for debugging purposes.
     Only saves if MEDIA_DEBUG_SAVE is True and the save is successful.
@@ -233,7 +233,7 @@ async def get_or_compute_description_for_doc(
       (2) else, if budget remains -> download + describe (timeout) -> cache and return
       (3) else, no attempt -> return (uid, None) without cache writes
     """
-    uid = _get_unique_id(doc)
+    uid = get_unique_id(doc)
 
     # 1) Cache hit?
     try:
@@ -323,7 +323,7 @@ async def get_or_compute_description_for_doc(
 
         # Debug save with proper extension
         file_ext = get_file_extension_for_mime_type(detected_mime_type)
-        _debug_save_media(data, uid, file_ext)
+        debug_save_media(data, uid, file_ext)
 
         return uid, None
 
@@ -347,7 +347,7 @@ async def get_or_compute_description_for_doc(
 
         # Debug save the downloaded media even if description timed out
         file_ext = get_file_extension_for_mime_type(detected_mime_type)
-        _debug_save_media(data, uid, file_ext)
+        debug_save_media(data, uid, file_ext)
 
         try:
             cache.put(
@@ -377,7 +377,7 @@ async def get_or_compute_description_for_doc(
 
         # Debug save the downloaded media even if description failed
         file_ext = get_file_extension_for_mime_type(detected_mime_type)
-        _debug_save_media(data, uid, file_ext)
+        debug_save_media(data, uid, file_ext)
 
         try:
             cache.put(
@@ -409,7 +409,7 @@ async def get_or_compute_description_for_doc(
 
     # 2e) Debug save all downloaded media
     file_ext = get_file_extension_for_mime_type(detected_mime_type)
-    _debug_save_media(data, uid, file_ext)
+    debug_save_media(data, uid, file_ext)
 
     # 2f) Cache best-effort
     try:

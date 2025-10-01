@@ -319,9 +319,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                         doc = agent.sticker_cache_by_set.get((set_short, name))
                         if doc:
                             # Get unique_id from document
-                            from media_injector import _get_unique_id
+                            from telegram_media import get_unique_id
 
-                            _uid = _get_unique_id(doc)
+                            _uid = get_unique_id(doc)
 
                             # Use media source chain to get/generate description
                             media_chain = get_default_media_source_chain()

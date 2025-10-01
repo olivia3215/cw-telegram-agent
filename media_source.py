@@ -305,11 +305,12 @@ class AIGeneratingMediaSource(MediaSource):
         import asyncio
         import time
 
-        from media_injector import _debug_save_media, download_media_bytes
+        from media_injector import debug_save_media
         from mime_utils import (
             detect_mime_type_from_bytes,
             get_file_extension_for_mime_type,
         )
+        from telegram_download import download_media_bytes
 
         # Timeout for LLM description
         _DESCRIBE_TIMEOUT_SECS = 30
@@ -384,7 +385,7 @@ class AIGeneratingMediaSource(MediaSource):
 
             # Debug save
             file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            _debug_save_media(data, unique_id, file_ext)
+            debug_save_media(data, unique_id, file_ext)
 
             return record
 
@@ -403,7 +404,7 @@ class AIGeneratingMediaSource(MediaSource):
 
             # Debug save
             file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            _debug_save_media(data, unique_id, file_ext)
+            debug_save_media(data, unique_id, file_ext)
 
             # Transient failure - don't cache to disk
             return make_error_record(
@@ -416,7 +417,7 @@ class AIGeneratingMediaSource(MediaSource):
 
             # Debug save
             file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            _debug_save_media(data, unique_id, file_ext)
+            debug_save_media(data, unique_id, file_ext)
 
             # Cache permanent failure to disk
             record = make_error_record("error", f"description failed: {str(e)[:100]}")
@@ -430,7 +431,7 @@ class AIGeneratingMediaSource(MediaSource):
 
         # Debug save
         file_ext = get_file_extension_for_mime_type(detected_mime_type)
-        _debug_save_media(data, unique_id, file_ext)
+        debug_save_media(data, unique_id, file_ext)
 
         # Cache result to disk
         record = {
