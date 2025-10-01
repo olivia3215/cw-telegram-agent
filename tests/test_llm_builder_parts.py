@@ -36,27 +36,6 @@ def _mk_agent_msg(text="ok", msg_id="a1"):
     }
 
 
-def test_system_turn_includes_persona_role_and_context():
-    contents = build_gemini_contents(
-        persona_instructions="You are Olivia.",
-        role_prompt="Be helpful.",
-        llm_specific_prompt="Gemini settings here.",
-        now_iso=_now_iso(),
-        chat_type="group",
-        curated_stickers=["OliviaAI/🙏", "WendyDancer/👿"],
-        history=[],
-        target_message=None,
-    )
-    assert contents[0]["role"] == "system"
-    sys_text = contents[0]["parts"][0]["text"]
-    assert "You are Olivia." in sys_text
-    assert "Role Prompt" in sys_text
-    assert "Gemini settings here." in sys_text
-    assert "Current time:" in sys_text
-    assert "Chat type: group" in sys_text
-    assert "Curated stickers available" in sys_text
-
-
 def test_history_roles_and_order_with_parts():
     # user(text) -> agent(text) -> user(media) ; target(user text) appended last
     history = [
@@ -79,30 +58,14 @@ def test_history_roles_and_order_with_parts():
             ],
         ),
     ]
-    target = _mk_user_msg(
-        sender="Carol",
-        sender_id="u789",
-        msg_id="m3",
-        parts=[{"kind": "text", "text": "please respond to me"}],
-    )
 
-    contents = build_gemini_contents(
-        persona_instructions="X",
-        role_prompt=None,
-        llm_specific_prompt=None,
-        now_iso=_now_iso(),
-        chat_type="group",
-        curated_stickers=None,
-        history=history,
-        target_message=target,
-        history_size=500,
-    )
+    contents = build_gemini_contents(history)
 
     # system + 3 history turns (target is no longer appended as separate turn) = 4
-    assert len(contents) == 4
+    assert len(contents) == 3
 
     # Check roles and first-part headers preserved
-    _, u1, a1, u2 = contents
+    u1, a1, u2 = contents
     assert u1["role"] == "user"
     assert a1["role"] == "assistant"
     assert u2["role"] == "user"
@@ -120,10 +83,6 @@ def test_history_roles_and_order_with_parts():
     )  # agent message has no header; only content part
     assert "{sticker OliviaAI/🙏" in u2["parts"][1]["text"]
 
-    # Target message instruction should be in system prompt
-    sys_text = contents[0]["parts"][0]["text"]
-    assert "Consider responding to message with message_id m3" in sys_text
-
 
 def test_placeholder_emitted_when_media_has_no_rendering():
     history = [
@@ -135,59 +94,10 @@ def test_placeholder_emitted_when_media_has_no_rendering():
             msg_id="m9",
         )
     ]
-    contents = build_gemini_contents(
-        persona_instructions="X",
-        role_prompt=None,
-        llm_specific_prompt=None,
-        now_iso=_now_iso(),
-        chat_type="direct",
-        curated_stickers=None,
-        history=history,
-        target_message=None,
-    )
-    # system + 1 user turn
-    assert len(contents) == 2
-    parts = contents[1]["parts"]
+    contents = build_gemini_contents(history=history)
+    assert len(contents) == 1
+    parts = contents[0]["parts"]
     # header + two placeholders
     assert parts[0]["text"].startswith("[metadata]")
     assert parts[1]["text"].startswith("[audio present")
     assert parts[2]["text"].startswith("[music present")
-
-
-def test_history_capping_and_target_last():
-    hist = []
-    # Build 3 user messages; cap to last 2
-    for i in range(3):
-        hist.append(
-            _mk_user_msg(
-                sender=f"U{i}",
-                sender_id=f"S{i}",
-                msg_id=f"M{i}",
-                parts=[{"kind": "text", "text": f"msg{i}"}],
-            )
-        )
-    target = _mk_user_msg(
-        sender="Zed",
-        sender_id="SZ",
-        msg_id="MT",
-        parts=[{"kind": "text", "text": "the target"}],
-    )
-    contents = build_gemini_contents(
-        persona_instructions="X",
-        role_prompt=None,
-        llm_specific_prompt=None,
-        now_iso=_now_iso(),
-        chat_type="group",
-        curated_stickers=None,
-        history=hist,
-        target_message=target,
-        history_size=2,  # <- cap
-    )
-    # system + 2 capped history (target is no longer appended as separate turn) = 3
-    assert len(contents) == 3
-    # The two kept history messages are M1 and M2
-    assert "message_id=M1" in contents[1]["parts"][0]["text"]
-    assert "message_id=M2" in contents[2]["parts"][0]["text"]
-    # Target message instruction should be in system prompt
-    sys_text = contents[0]["parts"][0]["text"]
-    assert "Consider responding to message with message_id MT" in sys_text

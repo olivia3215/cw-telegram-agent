@@ -65,27 +65,16 @@ async def test_roles_and_system_instruction_path():
     ]
 
     # Target message appended last (user)
-    target: ChatMsg = {
-        "sender": "Alice",
-        "sender_id": "u1",
-        "msg_id": "m2",
-        "is_agent": False,
-        "parts": [{"kind": "text", "text": "please respond"}],
-    }
 
     # Call the structured path; it will:
     #  - build contents (with a leading system turn internally)
     #  - extract system text to system_instruction
     #  - map assistant->model and drop any system turn from contents
     out = await llm.query_structured(
-        persona_instructions="SYSTEM HERE",
-        role_prompt=None,
-        llm_specific_prompt=None,
+        system_prompt="SYSTEM HERE",
         now_iso="2025-01-01T00:00:00",
         chat_type="group",
-        curated_stickers=None,
         history=history,
-        target_message=target,
     )
 
     assert out == "ok"
@@ -117,18 +106,13 @@ async def test_empty_conversation_ends_with_user_role():
 
     # Empty history (no messages) and no target message
     history: list[ChatMsg] = []
-    target: ChatMsg | None = None
 
     # Call the structured path with empty history and no target
     out = await llm.query_structured(
-        persona_instructions="SYSTEM HERE",
-        role_prompt=None,
-        llm_specific_prompt=None,
+        system_prompt="SYSTEM HERE",
         now_iso="2025-01-01T00:00:00",
         chat_type="direct",
-        curated_stickers=None,
         history=history,
-        target_message=target,
     )
 
     assert out == "ok"
@@ -149,7 +133,4 @@ async def test_empty_conversation_ends_with_user_role():
     # The content should be the special message
     parts = sent_contents[0]["parts"]
     assert len(parts) == 1
-    assert (
-        "[special] This is the start of a new conversation. The user has noticed that you are a contact."
-        in parts[0]["text"]
-    )
+    assert "[special] This is the beginning of a conversation" in parts[0]["text"]

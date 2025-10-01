@@ -95,22 +95,6 @@ class GeminiLLM(LLM):
 
         return rest_settings
 
-    async def query(self, system_prompt: str, user_prompt: str) -> str:
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        logger.warning(f"=====> prompt: {full_prompt}")
-        config = GenerateContentConfig(
-            system_instruction=system_prompt,
-            safety_settings=self.safety_settings,
-        )
-        response = await asyncio.to_thread(
-            self.client.models.generate_content,
-            model=self.model_name,
-            contents=[{"role": "user", "parts": [{"text": user_prompt}]}],
-            config=config,
-        )
-        logger.warning(f"=====> response: {response}")
-        return response.text
-
     IMAGE_DESCRIPTION_PROMPT = (
         "You are given a single image. Describe the scene in rich detail so a reader "
         "can understand it without seeing the image. Include salient objects, colors, "
@@ -333,16 +317,11 @@ class GeminiLLM(LLM):
     async def query_structured(
         self,
         *,
-        persona_instructions: str,
-        role_prompt: str | None,
-        llm_specific_prompt: str | None,
+        system_prompt: str,
         now_iso: str,
         chat_type: str,  # "direct" | "group"
-        curated_stickers: Iterable[str] | None,
         history: Iterable[ChatMsg],
-        target_message: ChatMsg | None,
         history_size: int = 500,
-        include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -351,64 +330,20 @@ class GeminiLLM(LLM):
         and call the Gemini model with *only* user/assistant turns. The system instruction is
         provided via the model config path (preferred) and never mixed into message contents.
         """
-        contents = build_gemini_contents(
-            persona_instructions=persona_instructions,
-            role_prompt=role_prompt,
-            llm_specific_prompt=llm_specific_prompt,
-            now_iso=now_iso,
-            chat_type=chat_type,
-            curated_stickers=curated_stickers,
-            history=history,
-            target_message=target_message,
-            history_size=history_size,
-            include_message_ids=include_message_ids,
-        )
+        contents_for_call = build_gemini_contents(history)
 
-        # Extract system instruction text if the builder produced a leading system turn.
-        system_instruction: str | None = None
-        contents_for_call = contents
-        try:
-            if contents and contents[0].get("role") == "system":
-                parts = contents[0].get("parts") or []
-                texts: list[str] = []
-                for p in parts:
-                    t = p.get("text")
-                    if isinstance(t, str) and t:
-                        texts.append(t)
-                system_instruction = "\n\n".join(texts) if texts else None
-                contents_for_call = contents[1:]
-        except Exception:
-            # If anything goes wrong, fall back to sending whatever we can (no system).
-            system_instruction = None
-            contents_for_call = contents
-
-        # Optionally, lightweight structural logging
         total_turns = len(contents_for_call)
-        # Target message is no longer appended as a separate turn
         hist_turns = total_turns
         logger.debug(
             "gemini.contents (no system in contents): turns=%s (history=%s, target=%s) has_sys=%s",
             total_turns,
             hist_turns,
-            target_message is not None,
-            bool(system_instruction),
+            bool(system_prompt),
         )
-
-        # Ensure we have at least one user turn for Gemini's requirements
-        # Only add special user turn if we have no conversation history at all
-        if not contents_for_call or not any(
-            turn.get("role") == "user" for turn in contents_for_call
-        ):
-            # Add a special user turn if we don't have any user turns
-            # This indicates the start of a new conversation
-            special_user_message = "[special] This is the start of a new conversation. The user has noticed that you are a contact."
-            contents_for_call = [
-                {"role": "user", "parts": [{"text": special_user_message}]}
-            ]
 
         return await self._generate_with_contents(
             contents=contents_for_call,
             model=model,
             timeout_s=timeout_s,
-            system_instruction=system_instruction,
+            system_instruction=system_prompt,
         )

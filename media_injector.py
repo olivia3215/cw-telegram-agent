@@ -306,30 +306,5 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(format_media_sentence(it.kind, desc_text))
 
-    content = " ".join(parts) if parts else "[no content]"
+    content = " ".join(parts) if parts else None
     return content
-
-
-async def build_prompt_lines_from_messages(
-    messages: list[Any], *, agent, media_chain=None
-) -> list[str]:
-    """
-    Convert Telethon messages into the list of prompt lines for logging.
-      - Iterate messages in chronological order (oldest → newest)
-      - For each message, consult the media cache populated by inject_media_descriptions
-      - Produce string lines (stickers/photos/gifs substituted with descriptions)
-      - Do NOT download or call the LLM here; cache-only
-      - Note: This is used for logging only; the actual LLM uses structured format
-
-    Args:
-        messages: List of Telethon messages
-        agent: Agent instance
-        media_chain: Media source chain to use for description lookups
-    """
-    lines = []
-    for msg in reversed(messages):
-        content = await format_message_for_prompt(
-            msg, agent=agent, media_chain=media_chain
-        )
-        lines.append(content)
-    return lines
