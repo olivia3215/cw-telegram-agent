@@ -137,6 +137,25 @@ WendyDancer :: 😉   # optional; explicit curated stickers (one per line)
 CindyPainter :: 😀
 ```
 
+### Role Prompts
+
+Role prompts define the core personality and behavior patterns for your agent. You can use single or multiple role prompts to create complex personalities.
+
+**Basic usage:**
+```markdown
+# Role Prompt
+Chatbot
+```
+
+**Multiple role prompts:**
+```markdown
+# Role Prompt
+Chatbot
+Student
+```
+
+> **Detailed documentation:** See [samples/README.md](samples/README.md) for comprehensive information about role prompts, including agent-specific prompts, loading priority, and examples.
+
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.

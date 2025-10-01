@@ -18,7 +18,7 @@ from media_source import (
     DirectoryMediaSource,
     get_default_media_source_chain,
 )
-from prompt_loader import get_config_directories
+from prompt_loader import get_config_directories, load_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class Agent:
         name,
         phone,
         instructions,
-        role_prompt_name,
+        role_prompt_names,
         llm=None,
         # Multi-set config
         sticker_set_names=None,
@@ -42,7 +42,7 @@ class Agent:
         self.name = name
         self.phone = phone
         self.instructions = instructions
-        self.role_prompt_name = role_prompt_name
+        self.role_prompt_names = list(role_prompt_names or [])
 
         # Multi-set config (lists)
         self.sticker_set_names = list(
@@ -71,6 +71,9 @@ class Agent:
 
         # Cache for the complete media source chain (includes all sources)
         self._media_source = None
+
+        # Cache for the complete system prompt (role prompts + instructions)
+        self._cached_system_prompt = None
 
         self._llm = llm
 
@@ -126,6 +129,37 @@ class Agent:
             self._media_source = CompositeMediaSource(sources)
 
         return self._media_source
+
+    def get_system_prompt(self):
+        """
+        Get the complete system prompt for this agent, creating and caching it if needed.
+
+        This includes:
+        1. LLM-specific prompt (e.g., Gemini.md)
+        2. All role prompts (in order)
+        3. Agent instructions
+
+        Returns:
+            Complete system prompt string
+        """
+        if self._cached_system_prompt is None:
+            prompt_parts = []
+
+            # Add LLM-specific prompt (not agent-specific)
+            llm_prompt = load_system_prompt(self.llm.prompt_name)
+            prompt_parts.append(llm_prompt)
+
+            # Add all role prompts in order (with agent-specific loading)
+            for role_prompt_name in self.role_prompt_names:
+                role_prompt = load_system_prompt(role_prompt_name, agent_name=self.name)
+                prompt_parts.append(role_prompt)
+
+            # Add agent instructions
+            prompt_parts.append(self.instructions)
+
+            self._cached_system_prompt = "\n\n".join(prompt_parts)
+
+        return self._cached_system_prompt
 
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""
@@ -236,7 +270,7 @@ class AgentRegistry:
         name: str,
         phone: str,
         instructions: str,
-        role_prompt_name: str,
+        role_prompt_names: list[str],
         llm=None,
         sticker_set_names=None,
         explicit_stickers=None,
@@ -257,7 +291,7 @@ class AgentRegistry:
             name=name,
             phone=phone,
             instructions=instructions,
-            role_prompt_name=role_prompt_name,
+            role_prompt_names=role_prompt_names,
             llm=llm,
             sticker_set_names=sticker_set_names,
             explicit_stickers=explicit_stickers,
