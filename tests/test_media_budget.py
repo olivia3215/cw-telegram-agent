@@ -63,8 +63,11 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."
 
+    # Import the module where download_media_bytes is actually used
+    import media_source
+
     monkeypatch.setattr(
-        mi, "download_media_bytes", _fake_download_media_bytes, raising=True
+        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
     )
 
     # Create a media source chain with budget management
@@ -174,8 +177,11 @@ async def test_ai_generation_updates_in_memory_cache(monkeypatch, tmp_path):
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."
 
+    # Import the module where download_media_bytes is actually used
+    import media_source
+
     monkeypatch.setattr(
-        mi, "download_media_bytes", _fake_download_media_bytes, raising=True
+        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
     )
 
     # Create AI cache directory and sources
