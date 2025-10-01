@@ -466,7 +466,7 @@ async def get_or_compute_description_for_doc(
 
 
 async def inject_media_descriptions(
-    messages: Sequence[Any], agent: Any | None = None
+    messages: Sequence[Any], agent: Any | None = None, peer_id: int | None = None
 ) -> Sequence[Any]:
     """
     Process media items in messages using the media source chain.
@@ -474,16 +474,23 @@ async def inject_media_descriptions(
     This function processes all media items in the given messages and ensures
     they have descriptions cached using the media source chain architecture.
 
+    Args:
+        messages: Sequence of Telethon messages to process
+        agent: Agent instance
+        peer_id: Telegram peer ID (user_id for DMs, channel_id for groups)
+
     Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
     if not MEDIA_FEATURE_ENABLED or agent is None:
         return messages
 
-    from media_source import get_default_media_source_chain
+    from media_source import create_conversation_media_chain
 
-    # Get the media source chain for this agent
-    # TODO: Eventually use agent.get_conversation_media_chain(user_id) for conversation-specific chains
-    media_chain = get_default_media_source_chain()
+    # Get the conversation-specific media source chain
+    # This includes: conversation curated -> agent curated -> config curated -> AI cache -> budget -> AI gen
+    media_chain = create_conversation_media_chain(
+        agent_id=agent.agent_id, peer_id=peer_id
+    )
 
     client = getattr(agent, "client", None)
     llm = getattr(agent, "llm", None)

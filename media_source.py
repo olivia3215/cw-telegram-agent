@@ -523,3 +523,67 @@ def _create_default_chain() -> CompositeMediaSource:
     sources.append(AIGeneratingMediaSource(cache_directory=ai_cache_dir))
 
     return CompositeMediaSource(sources)
+
+
+def create_conversation_media_chain(
+    agent_id: str | None = None, peer_id: int | None = None
+) -> CompositeMediaSource:
+    """
+    Create a conversation-specific media source chain.
+
+    This includes:
+    1. Conversation-specific curated descriptions (if exists)
+    2. Agent-specific curated descriptions (if exists)
+    3. Config directory curated descriptions
+    4. AI cache
+    5. Budget management
+    6. AI generation
+
+    Args:
+        agent_id: Agent identifier for agent-specific curated descriptions
+        peer_id: Peer ID (user_id or channel_id) for conversation-specific descriptions
+
+    Returns:
+        CompositeMediaSource with conversation-specific sources
+    """
+    import os
+
+    from prompt_loader import get_config_directories
+
+    sources: list[MediaSource] = []
+    state_dir = Path(os.environ.get("CINDY_AGENT_STATE_DIR", "state"))
+
+    # Add conversation-specific curated descriptions (if exists)
+    if agent_id and peer_id:
+        conversation_media_dir = (
+            state_dir / agent_id / "conversations" / str(peer_id) / "media"
+        )
+        if conversation_media_dir.exists() and conversation_media_dir.is_dir():
+            sources.append(DirectoryMediaSource(conversation_media_dir))
+            logger.debug(
+                f"Added conversation media directory: {conversation_media_dir}"
+            )
+
+    # Add agent-specific curated descriptions (if exists)
+    if agent_id:
+        agent_media_dir = state_dir / agent_id / "media"
+        if agent_media_dir.exists() and agent_media_dir.is_dir():
+            sources.append(DirectoryMediaSource(agent_media_dir))
+            logger.debug(f"Added agent media directory: {agent_media_dir}")
+
+    # Add config directories (curated descriptions)
+    for config_dir in get_config_directories():
+        media_dir = Path(config_dir) / "media"
+        if media_dir.exists() and media_dir.is_dir():
+            sources.append(DirectoryMediaSource(media_dir))
+
+    # Add AI cache directory
+    ai_cache_dir = state_dir / "media"
+    ai_cache_dir.mkdir(parents=True, exist_ok=True)
+    sources.append(DirectoryMediaSource(ai_cache_dir))
+
+    # Add budget management and AI generation
+    sources.append(BudgetExhaustedMediaSource())
+    sources.append(AIGeneratingMediaSource(cache_directory=ai_cache_dir))
+
+    return CompositeMediaSource(sources)
