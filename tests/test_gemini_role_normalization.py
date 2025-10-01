@@ -149,4 +149,7 @@ async def test_empty_conversation_ends_with_user_role():
     # The content should be the special message
     parts = sent_contents[0]["parts"]
     assert len(parts) == 1
-    assert "[special] The user has noticed that you are a contact." in parts[0]["text"]
+    assert (
+        "[special] This is the start of a new conversation. The user has noticed that you are a contact."
+        in parts[0]["text"]
+    )
