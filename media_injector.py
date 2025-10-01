@@ -576,15 +576,22 @@ async def inject_media_descriptions(
     return messages
 
 
-async def format_message_for_prompt(msg: Any, *, agent) -> str:
+async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str:
     """
     Format a single Telethon message content for the structured prompt system.
     Returns clean content without metadata prefixes - just the message content.
     Must NOT trigger downloads or LLM calls.
-    """
-    from media_source import get_default_media_source_chain
 
-    media_chain = get_default_media_source_chain()
+    Args:
+        msg: Telethon message to format
+        agent: Agent instance
+        media_chain: Media source chain to use for description lookups.
+                    If None, uses default global chain (not recommended).
+    """
+    if media_chain is None:
+        from media_source import get_default_media_source_chain
+
+        media_chain = get_default_media_source_chain()
 
     parts = []
     # include text if present
@@ -631,7 +638,9 @@ async def format_message_for_prompt(msg: Any, *, agent) -> str:
     return content
 
 
-async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> list[str]:
+async def build_prompt_lines_from_messages(
+    messages: list[Any], *, agent, media_chain=None
+) -> list[str]:
     """
     Convert Telethon messages into the list of prompt lines for logging.
       - Iterate messages in chronological order (oldest → newest)
@@ -639,9 +648,16 @@ async def build_prompt_lines_from_messages(messages: list[Any], *, agent) -> lis
       - Produce string lines (stickers/photos/gifs substituted with descriptions)
       - Do NOT download or call the LLM here; cache-only
       - Note: This is used for logging only; the actual LLM uses structured format
+
+    Args:
+        messages: List of Telethon messages
+        agent: Agent instance
+        media_chain: Media source chain to use for description lookups
     """
     lines = []
     for msg in reversed(messages):
-        content = await format_message_for_prompt(msg, agent=agent)
+        content = await format_message_for_prompt(
+            msg, agent=agent, media_chain=media_chain
+        )
         lines.append(content)
     return lines

@@ -20,7 +20,6 @@ from media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
 )
-from media_source import get_default_media_source_chain
 from prompt_loader import load_system_prompt
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
@@ -275,6 +274,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # 1) Fetch recent messages (chronological list returned by Telethon when reversed)
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
+    # 2) Create conversation-specific media chain (used for all media operations)
+    from media_source import create_conversation_media_chain
+
+    media_chain = create_conversation_media_chain(
+        agent_id=agent.agent_id, peer_id=channel_id
+    )
+
     # 3) Inject/refresh media descriptions so single-line renderings are available
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
@@ -323,8 +329,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
                             _uid = get_unique_id(doc)
 
-                            # Use media source chain to get/generate description
-                            media_chain = get_default_media_source_chain()
+                            # Use conversation-specific media chain
                             cache_record = await media_chain.get(
                                 unique_id=_uid,
                                 agent=agent,
@@ -391,7 +396,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # ----- Build rendered history (one text part per message; preserves current behavior) -----
     # We will still build the "context_lines" string for logging parity, but the LLM call will
     # use per-message parts instead of one big user_prompt.
-    context_lines = await build_prompt_lines_from_messages(messages, agent=agent)
+    context_lines = await build_prompt_lines_from_messages(
+        messages, agent=agent, media_chain=media_chain
+    )
     formatted_context = "\n".join(context_lines)
 
     # Map each Telethon message to a 5-tuple:
@@ -399,7 +406,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     history_rendered_items: list[tuple[str, str, str, str, bool]] = []
     chronological = list(reversed(messages))  # oldest → newest
     for m in chronological:
-        rendered_text = await format_message_for_prompt(m, agent=agent)
+        rendered_text = await format_message_for_prompt(
+            m, agent=agent, media_chain=media_chain
+        )
 
         # sender_id is stable; get display name for better context
         sender_id_val = getattr(m, "sender_id", None)
@@ -432,7 +441,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     target_rendered_item: tuple[str, str, str, str, bool] | None = None
     user_message = None
     if target_msg is not None:
-        user_message = await format_message_for_prompt(target_msg, agent=agent)
+        user_message = await format_message_for_prompt(
+            target_msg, agent=agent, media_chain=media_chain
+        )
         t_sender_id_val = getattr(target_msg, "sender_id", None)
         t_sender_id = str(t_sender_id_val) if t_sender_id_val is not None else "unknown"
         t_message_id = str(getattr(target_msg, "id", ""))
