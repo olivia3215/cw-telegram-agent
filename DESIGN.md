@@ -128,15 +128,20 @@ The system builds prioritized chains:
 
 ```
 CompositeMediaSource([
-    DirectoryMediaSource(config_dir1/media),     # Curated
-    DirectoryMediaSource(config_dir2/media),     # Curated
-    DirectoryMediaSource(agent_curated),         # Agent-specific
-    DirectoryMediaSource(conversation),          # Conversation-specific
-    DirectoryMediaSource(ai_cache),              # Cached AI results
-    BudgetExhaustedMediaSource(),                # Budget gate
-    AIGeneratingMediaSource()                    # Always succeeds
+    DirectoryMediaSource(config_dir1/agents/Wendy/conversations/12345/media),  # Conversation curated
+    DirectoryMediaSource(config_dir1/agents/Wendy/media),                      # Agent curated
+    DirectoryMediaSource(config_dir1/media),                                   # Global curated
+    DirectoryMediaSource(config_dir2/agents/Wendy/conversations/12345/media),  # Conversation curated (config 2)
+    DirectoryMediaSource(config_dir2/agents/Wendy/media),                      # Agent curated (config 2)
+    DirectoryMediaSource(config_dir2/media),                                   # Global curated (config 2)
+    DirectoryMediaSource(state/media),                                         # AI cache
+    BudgetExhaustedMediaSource(),                                              # Budget gate
+    AIGeneratingMediaSource()                                                  # Always succeeds
 ])
 ```
+
+**Order within each config directory**: conversation > agent > global
+**Order across config directories**: Earlier directories in `CINDY_AGENT_CONFIG_PATH` take precedence
 
 ### Directory Hierarchy
 
