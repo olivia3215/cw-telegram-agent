@@ -140,10 +140,15 @@ CompositeMediaSource([
 
 ### Directory Hierarchy
 
-1. **Config directories**: `{config_dir}/media/` (curated, multiple via `CINDY_AGENT_CONFIG_PATH`)
-2. **Agent-specific**: `state/{agent_id}/media/` (if exists)
-3. **Conversation-specific**: `state/{agent_id}/conversations/{user_id}/media/` (if exists)
-4. **AI cache**: `state/media/` (generated descriptions)
+Curated descriptions (human-generated) are in **config directories**, NOT state:
+
+For each config directory in `CINDY_AGENT_CONFIG_PATH`:
+1. **Conversation-specific curated**: `{config_dir}/conversations/{agent_id}_{peer_id}/media/` (if exists)
+2. **Agent-specific curated**: `{config_dir}/agents/{agent_id}/media/` (if exists)
+3. **Global curated**: `{config_dir}/media/` (if exists)
+
+Then:
+4. **AI cache** (state directory): `state/media/` (AI-generated descriptions, runtime state)
 
 ### Budget System
 

@@ -43,14 +43,20 @@ The curated descriptions directory is determined by the configuration system:
 
 ## Directory hierarchy
 
-The system checks these directories in order of precedence:
+The system checks these directories in order of precedence (all in config directories, NOT state):
 
-1. Conversation-specific: `state/{agent_id}/conversations/{user_id}/media/` (if exists)
-2. Agent-specific: `state/{agent_id}/media/` (if exists)
-3. Config directories: All directories in `CINDY_AGENT_CONFIG_PATH` with `media/` subdirectories
-4. AI cache: `state/media/` (cached AI-generated descriptions)
-5. Budget management: Returns fallback if budget exhausted
-6. AI generation: Always succeeds (generates new description or returns fallback)
+For each config directory in `CINDY_AGENT_CONFIG_PATH`:
+1. **Conversation-specific curated**: `{config_dir}/conversations/{agent_id}_{peer_id}/media/` (if exists)
+2. **Agent-specific curated**: `{config_dir}/agents/{agent_id}/media/` (if exists)
+3. **Global curated**: `{config_dir}/media/` (if exists)
+
+Then:
+4. **AI cache** (state, not config): `state/media/` (cached AI-generated descriptions)
+5. **Budget management**: Returns fallback if budget exhausted
+6. **AI generation**: Always succeeds (generates new description or returns fallback)
+
+**Important**: Curated descriptions are configuration data and should NEVER be placed in the `state/` directory.
+The `state/` directory is only for runtime state like AI-generated cache files.
 
 ## Usage
 
