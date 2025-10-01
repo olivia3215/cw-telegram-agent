@@ -9,7 +9,7 @@ from telethon.errors.rpcerrorlist import PeerIdInvalidError
 
 from agent import get_agent_for_id
 from exceptions import ShutdownException
-from media_injector import reset_description_budget
+from media_budget import reset_description_budget
 from task_graph import WorkQueue
 
 logger = logging.getLogger(__name__)

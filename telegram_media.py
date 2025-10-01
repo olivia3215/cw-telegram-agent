@@ -20,8 +20,12 @@ def iter_media_parts(msg: Any) -> list[MediaItem]:
 # ---------- helpers ----------
 
 
-def _get_unique_id(obj: Any) -> str | None:
-    # Prefer stable string ids when available; fall back to numeric id.
+def get_unique_id(obj: Any) -> str | None:
+    """
+    Extract a stable unique identifier from a Telegram media object.
+
+    Prefers stable string ids when available; falls back to numeric id.
+    """
     for attr in ("file_unique_id", "unique_id", "id"):
         v = getattr(obj, attr, None)
         if isinstance(v, (str, int)):
@@ -33,7 +37,7 @@ def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:
     photo = getattr(msg, "photo", None)
     if not photo:
         return
-    uid = _get_unique_id(photo)
+    uid = get_unique_id(photo)
     if not uid:
         return
     mime = getattr(photo, "mime_type", None) or getattr(photo, "mime", None)
@@ -59,7 +63,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
         if isinstance(attrs, (list, tuple)):
             for a in attrs:
                 if hasattr(a, "stickerset"):  # duck-type DocumentAttributeSticker
-                    uid = _get_unique_id(doc)
+                    uid = get_unique_id(doc)
                     if not uid:
                         return
                     # sticker name (emoji/alt/file_name)
@@ -91,7 +95,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
     # Bot API-style fallback
     st = getattr(msg, "sticker", None)
     if st:
-        uid = _get_unique_id(st)
+        uid = get_unique_id(st)
         if not uid:
             return
         sticker_set_name = getattr(st, "set_name", None)
@@ -130,7 +134,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     # Bot API fallbacks first (simple shapes)
     anim = getattr(msg, "animation", None)
     if anim:
-        uid = _get_unique_id(anim)
+        uid = get_unique_id(anim)
         if uid:
             mime = getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
             out.append(
@@ -140,7 +144,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
             )
     gif = getattr(msg, "gif", None)
     if gif:
-        uid = _get_unique_id(gif)
+        uid = get_unique_id(gif)
         if uid:
             mime = getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
             out.append(
@@ -165,7 +169,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
             elif n == "DocumentAttributeVideo":
                 is_video = True
 
-    uid = _get_unique_id(doc)
+    uid = get_unique_id(doc)
     if not uid:
         return
 

@@ -11,6 +11,7 @@ from telethon.tl.types import (
     UpdateDialogFilter,
 )
 
+import handlers  # noqa: F401
 from agent import (
     Agent,
     all_agents,
@@ -235,16 +236,6 @@ async def periodic_scan(work_queue, agents, interval_sec):
                         f"Error during periodic scan for agent {agent.name}: {e}"
                     )
         await asyncio.sleep(interval_sec)
-
-
-# Force registration of the handlers
-import handlers.block  # noqa: F401, E402
-import handlers.clear_conversation  # noqa: F401, E402
-import handlers.received  # noqa: F401, E402
-import handlers.send  # noqa: F401, E402
-import handlers.sticker  # noqa: F401, E402
-import handlers.unblock  # noqa: F401, E402
-import handlers.wait  # noqa: F401, E402
 
 
 async def main():
