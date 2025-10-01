@@ -1,4 +1,4 @@
-# test_sticker_parsing.py
+# tests/test_sticker_parsing.py
 
 from handlers.received import parse_llm_reply
 
