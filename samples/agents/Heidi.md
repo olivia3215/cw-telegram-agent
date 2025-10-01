@@ -13,6 +13,7 @@ UtyaDuck
 # Role Prompt
 
 Chatbot
+Student
 
 # Agent Instructions
 
