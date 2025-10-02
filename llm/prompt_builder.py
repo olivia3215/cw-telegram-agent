@@ -94,7 +94,6 @@ def build_gemini_contents(
     any_user_messages = False
     any_agent_messages = False
     for m in history:
-        logger.info(f"=====> HISTORY ITEM: {m}")
         is_agent = bool(m.get("is_agent"))
         any_user_messages = any_user_messages or not is_agent
         any_agent_messages = any_agent_messages or is_agent
@@ -111,7 +110,7 @@ def build_gemini_contents(
         if any_agent_messages:
             special_user_message = "[special] The user has not responded yet."
         else:
-            special_user_message = "[special] This is the beginning of a conversation with Michael Duboy. Please respond with your first message."
+            special_user_message = "[special] This is the beginning of a conversation. Please respond with your first message."
         contents.append(
             {"role": "user", "parts": [_mk_text_part(special_user_message)]}
         )

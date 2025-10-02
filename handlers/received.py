@@ -320,10 +320,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     #     and not any(m.from_id.user_id == agent.agent_id) for m in messages)
     is_conversation_start = True
     for m in messages:
-        logger.info(
-            f"=====> MESSAGE: from {m.from_id.user_id} agent {agent.agent_id} message {m}"
-        )
-        if m.from_id.user_id == agent.agent_id:
+        if (
+            getattr(m, "from_id", None)
+            and getattr(m.from_id, "user_id", None) == agent.agent_id
+        ):
             is_conversation_start = False
             break
 
