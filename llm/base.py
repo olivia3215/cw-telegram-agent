@@ -68,25 +68,15 @@ class LLM(ABC):
     prompt_name: str = "Default"
 
     @abstractmethod
-    async def query(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        Basic query method for simple system + user prompt.
-        """
-        pass
-
     async def query_structured(
         self,
         *,
-        persona_instructions: str,
-        role_prompt: str | None,
-        llm_specific_prompt: str | None,
+        system_prompt: str,
         now_iso: str,
         chat_type: str,  # "direct" | "group"
         curated_stickers: Iterable[str] | None,
         history: Iterable[ChatMsg],
-        target_message: ChatMsg | None,
         history_size: int = 500,
-        include_message_ids: bool = True,
         model: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -94,29 +84,4 @@ class LLM(ABC):
         Structured query method for conversation-aware LLMs.
         Default implementation falls back to basic query method.
         """
-        # Default implementation: fallback to basic query
-        # Subclasses can override this for more sophisticated handling
-        system_prompt = persona_instructions
-        if role_prompt:
-            system_prompt += f"\n\n{role_prompt}"
-        if llm_specific_prompt:
-            system_prompt += f"\n\n{llm_specific_prompt}"
-
-        # Simple conversion of history to text
-        user_prompt = f"Current time: {now_iso}\nChat type: {chat_type}\n\n"
-        if target_message:
-            # Extract text from parts if available, otherwise fall back to text field
-            message_text = ""
-            parts = target_message.get("parts")
-            if parts:
-                # Extract text from all text parts
-                text_parts = []
-                for part in parts:
-                    if part.get("kind") == "text" and part.get("text"):
-                        text_parts.append(part["text"])
-                message_text = " ".join(text_parts)
-            else:
-                message_text = target_message.get("text", "")
-            user_prompt += f"Latest message: {message_text}"
-
-        return await self.query(system_prompt, user_prompt)
+        ...

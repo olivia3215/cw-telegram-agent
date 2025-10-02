@@ -22,20 +22,6 @@ from telegram_util import get_channel_name  # for sender/channel names
 
 logger = logging.getLogger(__name__)
 
-# Feature flags
-# Constants moved to media_budget.py to avoid circular imports
-MEDIA_FEATURE_ENABLED = True  # you've been keeping this True for manual testing
-
-# debug_save_media moved to media_budget.py to avoid circular imports
-
-
-# --- Per-tick AI description budget ------------------------------------------
-
-# Budget functions moved to media_budget.py to avoid circular imports
-
-
-# ---------- format sniffing & support checks ----------
-
 
 # ---------- sticker helpers ----------
 async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
@@ -138,8 +124,6 @@ async def _resolve_sender_and_channel(
 
 # ---------- main ----------
 
-# get_or_compute_description_for_doc removed - replaced by AIGeneratingMediaSource
-
 
 async def inject_media_descriptions(
     messages: Sequence[Any], agent: Any | None = None, peer_id: int | None = None
@@ -157,7 +141,7 @@ async def inject_media_descriptions(
 
     Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
-    if not MEDIA_FEATURE_ENABLED or agent is None:
+    if not agent:
         return messages
 
     # Get the agent's media source chain
@@ -306,30 +290,5 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(format_media_sentence(it.kind, desc_text))
 
-    content = " ".join(parts) if parts else "[no content]"
+    content = " ".join(parts) if parts else None
     return content
-
-
-async def build_prompt_lines_from_messages(
-    messages: list[Any], *, agent, media_chain=None
-) -> list[str]:
-    """
-    Convert Telethon messages into the list of prompt lines for logging.
-      - Iterate messages in chronological order (oldest → newest)
-      - For each message, consult the media cache populated by inject_media_descriptions
-      - Produce string lines (stickers/photos/gifs substituted with descriptions)
-      - Do NOT download or call the LLM here; cache-only
-      - Note: This is used for logging only; the actual LLM uses structured format
-
-    Args:
-        messages: List of Telethon messages
-        agent: Agent instance
-        media_chain: Media source chain to use for description lookups
-    """
-    lines = []
-    for msg in reversed(messages):
-        content = await format_message_for_prompt(
-            msg, agent=agent, media_chain=media_chain
-        )
-        lines.append(content)
-    return lines

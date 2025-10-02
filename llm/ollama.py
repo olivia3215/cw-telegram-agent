@@ -3,7 +3,6 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
-import httpx
 
 from .base import LLM
 
@@ -14,20 +13,3 @@ class OllamaLLM(LLM):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.history_size = 5
-
-    async def query(self, system: str, user: str) -> str:
-        url = f"{self.base_url}/api/chat"
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "stream": False,
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-        return data.get("message", {}).get("content", "")

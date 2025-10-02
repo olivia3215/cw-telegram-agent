@@ -3,10 +3,13 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import logging
 from collections.abc import Iterable
 from typing import Any
 
 from .base import ChatMsg, MsgPart
+
+logger = logging.getLogger(__name__)
 
 
 def _mk_text_part(text: str) -> dict[str, str]:
@@ -16,7 +19,6 @@ def _mk_text_part(text: str) -> dict[str, str]:
 def _normalize_parts_for_message(
     m: ChatMsg,
     *,
-    include_message_ids: bool,
     is_agent: bool,
 ) -> list[dict[str, str]]:
     """
@@ -37,7 +39,7 @@ def _normalize_parts_for_message(
             header_bits.append(f'sender="{who}" sender_id={sid}')
         elif who or sid:
             header_bits.append(f"sender_id={who or sid}")
-        if include_message_ids and m.get("msg_id"):
+        if m.get("msg_id"):
             header_bits.append(f'message_id={m["msg_id"]}')
         if header_bits:
             parts.append(_mk_text_part(f"[metadata] {' '.join(header_bits)}"))
@@ -75,24 +77,10 @@ def _normalize_parts_for_message(
 
 
 def build_gemini_contents(
-    *,
-    # System turn inputs
-    persona_instructions: str,
-    role_prompt: str | None,
-    llm_specific_prompt: str | None,
-    now_iso: str,
-    chat_type: str,  # "direct" | "group" (stringly typed to avoid import cycles)
-    curated_stickers: Iterable[str] | None = None,
-    # History & target
     history: Iterable[ChatMsg],
-    target_message: ChatMsg | None,  # message we want the model to respond to
-    history_size: int = 500,
-    # Formatting toggles
-    include_message_ids: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Construct Gemini 'contents' with roles and multi-part messages:
-      - One 'system' turn: persona + role prompt + model-specific prompt + metadata + target instruction
       - Chronological 'user'/'assistant' turns for prior messages (bounded by history_size),
         each with an ordered list of 'parts' (metadata header first, then content parts).
       - Target message is NOT appended as a separate turn; instead, a system instruction
@@ -100,44 +88,31 @@ def build_gemini_contents(
 
     Pure function: no I/O, no network, no mutation of inputs.
     """
-    # --- 1) System turn ---
-    sys_lines: list[str] = []
-    if persona_instructions:
-        sys_lines.append(persona_instructions.strip())
-    if role_prompt:
-        sys_lines.append("\n# Role Prompt\n" + role_prompt.strip())
-    if llm_specific_prompt:
-        sys_lines.append("\n# Model-Specific Guidance\n" + llm_specific_prompt.strip())
-    sys_lines.append(f"\n# Context\nCurrent time: {now_iso}\nChat type: {chat_type}")
-    if curated_stickers:
-        sticker_list = ", ".join(curated_stickers)
-        sys_lines.append(f"Curated stickers available: {sticker_list}")
-
-    # Add target message instruction if provided
-    if target_message is not None and target_message.get("msg_id"):
-        sys_lines.append(
-            f"\n# Target Message\nConsider responding to message with message_id {target_message['msg_id']}."
-        )
-
-    contents: list[dict[str, Any]] = [
-        {"role": "system", "parts": [_mk_text_part("\n\n".join(sys_lines).strip())]}
-    ]
 
     # --- 2) Chronological history (bounded) ---
-    hist_list = list(history)
-    if history_size >= 0:
-        hist_list = hist_list[-history_size:]
-
-    for m in hist_list:
+    contents = []
+    any_user_messages = False
+    any_agent_messages = False
+    for m in history:
         is_agent = bool(m.get("is_agent"))
+        any_user_messages = any_user_messages or not is_agent
+        any_agent_messages = any_agent_messages or is_agent
         role = "assistant" if is_agent else "user"
         parts = _normalize_parts_for_message(
             m,
-            include_message_ids=include_message_ids,
             is_agent=is_agent,
         )
         if parts:
             contents.append({"role": role, "parts": parts})
 
-    # Note: Target message is no longer appended as a separate turn
+    # Ensure we have at least one user turn for Gemini's requirements
+    if not any_user_messages:
+        if any_agent_messages:
+            special_user_message = "[special] The user has not responded yet."
+        else:
+            special_user_message = "[special] This is the beginning of a conversation. Please respond with your first message."
+        contents.append(
+            {"role": "user", "parts": [_mk_text_part(special_user_message)]}
+        )
+
     return contents
