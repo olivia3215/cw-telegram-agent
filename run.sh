@@ -10,4 +10,4 @@ mv tmp/run2.log tmp/run3.log
 mv tmp/run1.log tmp/run2.log
 mv tmp/run.log tmp/run1.log
 
-python run.py 2>&1 | tee tmp/run.log
+PYTHONPATH=src python run.py 2>&1 | tee tmp/run.log
