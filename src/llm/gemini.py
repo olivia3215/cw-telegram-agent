@@ -9,8 +9,8 @@ import json
 import logging
 import os
 from collections.abc import Iterable
-from urllib import error, request
 
+import httpx
 from google import genai
 from google.genai.types import (
     FinishReason,
@@ -101,7 +101,6 @@ class GeminiLLM(LLM):
         "relations, actions, and setting. Output only the description."
     )
 
-    @staticmethod
     def is_mime_type_supported_by_llm(mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for image description.
@@ -116,7 +115,12 @@ class GeminiLLM(LLM):
         }
         return mime_type.lower() in supported_types
 
-    def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
+    async def describe_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
         """
         Return a rich, single-string description for the given image.
         Uses Gemini via REST with this instance's api key.
@@ -161,17 +165,19 @@ class GeminiLLM(LLM):
             "safety_settings": safety_settings_rest,
         }
 
-        data = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}
-        )
+        # Use provided timeout or default to 30 seconds
+        timeout = timeout_s or 30.0
 
         try:
-            with request.urlopen(req, timeout=30) as resp:
-                body = resp.read()
-        except error.HTTPError as e:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    url, json=payload, headers={"Content-Type": "application/json"}
+                )
+                response.raise_for_status()
+                body = response.content
+        except httpx.HTTPStatusError as e:
             raise RuntimeError(
-                f"Gemini HTTP {e.code}: {e.read().decode('utf-8', 'ignore')}"
+                f"Gemini HTTP {e.response.status_code}: {e.response.text}"
             ) from e
         except Exception as e:
             raise RuntimeError(f"Gemini request failed: {e}") from e

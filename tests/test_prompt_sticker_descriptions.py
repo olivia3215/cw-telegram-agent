@@ -15,7 +15,7 @@ from media_source import MediaSource
 
 
 class FakeLLM:
-    def describe_image(self, image_bytes, mime_type=None):
+    async def describe_image(self, image_bytes, mime_type=None, timeout_s=None):
         # not used in this test because we stub the helper fully
         return "unused"
 

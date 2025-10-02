@@ -86,7 +86,6 @@ class LLM(ABC):
         """
         ...
 
-    @staticmethod
     @abstractmethod
     def is_mime_type_supported_by_llm(mime_type: str) -> bool:
         """
@@ -96,10 +95,20 @@ class LLM(ABC):
         ...
 
     @abstractmethod
-    def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
+    async def describe_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
         """
         Return a rich, single-string description for the given image.
         Uses the LLM to analyze the image and provide a detailed description.
         Raises on failures so the scheduler's retry policy can handle it.
+
+        Args:
+            image_bytes: The image data as bytes
+            mime_type: Optional MIME type of the image
+            timeout_s: Optional timeout in seconds for the request
         """
         ...
