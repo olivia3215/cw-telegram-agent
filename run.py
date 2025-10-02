@@ -246,7 +246,7 @@ async def main():
     agents_list = all_agents()
 
     tick_task = asyncio.create_task(
-        run_tick_loop(work_queue, tick_interval_sec=10, state_file_path=STATE_PATH)
+        run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
     )
 
     telegram_tasks = [
@@ -255,7 +255,7 @@ async def main():
     ]
 
     scan_task = asyncio.create_task(
-        periodic_scan(work_queue, agents_list, interval_sec=90)
+        periodic_scan(work_queue, agents_list, interval_sec=10)
     )
 
     done, pending = await asyncio.wait(

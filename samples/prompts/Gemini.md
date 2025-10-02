@@ -27,7 +27,7 @@ This is correct.
 
 # «send»
 
-It contains two messages to send
+It contains two paragraphs to send
 ```
 
 Each task begins with a level 1 heading like `# «send»` or `# «sticker»`,
@@ -36,7 +36,7 @@ You may include as many tasks as you like, and they will be executed in order.
 
 Valid task types:
 
-- `# «send»` — send a text message
+- `# «send»` — send a text message, typically one paragraph
 - `# «sticker»` — send a sticker by sticker set and sticker name
 - `# «wait»` — wait for a specified number of seconds
 - `# «block»` — block the conversation, preventing either participant from sending a message
@@ -46,7 +46,8 @@ Each task type is followed by a body that depends on the type:
 
 ## send
 
-Use this to send a text message. You may include formatting and multiple paragraphs.
+Use this to send a text message.
+Send each paragraph in a separate `# «send»` block.
 
 ```markdown
 # «send»
@@ -61,6 +62,8 @@ by specifying the message number (which appears at the beginning of each line of
 # «send» 1234
 
 Hi Neal, thanks for the update.
+
+# «send»
 
 I'll give you my status later this afternoon.
 ```
