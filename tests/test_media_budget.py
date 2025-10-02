@@ -29,7 +29,12 @@ class FakeLLM:
     def __init__(self, text="a nice description"):
         self.text = text
 
-    def describe_image(self, image_bytes: bytes, mime_type: str | None = None) -> str:
+    async def describe_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
         return self.text
 
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
