@@ -8,7 +8,13 @@ import logging
 import os
 from datetime import UTC, datetime, timezone
 
-from telethon.errors.rpcerrorlist import PeerIdInvalidError
+from telethon.errors.rpcerrorlist import (
+    ChatWriteForbiddenError,
+    PeerIdInvalidError,
+    UserBannedInChannelError,
+)
+from telethon.tl.functions.messages import SetTypingRequest
+from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from exceptions import ShutdownException
@@ -37,11 +43,60 @@ def is_graph_complete(graph) -> bool:
     return all(n.status == "done" for n in graph.tasks)
 
 
+async def trigger_typing_indicators(work_queue: WorkQueue):
+    """
+    Check for pending wait tasks with typing=True and trigger typing indicators.
+    """
+    datetime.now(UTC)
+
+    for graph in work_queue._task_graphs:
+        agent_id = graph.context.get("agent_id")
+        channel_id = graph.context.get("channel_id")
+
+        if not agent_id or not channel_id:
+            continue
+
+        try:
+            agent = get_agent_for_id(agent_id)
+            client = agent.client
+
+            if not client:
+                continue
+
+            # Look for pending wait tasks with typing=True
+            completed_ids = graph.completed_ids()
+            for task in graph.tasks:
+                if (
+                    task.type == "wait"
+                    and task.status == "pending"
+                    and task.params.get("typing", False)
+                    and task.is_unblocked(completed_ids)
+                ):
+
+                    try:
+                        await client(
+                            SetTypingRequest(
+                                peer=channel_id, action=SendMessageTypingAction()
+                            )
+                        )
+                    except (UserBannedInChannelError, ChatWriteForbiddenError):
+                        # It's okay if we can't show ourselves as typing
+                        logger.debug(
+                            f"Cannot send typing indicator to channel {channel_id}"
+                        )
+
+        except Exception as e:
+            logger.debug(f"Error checking typing indicators for agent {agent_id}: {e}")
+
+
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     datetime.now(UTC)
 
     # Reset per-tick AI description budget at start of each tick
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+
+    # Trigger typing indicators for pending wait tasks
+    await trigger_typing_indicators(work_queue)
 
     task = work_queue.round_robin_one_task()
 
@@ -107,10 +162,13 @@ async def run_tick_loop(
     state_file_path: str = None,
     tick_fn=run_one_tick,
 ):
+    n = 0
     while True:
         try:
-            logger.info("Ticking.")
+            n += 1
             await tick_fn(work_queue, state_file_path)
+            if n % 10 == 0:
+                logger.info(f"Tick {n} completed.")
         except ShutdownException:
             raise
         except Exception as e:

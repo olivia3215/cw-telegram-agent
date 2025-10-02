@@ -23,7 +23,7 @@ class TaskNode:
     depends_on: list[str] = field(default_factory=list)
     status: str = "pending"
 
-    def is_ready(self, completed_ids: set, now: datetime) -> bool:
+    def is_unblocked(self, completed_ids: set) -> bool:
         if self.status != "pending":
             logger.debug(
                 f"Task {self.identifier} is not pending (status: {self.status})."
@@ -33,6 +33,11 @@ class TaskNode:
             logger.debug(
                 f"Task {self.identifier} dependencies not met: {self.depends_on} vs {completed_ids}."
             )
+            return False
+        return True
+
+    def is_ready(self, completed_ids: set, now: datetime) -> bool:
+        if not self.is_unblocked(completed_ids):
             return False
         if self.type == "wait":
             until = self.params.get("until")
