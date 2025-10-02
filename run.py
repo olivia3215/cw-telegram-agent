@@ -64,17 +64,15 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     # Format message content for logging
     message_content = format_message_content_for_logging(event.message)
 
-    if sender_name == dialog_name:
-        logger.info(
-            f"[{agent_name}] Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
-        )
-    else:
-        logger.info(
-            f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
-        )
-
     if not muted or is_callout:
-        await client.send_read_acknowledge(dialog, clear_mentions=True)
+        if sender_name == dialog_name:
+            logger.info(
+                f"[{agent_name}] Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
+            )
+        else:
+            logger.info(
+                f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
+            )
         await insert_received_task_for_conversation(
             work_queue,
             recipient_id=agent.agent_id,
@@ -82,6 +80,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
             message_id=event.message.id,
             is_callout=is_callout,
         )
+        await client.send_read_acknowledge(dialog, clear_mentions=True)
 
 
 async def scan_unread_messages(agent: Agent, work_queue):

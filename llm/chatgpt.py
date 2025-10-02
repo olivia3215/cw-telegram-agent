@@ -31,20 +31,3 @@ class ChatGPT(LLM):
         self.model = model
         self.temperature = temperature
         self.history_size = 120
-
-    async def query(self, system_prompt: str, user_prompt: str) -> str:
-        logger.debug(f"Querying ChatGPT with '{system_prompt}' and '{user_prompt}'")
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=self.temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            n=1,
-        )
-
-        if not response.choices:
-            raise RuntimeError("LLM returned no choices.")
-
-        return response.choices[0].message.content.strip()
