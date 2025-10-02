@@ -8,6 +8,13 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from telethon.errors.rpcerrorlist import (
+    ChatWriteForbiddenError,
+    UserBannedInChannelError,
+)
+from telethon.tl.functions.messages import SetTypingRequest
+from telethon.tl.types import SendMessageTypingAction
+
 from agent import get_agent_for_id
 from media_injector import (
     format_message_for_prompt,
@@ -307,31 +314,26 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Detect if this is the start of a conversation (only user messages, no agent messages)
     # We need to check this before finalizing the system prompt
-    logger.info(
-        f"[{agent_name}] =====> Checking messages for conversation start: {messages}"
-    )
     is_conversation_start = True
     for m in messages:
+        logger.info(f"[{agent_name}] =====> Checking message: {m}")
         if (
             getattr(m, "from_id", None)
             and getattr(m.from_id, "user_id", None) == agent_id
         ):
-            is_conversation_start = False
             logger.info(
-                f"[{agent_name}] =====> Detected agent message, not conversation start: {m}"
+                f"[{agent_name}] =====> Detected agent message from {channel_name} ({len(messages)} messages), not conversation start: {m}"
             )
+            is_conversation_start = False
             break
+    logger.info(f"[{agent_name}] =====> is_conversation_start: {is_conversation_start}")
 
     # Add conversation start instruction if this is the beginning of a conversation
     if is_conversation_start:
         conversation_start_instruction = f"\n\n***IMPORTANT***\n\nThis is the beginning of a conversation with {channel_name}. Please respond with your first message."
         system_prompt = system_prompt + conversation_start_instruction
         logger.info(
-            f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction due to {m}"
-        )
-    else:
-        logger.info(
-            f"[{agent_name}] =====> Detected non-conversation start with {channel_name} ({len(messages)} messages)"
+            f"[{agent_name}] =====> Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction"
         )
 
     now = datetime.now().astimezone()
@@ -456,10 +458,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         logger.exception(f"[{agent_name}] Failed to parse LLM response '{reply}': {e}")
         return
 
-    # Inject conversation-specific context into each task and insert wait tasks for typing
+    # Inject conversation-specific context into each task
     fallback_reply_to = task.params.get("message_id") if is_group else None
     last_id = task.identifier
-
     for task in tasks:
         if is_callout:
             task.params["callout"] = True
@@ -469,38 +470,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 task.params["in_reply_to"] = fallback_reply_to
                 fallback_reply_to = None
 
-            # Calculate delay based on task type
-            if task.type == "send":
-                message = task.params.get("message", "")
-                delay_seconds = 2 + len(message) / 60
-            else:  # sticker
-                delay_seconds = 4
+            # appear to be typing for four seconds
+            try:
+                await client(
+                    SetTypingRequest(peer=channel_id, action=SendMessageTypingAction())
+                )
+            except (UserBannedInChannelError, ChatWriteForbiddenError):
+                # It's okay if we can't show ourselves as typing
+                logger.error(f"[{agent_name}] cannot send in channel [{channel_name}]")
+                task.status = "done"
 
-            # Create wait task for typing indicator
-            wait_task_id = f"wait-typing-{uuid.uuid4().hex[:8]}"
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
-            wait_task = TaskNode(
-                identifier=wait_task_id,
-                type="wait",
-                params={
-                    "delay": delay_seconds,
-                    "until": wait_until_time.strftime(ISO_FORMAT),
-                    "typing": True,
-                },
-                depends_on=[last_id],
-            )
-            wait_task.depends_on.append(last_id)
-
-            # Add wait task to graph
-            graph.add_task(wait_task)
-            last_id = wait_task_id
-
-            logger.info(
-                f"[{agent_name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
-            )
-
-        task.depends_on.append(last_id)
         graph.add_task(task)
+        task.depends_on.append(last_id)
         last_id = task.identifier
 
     await client.send_read_acknowledge(channel_id)
