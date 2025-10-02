@@ -13,10 +13,10 @@ This document explains how to work on the codebase, how the Gemini integration i
 ```bash
 # Run the agent (typical)
 source .env
-PYTHONPATH=. python run.py
+PYTHONPATH=src python run.py
 
 # Test
-PYTHONPATH=. pytest -vv
+PYTHONPATH=src pytest -vv
 ```
 
 We do not allow slow or networked tests. Media, clock, and Gemini calls are mocked or rendered to compact text.
@@ -108,4 +108,4 @@ Emits:
 * Tests first (or alongside changes).
 * One-file fences when possible.
 * Commit messages in plain English.
-* Run `PYTHONPATH=. pytest -vv` before each commit.
+* Run `PYTHONPATH=src pytest -vv` before each commit.
