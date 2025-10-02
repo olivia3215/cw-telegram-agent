@@ -314,15 +314,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Detect if this is the start of a conversation (only user messages, no agent messages)
     # We need to check this before finalizing the system prompt
-    # is_conversation_start = (
-    #     not messages
-    #     or len(messages) <= 10
-    #     and not any(m.from_id.user_id == agent.agent_id) for m in messages)
     is_conversation_start = True
     for m in messages:
         if (
             getattr(m, "from_id", None)
-            and getattr(m.from_id, "user_id", None) == agent.agent_id
+            and getattr(m.from_id, "user_id", None) == agent_id
         ):
             is_conversation_start = False
             break

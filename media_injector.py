@@ -22,20 +22,6 @@ from telegram_util import get_channel_name  # for sender/channel names
 
 logger = logging.getLogger(__name__)
 
-# Feature flags
-# Constants moved to media_budget.py to avoid circular imports
-MEDIA_FEATURE_ENABLED = True  # you've been keeping this True for manual testing
-
-# debug_save_media moved to media_budget.py to avoid circular imports
-
-
-# --- Per-tick AI description budget ------------------------------------------
-
-# Budget functions moved to media_budget.py to avoid circular imports
-
-
-# ---------- format sniffing & support checks ----------
-
 
 # ---------- sticker helpers ----------
 async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
@@ -138,8 +124,6 @@ async def _resolve_sender_and_channel(
 
 # ---------- main ----------
 
-# get_or_compute_description_for_doc removed - replaced by AIGeneratingMediaSource
-
 
 async def inject_media_descriptions(
     messages: Sequence[Any], agent: Any | None = None, peer_id: int | None = None
@@ -157,7 +141,7 @@ async def inject_media_descriptions(
 
     Returns the messages unchanged. Prompt creation happens where the cache is read.
     """
-    if not MEDIA_FEATURE_ENABLED or agent is None:
+    if not agent:
         return messages
 
     # Get the agent's media source chain
