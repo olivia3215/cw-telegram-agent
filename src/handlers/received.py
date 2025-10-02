@@ -305,11 +305,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
         system_prompt += "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name.\n"
 
-    # Detect if this is the start of a conversation (only user messages, no agent messages)
-    # We need to check this before finalizing the system prompt
-    logger.info(
-        f"[{agent_name}] =====> Checking messages for conversation start: {messages}"
-    )
     is_conversation_start = True
     for m in messages:
         if (
@@ -317,9 +312,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             and getattr(m.from_id, "user_id", None) == agent_id
         ):
             is_conversation_start = False
-            logger.info(
-                f"[{agent_name}] =====> Detected agent message, not conversation start: {m}"
-            )
             break
 
     # Add conversation start instruction if this is the beginning of a conversation
@@ -328,10 +320,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         system_prompt = system_prompt + conversation_start_instruction
         logger.info(
             f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction due to {m}"
-        )
-    else:
-        logger.info(
-            f"[{agent_name}] =====> Detected non-conversation start with {channel_name} ({len(messages)} messages)"
         )
 
     now = datetime.now().astimezone()
