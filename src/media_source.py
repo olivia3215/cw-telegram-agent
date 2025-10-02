@@ -10,7 +10,6 @@ This module provides a clean abstraction for different sources of media descript
 including curated descriptions, cached AI-generated descriptions, and on-demand AI generation.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -19,6 +18,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from media_budget import (
     consume_description_budget,
@@ -402,12 +403,11 @@ class AIGeneratingMediaSource(MediaSource):
         # Call LLM to generate description
         try:
             t1 = time.perf_counter()
-            desc = await asyncio.wait_for(
-                asyncio.to_thread(llm.describe_image, data, detected_mime_type),
-                timeout=_DESCRIBE_TIMEOUT_SECS,
+            desc = await llm.describe_image(
+                data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
             )
             desc = (desc or "").strip()
-        except TimeoutError:
+        except httpx.TimeoutException:
             logger.debug(
                 f"AIGeneratingMediaSource: timeout after {_DESCRIBE_TIMEOUT_SECS}s for {unique_id}"
             )
