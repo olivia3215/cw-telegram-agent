@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from media_budget import (
     consume_description_budget,
     debug_save_media,
@@ -405,7 +407,7 @@ class AIGeneratingMediaSource(MediaSource):
                 data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
             )
             desc = (desc or "").strip()
-        except TimeoutError:
+        except httpx.TimeoutException:
             logger.debug(
                 f"AIGeneratingMediaSource: timeout after {_DESCRIBE_TIMEOUT_SECS}s for {unique_id}"
             )
