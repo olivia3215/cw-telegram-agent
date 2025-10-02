@@ -14,9 +14,7 @@ while organizing different LLM implementations into separate files.
 from .base import LLM, ChatMsg, MsgMediaPart, MsgPart, MsgTextPart
 
 # Import LLM implementations
-from .chatgpt import ChatGPT
 from .gemini import GeminiLLM
-from .ollama import OllamaLLM
 
 # Import utility functions
 from .prompt_builder import build_gemini_contents
@@ -30,9 +28,7 @@ __all__ = [
     "MsgTextPart",
     "MsgMediaPart",
     # LLM implementations
-    "ChatGPT",
     "GeminiLLM",
-    "OllamaLLM",
     # Utility functions
     "build_gemini_contents",
 ]
