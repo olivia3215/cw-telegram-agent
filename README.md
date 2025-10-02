@@ -47,6 +47,8 @@ For multiple configuration directories, separate them with colons:
 export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/custom-configs"
 ```
 
+**Note:** All Python commands in this guide require `PYTHONPATH=src` to be set, as the source code is organized in a `src/` directory. You can either set this for each command or add it to your shell environment.
+
 #### Obtaining API Keys
 
 **Google Gemini API Key (`GOOGLE_GEMINI_API_KEY`)**
@@ -98,13 +100,13 @@ export GEMINI_DEBUG_LOGGING=true
 Run the helper once per persona to establish Telegram sessions:
 
 ```bash
-python telegram_login.py
+PYTHONPATH=src python telegram_login.py
 ```
 
 ### 5) Start the agent loop
 
 ```bash
-python run.py
+PYTHONPATH=src python run.py
 ```
 
 The loop connects, processes unread messages, plans with the LLM, and executes **one task per tick**.
