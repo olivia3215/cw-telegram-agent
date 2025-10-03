@@ -6,13 +6,8 @@
 import asyncio
 import logging
 import os
-import sys
-from pathlib import Path
 
 from telethon import events
-
-# Add src to path to import from the main codebase
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import (
     InputStickerSetShortName,
@@ -226,7 +221,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         finally:
             # client has disconnected
-            agent._client = None
+            agent.client = None
 
 
 async def periodic_scan(work_queue, agents, interval_sec):

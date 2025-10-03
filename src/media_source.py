@@ -299,6 +299,7 @@ def make_error_record(
         "sticker_name": sticker_name,
         "description": None,
         "status": status,
+        "failure_reason": failure_reason,
         "ts": datetime.now(UTC).isoformat(),
         **extra,
     }

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import mistune
 
-from agent import register_telegram_agent
+from agent import all_agents, register_telegram_agent
 from markdown_utils import flatten_node_text
 
 logger = logging.getLogger("register_agents")
@@ -162,7 +162,11 @@ def get_config_directories():
 def register_all_agents():
     config_path = get_config_directories()
 
-    registered_agents = set()  # Track registered agent names to avoid duplicates
+    # Track registered agent names to avoid duplicates
+    registered_agents = set()
+    for agent in all_agents():
+        registered_agents.add(agent.name)
+
     valid_config_dirs = []  # Track valid config directories found
 
     for config_dir in config_path:

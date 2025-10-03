@@ -88,7 +88,6 @@ def scan_media_directories() -> list[dict[str, str]]:
 
     # Also get agents from the registration system
     try:
-        register_all_agents()
         registered_agents = list(all_agents())
         for agent in registered_agents:
             # Find the config directory that contains this agent
@@ -179,9 +178,6 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
         )
 
     return agent
-
-
-# Template is now in templates/media_editor.html file
 
 
 @app.route("/")
@@ -637,12 +633,9 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     logger.info(f"Target directory: {target_directory}")
     try:
         agent = get_agent_for_directory(target_directory)
+        await agent.get_client()
         logger.info(f"Got agent: {agent.name}")
 
-        # Ensure client is connected
-        if not agent.client.is_connected():
-            await agent.client.connect()
-            logger.info(f"Connected client for agent '{agent.name}'")
     except Exception as e:
         logger.error(f"Failed to get agent or connect client: {e}")
         return {

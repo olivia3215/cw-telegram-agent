@@ -108,6 +108,13 @@ class Agent:
             self._client = get_telegram_client(self.name, self.phone)
         return self._client
 
+    async def get_client(self):
+        client = self.client
+        if not client.is_connected():
+            await client.connect()
+        logger.info(f"Connected client for agent '{self.name}'")
+        return client
+
     def get_media_source(self):
         """
         Get the complete media source chain for this agent, creating and caching it if needed.
@@ -307,10 +314,6 @@ class AgentRegistry:
             explicit_stickers=explicit_stickers,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
-
-    def get_client(self, name):
-        agent = self._registry.get(name)
-        return agent.client if agent else None
 
     def get_by_agent_id(self, agent_id):
         for agent in self.all_agents():
