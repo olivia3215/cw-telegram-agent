@@ -427,6 +427,14 @@ def api_refresh_from_ai(unique_id: str):
                 )
                 break
 
+        # If no agent-specific directory found, use the first available agent
+        # This handles cases like state/media where any agent can be used
+        if not agent and agents:
+            agent = agents[0]
+            logger.info(
+                f"Using default agent '{agent.name}' for AI refresh: {directory_path}"
+            )
+
         if not agent:
             return jsonify({"error": "Could not determine agent for AI refresh"}), 400
 
@@ -435,11 +443,37 @@ def api_refresh_from_ai(unique_id: str):
             f"Refreshing AI description for {unique_id} using agent '{agent.name}'"
         )
 
-        # For refresh, we want to bypass the agent-specific directory cache
-        # and use only the AI generation part of the chain
-        from media_source import get_default_media_source_chain
+        # For refresh, we want to bypass cached results and force fresh AI generation
+        # Create a custom media source chain that excludes the state/media directory
+        # Get the default chain components
+        from media_source import (
+            CompositeMediaSource,
+            DirectoryMediaSource,
+            get_default_media_source_chain,
+        )
 
-        media_chain = get_default_media_source_chain()
+        default_chain = get_default_media_source_chain()
+
+        # Filter out the state/media directory from the chain
+        filtered_sources = []
+        for source in default_chain.sources:
+            # Skip DirectoryMediaSource that points to state/media
+            if isinstance(source, DirectoryMediaSource):
+                source_path = str(source.directory)
+                state_media_path = str(Path("state/media").resolve())
+                # Check if this source points to state/media (handle different path formats)
+                if "state/media" not in source_path and source_path != state_media_path:
+                    filtered_sources.append(source)
+                else:
+                    logger.info(
+                        f"Filtering out state/media directory source: {source_path}"
+                    )
+            else:
+                # Keep all other sources (including AIGeneratingMediaSource)
+                filtered_sources.append(source)
+
+        # Create a new chain without state/media directory
+        media_chain = CompositeMediaSource(filtered_sources)
 
         # Create a mock document for the media pipeline
         class MockDoc:
