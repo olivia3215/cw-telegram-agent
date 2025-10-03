@@ -18,7 +18,6 @@ import asyncio
 import concurrent.futures
 import json
 import logging
-import os
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -26,7 +25,6 @@ from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
-from telethon import TelegramClient
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
@@ -34,18 +32,15 @@ from telethon.tl.types import InputStickerSetShortName
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from agent import all_agents
-from media_budget import reset_description_budget
 from media_source import (
+    AIGeneratingMediaSource,
     CompositeMediaSource,
-    DirectoryMediaSource,
-    get_default_media_source_chain,
 )
 from mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
-from telegram_util import get_telegram_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -56,8 +51,6 @@ app = Flask(__name__)
 # Global state
 _available_directories: list[dict[str, str]] = []
 _current_directory: Path | None = None
-_telegram_client = None
-_agent_for_client = None
 
 
 def scan_media_directories() -> list[dict[str, str]]:
@@ -156,15 +149,11 @@ def scan_media_directories() -> list[dict[str, str]]:
     return directories
 
 
-async def get_telegram_client_for_downloads(
-    target_directory: str = None,
-) -> tuple[Any, Any]:
-    """Get a Telegram client using the appropriate agent based on target directory."""
-    global _telegram_client, _agent_for_client
-
+def get_agent_for_directory(target_directory: str = None) -> Any:
+    """Get an agent for the specified directory."""
     # Register all agents to get the list
     register_all_agents()
-    agents = list(all_agents())  # Convert dict_values to list
+    agents = list(all_agents())
 
     if not agents:
         raise RuntimeError("No agents found. Please configure at least one agent.")
@@ -189,36 +178,7 @@ async def get_telegram_client_for_downloads(
             f"Using default agent '{agent.name}' for directory: {target_directory}"
         )
 
-    # Use the existing authenticated client from the main agent system
-
-    try:
-        # Get the existing authenticated client for this agent
-        client = get_telegram_client(agent.name, agent.phone)
-        logger.info(f"Using existing authenticated client for agent '{agent.name}'")
-
-        _telegram_client = client
-        _agent_for_client = agent
-
-        return client, agent
-
-    except Exception as e:
-        logger.error(f"Failed to get existing client for agent '{agent.name}': {e}")
-        # Fall back to creating a new client (this might not work for private sticker sets)
-
-        api_id = os.environ.get("TELEGRAM_API_ID")
-        api_hash = os.environ.get("TELEGRAM_API_HASH")
-        session_root = os.environ.get("CINDY_AGENT_STATE_DIR", "state")
-
-        # Use the main agent's session file directly
-        session_path = os.path.join(session_root, agent.name, "telegram.session")
-
-        client = TelegramClient(session_path, int(api_id), api_hash)
-        client.session_user_phone = agent.phone
-
-        _telegram_client = client
-        _agent_for_client = agent
-
-        return client, agent
+    return agent
 
 
 # Template is now in templates/media_editor.html file
@@ -422,30 +382,11 @@ def api_refresh_from_ai(unique_id: str):
             data = json.load(f)
 
         # Get the agent for this directory
-        agent = None
-        target_path = Path(directory_path)
-        register_all_agents()
-        agents = list(all_agents())
-
-        for a in agents:
-            # Check if this is an agent-specific media directory
-            if f"/agents/{a.name}/media" in str(target_path):
-                agent = a
-                logger.info(
-                    f"Found matching agent '{a.name}' for AI refresh: {directory_path}"
-                )
-                break
-
-        # If no agent-specific directory found, use the first available agent
-        # This handles cases like state/media where any agent can be used
-        if not agent and agents:
-            agent = agents[0]
-            logger.info(
-                f"Using default agent '{agent.name}' for AI refresh: {directory_path}"
-            )
-
-        if not agent:
-            return jsonify({"error": "Could not determine agent for AI refresh"}), 400
+        try:
+            agent = get_agent_for_directory(directory_path)
+        except Exception as e:
+            logger.error(f"Failed to get agent for directory {directory_path}: {e}")
+            return jsonify({"error": f"Could not determine agent: {e}"}), 400
 
         # Use the media pipeline to regenerate description
         logger.info(
@@ -453,40 +394,37 @@ def api_refresh_from_ai(unique_id: str):
         )
 
         # For refresh, we want to bypass cached results and force fresh AI generation
-        # Create a custom media source chain that excludes the state/media directory
-        # Get the default chain components
+        # Create a minimal chain with just the AI generation source
 
-        default_chain = get_default_media_source_chain()
+        # Find the media file
+        media_file = None
+        for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+            potential_file = media_dir / f"{unique_id}{ext}"
+            if potential_file.exists():
+                media_file = potential_file
+                break
 
-        # Filter out the state/media directory from the chain
-        filtered_sources = []
-        for source in default_chain.sources:
-            # Skip DirectoryMediaSource that points to state/media
-            if isinstance(source, DirectoryMediaSource):
-                source_path = str(source.directory)
-                state_media_path = str(Path("state/media").resolve())
-                # Check if this source points to state/media (handle different path formats)
-                if "state/media" not in source_path and source_path != state_media_path:
-                    filtered_sources.append(source)
-                else:
-                    logger.info(
-                        f"Filtering out state/media directory source: {source_path}"
-                    )
-            else:
-                # Keep all other sources (including AIGeneratingMediaSource)
-                filtered_sources.append(source)
+        if not media_file:
+            return jsonify({"error": "Media file not found"}), 404
 
-        # Create a new chain without state/media directory
-        media_chain = CompositeMediaSource(filtered_sources)
+        # Create a fake client (not needed since we're using Path objects)
+        class FakeClient:
+            pass
 
-        # Create a mock document for the media pipeline
-        class MockDoc:
-            def __init__(self, data):
-                self.id = unique_id
-                self.mime_type = data.get("mime_type")
-                self.file_name = data.get("sticker_name", f"{unique_id}.sticker")
+        FakeClient()
+        # Pass the media file Path directly as the doc parameter
+        fake_doc = media_file
 
-        doc = MockDoc(data)
+        # Create a minimal chain: just AI generation (no MIME filter needed since we have the file)
+        # Cache the new AI description to the same directory as the original media
+        ai_cache_dir = media_dir
+        ai_cache_dir.mkdir(parents=True, exist_ok=True)
+
+        media_chain = CompositeMediaSource(
+            [
+                AIGeneratingMediaSource(cache_directory=ai_cache_dir),
+            ]
+        )
 
         # Process using the media source chain to get fresh description
         loop = asyncio.new_event_loop()
@@ -497,7 +435,7 @@ def api_refresh_from_ai(unique_id: str):
                 media_chain.get(
                     unique_id=unique_id,
                     agent=agent,
-                    doc=doc,
+                    doc=fake_doc,
                     kind=data.get("kind", "sticker"),
                     sticker_set_name=data.get("sticker_set_name"),
                     sticker_name=data.get("sticker_name"),
@@ -512,29 +450,18 @@ def api_refresh_from_ai(unique_id: str):
             loop.close()
 
         if record:
-            # Use the fresh description from the media pipeline
+            # AIGeneratingMediaSource has already cached the result to disk
             new_description = record.get("description")
             new_status = record.get("status", "ok")
             logger.info(
                 f"Got fresh AI description for {unique_id}: {new_description[:50] if new_description else 'None'}..."
             )
+            return jsonify(
+                {"success": True, "description": new_description, "status": new_status}
+            )
         else:
-            new_description = None
-            new_status = "pending_description"
             logger.warning(f"No AI description generated for {unique_id}")
-
-        # Update the record with the new AI-generated description
-        data["description"] = new_description
-        data["status"] = new_status
-        data.pop("failure_reason", None)  # Clear any previous errors
-
-        # Save back
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-        return jsonify(
-            {"success": True, "description": new_description, "status": new_status}
-        )
+            return jsonify({"error": "No AI description generated"}), 500
 
     except Exception as e:
         logger.error(f"Error refreshing AI description for {unique_id}: {e}")
@@ -709,15 +636,19 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     logger.info(f"Starting sticker import for set: {sticker_set_name}")
     logger.info(f"Target directory: {target_directory}")
     try:
-        client, agent = await get_telegram_client_for_downloads(target_directory)
-        logger.info(f"Got telegram client and agent: {agent.name if agent else 'None'}")
-    except Exception as e:
-        logger.error(f"Failed to get telegram client: {e}")
-        return {"success": False, "error": f"Failed to get telegram client: {e}"}
+        agent = get_agent_for_directory(target_directory)
+        logger.info(f"Got agent: {agent.name}")
 
-    # Connect to Telegram if not already connected
-    if not client.is_connected():
-        await client.connect()
+        # Ensure client is connected
+        if not agent.client.is_connected():
+            await agent.client.connect()
+            logger.info(f"Connected client for agent '{agent.name}'")
+    except Exception as e:
+        logger.error(f"Failed to get agent or connect client: {e}")
+        return {
+            "success": False,
+            "error": f"Failed to get agent or connect client: {e}",
+        }
 
     target_dir = Path(target_directory)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -734,7 +665,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             logger.info(
                 f"Attempting to get sticker set with short name: '{sticker_set_name}'"
             )
-            result = await client(
+            result = await agent.client(
                 GetStickerSetRequest(
                     stickerset=InputStickerSetShortName(short_name=sticker_set_name),
                     hash=0,
@@ -753,7 +684,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             if sticker_set_name != sticker_set_name.lower():
                 logger.info(f"Trying lowercase version: '{sticker_set_name.lower()}'")
                 try:
-                    result = await client(
+                    result = await agent.client(
                         GetStickerSetRequest(
                             stickerset=InputStickerSetShortName(
                                 short_name=sticker_set_name.lower()
@@ -798,10 +729,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                 "error": f"Failed to process sticker set documents: {e}",
             }
 
-        # Reset budget for this import session (once per import, not per sticker)
-        reset_description_budget(10)  # Allow 10 AI descriptions per import
-        logger.info("Reset description budget to 10 for sticker import")
-
         for doc in documents:
             try:
                 # Get sticker name using the same pattern as run.py
@@ -827,7 +754,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                 # Download the media file
                 try:
-                    media_bytes = await download_media_bytes(client, doc)
+                    media_bytes = await download_media_bytes(agent.client, doc)
 
                     # Determine file extension
                     mime_type = getattr(doc, "mime_type", None)
@@ -844,52 +771,17 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     media_file = target_dir / f"{unique_id}{file_ext}"
                     media_file.write_bytes(media_bytes)
 
-                    # Use the existing media pipeline to get description
-                    logger.info(
-                        f"Getting description for sticker {unique_id} using media pipeline"
-                    )
-
-                    # Get the agent's media source chain
-                    media_chain = agent.get_media_source()
-
-                    # Process using the media source chain to get description
-                    record = await media_chain.get(
-                        unique_id=unique_id,
-                        agent=agent,
-                        doc=doc,
-                        kind="sticker",
-                        sticker_set_name=sticker_set_name,
-                        sticker_name=sticker_name,
-                        sender_id=None,
-                        sender_name=None,
-                        channel_id=None,
-                        channel_name=None,
-                        media_ts=None,
-                    )
-
-                    if record:
-                        # Use the description from the media pipeline
-                        description = record.get("description")
-                        status = record.get("status", "ok")
-                        logger.info(
-                            f"Got description for {unique_id}: {description[:50] if description else 'None'}..."
-                        )
-                    else:
-                        description = None
-                        status = "pending_description"
-                        logger.warning(f"No description found for {unique_id}")
-
                     # Detect actual MIME type from file bytes for accurate processing
                     detected_mime_type = detect_mime_type_from_bytes(media_bytes)
 
-                    # Create JSON record with description from media pipeline
+                    # Create JSON record with empty description (AI will be used on-demand via refresh)
                     media_record = {
                         "unique_id": unique_id,
                         "kind": "sticker",
                         "sticker_set_name": sticker_set_name,
                         "sticker_name": sticker_name,
-                        "description": description,
-                        "status": status,
+                        "description": None,  # Leave empty, use AI refresh when needed
+                        "status": "pending_description",
                         "ts": datetime.now(UTC).isoformat(),
                         "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }

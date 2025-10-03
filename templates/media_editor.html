@@ -384,6 +384,16 @@
                     updateSaveStatus(uniqueId, 'error');
                 } else {
                     updateSaveStatus(uniqueId, 'saved');
+
+                    // Update the status display to show "curated"
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = '<strong>Status:</strong> curated';
+                            break;
+                        }
+                    }
                 }
             })
             .catch(error => {

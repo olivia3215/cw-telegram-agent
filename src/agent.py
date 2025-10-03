@@ -55,7 +55,7 @@ class Agent:
         # (set_short_name, sticker_name) -> InputDocument
         self.sticker_cache_by_set = {}
 
-        self.client = None
+        self._client = None
         self.agent_id = None
         self._blocklist_cache = None
         self._blocklist_last_updated = None
@@ -97,6 +97,16 @@ class Agent:
             self._llm = GeminiLLM(api_key=api_key)
 
         return self._llm
+
+    @property
+    def client(self):
+        """Get the Telegram client, creating it on demand if needed."""
+        if self._client is None:
+            # Import here to avoid circular import
+            from telegram_util import get_telegram_client
+
+            self._client = get_telegram_client(self.name, self.phone)
+        return self._client
 
     def get_media_source(self):
         """

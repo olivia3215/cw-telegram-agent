@@ -187,7 +187,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
     while True:
         client = get_telegram_client(agent.name, agent.phone)
-        agent.client = client
+        agent._client = client
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
@@ -226,7 +226,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         finally:
             # client has disconnected
-            agent.client = None
+            agent._client = None
 
 
 async def periodic_scan(work_queue, agents, interval_sec):
