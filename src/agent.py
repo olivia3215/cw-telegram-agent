@@ -55,7 +55,7 @@ class Agent:
         # (set_short_name, sticker_name) -> InputDocument
         self.sticker_cache_by_set = {}
 
-        self.client = None
+        self._client = None
         self.agent_id = None
         self._blocklist_cache = None
         self._blocklist_last_updated = None
@@ -97,6 +97,23 @@ class Agent:
             self._llm = GeminiLLM(api_key=api_key)
 
         return self._llm
+
+    @property
+    def client(self):
+        """Get the Telegram client, creating it on demand if needed."""
+        if self._client is None:
+            # Import here to avoid circular import
+            from telegram_util import get_telegram_client
+
+            self._client = get_telegram_client(self.name, self.phone)
+        return self._client
+
+    async def get_client(self):
+        client = self.client
+        if not client.is_connected():
+            await client.connect()
+        logger.info(f"Connected client for agent '{self.name}'")
+        return client
 
     def get_media_source(self):
         """
@@ -297,10 +314,6 @@ class AgentRegistry:
             explicit_stickers=explicit_stickers,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
-
-    def get_client(self, name):
-        agent = self._registry.get(name)
-        return agent.client if agent else None
 
     def get_by_agent_id(self, agent_id):
         for agent in self.all_agents():

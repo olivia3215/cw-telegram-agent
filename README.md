@@ -204,6 +204,29 @@ Curated descriptions can be provided at two levels:
 
 **See [samples/media/README.md](samples/media/README.md) for complete details on curated media descriptions, including directory structure, file format, and examples.**
 
+### Media Editor (Web Interface)
+
+The media editor provides a web-based interface for managing media descriptions. It's particularly useful for:
+
+- **Browsing and editing** media descriptions across all agents and directories
+- **Importing sticker sets** from Telegram with automatic AI-generated descriptions
+- **Curating descriptions** by manually editing AI-generated content
+- **Managing media** by moving items between directories or deleting unwanted content
+- **Refreshing descriptions** using the AI pipeline to generate new versions
+
+The media editor integrates seamlessly with the existing media pipeline, using the same AI infrastructure and caching system as the main agent.
+
+**Quick start:**
+```bash
+# Start the media editor
+./media_editor.sh start
+
+# Access the web interface
+open http://localhost:5001
+```
+
+**See [MEDIA_EDITOR.md](MEDIA_EDITOR.md) for detailed documentation on using the media editor.**
+
 ---
 
 ## Troubleshooting

@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 async def login_agent(agent):
     client = get_telegram_client(agent.name, agent.phone)
-    await client.connect()
 
     if await client.is_user_authorized():
         logger.info(f"[{agent.name}] Already logged in.")

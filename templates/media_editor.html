@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Editor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .controls {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .directory-selector {
+            margin-bottom: 20px;
+        }
+        .directory-selector select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 300px;
+        }
+        .import-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .import-section input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .import-section button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .import-section button:hover {
+            background: #0056b3;
+        }
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .media-item {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            display: flex;
+            flex-direction: row;
+        }
+        .media-preview {
+            flex: 0 0 auto;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 10px;
+        }
+        .media-preview img {
+            max-width: none;
+            max-height: none;
+            width: auto;
+            height: auto;
+            display: block;
+        }
+        .media-preview video {
+            max-width: 300px;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        .media-info {
+            flex: 1;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        .media-info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+        .media-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .description-edit {
+            margin-top: 10px;
+        }
+        .description-edit textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .description-edit button {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .description-edit button:hover {
+            background: #1e7e34;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Media Editor</h1>
+        </div>
+
+        <div class="controls">
+            <div class="directory-selector">
+                <label for="directory-select">Select Media Directory:</label><br>
+                <select id="directory-select">
+                    <option value="">Choose a directory...</option>
+                </select>
+            </div>
+
+            <div class="import-section">
+                <h3>Import Sticker Set</h3>
+                <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+                <button onclick="importStickerSet()">Import Set</button>
+                <div id="import-status"></div>
+            </div>
+        </div>
+
+        <div id="media-container">
+            <div class="loading">Select a directory to view media files</div>
+        </div>
+    </div>
+
+    <script>
+        let currentDirectory = '';
+        let autoSaveTimers = {}; // Track auto-save timers for each textarea
+        let savingStates = {}; // Track saving state for each textarea
+
+        // Load directories on page load
+        fetch('/api/directories')
+            .then(response => response.json())
+            .then(directories => {
+                const select = document.getElementById('directory-select');
+                directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir.path;
+                    option.textContent = dir.name;
+                    select.appendChild(option);
+                });
+            });
+
+        // Handle directory selection
+        document.getElementById('directory-select').addEventListener('change', function(e) {
+            currentDirectory = e.target.value;
+            if (currentDirectory) {
+                loadMediaFiles(currentDirectory);
+            } else {
+                document.getElementById('media-container').innerHTML =
+                    '<div class="loading">Select a directory to view media files</div>';
+            }
+        });
+
+        function loadMediaFiles(directoryPath) {
+            document.getElementById('media-container').innerHTML =
+                '<div class="loading">Loading media files...</div>';
+
+            const encodedPath = encodeURIComponent(directoryPath);
+            fetch(`/api/media?directory=${encodedPath}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('media-container').innerHTML =
+                            `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+
+                    displayMediaFiles(data.grouped_media);
+                })
+                .catch(error => {
+                    document.getElementById('media-container').innerHTML =
+                        `<div class="error">Error loading media files: ${error}</div>`;
+                });
+        }
+
+        function displayMediaFiles(groupedMedia) {
+            const container = document.getElementById('media-container');
+
+            if (Object.keys(groupedMedia).length === 0) {
+                container.innerHTML = '<div class="loading">No media files found</div>';
+                return;
+            }
+
+            let html = '';
+
+            for (const [stickerSet, mediaFiles] of Object.entries(groupedMedia)) {
+                html += `<h2 style="padding: 0 20px; margin: 20px 0 10px 0; color: #2c3e50;">${stickerSet}</h2>`;
+
+                html += '<div class="media-grid">';
+                mediaFiles.forEach(media => {
+                    html += createMediaItemHTML(media);
+                });
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+
+            // Populate move directory dropdowns
+            populateMoveDirectoryDropdowns();
+        }
+
+        function createMediaItemHTML(media) {
+            const encodedDir = encodeURIComponent(currentDirectory);
+            const mediaUrl = media.media_file ?
+                `/api/media/${media.unique_id}?directory=${encodedDir}` : null;
+
+            const isAnimated = media.media_file && (media.media_file.endsWith('.tgs') || media.media_file.endsWith('.gif') || media.media_file.endsWith('.mp4'));
+
+            let mediaElement = '';
+            if (mediaUrl) {
+                if (isAnimated) {
+                    // Enhanced video controls for animated content
+                    mediaElement = `<video controls preload="metadata" style="max-width: 100%; max-height: 100%;">
+                        <source src="${mediaUrl}" type="video/mp4">
+                        <source src="${mediaUrl}" type="video/webm">
+                        Your browser does not support the video tag.
+                    </video>`;
+                } else if (media.media_file && media.media_file.endsWith('.tgs')) {
+                    // TGS files - Lottie animations, show with download link
+                    mediaElement = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; color: #666;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
+                        <div style="text-align: center; font-size: 12px; margin-bottom: 10px;">TGS Animated Sticker</div>
+                        <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 12px;">Download TGS File</a>
+                    </div>`;
+                } else {
+                    mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
+                }
+            } else {
+                mediaElement = '<div style="color: #666;">No media file</div>';
+            }
+
+            return `
+                <div class="media-item">
+                    <div class="media-preview">
+                        ${mediaElement}
+                    </div>
+                    <div class="media-info">
+                        <h3>${media.sticker_name || media.unique_id}</h3>
+                        <p><strong>Type:</strong> ${media.kind}</p>
+                        <p><strong>Set:</strong> ${media.sticker_set_name}</p>
+                        <p><strong>Status:</strong> ${media.status}</p>
+                        ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
+
+                        <div class="description-edit">
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')">${media.description || ''}</textarea>
+                            <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
+                                <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
+                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
+                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${media.unique_id}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
+                                    <option value="">Move to...</option>
+                                </select>
+                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function scheduleAutoSave(uniqueId) {
+            // Clear existing timer for this textarea
+            if (autoSaveTimers[uniqueId]) {
+                clearTimeout(autoSaveTimers[uniqueId]);
+            }
+
+            // Set new timer for 1 second delay
+            autoSaveTimers[uniqueId] = setTimeout(() => {
+                updateDescription(uniqueId);
+            }, 1000);
+
+            // Update status to show "typing..."
+            updateSaveStatus(uniqueId, 'typing');
+        }
+
+        function updateSaveStatus(uniqueId, status) {
+            const statusElement = document.getElementById(`save-status-${uniqueId}`);
+            if (!statusElement) return;
+
+            switch (status) {
+                case 'typing':
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
+                    break;
+                case 'saving':
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
+                    break;
+                case 'saved':
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
+                    break;
+                case 'error':
+                    statusElement.textContent = 'Error';
+                    statusElement.style.color = '#dc3545';
+                    break;
+                default:
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
+            }
+        }
+
+        function updateDescription(uniqueId) {
+            // Don't save if already saving
+            if (savingStates[uniqueId]) {
+                return;
+            }
+
+            const textarea = document.getElementById(`desc-${uniqueId}`);
+            const description = textarea.value.trim();
+            const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Mark as saving
+            savingStates[uniqueId] = true;
+            updateSaveStatus(uniqueId, 'saving');
+
+            fetch(`/api/media/${uniqueId}/description?directory=${encodedDir}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ description: description })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    updateSaveStatus(uniqueId, 'error');
+                } else {
+                    updateSaveStatus(uniqueId, 'saved');
+
+                    // Update the status display to show "curated"
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = '<strong>Status:</strong> curated';
+                            break;
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                updateSaveStatus(uniqueId, 'error');
+            })
+            .finally(() => {
+                // Mark as no longer saving
+                savingStates[uniqueId] = false;
+            });
+        }
+
+        function refreshFromAI(uniqueId) {
+            const button = document.getElementById(`refresh-ai-btn-${uniqueId}`);
+            const textarea = document.getElementById(`desc-${uniqueId}`);
+            const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Disable button and show loading state
+            button.disabled = true;
+            button.textContent = 'Generating...';
+            button.style.background = '#007bff';
+
+            fetch(`/api/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error refreshing from AI: ' + data.error);
+                } else {
+                    // Update the textarea with the new AI-generated description
+                    textarea.value = data.description || '';
+
+                    // Update the status display
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = `<strong>Status:</strong> ${data.status || 'ok'}`;
+                            break;
+                        }
+                    }
+
+                    // Trigger auto-save to save the new description
+                    scheduleAutoSave(uniqueId);
+                }
+            })
+            .catch(error => {
+                alert('Error refreshing from AI: ' + error);
+            })
+            .finally(() => {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = 'Refresh from AI';
+                button.style.background = '#6c757d';
+            });
+        }
+
+        function populateMoveDirectoryDropdowns() {
+            // Get all move directory dropdowns
+            const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
+
+            // Fetch available directories
+            fetch('/api/directories')
+                .then(response => response.json())
+                .then(directories => {
+                    moveDropdowns.forEach(dropdown => {
+                        // Clear existing options except the first one
+                        while (dropdown.children.length > 1) {
+                            dropdown.removeChild(dropdown.lastChild);
+                        }
+
+                        // Add directory options
+                        directories.forEach(dir => {
+                            if (dir.path !== currentDirectory) { // Don't show current directory
+                                const option = document.createElement('option');
+                                option.value = dir.path;
+                                option.textContent = dir.name;
+                                dropdown.appendChild(option);
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading directories for move dropdowns:', error);
+                });
+        }
+
+        function moveMedia(uniqueId) {
+            const select = document.getElementById(`move-dir-${uniqueId}`);
+            const targetDirectory = select.value;
+
+            if (!targetDirectory) {
+                return; // No selection made
+            }
+
+            const encodedCurrentDir = encodeURIComponent(currentDirectory);
+            const encodedTargetDir = encodeURIComponent(targetDirectory);
+
+            // Show loading state
+            select.disabled = true;
+            select.style.background = '#f8f9fa';
+
+            fetch(`/api/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error moving media: ' + data.error);
+                } else {
+                    // If moved to a different directory, reload the current view
+                    if (targetDirectory !== currentDirectory) {
+                        loadMediaFiles(currentDirectory);
+                    }
+                }
+            })
+            .catch(error => {
+                alert('Error moving media: ' + error);
+            })
+            .finally(() => {
+                // Reset select
+                select.disabled = false;
+                select.style.background = 'white';
+                select.value = ''; // Reset selection
+            });
+        }
+
+        function deleteMedia(uniqueId) {
+            const mediaName = document.querySelector(`#desc-${uniqueId}`).placeholder || 'this media item';
+
+            if (confirm(`Are you sure you want to delete ${mediaName}? This will permanently remove both the media file and description.`)) {
+                const button = document.getElementById(`delete-btn-${uniqueId}`);
+                const encodedDir = encodeURIComponent(currentDirectory);
+
+                // Show loading state
+                button.disabled = true;
+                button.textContent = 'Deleting...';
+                button.style.background = '#6c757d';
+
+                fetch(`/api/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error deleting media: ' + data.error);
+                    } else {
+                        // Remove the media item from the UI
+                        const mediaItem = button.closest('.media-item');
+                        if (mediaItem) {
+                            mediaItem.remove();
+                        }
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting media: ' + error);
+                })
+                .finally(() => {
+                    // Reset button
+                    button.disabled = false;
+                    button.textContent = 'Delete';
+                    button.style.background = '#dc3545';
+                });
+            }
+        }
+
+        function importStickerSet() {
+            const stickerSetName = document.getElementById('sticker-set-name').value.trim();
+            const statusDiv = document.getElementById('import-status');
+
+            if (!stickerSetName) {
+                statusDiv.innerHTML = '<div class="error">Please enter a sticker set name</div>';
+                return;
+            }
+
+            if (!currentDirectory) {
+                statusDiv.innerHTML = '<div class="error">Please select a directory first</div>';
+                return;
+            }
+
+            statusDiv.innerHTML = '<div>Importing sticker set...</div>';
+
+            fetch('/api/import-sticker-set', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    sticker_set_name: stickerSetName,
+                    target_directory: currentDirectory
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                } else {
+                    statusDiv.innerHTML = '<div style="color: #28a745;">Import completed!</div>';
+                    // Reload media files
+                    loadMediaFiles(currentDirectory);
+                }
+            })
+            .catch(error => {
+                statusDiv.innerHTML = `<div class="error">Error: ${error}</div>`;
+            });
+        }
+    </script>
+</body>
+</html>
