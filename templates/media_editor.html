@@ -298,8 +298,9 @@
 
                         <div class="description-edit">
                             <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')">${media.description || ''}</textarea>
-                            <button id="save-btn-${media.unique_id}" onclick="updateDescription('${media.unique_id}')">Save Description</button>
-                            <span id="save-status-${media.unique_id}" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
+                            <div style="display: flex; align-items: center; margin-top: 8px;">
+                                <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -314,7 +315,7 @@
 
             // Set new timer for 1 second delay
             autoSaveTimers[uniqueId] = setTimeout(() => {
-                updateDescription(uniqueId, true); // true = auto-save
+                updateDescription(uniqueId);
             }, 1000);
 
             // Update status to show "typing..."
@@ -327,8 +328,8 @@
 
             switch (status) {
                 case 'typing':
-                    statusElement.textContent = 'Typing...';
-                    statusElement.style.color = '#666';
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
                     break;
                 case 'saving':
                     statusElement.textContent = 'Saving...';
@@ -343,11 +344,12 @@
                     statusElement.style.color = '#dc3545';
                     break;
                 default:
-                    statusElement.textContent = '';
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
             }
         }
 
-        function updateDescription(uniqueId, isAutoSave = false) {
+        function updateDescription(uniqueId) {
             // Don't save if already saving
             if (savingStates[uniqueId]) {
                 return;
@@ -372,35 +374,12 @@
             .then(data => {
                 if (data.error) {
                     updateSaveStatus(uniqueId, 'error');
-                    if (!isAutoSave) {
-                        alert('Error updating description: ' + data.error);
-                    }
                 } else {
                     updateSaveStatus(uniqueId, 'saved');
-
-                    // For manual saves, also update button
-                    if (!isAutoSave) {
-                        const button = document.getElementById(`save-btn-${uniqueId}`);
-                        const originalText = button.textContent;
-                        button.textContent = 'Saved!';
-                        button.style.background = '#28a745';
-                        setTimeout(() => {
-                            button.textContent = originalText;
-                            button.style.background = '#28a745';
-                        }, 1000);
-                    }
-
-                    // Clear saved status after 2 seconds
-                    setTimeout(() => {
-                        updateSaveStatus(uniqueId, '');
-                    }, 2000);
                 }
             })
             .catch(error => {
                 updateSaveStatus(uniqueId, 'error');
-                if (!isAutoSave) {
-                    alert('Error updating description: ' + error);
-                }
             })
             .finally(() => {
                 // Mark as no longer saving
