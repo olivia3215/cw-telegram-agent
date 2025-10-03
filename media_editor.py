@@ -370,6 +370,116 @@ def api_update_description(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/media/<unique_id>/refresh-ai", methods=["POST"])
+def api_refresh_from_ai(unique_id: str):
+    """Refresh description using AI pipeline."""
+    try:
+        directory_path = request.args.get("directory")
+        if not directory_path:
+            return jsonify({"error": "Missing directory parameter"}), 400
+
+        media_dir = Path(directory_path)
+        json_file = media_dir / f"{unique_id}.json"
+
+        if not json_file.exists():
+            return jsonify({"error": "Media record not found"}), 404
+
+        # Load existing data
+        with open(json_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Get the agent for this directory
+        agent = None
+        target_path = Path(directory_path)
+        register_all_agents()
+        from agent import all_agents as get_all_agents
+
+        agents = list(get_all_agents())
+
+        for a in agents:
+            # Check if this is an agent-specific media directory
+            if f"/agents/{a.name}/media" in str(target_path):
+                agent = a
+                logger.info(
+                    f"Found matching agent '{a.name}' for AI refresh: {directory_path}"
+                )
+                break
+
+        if not agent:
+            return jsonify({"error": "Could not determine agent for AI refresh"}), 400
+
+        # Use the media pipeline to regenerate description
+        logger.info(
+            f"Refreshing AI description for {unique_id} using agent '{agent.name}'"
+        )
+
+        # Get the agent's media source chain
+        media_chain = agent.get_media_source()
+
+        # Create a mock document for the media pipeline
+        class MockDoc:
+            def __init__(self, data):
+                self.id = unique_id
+                self.mime_type = data.get("mime_type")
+                self.file_name = data.get("sticker_name", f"{unique_id}.sticker")
+
+        doc = MockDoc(data)
+
+        # Process using the media source chain to get fresh description
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            record = loop.run_until_complete(
+                media_chain.get(
+                    unique_id=unique_id,
+                    agent=agent,
+                    doc=doc,
+                    kind=data.get("kind", "sticker"),
+                    sticker_set_name=data.get("sticker_set_name"),
+                    sticker_name=data.get("sticker_name"),
+                    sender_id=None,
+                    sender_name=None,
+                    channel_id=None,
+                    channel_name=None,
+                    media_ts=None,
+                )
+            )
+        finally:
+            loop.close()
+
+        if record:
+            # Use the fresh description from the media pipeline
+            new_description = record.get("description")
+            new_status = record.get("status", "ok")
+            logger.info(
+                f"Got fresh AI description for {unique_id}: {new_description[:50] if new_description else 'None'}..."
+            )
+        else:
+            new_description = None
+            new_status = "pending_description"
+            logger.warning(f"No AI description generated for {unique_id}")
+
+        # Update the record with the new AI-generated description
+        data["description"] = new_description
+        data["status"] = new_status
+        data.pop("failure_reason", None)  # Clear any previous errors
+
+        # Save back
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        return jsonify(
+            {"success": True, "description": new_description, "status": new_status}
+        )
+
+    except Exception as e:
+        logger.error(f"Error refreshing AI description for {unique_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/download/<unique_id>", methods=["POST"])
 def api_download_media(unique_id: str):
     """Download missing media file using Telegram API."""

@@ -298,8 +298,9 @@
 
                         <div class="description-edit">
                             <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')">${media.description || ''}</textarea>
-                            <div style="display: flex; align-items: center; margin-top: 8px;">
+                            <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px;">
                                 <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
+                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
                             </div>
                         </div>
                     </div>
@@ -384,6 +385,44 @@
             .finally(() => {
                 // Mark as no longer saving
                 savingStates[uniqueId] = false;
+            });
+        }
+
+        function refreshFromAI(uniqueId) {
+            const button = document.getElementById(`refresh-ai-btn-${uniqueId}`);
+            const textarea = document.getElementById(`desc-${uniqueId}`);
+            const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Disable button and show loading state
+            button.disabled = true;
+            button.textContent = 'Generating...';
+            button.style.background = '#007bff';
+
+            fetch(`/api/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error refreshing from AI: ' + data.error);
+                } else {
+                    // Update the textarea with the new AI-generated description
+                    textarea.value = data.description || '';
+                    // Trigger auto-save to save the new description
+                    scheduleAutoSave(uniqueId);
+                }
+            })
+            .catch(error => {
+                alert('Error refreshing from AI: ' + error);
+            })
+            .finally(() => {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = 'Refresh from AI';
+                button.style.background = '#6c757d';
             });
         }
 
