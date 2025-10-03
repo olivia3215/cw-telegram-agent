@@ -263,21 +263,13 @@ class BudgetExhaustedMediaSource(MediaSource):
         If budget is exhausted: returns a simple fallback record
         """
 
-        logger.info(f"DEBUG: BudgetExhaustedMediaSource.get called for {unique_id}")
-
         if has_description_budget():
             # Budget available - consume it and return None
             # to let AIGeneratingMediaSource handle the request
             consume_description_budget()
-            logger.info(
-                f"DEBUG: BudgetExhaustedMediaSource consumed budget for {unique_id}, returning None"
-            )
             return None
         else:
             # Budget exhausted - return fallback record
-            logger.info(
-                f"DEBUG: BudgetExhaustedMediaSource budget exhausted for {unique_id}, returning budget_exhausted"
-            )
             return {
                 "unique_id": unique_id,
                 "kind": kind,
@@ -340,64 +332,24 @@ class UnsupportedFormatMediaSource(MediaSource):
         Returns unsupported record if format is not supported.
         """
 
-        logger.info(
-            f"DEBUG: UnsupportedFormatMediaSource.get called for {unique_id}, doc={doc is not None}, agent={agent is not None}"
-        )
-
-        if agent is not None:
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource agent type: {type(agent)}"
-            )
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource agent attributes: {dir(agent)}"
-            )
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource agent has client: {hasattr(agent, 'client')}"
-            )
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource agent has telegram_client: {hasattr(agent, 'telegram_client')}"
-            )
-            if hasattr(agent, "client"):
-                logger.info(
-                    f"DEBUG: UnsupportedFormatMediaSource agent.client: {getattr(agent, 'client', None)}"
-                )
-
         # Only check if we have a document to download
         if doc is None:
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource returning None for {unique_id} (no doc)"
-            )
             return None
 
         try:
             # Check MIME type from doc object directly
             mime_type = getattr(doc, "mime_type", None)
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource doc MIME type {mime_type} for {unique_id}"
-            )
 
             if not mime_type:
-                logger.info(
-                    f"DEBUG: UnsupportedFormatMediaSource no MIME type in doc for {unique_id}, returning None"
-                )
                 return None
 
             # Get LLM instance to check support
             llm = getattr(agent, "llm", None)
             if not llm:
-                logger.info(
-                    f"DEBUG: UnsupportedFormatMediaSource no LLM for {unique_id}, returning None"
-                )
                 return None
             is_supported = llm.is_mime_type_supported_by_llm(mime_type)
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource MIME type {mime_type} supported: {is_supported} for {unique_id}"
-            )
 
             if not is_supported:
-                logger.info(
-                    f"DEBUG: UnsupportedFormatMediaSource returning unsupported_format for {unique_id}"
-                )
                 # Return unsupported format record
                 return make_error_record(
                     unique_id,
@@ -410,18 +362,9 @@ class UnsupportedFormatMediaSource(MediaSource):
                 )
 
             # Format is supported - let other sources handle it
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource returning None for {unique_id} (format supported)"
-            )
             return None
 
-        except Exception as e:
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource exception for {unique_id}: {e}"
-            )
-            logger.info(
-                f"DEBUG: UnsupportedFormatMediaSource returning None due to exception for {unique_id}"
-            )
+        except Exception:
             # If we can't check format, let other sources handle it
             return None
 
