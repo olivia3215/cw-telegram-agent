@@ -182,6 +182,8 @@
 
     <script>
         let currentDirectory = '';
+        let autoSaveTimers = {}; // Track auto-save timers for each textarea
+        let savingStates = {}; // Track saving state for each textarea
 
         // Load directories on page load
         fetch('/api/directories')
@@ -295,18 +297,69 @@
                         ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
 
                         <div class="description-edit">
-                            <textarea id="desc-${media.unique_id}" placeholder="Enter description...">${media.description || ''}</textarea>
-                            <button onclick="updateDescription('${media.unique_id}')">Save Description</button>
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')">${media.description || ''}</textarea>
+                            <button id="save-btn-${media.unique_id}" onclick="updateDescription('${media.unique_id}')">Save Description</button>
+                            <span id="save-status-${media.unique_id}" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
                         </div>
                     </div>
                 </div>
             `;
         }
 
-        function updateDescription(uniqueId) {
+        function scheduleAutoSave(uniqueId) {
+            // Clear existing timer for this textarea
+            if (autoSaveTimers[uniqueId]) {
+                clearTimeout(autoSaveTimers[uniqueId]);
+            }
+
+            // Set new timer for 1 second delay
+            autoSaveTimers[uniqueId] = setTimeout(() => {
+                updateDescription(uniqueId, true); // true = auto-save
+            }, 1000);
+
+            // Update status to show "typing..."
+            updateSaveStatus(uniqueId, 'typing');
+        }
+
+        function updateSaveStatus(uniqueId, status) {
+            const statusElement = document.getElementById(`save-status-${uniqueId}`);
+            if (!statusElement) return;
+
+            switch (status) {
+                case 'typing':
+                    statusElement.textContent = 'Typing...';
+                    statusElement.style.color = '#666';
+                    break;
+                case 'saving':
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
+                    break;
+                case 'saved':
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
+                    break;
+                case 'error':
+                    statusElement.textContent = 'Error';
+                    statusElement.style.color = '#dc3545';
+                    break;
+                default:
+                    statusElement.textContent = '';
+            }
+        }
+
+        function updateDescription(uniqueId, isAutoSave = false) {
+            // Don't save if already saving
+            if (savingStates[uniqueId]) {
+                return;
+            }
+
             const textarea = document.getElementById(`desc-${uniqueId}`);
             const description = textarea.value.trim();
             const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Mark as saving
+            savingStates[uniqueId] = true;
+            updateSaveStatus(uniqueId, 'saving');
 
             fetch(`/api/media/${uniqueId}/description?directory=${encodedDir}`, {
                 method: 'PUT',
@@ -318,21 +371,40 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Error updating description: ' + data.error);
+                    updateSaveStatus(uniqueId, 'error');
+                    if (!isAutoSave) {
+                        alert('Error updating description: ' + data.error);
+                    }
                 } else {
-                    // Visual feedback
-                    const button = textarea.nextElementSibling;
-                    const originalText = button.textContent;
-                    button.textContent = 'Saved!';
-                    button.style.background = '#28a745';
-                    setTimeout(() => {
-                        button.textContent = originalText;
+                    updateSaveStatus(uniqueId, 'saved');
+
+                    // For manual saves, also update button
+                    if (!isAutoSave) {
+                        const button = document.getElementById(`save-btn-${uniqueId}`);
+                        const originalText = button.textContent;
+                        button.textContent = 'Saved!';
                         button.style.background = '#28a745';
-                    }, 1000);
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                            button.style.background = '#28a745';
+                        }, 1000);
+                    }
+
+                    // Clear saved status after 2 seconds
+                    setTimeout(() => {
+                        updateSaveStatus(uniqueId, '');
+                    }, 2000);
                 }
             })
             .catch(error => {
-                alert('Error updating description: ' + error);
+                updateSaveStatus(uniqueId, 'error');
+                if (!isAutoSave) {
+                    alert('Error updating description: ' + error);
+                }
+            })
+            .finally(() => {
+                // Mark as no longer saving
+                savingStates[uniqueId] = false;
             });
         }
 
