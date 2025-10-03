@@ -550,10 +550,12 @@ class AIGeneratingMediaSource(MediaSource):
         dl_ms = (time.perf_counter() - t0) * 1000
 
         # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
+        # Detect MIME type before LLM call so it's available in exception handlers
+        detected_mime_type = detect_mime_type_from_bytes(data)
+
         # Call LLM to generate description
         try:
             t1 = time.perf_counter()
-            detected_mime_type = detect_mime_type_from_bytes(data)
             desc = await llm.describe_image(
                 data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
             )
