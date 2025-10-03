@@ -116,6 +116,28 @@ def scan_media_directories() -> list[dict[str, str]]:
         )
         logger.info(f"Added agent: {agent_name} (config: {config_path.name})")
 
+    # Add state/media directory for AI cache editing
+    state_media_dir = Path("state/media")
+    if state_media_dir.exists() and state_media_dir.is_dir():
+        directories.append(
+            {
+                "path": str(state_media_dir),
+                "name": "AI Cache (state/media)",
+                "type": "cache",
+            }
+        )
+        logger.info(f"Added AI cache directory: {state_media_dir}")
+    else:
+        # Add it even if it doesn't exist, so it can be created
+        directories.append(
+            {
+                "path": str(state_media_dir),
+                "name": "AI Cache (state/media)",
+                "type": "cache",
+            }
+        )
+        logger.info(f"Added AI cache directory (will be created): {state_media_dir}")
+
     logger.info(f"Total media directories found: {len(directories)}")
     return directories
 
@@ -480,6 +502,102 @@ def api_refresh_from_ai(unique_id: str):
 
     except Exception as e:
         logger.error(f"Error refreshing AI description for {unique_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/media/<unique_id>/move", methods=["POST"])
+def api_move_media(unique_id: str):
+    """Move a media item from one directory to another."""
+    try:
+        from_directory = request.args.get("from_directory")
+        to_directory = request.args.get("to_directory")
+
+        if not from_directory or not to_directory:
+            return (
+                jsonify({"error": "Missing from_directory or to_directory parameter"}),
+                400,
+            )
+
+        from_dir = Path(from_directory)
+        to_dir = Path(to_directory)
+
+        # Ensure target directory exists
+        to_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find the media files
+        json_file_from = from_dir / f"{unique_id}.json"
+
+        if not json_file_from.exists():
+            return jsonify({"error": "Media record not found"}), 404
+
+        # Load the media record
+        with open(json_file_from, encoding="utf-8") as f:
+            media_data = json.load(f)
+
+        # Find the media file (could be .webp, .tgs, etc.)
+        media_file_from = None
+        for ext in [".webp", ".tgs", ".gif", ".mp4", ".jpg", ".png"]:
+            potential_file = from_dir / f"{unique_id}{ext}"
+            if potential_file.exists():
+                media_file_from = potential_file
+                break
+
+        # Move JSON file
+        json_file_to = to_dir / f"{unique_id}.json"
+        json_file_from.rename(json_file_to)
+
+        # Move media file if it exists
+        if media_file_from:
+            media_file_to = to_dir / media_file_from.name
+            media_file_from.rename(media_file_to)
+            # Update the media_data to reflect the new file location
+            media_data["media_file"] = media_file_to.name
+
+        # Save updated media data
+        with open(json_file_to, "w", encoding="utf-8") as f:
+            json.dump(media_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Moved media {unique_id} from {from_directory} to {to_directory}")
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Error moving media {unique_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/media/<unique_id>/delete", methods=["DELETE"])
+def api_delete_media(unique_id: str):
+    """Delete a media item and its description."""
+    try:
+        directory_path = request.args.get("directory")
+        if not directory_path:
+            return jsonify({"error": "Missing directory parameter"}), 400
+
+        media_dir = Path(directory_path)
+        json_file = media_dir / f"{unique_id}.json"
+
+        if not json_file.exists():
+            return jsonify({"error": "Media record not found"}), 404
+
+        # Load the media record to find the media file
+        with open(json_file, encoding="utf-8") as f:
+            media_data = json.load(f)
+
+        # Delete JSON file
+        json_file.unlink()
+
+        # Delete media file if it exists
+        media_file_name = media_data.get("media_file")
+        if media_file_name:
+            media_file = media_dir / media_file_name
+            if media_file.exists():
+                media_file.unlink()
+
+        logger.info(f"Deleted media {unique_id} from {directory_path}")
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Error deleting media {unique_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 

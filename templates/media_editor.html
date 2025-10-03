@@ -252,6 +252,9 @@
             }
 
             container.innerHTML = html;
+
+            // Populate move directory dropdowns
+            populateMoveDirectoryDropdowns();
         }
 
         function createMediaItemHTML(media) {
@@ -298,9 +301,13 @@
 
                         <div class="description-edit">
                             <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')">${media.description || ''}</textarea>
-                            <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px;">
+                            <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
                                 <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
                                 <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
+                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${media.unique_id}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
+                                    <option value="">Move to...</option>
+                                </select>
+                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -424,6 +431,121 @@
                 button.textContent = 'Refresh from AI';
                 button.style.background = '#6c757d';
             });
+        }
+
+        function populateMoveDirectoryDropdowns() {
+            // Get all move directory dropdowns
+            const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
+
+            // Fetch available directories
+            fetch('/api/directories')
+                .then(response => response.json())
+                .then(directories => {
+                    moveDropdowns.forEach(dropdown => {
+                        // Clear existing options except the first one
+                        while (dropdown.children.length > 1) {
+                            dropdown.removeChild(dropdown.lastChild);
+                        }
+
+                        // Add directory options
+                        directories.forEach(dir => {
+                            if (dir.path !== currentDirectory) { // Don't show current directory
+                                const option = document.createElement('option');
+                                option.value = dir.path;
+                                option.textContent = dir.name;
+                                dropdown.appendChild(option);
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading directories for move dropdowns:', error);
+                });
+        }
+
+        function moveMedia(uniqueId) {
+            const select = document.getElementById(`move-dir-${uniqueId}`);
+            const targetDirectory = select.value;
+
+            if (!targetDirectory) {
+                return; // No selection made
+            }
+
+            const encodedCurrentDir = encodeURIComponent(currentDirectory);
+            const encodedTargetDir = encodeURIComponent(targetDirectory);
+
+            // Show loading state
+            select.disabled = true;
+            select.style.background = '#f8f9fa';
+
+            fetch(`/api/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error moving media: ' + data.error);
+                } else {
+                    // If moved to a different directory, reload the current view
+                    if (targetDirectory !== currentDirectory) {
+                        loadMediaFiles(currentDirectory);
+                    }
+                }
+            })
+            .catch(error => {
+                alert('Error moving media: ' + error);
+            })
+            .finally(() => {
+                // Reset select
+                select.disabled = false;
+                select.style.background = 'white';
+                select.value = ''; // Reset selection
+            });
+        }
+
+        function deleteMedia(uniqueId) {
+            const mediaName = document.querySelector(`#desc-${uniqueId}`).placeholder || 'this media item';
+
+            if (confirm(`Are you sure you want to delete ${mediaName}? This will permanently remove both the media file and description.`)) {
+                const button = document.getElementById(`delete-btn-${uniqueId}`);
+                const encodedDir = encodeURIComponent(currentDirectory);
+
+                // Show loading state
+                button.disabled = true;
+                button.textContent = 'Deleting...';
+                button.style.background = '#6c757d';
+
+                fetch(`/api/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error deleting media: ' + data.error);
+                    } else {
+                        // Remove the media item from the UI
+                        const mediaItem = button.closest('.media-item');
+                        if (mediaItem) {
+                            mediaItem.remove();
+                        }
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting media: ' + error);
+                })
+                .finally(() => {
+                    // Reset button
+                    button.disabled = false;
+                    button.textContent = 'Delete';
+                    button.style.background = '#dc3545';
+                });
+            }
         }
 
         function importStickerSet() {
