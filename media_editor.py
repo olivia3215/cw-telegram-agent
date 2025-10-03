@@ -275,7 +275,7 @@ def api_media_list():
                         break
 
                 # Group by sticker set for organization
-                sticker_set = data.get("sticker_set_name", "Unknown")
+                sticker_set = data.get("sticker_set_name") or "Unknown"
 
                 media_files.append(
                     {
