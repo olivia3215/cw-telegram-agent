@@ -363,6 +363,25 @@ class AIGeneratingMediaSource(MediaSource):
             )
             return make_error_record("error", "agent missing client or llm")
 
+        # Special handling for AnimatedEmojies - use sticker name as description
+        if sticker_set_name == "AnimatedEmojies" and sticker_name:
+            logger.info(
+                f"AnimatedEmojies sticker {unique_id}: using sticker name '{sticker_name}' as description"
+            )
+            record = {
+                "unique_id": unique_id,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": sticker_name,  # Use the emoji name as description
+                "status": "ok",
+                "ts": datetime.now(UTC).isoformat(),
+                **metadata,
+            }
+
+            # Don't cache AnimatedEmojies descriptions to disk - return directly
+            return record
+
         t0 = time.perf_counter()
 
         # Download media bytes
