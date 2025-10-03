@@ -418,6 +418,17 @@
                 } else {
                     // Update the textarea with the new AI-generated description
                     textarea.value = data.description || '';
+
+                    // Update the status display
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = `<strong>Status:</strong> ${data.status || 'ok'}`;
+                            break;
+                        }
+                    }
+
                     // Trigger auto-save to save the new description
                     scheduleAutoSave(uniqueId);
                 }
