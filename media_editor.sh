@@ -12,7 +12,7 @@ VENV_PATH="$PROJECT_ROOT/venv"
 MEDIA_EDITOR_SCRIPT="$PROJECT_ROOT/media_editor.py"
 PID_FILE="$PROJECT_ROOT/media_editor.pid"
 LOG_FILE="$PROJECT_ROOT/media_editor.log"
-DEFAULT_PORT=5000
+DEFAULT_PORT=5001
 DEFAULT_HOST="0.0.0.0"
 
 # Colors for output

@@ -831,7 +831,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                     # Determine file extension
                     mime_type = getattr(doc, "mime_type", None)
-                    if mime_type == "application/gzip":
+                    if mime_type in ["application/gzip", "application/x-tgsticker"]:
                         file_ext = ".tgs"
                     elif mime_type == "image/webp":
                         file_ext = ".webp"
@@ -848,6 +848,12 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     logger.info(
                         f"Getting description for sticker {unique_id} using media pipeline"
                     )
+
+                    # Reset budget for this import session
+                    from media_budget import reset_description_budget
+
+                    reset_description_budget(10)  # Allow 10 AI descriptions per import
+                    logger.info("Reset description budget to 10 for sticker import")
 
                     # Get the agent's media source chain
                     media_chain = agent.get_media_source()
@@ -879,6 +885,11 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         status = "pending_description"
                         logger.warning(f"No description found for {unique_id}")
 
+                    # Detect actual MIME type from file bytes for accurate processing
+                    from mime_utils import detect_mime_type_from_bytes
+
+                    detected_mime_type = detect_mime_type_from_bytes(media_bytes)
+
                     # Create JSON record with description from media pipeline
                     media_record = {
                         "unique_id": unique_id,
@@ -888,7 +899,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "description": description,
                         "status": status,
                         "ts": "2025-01-27T00:00:00+00:00",
-                        "mime_type": mime_type,
+                        "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }
 
                     # Save JSON record
@@ -939,7 +950,7 @@ def main():
         description="Media Editor Utility for cw-telegram-agent"
     )
     parser.add_argument(
-        "--port", type=int, default=5000, help="Port to run the web server on"
+        "--port", type=int, default=5001, help="Port to run the web server on"
     )
     parser.add_argument(
         "--host",
