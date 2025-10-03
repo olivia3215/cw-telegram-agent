@@ -6,8 +6,13 @@
 import asyncio
 import logging
 import os
+import sys
+from pathlib import Path
 
 from telethon import events
+
+# Add src to path to import from the main codebase
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import (
     InputStickerSetShortName,

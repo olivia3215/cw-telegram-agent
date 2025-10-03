@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+# media_editor.py
+
+# Copyright (c) 2025 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+
 """
 Media Editor Utility for cw-telegram-agent
 
@@ -11,24 +15,36 @@ Usage:
 
 import argparse
 import asyncio
+import concurrent.futures
 import json
 import logging
+import os
 import sys
+import traceback
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
+from telethon import TelegramClient
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import InputStickerSetShortName
 
 # Add src to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputStickerSetShortName
-
 from agent import all_agents
+from media_budget import reset_description_budget
+from media_source import (
+    CompositeMediaSource,
+    DirectoryMediaSource,
+    get_default_media_source_chain,
+)
+from mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
+from telegram_media import get_unique_id
 from telegram_util import get_telegram_client
 
 # Configure logging
@@ -80,9 +96,7 @@ def scan_media_directories() -> list[dict[str, str]]:
     # Also get agents from the registration system
     try:
         register_all_agents()
-        from agent import all_agents as get_all_agents
-
-        registered_agents = list(get_all_agents())
+        registered_agents = list(all_agents())
         for agent in registered_agents:
             # Find the config directory that contains this agent
             agent_found = False
@@ -190,9 +204,6 @@ async def get_telegram_client_for_downloads(
     except Exception as e:
         logger.error(f"Failed to get existing client for agent '{agent.name}': {e}")
         # Fall back to creating a new client (this might not work for private sticker sets)
-        import os
-
-        from telethon import TelegramClient
 
         api_id = os.environ.get("TELEGRAM_API_ID")
         api_hash = os.environ.get("TELEGRAM_API_HASH")
@@ -414,9 +425,7 @@ def api_refresh_from_ai(unique_id: str):
         agent = None
         target_path = Path(directory_path)
         register_all_agents()
-        from agent import all_agents as get_all_agents
-
-        agents = list(get_all_agents())
+        agents = list(all_agents())
 
         for a in agents:
             # Check if this is an agent-specific media directory
@@ -446,11 +455,6 @@ def api_refresh_from_ai(unique_id: str):
         # For refresh, we want to bypass cached results and force fresh AI generation
         # Create a custom media source chain that excludes the state/media directory
         # Get the default chain components
-        from media_source import (
-            CompositeMediaSource,
-            DirectoryMediaSource,
-            get_default_media_source_chain,
-        )
 
         default_chain = get_default_media_source_chain()
 
@@ -485,8 +489,6 @@ def api_refresh_from_ai(unique_id: str):
         doc = MockDoc(data)
 
         # Process using the media source chain to get fresh description
-        import asyncio
-
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -676,8 +678,6 @@ def api_import_sticker_set():
         # Run the async import operation in a separate thread with its own event loop
         logger.info("Flask route: About to run async import in thread")
 
-        import concurrent.futures
-
         def run_async_import():
             # Create a new event loop for this thread
             loop = asyncio.new_event_loop()
@@ -700,8 +700,6 @@ def api_import_sticker_set():
     except Exception as e:
         logger.error(f"Error importing sticker set: {e}")
         logger.error(f"Exception type: {type(e)}")
-        import traceback
-
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
@@ -800,6 +798,10 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                 "error": f"Failed to process sticker set documents: {e}",
             }
 
+        # Reset budget for this import session (once per import, not per sticker)
+        reset_description_budget(10)  # Allow 10 AI descriptions per import
+        logger.info("Reset description budget to 10 for sticker import")
+
         for doc in documents:
             try:
                 # Get sticker name using the same pattern as run.py
@@ -809,8 +811,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                 )
 
                 # Get unique ID and other metadata
-                from telegram_media import get_unique_id
-
                 unique_id = get_unique_id(doc)
 
                 if not unique_id:
@@ -849,12 +849,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         f"Getting description for sticker {unique_id} using media pipeline"
                     )
 
-                    # Reset budget for this import session
-                    from media_budget import reset_description_budget
-
-                    reset_description_budget(10)  # Allow 10 AI descriptions per import
-                    logger.info("Reset description budget to 10 for sticker import")
-
                     # Get the agent's media source chain
                     media_chain = agent.get_media_source()
 
@@ -886,8 +880,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         logger.warning(f"No description found for {unique_id}")
 
                     # Detect actual MIME type from file bytes for accurate processing
-                    from mime_utils import detect_mime_type_from_bytes
-
                     detected_mime_type = detect_mime_type_from_bytes(media_bytes)
 
                     # Create JSON record with description from media pipeline
@@ -898,7 +890,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "sticker_name": sticker_name,
                         "description": description,
                         "status": status,
-                        "ts": "2025-01-27T00:00:00+00:00",
+                        "ts": datetime.now(UTC).isoformat(),
                         "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }
 
@@ -920,7 +912,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "description": None,
                         "status": "error",
                         "failure_reason": f"Download failed: {str(e)}",
-                        "ts": "2025-01-27T00:00:00+00:00",
+                        "ts": datetime.now(UTC).isoformat(),
                         "mime_type": getattr(doc, "mime_type", None),
                     }
                     json_file.write_text(
