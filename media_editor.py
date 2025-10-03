@@ -45,9 +45,11 @@ _agent_for_client = None
 
 
 def scan_media_directories() -> list[dict[str, str]]:
-    """Scan CINDY_AGENT_CONFIG_PATH for all media directories."""
+    """Scan CINDY_AGENT_CONFIG_PATH for all media directories and agents."""
     directories = []
+    all_agents = set()
 
+    # First, collect all agents from all config directories
     for config_dir in get_config_directories():
         config_path = Path(config_dir)
         if not config_path.exists():
@@ -68,36 +70,51 @@ def scan_media_directories() -> list[dict[str, str]]:
             )
             logger.info(f"Found global media directory: {global_media}")
 
-        # Agent-specific media directories - include ALL agents, even without media dirs
+        # Collect all agents from this config directory
         agents_dir = config_path / "agents"
         if agents_dir.exists() and agents_dir.is_dir():
-            logger.info(f"Scanning agents directory: {agents_dir}")
             for agent_dir in agents_dir.iterdir():
                 if agent_dir.is_dir() and not agent_dir.name.startswith("."):
-                    agent_media = agent_dir / "media"
-                    if agent_media.exists() and agent_media.is_dir():
-                        directories.append(
-                            {
-                                "path": str(agent_media),
-                                "name": f"Agent: {agent_dir.name}",
-                                "type": "agent",
-                            }
-                        )
-                        logger.info(f"Found agent media directory: {agent_media}")
-                    else:
-                        # Include agent even if no media directory exists
-                        directories.append(
-                            {
-                                "path": str(agent_media),
-                                "name": f"Agent: {agent_dir.name}",
-                                "type": "agent",
-                            }
-                        )
-                        logger.info(
-                            f"Found agent without media directory: {agent_dir.name}"
-                        )
-        else:
-            logger.debug(f"No agents directory found in {config_path}")
+                    all_agents.add((agent_dir.name, config_path))
+
+    # Also get agents from the registration system
+    try:
+        register_all_agents()
+        from agent import all_agents as get_all_agents
+
+        registered_agents = list(get_all_agents())
+        for agent in registered_agents:
+            # Find the config directory that contains this agent
+            agent_found = False
+            for config_dir in get_config_directories():
+                config_path = Path(config_dir)
+                agent_dir = config_path / "agents" / agent.name
+                if agent_dir.exists():
+                    all_agents.add((agent.name, config_path))
+                    agent_found = True
+                    break
+
+            # If agent not found in any config directory, use the first one
+            if not agent_found and get_config_directories():
+                first_config = Path(get_config_directories()[0])
+                all_agents.add((agent.name, first_config))
+                logger.info(
+                    f"Agent {agent.name} not found in config dirs, using {first_config}"
+                )
+    except Exception as e:
+        logger.warning(f"Failed to get registered agents: {e}")
+
+    # Now add all agents, creating media directories in their respective config directories
+    for agent_name, config_path in all_agents:
+        agent_media = config_path / "agents" / agent_name / "media"
+        directories.append(
+            {
+                "path": str(agent_media),
+                "name": f"Agent: {agent_name}",
+                "type": "agent",
+            }
+        )
+        logger.info(f"Added agent: {agent_name} (config: {config_path.name})")
 
     logger.info(f"Total media directories found: {len(directories)}")
     return directories
