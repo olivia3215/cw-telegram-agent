@@ -13,7 +13,13 @@ async def download_media_bytes(client: Any, file_ref: Any) -> bytes:
     """
     Download media bytes from Telegram in a duck-typed way.
     Prefers in-memory buffers (BytesIO) to avoid empty files or unknown paths.
+
+    Also supports reading from disk when file_ref is a Path object.
     """
+    # Special case: if file_ref is a Path object, read directly from disk
+    if hasattr(file_ref, "read_bytes") and callable(file_ref.read_bytes):
+        return file_ref.read_bytes()
+
     # 1) Try download_media into a BytesIO buffer
     dm = getattr(client, "download_media", None)
     if callable(dm):

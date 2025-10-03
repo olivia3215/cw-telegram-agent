@@ -267,13 +267,9 @@ class BudgetExhaustedMediaSource(MediaSource):
             # Budget available - consume it and return None
             # to let AIGeneratingMediaSource handle the request
             consume_description_budget()
-            logger.debug(f"BudgetExhaustedMediaSource: budget consumed for {unique_id}")
             return None
         else:
             # Budget exhausted - return fallback record
-            logger.debug(
-                f"BudgetExhaustedMediaSource: budget exhausted for {unique_id}"
-            )
             return {
                 "unique_id": unique_id,
                 "kind": kind,
@@ -283,6 +279,95 @@ class BudgetExhaustedMediaSource(MediaSource):
                 "status": "budget_exhausted",
                 "ts": datetime.now(UTC).isoformat(),
             }
+
+
+def make_error_record(
+    unique_id: str,
+    status: str,
+    failure_reason: str,
+    retryable: bool = False,
+    kind: str | None = None,
+    sticker_set_name: str | None = None,
+    sticker_name: str | None = None,
+    **extra,
+) -> dict[str, Any]:
+    """Helper to create an error record."""
+    record = {
+        "unique_id": unique_id,
+        "kind": kind,
+        "sticker_set_name": sticker_set_name,
+        "sticker_name": sticker_name,
+        "description": None,
+        "status": status,
+        "failure_reason": failure_reason,
+        "ts": datetime.now(UTC).isoformat(),
+        **extra,
+    }
+    if retryable:
+        record["retryable"] = True
+    return record
+
+
+class UnsupportedFormatMediaSource(MediaSource):
+    """
+    Checks if media format is supported by LLM before consuming budget.
+
+    This source should be placed before BudgetExhaustedMediaSource in the pipeline
+    to avoid consuming budget for unsupported formats.
+    """
+
+    async def get(
+        self,
+        unique_id: str,
+        agent: Any = None,
+        doc: Any = None,
+        kind: str | None = None,
+        sticker_set_name: str | None = None,
+        sticker_name: str | None = None,
+        **metadata,
+    ) -> dict[str, Any] | None:
+        """
+        Check if format is supported and return unsupported record if not.
+
+        Returns None if format is supported (let other sources handle it).
+        Returns unsupported record if format is not supported.
+        """
+
+        # Only check if we have a document to download
+        if doc is None:
+            return None
+
+        try:
+            # Check MIME type from doc object directly
+            mime_type = getattr(doc, "mime_type", None)
+
+            if not mime_type:
+                return None
+
+            # Get LLM instance to check support
+            llm = getattr(agent, "llm", None)
+            if not llm:
+                return None
+            is_supported = llm.is_mime_type_supported_by_llm(mime_type)
+
+            if not is_supported:
+                # Return unsupported format record
+                return make_error_record(
+                    unique_id,
+                    "unsupported_format",
+                    f"MIME type {mime_type} not supported by LLM",
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    mime_type=mime_type,
+                )
+
+            # Format is supported - let other sources handle it
+            return None
+
+        except Exception:
+            # If we can't check format, let other sources handle it
+            return None
 
 
 class AIGeneratingMediaSource(MediaSource):
@@ -326,33 +411,29 @@ class AIGeneratingMediaSource(MediaSource):
         and unsupported formats to disk.
         """
 
-        def make_error_record(
-            status: str, failure_reason: str, retryable: bool = False, **extra
-        ) -> dict[str, Any]:
-            """Helper to create an error record, capturing context from enclosing scope."""
-            record = {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": None,
-                "failure_reason": failure_reason,
-                "status": status,
-                "ts": datetime.now(UTC).isoformat(),
-                **metadata,
-                **extra,
-            }
-            if retryable:
-                record["retryable"] = True
-            return record
-
         if agent is None:
             logger.error("AIGeneratingMediaSource: agent is required but was None")
-            return make_error_record("error", "agent is None")
+            return make_error_record(
+                unique_id,
+                "error",
+                "agent is None",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
 
         if doc is None:
             logger.error("AIGeneratingMediaSource: doc is required but was None")
-            return make_error_record("error", "doc is None")
+            return make_error_record(
+                unique_id,
+                "error",
+                "doc is None",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
 
         client = getattr(agent, "client", None)
         llm = getattr(agent, "llm", None)
@@ -361,7 +442,34 @@ class AIGeneratingMediaSource(MediaSource):
             logger.error(
                 f"AIGeneratingMediaSource: agent missing client or llm for {unique_id}"
             )
-            return make_error_record("error", "agent missing client or llm")
+            return make_error_record(
+                unique_id,
+                "error",
+                "agent missing client or llm",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
+
+        # Special handling for AnimatedEmojies - use sticker name as description
+        if sticker_set_name == "AnimatedEmojies" and sticker_name:
+            logger.info(
+                f"AnimatedEmojies sticker {unique_id}: using sticker name '{sticker_name}' as description"
+            )
+            record = {
+                "unique_id": unique_id,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": sticker_name,  # Use the emoji name as description
+                "status": "ok",
+                "ts": datetime.now(UTC).isoformat(),
+                **metadata,
+            }
+
+            # Don't cache AnimatedEmojies descriptions to disk - return directly
+            return record
 
         t0 = time.perf_counter()
 
@@ -374,31 +482,20 @@ class AIGeneratingMediaSource(MediaSource):
             )
             # Transient failure - don't cache to disk
             return make_error_record(
-                "error", f"download failed: {str(e)[:100]}", retryable=True
+                unique_id,
+                "error",
+                f"download failed: {str(e)[:100]}",
+                retryable=True,
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
             )
         dl_ms = (time.perf_counter() - t0) * 1000
 
-        # Check MIME type support
+        # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
+        # Detect MIME type before LLM call so it's available in exception handlers
         detected_mime_type = detect_mime_type_from_bytes(data)
-
-        if not llm.is_mime_type_supported_by_llm(detected_mime_type):
-            logger.debug(
-                f"AIGeneratingMediaSource: unsupported format {detected_mime_type} for {unique_id}"
-            )
-
-            # Cache unsupported format to disk
-            record = make_error_record(
-                "unsupported_format",
-                f"MIME type {detected_mime_type} not supported by LLM",
-                mime_type=detected_mime_type,
-            )
-            self._write_to_disk(unique_id, record)
-
-            # Debug save
-            file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            debug_save_media(data, unique_id, file_ext)
-
-            return record
 
         # Call LLM to generate description
         try:
@@ -418,7 +515,14 @@ class AIGeneratingMediaSource(MediaSource):
 
             # Transient failure - don't cache to disk
             return make_error_record(
-                "timeout", f"timeout after {_DESCRIBE_TIMEOUT_SECS}s", retryable=True
+                unique_id,
+                "timeout",
+                f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
+                retryable=True,
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
             )
         except Exception as e:
             logger.exception(
@@ -430,7 +534,15 @@ class AIGeneratingMediaSource(MediaSource):
             debug_save_media(data, unique_id, file_ext)
 
             # Cache permanent failure to disk
-            record = make_error_record("error", f"description failed: {str(e)[:100]}")
+            record = make_error_record(
+                unique_id,
+                "error",
+                f"description failed: {str(e)[:100]}",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
             self._write_to_disk(unique_id, record)
             return record
 
@@ -539,6 +651,9 @@ def _create_default_chain() -> CompositeMediaSource:
     ai_cache_source = DirectoryMediaSource(ai_cache_dir)
     sources.append(ai_cache_source)
     logger.info(f"Added AI cache directory: {ai_cache_dir}")
+
+    # Add unsupported format check (before budget management)
+    sources.append(UnsupportedFormatMediaSource())
 
     # Add budget management and AI generation
     sources.append(BudgetExhaustedMediaSource())

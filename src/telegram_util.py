@@ -36,6 +36,7 @@ def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
     client.session_user_phone = (
         phone_number  # Optional: useful for debugging or context
     )
+
     return client
 
 
