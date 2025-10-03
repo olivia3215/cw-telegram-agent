@@ -379,7 +379,7 @@ def api_update_description(unique_id: str):
         # Clear error fields if description is provided
         if new_description:
             data.pop("failure_reason", None)
-            data["status"] = "ok"
+            data["status"] = "curated"  # Mark as curated when user edits description
 
         # Save back
         with open(json_file, "w", encoding="utf-8") as f:
