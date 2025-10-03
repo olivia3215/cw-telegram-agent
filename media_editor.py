@@ -413,8 +413,11 @@ def api_refresh_from_ai(unique_id: str):
             f"Refreshing AI description for {unique_id} using agent '{agent.name}'"
         )
 
-        # Get the agent's media source chain
-        media_chain = agent.get_media_source()
+        # For refresh, we want to bypass the agent-specific directory cache
+        # and use only the AI generation part of the chain
+        from media_source import get_default_media_source_chain
+
+        media_chain = get_default_media_source_chain()
 
         # Create a mock document for the media pipeline
         class MockDoc:
