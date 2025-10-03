@@ -101,7 +101,7 @@ class GeminiLLM(LLM):
         "relations, actions, and setting. Output only the description."
     )
 
-    def is_mime_type_supported_by_llm(mime_type: str) -> bool:
+    def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for image description.
         Returns True for static image formats that Gemini can process.

@@ -13,3 +13,5 @@ config/private-key.pem
 ssl
 state/
 .vscode/
+*.log
+*.pid
