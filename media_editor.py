@@ -31,7 +31,7 @@ from telethon.tl.types import InputStickerSetShortName
 # Add src to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from agent import all_agents
+from agent import all_agents as get_all_agents
 from media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
@@ -56,9 +56,8 @@ _current_directory: Path | None = None
 def scan_media_directories() -> list[dict[str, str]]:
     """Scan CINDY_AGENT_CONFIG_PATH for all media directories and agents."""
     directories = []
-    all_agents = set()
 
-    # First, collect all agents from all config directories
+    # First, collect global media directories from config directories
     for config_dir in get_config_directories():
         config_path = Path(config_dir)
         if not config_path.exists():
@@ -79,48 +78,44 @@ def scan_media_directories() -> list[dict[str, str]]:
             )
             logger.info(f"Found global media directory: {global_media}")
 
-        # Collect all agents from this config directory
-        agents_dir = config_path / "agents"
-        if agents_dir.exists() and agents_dir.is_dir():
-            for agent_dir in agents_dir.iterdir():
-                if agent_dir.is_dir() and not agent_dir.name.startswith("."):
-                    all_agents.add((agent_dir.name, config_path))
-
-    # Also get agents from the registration system
+    # Get all registered agents and add them to the directories list
     try:
-        registered_agents = list(all_agents())
+        register_all_agents()  # Ensure all agents are registered
+        registered_agents = list(get_all_agents())
+
         for agent in registered_agents:
             # Find the config directory that contains this agent
-            agent_found = False
+            agent_config_path = None
             for config_dir in get_config_directories():
                 config_path = Path(config_dir)
                 agent_dir = config_path / "agents" / agent.name
                 if agent_dir.exists():
-                    all_agents.add((agent.name, config_path))
-                    agent_found = True
+                    agent_config_path = config_path
                     break
 
             # If agent not found in any config directory, use the first one
-            if not agent_found and get_config_directories():
-                first_config = Path(get_config_directories()[0])
-                all_agents.add((agent.name, first_config))
+            if agent_config_path is None and get_config_directories():
+                agent_config_path = Path(get_config_directories()[0])
                 logger.info(
-                    f"Agent {agent.name} not found in config dirs, using {first_config}"
+                    f"Agent {agent.name} not found in config dirs, using {agent_config_path}"
                 )
+
+            # Add agent media directory (will be created when needed)
+            if agent_config_path:
+                agent_media = agent_config_path / "agents" / agent.name / "media"
+                directories.append(
+                    {
+                        "path": str(agent_media),
+                        "name": f"Agent: {agent.name}",
+                        "type": "agent",
+                    }
+                )
+                logger.info(
+                    f"Added agent: {agent.name} (config: {agent_config_path.name})"
+                )
+
     except Exception as e:
         logger.warning(f"Failed to get registered agents: {e}")
-
-    # Now add all agents, creating media directories in their respective config directories
-    for agent_name, config_path in all_agents:
-        agent_media = config_path / "agents" / agent_name / "media"
-        directories.append(
-            {
-                "path": str(agent_media),
-                "name": f"Agent: {agent_name}",
-                "type": "agent",
-            }
-        )
-        logger.info(f"Added agent: {agent_name} (config: {config_path.name})")
 
     # Add state/media directory for AI cache editing
     state_media_dir = Path("state/media")
@@ -152,7 +147,7 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     """Get an agent for the specified directory."""
     # Register all agents to get the list
     register_all_agents()
-    agents = list(all_agents())
+    agents = list(get_all_agents())
 
     if not agents:
         raise RuntimeError("No agents found. Please configure at least one agent.")
