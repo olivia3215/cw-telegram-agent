@@ -196,12 +196,18 @@ show_recent_logs() {
 
 # Core server startup logic (common to all services)
 start_server_core() {
-    local server_pid=$!
+    local server_pid=$1
+    local wait_time=${2:-2}
+
+    if [ -z "$server_pid" ]; then
+        log_error "No PID provided to start_server_core"
+        exit 1
+    fi
+
     disown $server_pid  # Detach the server process from the parent shell
     echo $server_pid > "$PID_FILE"
 
     # Wait a moment for the server to start
-    local wait_time=${1:-2}
     sleep $wait_time
 
     # Check if the server is still running
@@ -239,8 +245,17 @@ start_server() {
         exit 1
     fi
 
+    # Capture the PID immediately after startup_command returns
+    local server_pid=$!
+
+    # Validate that we got a PID
+    if [ -z "$server_pid" ] || ! ps -p "$server_pid" > /dev/null 2>&1; then
+        log_error "startup_command() failed to start the service or return a valid PID"
+        exit 1
+    fi
+
     # Common post-startup logic
-    start_server_core 2
+    start_server_core "$server_pid" 2
 
     # Call script-defined post-startup hook (e.g., URL display)
     if declare -f post_startup_hook >/dev/null; then
