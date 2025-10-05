@@ -71,7 +71,9 @@ async def insert_received_task_for_conversation(
             if task.type == "received" and task.status not in ["done", "failed"]:
                 # There's already an active received task
                 if is_callout:
-                    task.params["callout"] = True
+                    task.params["callout"] = is_callout
+                if message_id:
+                    task.params["message_id"] = message_id
                 logger.info(
                     f"[{recipient_id}] Skipping received task creation - active received task {task.identifier} already exists for conversation {channel_id}"
                 )
