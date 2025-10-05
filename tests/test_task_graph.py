@@ -6,7 +6,7 @@
 import logging
 from datetime import UTC, datetime, timedelta, timezone
 
-from task_graph import TaskGraph, TaskNode, WorkQueue
+from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 
 NOW = datetime.now(UTC)
 
@@ -40,7 +40,7 @@ def test_task_readiness():
 
     t3 = make_send_task("send1", depends=["wait1"])
     make_graph("graph1", [t1, t3])
-    t1.status = "done"
+    t1.status = TaskStatus.DONE
     assert t3.is_ready({"wait1"}, NOW)
 
 
@@ -48,7 +48,7 @@ def test_graph_pending_tasks():
     t1 = make_wait_task("wait1", -10)
     t2 = make_send_task("send1", depends=["wait1"])
     graph = make_graph("g1", [t1, t2])
-    t1.status = "done"
+    t1.status = TaskStatus.DONE
     pending = graph.pending_tasks(NOW)
     assert pending == [t2]
 
@@ -100,7 +100,7 @@ def test_invalid_wait_task_logs(caplog):
     assert not blocked.is_ready(set(), NOW)
     assert any("dependencies not met" in m for m in caplog.text.splitlines())
 
-    done = TaskNode(identifier="t4", type="send", depends_on=[], status="done")
+    done = TaskNode(identifier="t4", type="send", depends_on=[], status=TaskStatus.DONE)
     assert not done.is_ready(set(), NOW)
     assert any("not pending" in m for m in caplog.text.splitlines())
 
@@ -139,7 +139,7 @@ def test_reloads_active_task_as_pending(tmp_path):
     """
     # 1. Create a graph with one task and mark it 'active'
     task = make_send_task("t1")
-    task.status = "active"
+    task.status = TaskStatus.ACTIVE
     graph = make_graph("g1", [task])
 
     # 2. Manually create a WorkQueue and save it
@@ -157,4 +157,22 @@ def test_reloads_active_task_as_pending(tmp_path):
     assert len(reloaded_queue._task_graphs) == 1
     reloaded_task = reloaded_queue._task_graphs[0].tasks[0]
     assert reloaded_task.identifier == "t1"
-    assert reloaded_task.status == "pending"
+    assert reloaded_task.status == TaskStatus.PENDING
+
+
+def test_cancelled_status():
+    """Test that CANCELLED status works correctly with helper methods."""
+    task = TaskNode(identifier="cancel_test", type="test", params={})
+
+    # Initially pending
+    assert task.status == TaskStatus.PENDING
+    assert task.status != TaskStatus.CANCELLED
+    assert not task.status.is_completed()
+
+    # Set to cancelled
+    task.status = TaskStatus.CANCELLED
+    assert task.status == TaskStatus.CANCELLED
+    assert task.status.is_completed()  # Cancelled is a terminal state
+    assert task.status != TaskStatus.PENDING
+    assert task.status != TaskStatus.DONE
+    assert task.status != TaskStatus.FAILED

@@ -11,7 +11,7 @@ from telethon.tl.functions.messages import DeleteHistoryRequest
 
 from agent import Agent
 from exceptions import ShutdownException
-from task_graph import TaskGraph, TaskNode, WorkQueue
+from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from tick import run_one_tick, run_tick_loop
 
 
@@ -32,7 +32,7 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 
     await run_one_tick(queue)
 
-    assert task.status == "done"
+    assert task.status == TaskStatus.DONE
     assert graph not in queue._task_graphs  # Should be removed after completion
 
 
@@ -45,7 +45,7 @@ async def test_run_one_tick_retries_on_failure():
     await run_one_tick(queue)
 
     assert "previous_retries" in task.params
-    assert task.status == "pending"
+    assert task.status == TaskStatus.PENDING
     assert any(n.identifier.startswith("wait-retry-") for n in graph.tasks)
     assert graph in queue._task_graphs
 
@@ -72,22 +72,65 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_run_one_tick)
 
 
+def test_failed_method_max_retries():
+    """Test that the failed() method correctly handles max retries."""
+    task = TaskNode(identifier="fail", type="test", params={})
+    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+
+    # Test that the first few retries succeed
+    for i in range(5):
+        result = task.failed(graph, max_retries=10)
+        assert result is True
+        assert task.status == TaskStatus.PENDING
+        assert task.params["previous_retries"] == i + 1
+
+    # Test that after max retries, the task fails
+    task.params["previous_retries"] = 9
+    result = task.failed(graph, max_retries=10)
+    assert result is False
+    assert task.status == TaskStatus.FAILED
+    assert task.params["previous_retries"] == 10
+
+
+@pytest.mark.asyncio
+async def test_single_tick_with_invalid_task():
+    """Test that a single tick with invalid task calls failed() method."""
+    task = TaskNode(identifier="fail", type="invalid_task_type", params={})
+    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    queue = WorkQueue(_task_graphs=[graph])
+
+    # Run one tick - should call failed() method
+    await run_one_tick(queue)
+
+    # Verify that failed() was called and retry count was incremented
+    assert task.params["previous_retries"] == 1
+    assert task.status == TaskStatus.PENDING  # Should be pending for retry
+
+
 @pytest.mark.asyncio
 async def test_retry_eventually_gives_up(fake_clock):
-    from tick import run_one_tick as real_tick
-
-    task = TaskNode(identifier="fail", type="explode", params={})
+    """Test that the tick loop eventually gives up after max retries."""
+    # Create a task with an invalid type that will cause an exception
+    task = TaskNode(identifier="fail", type="invalid_task_type", params={})
     graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     async def patched_tick(queue, state_file_path=None):
-        await real_tick(queue, state_file_path=state_file_path)
+        # Advance the clock to make wait tasks ready
+        fake_clock.advance(10)
+        assert not task.status.is_completed()
+        await run_one_tick(queue, state_file_path=state_file_path)
+        assert task.status.is_completed()
         if not queue._task_graphs:
             raise ShutdownException("done")
 
+    # Run the tick loop - it should eventually give up and raise ShutdownException
     with pytest.raises(ShutdownException):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
 
+    # Verify the task eventually failed after max retries
+    assert task.status == TaskStatus.FAILED
+    assert task.params["previous_retries"] == 10  # Should have reached max retries
     assert fake_clock.slept().count(10) >= 10
 
 
@@ -134,7 +177,7 @@ async def test_execute_clear_conversation(monkeypatch):
     await run_one_tick(queue)
 
     # Validate outcome
-    assert task.status == "done"
+    assert task.status == TaskStatus.DONE
     calls = mock_client.await_args_list
     assert any(isinstance(call.args[0], DeleteHistoryRequest) for call in calls)
 
@@ -149,7 +192,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     # Mock the handler so we can inspect the task's status during its run
     async def fake_handle_send(task, graph):
         # When the handler is called, the task should be 'active'
-        assert task.status == "active"
+        assert task.status == TaskStatus.ACTIVE
         # Simulate work
         await asyncio.sleep(0)
 
@@ -162,12 +205,12 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     queue = WorkQueue(_task_graphs=[graph])
 
     # The task should start as 'pending'
-    assert task.status == "pending"
+    assert task.status == TaskStatus.PENDING
 
     # Run the tick
     await run_one_tick(queue, state_file_path=None)
 
     # After the tick completes, the task should be 'done'
-    assert task.status == "done"
+    assert task.status == TaskStatus.DONE
     # And the graph should have been removed
     assert graph not in queue._task_graphs
