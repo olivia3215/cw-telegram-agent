@@ -24,15 +24,6 @@ LOG_FILE="$LOG_DIR/run.log"
 # Startup command: run the agent server
 startup_command() {
     cd "$PROJECT_ROOT"
-    source "$VENV_PATH/bin/activate"
-    if [ -f "$ENV_FILE" ]; then
-        source "$ENV_FILE"
-    fi
-    if [ -n "$PYTHONPATH" ]; then
-        export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
-    else
-        export PYTHONPATH="$PROJECT_ROOT/src"
-    fi
 
     python "$MAIN_SCRIPT" \
         < /dev/null \
