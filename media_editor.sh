@@ -10,8 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 VENV_PATH="$PROJECT_ROOT/venv"
 MEDIA_EDITOR_SCRIPT="$PROJECT_ROOT/media_editor.py"
-PID_FILE="$PROJECT_ROOT/media_editor.pid"
-LOG_FILE="$PROJECT_ROOT/media_editor.log"
+PID_FILE="$PROJECT_ROOT/tmp/media_editor.pid"
+LOG_DIR="$PROJECT_ROOT/tmp"
+LOG_FILE="$LOG_DIR/media_editor.log"
 DEFAULT_PORT=5001
 DEFAULT_HOST="0.0.0.0"
 
@@ -72,6 +73,18 @@ check_running() {
     return 1
 }
 
+# Rotate log files (keep 5 most recent)
+rotate_logs() {
+    if [ -d "$LOG_DIR" ]; then
+        # Rotate existing log files
+        [ -f "$LOG_DIR/media_editor4.log" ] && mv "$LOG_DIR/media_editor4.log" "$LOG_DIR/media_editor5.log" 2>/dev/null || true
+        [ -f "$LOG_DIR/media_editor3.log" ] && mv "$LOG_DIR/media_editor3.log" "$LOG_DIR/media_editor4.log" 2>/dev/null || true
+        [ -f "$LOG_DIR/media_editor2.log" ] && mv "$LOG_DIR/media_editor2.log" "$LOG_DIR/media_editor3.log" 2>/dev/null || true
+        [ -f "$LOG_DIR/media_editor1.log" ] && mv "$LOG_DIR/media_editor1.log" "$LOG_DIR/media_editor2.log" 2>/dev/null || true
+        [ -f "$LOG_DIR/media_editor.log" ] && mv "$LOG_DIR/media_editor.log" "$LOG_DIR/media_editor1.log" 2>/dev/null || true
+    fi
+}
+
 # Start the media editor
 start_server() {
     local port=${1:-$DEFAULT_PORT}
@@ -89,7 +102,10 @@ start_server() {
     export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 
     # Create log directory if it doesn't exist
-    mkdir -p "$(dirname "$LOG_FILE")"
+    mkdir -p "$LOG_DIR"
+
+    # Rotate logs
+    rotate_logs
 
     # Start the server completely detached (like start_media_editor.sh)
     cd "$PROJECT_ROOT"
@@ -247,6 +263,16 @@ Environment Variables:
 Files:
     PID file: $PID_FILE
     Log file: $LOG_FILE
+    Log directory: $LOG_DIR
+
+Log Rotation:
+    The script automatically rotates log files, keeping the 5 most recent:
+    - media_editor.log (current)
+    - media_editor1.log (previous)
+    - media_editor2.log (2 runs ago)
+    - media_editor3.log (3 runs ago)
+    - media_editor4.log (4 runs ago)
+    - media_editor5.log (5 runs ago)
 
 EOF
 }
