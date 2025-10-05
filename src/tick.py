@@ -142,10 +142,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
             )
         retry_ok = task.failed(graph)
         if not retry_ok:
-            work_queue.remove(graph)
-            logger.warning(
-                f"[{agent_name}] Removed graph {graph.identifier} due to max retries."
-            )
+            task.status = TaskStatus.FAILED
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
