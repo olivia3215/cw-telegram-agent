@@ -249,10 +249,6 @@ For detailed information about the script management system and project architec
   * Check logs for repeated download lines. Consider lowering `MEDIA_DESC_BUDGET_PER_TICK`.
   * Ensure persona files in your configuration directories include all **required** fields.
 
-* **Sticker appeared as plain text**
-
-  * The requested sticker may not be resolvable at send time. The agent falls back to sending the sticker **name** as text. This isn't harmful; it just indicates the sticker doc wasn't found.
-
 * **No LLM output / empty responses**
 
   * Verify `GOOGLE_GEMINI_API_KEY` is valid.
