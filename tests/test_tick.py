@@ -134,6 +134,9 @@ async def test_retry_eventually_gives_up(fake_clock):
     # Verify the task eventually failed after max retries
     assert task.status == TaskStatus.FAILED
     assert task.params["previous_retries"] == 10  # Should have reached max retries
+    assert (
+        fake_clock.slept().count(10) >= 10
+    )  # Should have slept at least 10 times for retries
 
 
 @pytest.mark.asyncio
