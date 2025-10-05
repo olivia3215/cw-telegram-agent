@@ -90,14 +90,14 @@
         }
         .media-preview img {
             max-width: 50%;
-            max-height: 300px;
+            max-height: none;
             width: auto;
             height: auto;
             display: block;
         }
         .media-preview video {
             max-width: 50%;
-            max-height: 300px;
+            max-height: none;
             object-fit: contain;
         }
         .media-info {
@@ -268,7 +268,7 @@
             if (mediaUrl) {
                 if (isAnimated) {
                     // Enhanced video controls for animated content
-                    mediaElement = `<video controls preload="metadata" style="max-width: 50%; max-height: 300px;">
+                    mediaElement = `<video controls preload="metadata" style="max-width: 50%; max-height: 100%;">
                         <source src="${mediaUrl}" type="video/mp4">
                         <source src="${mediaUrl}" type="video/webm">
                         Your browser does not support the video tag.
