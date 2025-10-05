@@ -40,7 +40,7 @@ def register_task_handler(task_type):
 
 
 def is_graph_complete(graph) -> bool:
-    return all(n.is_completed() for n in graph.tasks)
+    return all(n.status.is_completed() for n in graph.tasks)
 
 
 async def trigger_typing_indicators(work_queue: WorkQueue):
@@ -68,7 +68,7 @@ async def trigger_typing_indicators(work_queue: WorkQueue):
             for task in graph.tasks:
                 if (
                     task.type == "wait"
-                    and task.is_pending()
+                    and task.status == TaskStatus.PENDING
                     and task.params.get("typing", False)
                     and task.is_unblocked(completed_ids)
                 ):

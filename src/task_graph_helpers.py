@@ -68,7 +68,7 @@ async def insert_received_task_for_conversation(
     # Check if there's already an active received task for this conversation
     if old_graph:
         for task in old_graph.tasks:
-            if task.type == "received" and not task.is_completed():
+            if task.type == "received" and not task.status.is_completed():
                 # There's already an active received task
                 if is_callout:
                     task.params["callout"] = is_callout
@@ -87,7 +87,7 @@ async def insert_received_task_for_conversation(
             # We no longer preserve existing tasks.
             # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
             preserve = False
-            if preserve and not old_task.is_completed():
+            if preserve and not old_task.status.is_completed():
                 last_task = old_task.identifier
             else:
                 old_task.status = TaskStatus.CANCELLED

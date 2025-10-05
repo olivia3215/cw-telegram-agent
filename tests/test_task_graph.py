@@ -165,14 +165,14 @@ def test_cancelled_status():
     task = TaskNode(identifier="cancel_test", type="test", params={})
 
     # Initially pending
-    assert task.is_pending()
-    assert not task.is_cancelled()
-    assert not task.is_completed()
+    assert task.status == TaskStatus.PENDING
+    assert task.status != TaskStatus.CANCELLED
+    assert not task.status.is_completed()
 
     # Set to cancelled
     task.status = TaskStatus.CANCELLED
-    assert task.is_cancelled()
-    assert task.is_completed()  # Cancelled is a terminal state
-    assert not task.is_pending()
-    assert not task.is_done()
-    assert not task.is_failed()
+    assert task.status == TaskStatus.CANCELLED
+    assert task.status.is_completed()  # Cancelled is a terminal state
+    assert task.status != TaskStatus.PENDING
+    assert task.status != TaskStatus.DONE
+    assert task.status != TaskStatus.FAILED

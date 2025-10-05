@@ -118,9 +118,9 @@ async def test_retry_eventually_gives_up(fake_clock):
     async def patched_tick(queue, state_file_path=None):
         # Advance the clock to make wait tasks ready
         fake_clock.advance(10)
-        assert not task.is_completed()
+        assert not task.status.is_completed()
         await run_one_tick(queue, state_file_path=state_file_path)
-        assert task.is_completed()
+        assert task.status.is_completed()
         if not queue._task_graphs:
             raise ShutdownException("done")
 
@@ -129,7 +129,7 @@ async def test_retry_eventually_gives_up(fake_clock):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
 
     # Verify the task eventually failed after max retries
-    assert task.is_failed()
+    assert task.status == TaskStatus.FAILED
     assert task.params["previous_retries"] == 10  # Should have reached max retries
     assert fake_clock.slept().count(10) >= 10
 

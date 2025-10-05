@@ -38,6 +38,14 @@ class TaskStatus(Enum):
         """Return the string value for JSON serialization."""
         return self.value
 
+    def is_completed(self) -> bool:
+        """Check if the status is in a terminal state (done, failed, or cancelled)."""
+        return self in (TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED)
+
+    def is_active_state(self) -> bool:
+        """Check if the status is in an active state (pending or active)."""
+        return self in (TaskStatus.PENDING, TaskStatus.ACTIVE)
+
 
 @dataclass
 class TaskNode:
@@ -47,36 +55,8 @@ class TaskNode:
     depends_on: list[str] = field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
 
-    def is_pending(self) -> bool:
-        """Check if the task is in pending status."""
-        return self.status == TaskStatus.PENDING
-
-    def is_active(self) -> bool:
-        """Check if the task is currently active (running)."""
-        return self.status == TaskStatus.ACTIVE
-
-    def is_done(self) -> bool:
-        """Check if the task has completed successfully."""
-        return self.status == TaskStatus.DONE
-
-    def is_failed(self) -> bool:
-        """Check if the task has failed."""
-        return self.status == TaskStatus.FAILED
-
-    def is_cancelled(self) -> bool:
-        """Check if the task has been cancelled."""
-        return self.status == TaskStatus.CANCELLED
-
-    def is_completed(self) -> bool:
-        """Check if the task is in a terminal state (done, failed, or cancelled)."""
-        return self.status in (TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED)
-
-    def is_active_state(self) -> bool:
-        """Check if the task is in an active state (pending or active)."""
-        return self.status in (TaskStatus.PENDING, TaskStatus.ACTIVE)
-
     def is_unblocked(self, completed_ids: set) -> bool:
-        if not self.is_pending():
+        if self.status != TaskStatus.PENDING:
             logger.debug(
                 f"Task {self.identifier} is not pending (status: {self.status})."
             )
@@ -153,7 +133,9 @@ class TaskGraph:
     tasks: list[TaskNode] = field(default_factory=list)
 
     def completed_ids(self):
-        return {task.identifier for task in self.tasks if task.is_done()}
+        return {
+            task.identifier for task in self.tasks if task.status == TaskStatus.DONE
+        }
 
     def pending_tasks(self, now: datetime):
         done = self.completed_ids()
