@@ -33,6 +33,9 @@ startup_command() {
 
     cd "$PROJECT_ROOT"
     source "$VENV_PATH/bin/activate"
+    if [ -f "$ENV_FILE" ]; then
+        source "$ENV_FILE"
+    fi
     if [ -n "$PYTHONPATH" ]; then
         export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
     else

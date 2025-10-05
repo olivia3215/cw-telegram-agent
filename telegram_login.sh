@@ -18,6 +18,9 @@ fi
 # Activate virtual environment and run the script
 cd "$PROJECT_ROOT"
 source "$VENV_PATH/bin/activate"
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    source "$PROJECT_ROOT/.env"
+fi
 if [ -n "$PYTHONPATH" ]; then
     export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
 else
