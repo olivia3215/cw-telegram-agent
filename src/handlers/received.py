@@ -396,10 +396,29 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     except Exception as e:
         if is_retryable_llm_error(e):
             logger.warning(
-                f"[{agent_name}] LLM temporary failure, will retry in next tick: {e}"
+                f"[{agent_name}] LLM temporary failure, scheduling delayed retry: {e}"
             )
-            # Let the task fail and be retried by the tick loop instead of creating a new received task
-            raise
+
+            # Create a wait task for 15 seconds
+            wait_task_id = f"wait-{uuid.uuid4().hex[:8]}"
+            wait_until_time = datetime.now(UTC) + timedelta(seconds=15)
+            wait_task = TaskNode(
+                identifier=wait_task_id,
+                type="wait",
+                params={"delay": 15, "until": wait_until_time.strftime(ISO_FORMAT)},
+                depends_on=[],
+            )
+
+            # Make the current received task depend on the wait task
+            task.depends_on = [wait_task_id]
+
+            # Add the wait task to the graph
+            graph.add_task(wait_task)
+
+            logger.info(
+                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task_id}, received task {task.identifier}"
+            )
+            return
         else:
             # Permanent error - log and give up
             logger.error(f"[{agent_name}] LLM permanent failure: {e}")
