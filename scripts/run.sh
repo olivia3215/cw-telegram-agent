@@ -28,7 +28,11 @@ startup_command() {
     if [ -f "$ENV_FILE" ]; then
         source "$ENV_FILE"
     fi
-    export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    if [ -n "$PYTHONPATH" ]; then
+        export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    else
+        export PYTHONPATH="$PROJECT_ROOT/src"
+    fi
 
     python "$MAIN_SCRIPT" \
         < /dev/null \

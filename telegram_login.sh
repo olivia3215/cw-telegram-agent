@@ -18,7 +18,11 @@ fi
 # Activate virtual environment and run the script
 cd "$PROJECT_ROOT"
 source "$VENV_PATH/bin/activate"
-export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+if [ -n "$PYTHONPATH" ]; then
+    export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+else
+    export PYTHONPATH="$PROJECT_ROOT/src"
+fi
 
 # Run telegram_login.py with all arguments
 python "$PROJECT_ROOT/src/telegram_login.py" "$@"

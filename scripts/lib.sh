@@ -288,7 +288,11 @@ setup_environment() {
     fi
 
     # Set up environment variables
-    export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    if [ -n "$PYTHONPATH" ]; then
+        export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    else
+        export PYTHONPATH="$PROJECT_ROOT/src"
+    fi
 }
 
 # Pre-start validation hooks (can be overridden by scripts)
