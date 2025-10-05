@@ -8,32 +8,26 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 8px;
             background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
         }
         .header {
             background: #2c3e50;
             color: white;
-            padding: 20px;
+            padding: 12px 0;
+            margin-bottom: 16px;
+            border-radius: 4px;
         }
         .header h1 {
             margin: 0;
             font-size: 24px;
         }
         .controls {
-            padding: 20px;
-            border-bottom: 1px solid #eee;
+            padding: 12px 0;
+            margin-bottom: 16px;
         }
         .directory-selector {
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
         .directory-selector select {
             padding: 8px 12px;
@@ -43,10 +37,8 @@
             min-width: 300px;
         }
         .import-section {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            padding: 10px 0;
+            margin-bottom: 12px;
         }
         .import-section input {
             padding: 8px 12px;
@@ -66,45 +58,48 @@
             background: #0056b3;
         }
         .media-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
-            gap: 20px;
-            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding: 0;
+            margin-bottom: 16px;
+            width: 100%;
         }
         .media-item {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-            background: white;
             display: flex;
             flex-direction: row;
+            gap: 12px;
+            margin-bottom: 16px;
+            width: 100%;
+            max-width: none;
         }
         .media-preview {
-            flex: 0 0 auto;
-            background: #f8f9fa;
+            flex: 0 0 50%;
+            max-width: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
-            padding: 10px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
         }
         .media-preview img {
-            max-width: 50%;
-            max-height: none;
-            width: auto;
+            width: 100%;
             height: auto;
             display: block;
         }
         .media-preview video {
-            max-width: 50%;
-            max-height: none;
+            width: 100%;
+            height: auto;
             object-fit: contain;
         }
         .media-info {
             flex: 1;
-            padding: 15px;
+            padding: 8px 0;
             display: flex;
             flex-direction: column;
+            min-width: 0;
         }
         .media-info h3 {
             margin: 0 0 10px 0;
@@ -121,12 +116,14 @@
         }
         .description-edit textarea {
             width: 100%;
-            min-height: 200px;
+            min-height: 180px;
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
             resize: vertical;
+            background: #fafafa;
+            box-sizing: border-box;
         }
         .description-edit button {
             margin-top: 8px;
@@ -154,30 +151,28 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Media Editor</h1>
+    <div class="header">
+        <h1>Media Editor</h1>
+    </div>
+
+    <div class="controls">
+        <div class="directory-selector">
+            <label for="directory-select">Select Media Directory:</label><br>
+            <select id="directory-select">
+                <option value="">Choose a directory...</option>
+            </select>
         </div>
 
-        <div class="controls">
-            <div class="directory-selector">
-                <label for="directory-select">Select Media Directory:</label><br>
-                <select id="directory-select">
-                    <option value="">Choose a directory...</option>
-                </select>
-            </div>
-
-            <div class="import-section">
-                <h3>Import Sticker Set</h3>
-                <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
-                <button onclick="importStickerSet()">Import Set</button>
-                <div id="import-status"></div>
-            </div>
+        <div class="import-section">
+            <h3>Import Sticker Set</h3>
+            <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+            <button onclick="importStickerSet()">Import Set</button>
+            <div id="import-status"></div>
         </div>
+    </div>
 
-        <div id="media-container">
-            <div class="loading">Select a directory to view media files</div>
-        </div>
+    <div id="media-container">
+        <div class="loading">Select a directory to view media files</div>
     </div>
 
     <script>
@@ -242,7 +237,7 @@
             let html = '';
 
             for (const [stickerSet, mediaFiles] of Object.entries(groupedMedia)) {
-                html += `<h2 style="padding: 0 20px; margin: 20px 0 10px 0; color: #2c3e50;">${stickerSet}</h2>`;
+                html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${stickerSet}</h2>`;
 
                 html += '<div class="media-grid">';
                 mediaFiles.forEach(media => {
@@ -268,7 +263,7 @@
             if (mediaUrl) {
                 if (isAnimated) {
                     // Enhanced video controls for animated content
-                    mediaElement = `<video controls preload="metadata" style="max-width: 50%; max-height: 100%;">
+                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;">
                         <source src="${mediaUrl}" type="video/mp4">
                         <source src="${mediaUrl}" type="video/webm">
                         Your browser does not support the video tag.
@@ -295,7 +290,7 @@
                     <div class="media-info">
                         <h3>${media.sticker_name || media.unique_id}</h3>
                         <p><strong>Type:</strong> ${media.kind}</p>
-                        <p><strong>Set:</strong> ${media.sticker_set_name}</p>
+                        ${media.kind === 'sticker' ? `<p><strong>Set:</strong> ${media.sticker_set_name}</p>` : ''}
                         <p><strong>Status:</strong> ${media.status}</p>
                         ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
 

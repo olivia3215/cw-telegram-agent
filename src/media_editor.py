@@ -244,7 +244,12 @@ def api_media_list():
                         break
 
                 # Group by sticker set for organization
-                sticker_set = data.get("sticker_set_name") or "Unknown"
+                # Use "Other Media" for non-stickers, otherwise use the sticker set name
+                kind = data.get("kind", "unknown")
+                if kind == "sticker":
+                    sticker_set = data.get("sticker_set_name") or "Other Media"
+                else:
+                    sticker_set = "Other Media"
 
                 media_files.append(
                     {
