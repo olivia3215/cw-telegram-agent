@@ -69,10 +69,17 @@ async def insert_received_task_for_conversation(
     if old_graph:
         for task in old_graph.tasks:
             if task.type == "received" and task.status not in ["done", "failed"]:
-                # There's already an active received task, skip creating a new one
-                logger.info(
-                    f"[{recipient_id}] Skipping received task creation - active received task {task.identifier} already exists for conversation {channel_id}"
-                )
+                # There's already an active received task
+                if is_callout and not task.params.get("callout", False):
+                    # If this is a callout but the existing task isn't marked as callout, update it
+                    task.params["callout"] = True
+                    logger.info(
+                        f"[{recipient_id}] Updated existing received task {task.identifier} to include callout flag for conversation {channel_id}"
+                    )
+                else:
+                    logger.info(
+                        f"[{recipient_id}] Skipping received task creation - active received task {task.identifier} already exists for conversation {channel_id}"
+                    )
                 return
 
     last_task = None
