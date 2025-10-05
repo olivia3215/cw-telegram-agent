@@ -204,6 +204,19 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         try:
             async with client:
+                # Check if the client is authenticated before proceeding
+                if not await client.is_user_authorized():
+                    logger.error(
+                        f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
+                    )
+                    logger.error(
+                        f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
+                    )
+                    logger.error(
+                        f"[{agent_name}] Exiting due to authentication failure."
+                    )
+                    return  # Exit this agent's loop instead of retrying
+
                 await ensure_sticker_cache(agent, client)
                 me = await client.get_me()
                 agent_id = me.id

@@ -46,7 +46,7 @@ from telegram_media import get_unique_id
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
 
 # Global state
 _available_directories: list[dict[str, str]] = []
@@ -628,8 +628,17 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     logger.info(f"Target directory: {target_directory}")
     try:
         agent = get_agent_for_directory(target_directory)
-        await agent.get_client()
-        logger.info(f"Got agent: {agent.name}")
+        client = await agent.get_client()
+
+        # Check if the client is authenticated before proceeding
+        if not await client.is_user_authorized():
+            logger.error(f"Agent '{agent.name}' is not authenticated to Telegram.")
+            return {
+                "success": False,
+                "error": f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent.",
+            }
+
+        logger.info(f"Got authenticated agent: {agent.name}")
 
     except Exception as e:
         logger.error(f"Failed to get agent or connect client: {e}")
