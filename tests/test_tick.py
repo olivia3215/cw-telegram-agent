@@ -115,15 +115,12 @@ async def test_retry_eventually_gives_up(fake_clock):
     graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
-    # Track tick executions
-    tick_count = 0
-
     async def patched_tick(queue, state_file_path=None):
-        nonlocal tick_count
-        tick_count += 1
         # Advance the clock to make wait tasks ready
         fake_clock.advance(10)
+        assert not task.is_completed()
         await run_one_tick(queue, state_file_path=state_file_path)
+        assert task.is_completed()
         if not queue._task_graphs:
             raise ShutdownException("done")
 
@@ -132,11 +129,9 @@ async def test_retry_eventually_gives_up(fake_clock):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
 
     # Verify the task eventually failed after max retries
-    assert task.status == TaskStatus.FAILED
+    assert task.is_failed()
     assert task.params["previous_retries"] == 10  # Should have reached max retries
-    assert (
-        fake_clock.slept().count(10) >= 10
-    )  # Should have slept at least 10 times for retries
+    assert fake_clock.slept().count(10) >= 10
 
 
 @pytest.mark.asyncio

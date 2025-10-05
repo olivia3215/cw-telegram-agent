@@ -140,9 +140,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
             logger.exception(
                 f"[{agent_name}] Task {task.identifier} raised exception: {e}"
             )
-        retry_ok = task.failed(graph)
-        if not retry_ok:
-            task.status = TaskStatus.FAILED
+        task.failed(graph)
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
