@@ -410,7 +410,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             )
 
             # Make the current received task depend on the wait task
-            task.depends_on = [wait_task_id]
+            task.depends_on.append(wait_task_id)
 
             # Add the wait task to the graph
             graph.add_task(wait_task)
