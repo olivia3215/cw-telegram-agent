@@ -7,7 +7,7 @@ import logging
 import uuid
 
 from agent import get_agent_for_id
-from task_graph import TaskGraph, TaskNode, WorkQueue
+from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ async def insert_received_task_for_conversation(
     # Check if there's already an active received task for this conversation
     if old_graph:
         for task in old_graph.tasks:
-            if task.type == "received" and task.status not in ["done", "failed"]:
+            if task.type == "received" and not task.is_completed():
                 # There's already an active received task
                 if is_callout:
                     task.params["callout"] = is_callout
@@ -87,10 +87,10 @@ async def insert_received_task_for_conversation(
             # We no longer preserve existing tasks.
             # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
             preserve = False
-            if preserve and old_task.status != "done":
+            if preserve and not old_task.is_done():
                 last_task = old_task.identifier
             else:
-                old_task.status = "done"
+                old_task.status = TaskStatus.DONE
             # save all the old tasks, because even if they're done,
             # other tasks might depend on them.
             preserved_tasks.append(old_task)

@@ -10,9 +10,32 @@ import shutil
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+class TaskStatusEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles TaskStatus enums."""
+
+    def default(self, obj):
+        if isinstance(obj, TaskStatus):
+            return obj.value
+        return super().default(obj)
+
+
+class TaskStatus(Enum):
+    """Enumeration of possible task statuses."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    DONE = "done"
+    FAILED = "failed"
+
+    def __str__(self):
+        """Return the string value for JSON serialization."""
+        return self.value
 
 
 @dataclass
@@ -21,10 +44,34 @@ class TaskNode:
     type: str
     params: dict = field(default_factory=dict)
     depends_on: list[str] = field(default_factory=list)
-    status: str = "pending"
+    status: TaskStatus = TaskStatus.PENDING
+
+    def is_pending(self) -> bool:
+        """Check if the task is in pending status."""
+        return self.status == TaskStatus.PENDING
+
+    def is_active(self) -> bool:
+        """Check if the task is currently active (running)."""
+        return self.status == TaskStatus.ACTIVE
+
+    def is_done(self) -> bool:
+        """Check if the task has completed successfully."""
+        return self.status == TaskStatus.DONE
+
+    def is_failed(self) -> bool:
+        """Check if the task has failed."""
+        return self.status == TaskStatus.FAILED
+
+    def is_completed(self) -> bool:
+        """Check if the task is in a terminal state (done or failed)."""
+        return self.status in (TaskStatus.DONE, TaskStatus.FAILED)
+
+    def is_active_state(self) -> bool:
+        """Check if the task is in an active state (pending or active)."""
+        return self.status in (TaskStatus.PENDING, TaskStatus.ACTIVE)
 
     def is_unblocked(self, completed_ids: set) -> bool:
-        if self.status != "pending":
+        if not self.is_pending():
             logger.debug(
                 f"Task {self.identifier} is not pending (status: {self.status})."
             )
@@ -75,6 +122,7 @@ class TaskNode:
             logger.error(
                 f"Task {self.identifier} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
             )
+            self.status = TaskStatus.FAILED
             return False  # signal to delete graph
 
         wait_id = f"wait-retry-{self.identifier}-{retry_count}"
@@ -89,7 +137,7 @@ class TaskNode:
         logger.warning(
             f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries})."
         )
-        self.status = "pending"
+        self.status = TaskStatus.PENDING
         return True
 
 
@@ -100,7 +148,7 @@ class TaskGraph:
     tasks: list[TaskNode] = field(default_factory=list)
 
     def completed_ids(self):
-        return {task.identifier for task in self.tasks if task.status == "done"}
+        return {task.identifier for task in self.tasks if task.is_done()}
 
     def pending_tasks(self, now: datetime):
         done = self.completed_ids()
@@ -157,7 +205,11 @@ class WorkQueue:
                 "context": graph.context,
                 "nodes": [task.__dict__ for task in graph.tasks],
             }
-            md += "```json\n" + json.dumps(block, indent=2) + "\n```\n\n"
+            md += (
+                "```json\n"
+                + json.dumps(block, indent=2, cls=TaskStatusEncoder)
+                + "\n```\n\n"
+            )
         return md
 
     def add_graph(self, graph: TaskGraph):
@@ -199,12 +251,15 @@ class WorkQueue:
 
             tasks = []
             for t in data.get("nodes", []):
-                # On startup, tasks that were pending become active
-                if t.get("status") == "active":
-                    t["status"] = "pending"
+                # On startup, tasks that were active become pending
+                if t.get("status") == TaskStatus.ACTIVE.value:
+                    t["status"] = TaskStatus.PENDING
                     logger.info(
                         f"Reverted active task {t['identifier']} to pending on load."
                     )
+                elif isinstance(t.get("status"), str):
+                    # Convert string status to enum
+                    t["status"] = TaskStatus(t["status"])
                 tasks.append(TaskNode(**t))
 
             graphs.append(
