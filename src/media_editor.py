@@ -18,6 +18,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import os
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -51,6 +52,19 @@ app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templa
 # Global state
 _available_directories: list[dict[str, str]] = []
 _current_directory: Path | None = None
+
+
+def resolve_media_path(directory_path: str) -> Path:
+    """Resolve a media directory path relative to the project root."""
+    # If it's an absolute path, use it as-is
+    if Path(directory_path).is_absolute():
+        return Path(directory_path)
+
+    # For relative paths, resolve relative to the project root (parent of src/)
+    project_root = Path(__file__).parent.parent
+    resolved_path = project_root / directory_path
+    # Ensure absolute path
+    return resolved_path.resolve()
 
 
 def scan_media_directories() -> list[dict[str, str]]:
@@ -117,27 +131,20 @@ def scan_media_directories() -> list[dict[str, str]]:
     except Exception as e:
         logger.warning(f"Failed to get registered agents: {e}")
 
-    # Add state/media directory for AI cache editing
-    state_media_dir = Path("state/media")
-    if state_media_dir.exists() and state_media_dir.is_dir():
+    # Add AI cache directory from CINDY_AGENT_STATE_DIR
+    state_dir = os.environ.get("CINDY_AGENT_STATE_DIR")
+    if state_dir:
+        state_media_dir = Path(state_dir) / "media"
         directories.append(
             {
-                "path": str(state_media_dir),
-                "name": "AI Cache (state/media)",
+                "path": str(state_media_dir.resolve()),
+                "name": f"AI Cache ({state_media_dir.name})",
                 "type": "cache",
             }
         )
         logger.info(f"Added AI cache directory: {state_media_dir}")
     else:
-        # Add it even if it doesn't exist, so it can be created
-        directories.append(
-            {
-                "path": str(state_media_dir),
-                "name": "AI Cache (state/media)",
-                "type": "cache",
-            }
-        )
-        logger.info(f"Added AI cache directory (will be created): {state_media_dir}")
+        logger.warning("CINDY_AGENT_STATE_DIR not set, skipping AI cache directory")
 
     logger.info(f"Total media directories found: {len(directories)}")
     return directories
@@ -198,7 +205,7 @@ def api_media_list():
         if not directory_path:
             return jsonify({"error": "Missing directory parameter"}), 400
 
-        media_dir = Path(directory_path)
+        media_dir = resolve_media_path(directory_path)
         if not media_dir.exists():
             # Try to create the directory if it's an agent media directory
             if "/agents/" in directory_path and "/media" in directory_path:
@@ -287,7 +294,7 @@ def api_media_file(unique_id: str):
         if not directory_path:
             return jsonify({"error": "Missing directory parameter"}), 400
 
-        media_dir = Path(directory_path)
+        media_dir = resolve_media_path(directory_path)
 
         # Try different extensions with proper MIME types
         for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
@@ -324,7 +331,7 @@ def api_update_description(unique_id: str):
         if not directory_path:
             return jsonify({"error": "Missing directory parameter"}), 400
 
-        media_dir = Path(directory_path)
+        media_dir = resolve_media_path(directory_path)
         json_file = media_dir / f"{unique_id}.json"
 
         if not json_file.exists():
@@ -362,7 +369,7 @@ def api_refresh_from_ai(unique_id: str):
         if not directory_path:
             return jsonify({"error": "Missing directory parameter"}), 400
 
-        media_dir = Path(directory_path)
+        media_dir = resolve_media_path(directory_path)
         json_file = media_dir / f"{unique_id}.json"
 
         if not json_file.exists():
@@ -472,8 +479,8 @@ def api_move_media(unique_id: str):
                 400,
             )
 
-        from_dir = Path(from_directory)
-        to_dir = Path(to_directory)
+        from_dir = resolve_media_path(from_directory)
+        to_dir = resolve_media_path(to_directory)
 
         # Ensure target directory exists
         to_dir.mkdir(parents=True, exist_ok=True)
@@ -527,7 +534,7 @@ def api_delete_media(unique_id: str):
         if not directory_path:
             return jsonify({"error": "Missing directory parameter"}), 400
 
-        media_dir = Path(directory_path)
+        media_dir = resolve_media_path(directory_path)
         json_file = media_dir / f"{unique_id}.json"
 
         if not json_file.exists():
