@@ -395,17 +395,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         )
     except Exception as e:
         if is_retryable_llm_error(e):
-            logger.warning(
-                f"[{agent_name}] LLM temporary failure, scheduling delayed retry: {e}"
-            )
-
-            # Create a wait task for 15 seconds
+            logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
+            # Create a wait task for several seconds
+            several = 15
             wait_task_id = f"wait-{uuid.uuid4().hex[:8]}"
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=15)
+            wait_until_time = datetime.now(UTC) + timedelta(seconds=several)
             wait_task = TaskNode(
                 identifier=wait_task_id,
                 type="wait",
-                params={"delay": 15, "until": wait_until_time.strftime(ISO_FORMAT)},
+                params={
+                    "delay": several,
+                    "until": wait_until_time.strftime(ISO_FORMAT),
+                },
                 depends_on=[],
             )
 
@@ -418,10 +419,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             logger.info(
                 f"[{agent_name}] Scheduled delayed retry: wait task {wait_task_id}, received task {task.identifier}"
             )
-            return
+            # Let the exception propagate - the task will be retried automatically several times, then marked as failed.
+            raise
         else:
-            # Permanent error - log and give up
             logger.error(f"[{agent_name}] LLM permanent failure: {e}")
+            # For permanent failures, don't retry - just return to mark task as done
             return
 
     if reply == "":
