@@ -479,8 +479,8 @@ def api_move_media(unique_id: str):
                 400,
             )
 
-        from_dir = Path(from_directory)
-        to_dir = Path(to_directory)
+        from_dir = resolve_media_path(from_directory)
+        to_dir = resolve_media_path(to_directory)
 
         # Ensure target directory exists
         to_dir.mkdir(parents=True, exist_ok=True)
