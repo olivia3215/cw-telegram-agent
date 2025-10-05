@@ -32,6 +32,7 @@ class TaskStatus(Enum):
     ACTIVE = "active"
     DONE = "done"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
     def __str__(self):
         """Return the string value for JSON serialization."""
@@ -62,9 +63,13 @@ class TaskNode:
         """Check if the task has failed."""
         return self.status == TaskStatus.FAILED
 
+    def is_cancelled(self) -> bool:
+        """Check if the task has been cancelled."""
+        return self.status == TaskStatus.CANCELLED
+
     def is_completed(self) -> bool:
-        """Check if the task is in a terminal state (done or failed)."""
-        return self.status in (TaskStatus.DONE, TaskStatus.FAILED)
+        """Check if the task is in a terminal state (done, failed, or cancelled)."""
+        return self.status in (TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED)
 
     def is_active_state(self) -> bool:
         """Check if the task is in an active state (pending or active)."""

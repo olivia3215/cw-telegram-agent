@@ -87,10 +87,10 @@ async def insert_received_task_for_conversation(
             # We no longer preserve existing tasks.
             # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
             preserve = False
-            if preserve and not old_task.is_done():
+            if preserve and not old_task.is_completed():
                 last_task = old_task.identifier
             else:
-                old_task.status = TaskStatus.DONE
+                old_task.status = TaskStatus.CANCELLED
             # save all the old tasks, because even if they're done,
             # other tasks might depend on them.
             preserved_tasks.append(old_task)
