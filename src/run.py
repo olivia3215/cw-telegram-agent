@@ -215,7 +215,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
                     logger.error(
                         f"[{agent_name}] Exiting due to authentication failure."
                     )
-                    return  # Exit this agent's loop instead of retrying
+                    break  # Exit the while loop instead of retrying
 
                 await ensure_sticker_cache(agent, client)
                 me = await client.get_me()
