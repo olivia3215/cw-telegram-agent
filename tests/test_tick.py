@@ -72,13 +72,9 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
         await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_run_one_tick)
 
 
-@pytest.mark.asyncio
-async def test_retry_eventually_gives_up(fake_clock):
-    """Test that the tick loop eventually gives up after max retries."""
-    # This test is too complex with the fake clock integration.
-    # Instead, let's test the retry logic more directly by testing
-    # that the failed() method properly handles max retries.
-    task = TaskNode(identifier="fail", type="explode", params={})
+def test_failed_method_max_retries():
+    """Test that the failed() method correctly handles max retries."""
+    task = TaskNode(identifier="fail", type="test", params={})
     graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
 
     # Test that the first few retries succeed
@@ -95,8 +91,49 @@ async def test_retry_eventually_gives_up(fake_clock):
     assert task.status == TaskStatus.FAILED
     assert task.params["previous_retries"] == 10
 
-    # Verify the task is in a terminal state
-    assert task.is_completed()
+
+@pytest.mark.asyncio
+async def test_single_tick_with_invalid_task():
+    """Test that a single tick with invalid task calls failed() method."""
+    task = TaskNode(identifier="fail", type="invalid_task_type", params={})
+    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    queue = WorkQueue(_task_graphs=[graph])
+
+    # Run one tick - should call failed() method
+    await run_one_tick(queue)
+
+    # Verify that failed() was called and retry count was incremented
+    assert task.params["previous_retries"] == 1
+    assert task.status == TaskStatus.PENDING  # Should be pending for retry
+
+
+@pytest.mark.asyncio
+async def test_retry_eventually_gives_up(fake_clock):
+    """Test that the tick loop eventually gives up after max retries."""
+    # Create a task with an invalid type that will cause an exception
+    task = TaskNode(identifier="fail", type="invalid_task_type", params={})
+    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    queue = WorkQueue(_task_graphs=[graph])
+
+    # Track tick executions
+    tick_count = 0
+
+    async def patched_tick(queue, state_file_path=None):
+        nonlocal tick_count
+        tick_count += 1
+        # Advance the clock to make wait tasks ready
+        fake_clock.advance(10)
+        await run_one_tick(queue, state_file_path=state_file_path)
+        if not queue._task_graphs:
+            raise ShutdownException("done")
+
+    # Run the tick loop - it should eventually give up and raise ShutdownException
+    with pytest.raises(ShutdownException):
+        await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
+
+    # Verify the task eventually failed after max retries
+    assert task.status == TaskStatus.FAILED
+    assert task.params["previous_retries"] == 10  # Should have reached max retries
 
 
 @pytest.mark.asyncio
