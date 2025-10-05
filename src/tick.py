@@ -19,7 +19,7 @@ from telethon.tl.types import SendMessageTypingAction
 from agent import get_agent_for_id
 from exceptions import ShutdownException
 from media_budget import reset_description_budget
-from task_graph import WorkQueue
+from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def register_task_handler(task_type):
 
 
 def is_graph_complete(graph) -> bool:
-    return all(n.status == "done" for n in graph.tasks)
+    return all(n.status.is_completed() for n in graph.tasks)
 
 
 async def trigger_typing_indicators(work_queue: WorkQueue):
@@ -68,7 +68,7 @@ async def trigger_typing_indicators(work_queue: WorkQueue):
             for task in graph.tasks:
                 if (
                     task.type == "wait"
-                    and task.status == "pending"
+                    and task.status == TaskStatus.PENDING
                     and task.params.get("typing", False)
                     and task.is_unblocked(completed_ids)
                 ):
@@ -122,7 +122,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
     logger.info(f"[{agent_name}] Running task {task.identifier} of type {task.type}")
 
     try:
-        task.status = "active"
+        task.status = TaskStatus.ACTIVE
         if state_file_path:
             work_queue.save(state_file_path)
         logger.info(f"[{agent_name}] Task {task.identifier} is now active.")
@@ -131,7 +131,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
 
         await handler(task, graph)
-        task.status = "done"
+        task.status = TaskStatus.DONE
 
     except Exception as e:
         if isinstance(e, PeerIdInvalidError):
@@ -140,12 +140,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
             logger.exception(
                 f"[{agent_name}] Task {task.identifier} raised exception: {e}"
             )
-        retry_ok = task.failed(graph)
-        if not retry_ok:
-            work_queue.remove(graph)
-            logger.warning(
-                f"[{agent_name}] Removed graph {graph.identifier} due to max retries."
-            )
+        task.failed(graph)
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
