@@ -325,3 +325,138 @@ The system is designed to work with both legacy and newer Gemini API versions:
 - **Newer**: Requires `system_instruction` parameter and `user`/`model` roles only
 
 **Migration path:** The structured approach ensures compatibility with both versions while preparing for future API changes.
+
+## Script Management System
+
+The project uses a shared library approach for service management scripts to eliminate code duplication and provide consistent behavior across all services.
+
+### Architecture
+
+**Directory Structure:**
+```
+cw-telegram-agent/
+├── run.sh                    # Agent server wrapper
+├── media_editor.sh           # Media editor wrapper
+├── telegram_login.sh         # Telegram login wrapper
+├── src/                      # Python source code
+│   ├── run.py               # Main agent server
+│   ├── media_editor.py      # Media editor web interface
+│   ├── telegram_login.py    # Telegram login utility
+│   └── [other modules]
+└── scripts/                  # Service management scripts
+    ├── lib.sh               # Shared library
+    ├── run.sh               # Agent server management
+    └── media_editor.sh      # Media editor management
+```
+
+### Shared Library (`scripts/lib.sh`)
+
+The shared library provides common functionality for all service scripts:
+
+**Core Functions:**
+- **Logging**: Colored output with `log_info()`, `log_success()`, `log_warning()`, `log_error()`
+- **Validation**: `check_venv()`, `check_script()`, `check_env()`, `check_running()`
+- **Process Management**: `start_server()`, `stop_server()`, `restart_server()`
+- **Utilities**: `rotate_logs()`, `clean_cache()`, `setup_environment()`
+- **Status**: `show_status()`, `show_logs()`, `show_recent_logs()`
+
+**Configuration Variables:**
+- `VENV_PATH` - Virtual environment path
+- `LOG_DIR` - Log directory path
+- `ENV_FILE` - Environment file path
+- `SERVICE_NAME` - Service display name
+
+### Callback System
+
+Service scripts define callback functions that the shared library calls:
+
+**Required Callbacks:**
+- `startup_command()` - The actual command to start the service
+- `custom_help()` - Service-specific help text
+
+**Optional Callbacks:**
+- `post_startup_hook()` - Called after successful startup (e.g., URL display)
+
+### Service Script Pattern
+
+Each service script follows this pattern:
+
+```bash
+#!/bin/bash
+
+# Common configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Service-specific configuration
+MAIN_SCRIPT="$PROJECT_ROOT/src/service.py"
+PID_FILE="$PROJECT_ROOT/tmp/service.pid"
+LOG_BASE_NAME="service"
+SERVICE_NAME="Service Name"
+
+# Source the shared library
+source "$SCRIPT_DIR/lib.sh"
+
+# Set LOG_FILE after sourcing library
+LOG_FILE="$LOG_DIR/service.log"
+
+# Callback functions
+startup_command() {
+    # Service-specific startup logic
+    python "$MAIN_SCRIPT" "$@" < /dev/null > "$LOG_FILE" 2>&1 &
+}
+
+post_startup_hook() {
+    # Optional post-startup actions
+    log_info "Service started successfully"
+}
+
+custom_help() {
+    cat << EOF
+Service Management Script
+# ... service-specific help content
+EOF
+}
+
+# Run main function
+main "$@"
+```
+
+### Wrapper Scripts
+
+Simple wrapper scripts in the project root provide easy access:
+
+```bash
+#!/bin/bash
+# Wrapper script for Service
+exec "$(dirname "$0")/scripts/service.sh" "$@"
+```
+
+### Benefits
+
+**Code Consolidation:**
+- Eliminates ~200+ lines of duplication across scripts
+- Single source of truth for common functionality
+- Consistent behavior across all services
+
+**Maintainability:**
+- Bug fixes and improvements in one place
+- Easy to add new services with minimal code
+- Clear separation between common and service-specific logic
+
+**User Experience:**
+- Consistent command interface across all services
+- Automatic log rotation and process management
+- Comprehensive help and status reporting
+- Graceful error handling and recovery
+
+### Adding New Services
+
+To add a new service:
+
+1. **Create service script** in `scripts/` directory
+2. **Define callback functions** for service-specific logic
+3. **Create wrapper script** in project root
+4. **Test** using the standard commands (`start`, `stop`, `status`, etc.)
+
+The shared library handles all common functionality automatically.

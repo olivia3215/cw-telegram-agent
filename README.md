@@ -97,16 +97,16 @@ export GEMINI_DEBUG_LOGGING=true
 
 ### 4) Log in Telegram sessions
 
-Run the helper once per persona to establish Telegram sessions:
+Run the helper to establish Telegram sessions:
 
 ```bash
-PYTHONPATH=src python telegram_login.py
+./telegram_login.sh
 ```
 
 ### 5) Start the agent loop
 
 ```bash
-PYTHONPATH=src python run.py
+./run.sh start
 ```
 
 The loop connects, processes unread messages, plans with the LLM, and executes **one task per tick**.
@@ -125,7 +125,7 @@ Wendy
 +15551234567
 
 # Role Prompt
-WendyDancer
+Chatbot
 
 # Agent Instructions
 Write how you want the agent to behave and respond.
@@ -223,9 +223,17 @@ The media editor integrates seamlessly with the existing media pipeline, using t
 
 # Access the web interface
 open http://localhost:5001
+
+# Stop the media editor
+./media_editor.sh stop
+
+# View logs
+./media_editor.sh logs
 ```
 
 **See [MEDIA_EDITOR.md](MEDIA_EDITOR.md) for detailed documentation on using the media editor.**
+
+For detailed information about the script management system and project architecture, see [DESIGN.md](DESIGN.md).
 
 ---
 

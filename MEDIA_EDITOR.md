@@ -46,7 +46,7 @@ Before using the Media Editor, ensure you have:
 
 3. **Telegram sessions logged in** (for sticker import):
    ```bash
-   PYTHONPATH=src python telegram_login.py
+   ./telegram_login.sh
    ```
 
 ### Starting the Media Editor
@@ -249,7 +249,7 @@ When multiple directories contain the same media item:
 - Verify port 5001 is available: `./media_editor.sh status`
 
 **Sticker import fails**
-- Ensure Telegram sessions are logged in: `PYTHONPATH=src python telegram_login.py`
+- Ensure Telegram sessions are logged in: `./telegram_login.sh`
 - Check that the sticker set name is correct and public
 - Verify API credentials are valid
 

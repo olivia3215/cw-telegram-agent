@@ -4,6 +4,16 @@
 # Common functions for run.sh and media_editor.sh
 # Usage: source "$(dirname "$0")/scripts/lib.sh"
 
+# Common configuration (can be overridden by scripts)
+set -e
+
+# Set common paths (scripts can override these)
+# Note: SCRIPT_DIR should be set by the calling script before sourcing this library
+# PROJECT_ROOT should be set by the calling script before sourcing this library
+VENV_PATH="$PROJECT_ROOT/venv"
+LOG_DIR="$PROJECT_ROOT/tmp"
+ENV_FILE="$PROJECT_ROOT/.env"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -210,16 +220,43 @@ start_server_core() {
     fi
 }
 
-# Generic start server function (to be customized by each script)
+# Generic start server function using callback hooks
 start_server() {
-    log_error "start_server() function must be implemented by the calling script"
-    exit 1
+    log_info "Starting $SERVICE_NAME..."
+    log_info "Log file: $LOG_FILE"
+    log_info "PID file: $PID_FILE"
+
+    # Common startup logic
+    setup_environment
+    rotate_logs
+    clean_cache
+
+    # Call script-defined startup command
+    if declare -f startup_command >/dev/null; then
+        startup_command "$@"
+    else
+        log_error "startup_command() function must be implemented by the calling script"
+        exit 1
+    fi
+
+    # Common post-startup logic
+    start_server_core 2
+
+    # Call script-defined post-startup hook (e.g., URL display)
+    if declare -f post_startup_hook >/dev/null; then
+        post_startup_hook "$@"
+    fi
 }
 
-# Generic show help function (to be customized by each script)
+# Generic show help function using callback hooks
 show_help() {
-    log_error "show_help() function must be implemented by the calling script"
-    exit 1
+    # Call script-defined help function
+    if declare -f custom_help >/dev/null; then
+        custom_help
+    else
+        log_error "custom_help() function must be implemented by the calling script"
+        exit 1
+    fi
 }
 
 # Setup common environment
