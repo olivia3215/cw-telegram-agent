@@ -65,6 +65,16 @@ async def insert_received_task_for_conversation(
     # Find the existing graph for this conversation
     old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
 
+    # Check if there's already an active received task for this conversation
+    if old_graph:
+        for task in old_graph.tasks:
+            if task.type == "received" and task.status not in ["done", "failed"]:
+                # There's already an active received task, skip creating a new one
+                logger.info(
+                    f"[{recipient_id}] Skipping received task creation - active received task {task.identifier} already exists for conversation {channel_id}"
+                )
+                return
+
     last_task = None
     if old_graph:
         # preserve tasks from the old graph, but mark some as done
