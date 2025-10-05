@@ -13,13 +13,69 @@ This document explains how to work on the codebase, how the Gemini integration i
 ```bash
 # Run the agent (typical)
 source .env
-PYTHONPATH=src python run.py
+./run.sh start
+
+# Or run directly for development
+source .env
+PYTHONPATH=src python src/run.py
 
 # Test
 PYTHONPATH=src pytest -vv
 ```
 
 We do not allow slow or networked tests. Media, clock, and Gemini calls are mocked or rendered to compact text.
+
+## Script Management System
+
+The project uses a shared library approach for service management scripts:
+
+### Structure
+- **`scripts/lib.sh`** - Shared library with common functions
+- **`scripts/run.sh`** - Agent server management script
+- **`scripts/media_editor.sh`** - Media editor management script
+- **Root wrappers** - Simple wrapper scripts for easy access
+
+### Development Workflow
+
+```bash
+# Start services for development
+./run.sh start
+./media_editor.sh start
+
+# View logs
+./run.sh logs
+./media_editor.sh logs
+
+# Stop services
+./run.sh stop
+./media_editor.sh stop
+
+# Check status
+./run.sh status
+./media_editor.sh status
+```
+
+### Adding New Services
+
+To add a new service script:
+
+1. Create `scripts/new_service.sh` with:
+   - Service-specific configuration variables
+   - Callback functions (`startup_command`, `custom_help`, etc.)
+   - Source the shared library: `source "$SCRIPT_DIR/lib.sh"`
+
+2. Create a wrapper script in project root:
+   ```bash
+   #!/bin/bash
+   exec "$(dirname "$0")/scripts/new_service.sh" "$@"
+   ```
+
+The shared library provides common functionality:
+- Logging functions with colors
+- Process management (start/stop/restart)
+- Log rotation and cleanup
+- Environment setup
+- Status reporting
 
 ## State directory structure
 
