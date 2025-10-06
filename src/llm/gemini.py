@@ -268,31 +268,6 @@ class GeminiLLM(LLM):
                     config=config,
                 )
 
-                # Extract the first candidate's text safely
-                text = ""
-                if response is not None:
-                    if hasattr(response, "text") and isinstance(response.text, str):
-                        text = response.text
-                    elif hasattr(response, "candidates") and response.candidates:
-                        cand = response.candidates[0]
-                        if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
-                            logger.warning(
-                                "Gemini returned prohibited content, trying again"
-                            )
-                            continue  # try again
-                        t = getattr(cand, "text", None)
-                        if isinstance(t, str):
-                            text = t or ""
-                        else:
-                            content = getattr(cand, "content", None)
-                            if content and getattr(content, "parts", None):
-                                first_part = content.parts[0]
-                                if (
-                                    isinstance(first_part, dict)
-                                    and "text" in first_part
-                                ):
-                                    text = str(first_part["text"] or "")
-
                 # Optional comprehensive logging for debugging
                 if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in (
                     "true",
@@ -318,6 +293,31 @@ class GeminiLLM(LLM):
                                         f"    Safety ratings: {candidate.safety_ratings}"
                                     )
                     logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
+
+                # Extract the first candidate's text safely
+                text = ""
+                if response is not None:
+                    if hasattr(response, "text") and isinstance(response.text, str):
+                        text = response.text
+                    elif hasattr(response, "candidates") and response.candidates:
+                        cand = response.candidates[0]
+                        if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                            logger.warning(
+                                "Gemini returned prohibited content, trying again"
+                            )
+                            continue  # try again
+                        t = getattr(cand, "text", None)
+                        if isinstance(t, str):
+                            text = t or ""
+                        else:
+                            content = getattr(cand, "content", None)
+                            if content and getattr(content, "parts", None):
+                                first_part = content.parts[0]
+                                if (
+                                    isinstance(first_part, dict)
+                                    and "text" in first_part
+                                ):
+                                    text = str(first_part["text"] or "")
 
                 break
 
