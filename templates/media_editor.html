@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -148,6 +150,16 @@
             padding: 40px;
             color: #666;
         }
+        .tgs-animation-container {
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            overflow: hidden;
+        }
+        .tgs-animation-container svg {
+            max-width: 100%;
+            max-height: 100%;
+        }
     </style>
 </head>
 <body>
@@ -250,6 +262,11 @@
 
             // Populate move directory dropdowns
             populateMoveDirectoryDropdowns();
+
+            // Load TGS animations (with a small delay to ensure DOM is updated)
+            setTimeout(() => {
+                loadTGSAnimations();
+            }, 100);
         }
 
         function createMediaItemHTML(media) {
@@ -257,24 +274,26 @@
             const mediaUrl = media.media_file ?
                 `/api/media/${media.unique_id}?directory=${encodedDir}` : null;
 
-            const isAnimated = media.media_file && (media.media_file.endsWith('.tgs') || media.media_file.endsWith('.gif') || media.media_file.endsWith('.mp4'));
-
             let mediaElement = '';
             if (mediaUrl) {
-                if (isAnimated) {
-                    // Enhanced video controls for animated content
+                if (media.media_file && media.media_file.endsWith('.tgs')) {
+                    // TGS files - Lottie animations, convert and display
+                    mediaElement = `<div style="position: relative; width: 100%; height: 200px; display: flex; align-items: center; justify-content: center;">
+                        <div id="tgs-player-${media.unique_id}" class="tgs-animation-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <div style="text-align: center; color: #666;">
+                                <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
+                                <div style="font-size: 12px; margin-bottom: 10px;">Loading TGS animation...</div>
+                                <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 11px;">Download TGS</a>
+                            </div>
+                        </div>
+                    </div>`;
+                } else if (media.media_file && (media.media_file.endsWith('.gif') || media.media_file.endsWith('.mp4'))) {
+                    // Other animated content (GIF, MP4) - Enhanced video controls
                     mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;">
                         <source src="${mediaUrl}" type="video/mp4">
                         <source src="${mediaUrl}" type="video/webm">
                         Your browser does not support the video tag.
                     </video>`;
-                } else if (media.media_file && media.media_file.endsWith('.tgs')) {
-                    // TGS files - Lottie animations, show with download link
-                    mediaElement = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px; color: #666;">
-                        <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
-                        <div style="text-align: center; font-size: 12px; margin-bottom: 10px;">TGS Animated Sticker</div>
-                        <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 12px;">Download TGS File</a>
-                    </div>`;
                 } else {
                     mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
                 }
@@ -308,6 +327,128 @@
                     </div>
                 </div>
             `;
+        }
+
+        async function loadTGSAnimations() {
+            // Find all TGS player containers
+            const tgsContainers = document.querySelectorAll('[id^="tgs-player-"]');
+
+            for (const container of tgsContainers) {
+                const uniqueId = container.id.replace('tgs-player-', '');
+                const encodedDir = encodeURIComponent(currentDirectory);
+                const mediaUrl = `/api/media/${uniqueId}?directory=${encodedDir}`;
+
+                try {
+                    // Fetch the TGS file
+                    const response = await fetch(mediaUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch TGS file: ${response.status}`);
+                    }
+
+                    const tgsData = await response.arrayBuffer();
+
+                    // Decompress the gzipped Lottie data
+                    let lottieJson;
+                    try {
+                        const decompressedData = await decompressGzip(tgsData);
+                        const jsonText = new TextDecoder().decode(decompressedData);
+                        lottieJson = JSON.parse(jsonText);
+                    } catch (decompError) {
+                        // Fallback: try using pako library if available
+                        if (typeof pako !== 'undefined') {
+                            try {
+                                const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
+                                lottieJson = JSON.parse(decompressed);
+                            } catch (pakoError) {
+                                throw new Error('Failed to decompress TGS file with all methods');
+                            }
+                        } else {
+                            throw new Error('Failed to decompress TGS file - no suitable decompression method available');
+                        }
+                    }
+
+                    // Clear the loading content and create a new container for Lottie
+                    container.innerHTML = '';
+                    const animationContainer = document.createElement('div');
+                    animationContainer.style.width = '100%';
+                    animationContainer.style.height = '100%';
+                    animationContainer.style.display = 'flex';
+                    animationContainer.style.alignItems = 'center';
+                    animationContainer.style.justifyContent = 'center';
+                    animationContainer.style.backgroundColor = '#ffffff';
+                    container.appendChild(animationContainer);
+
+                    // Initialize Lottie animation
+                    const animation = lottie.loadAnimation({
+                        container: animationContainer,
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        animationData: lottieJson
+                    });
+
+                    // Handle animation errors
+                    animation.addEventListener('error', (error) => {
+                        container.innerHTML = `
+                            <div style="text-align: center; color: #dc3545;">
+                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                                <div style="font-size: 11px;">Animation Error</div>
+                                <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            </div>
+                        `;
+                    });
+
+                } catch (error) {
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #dc3545;">
+                            <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                            <div style="font-size: 11px;">Load Failed</div>
+                            <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Simple gzip decompression using browser APIs
+        async function decompressGzip(data) {
+            // Check if DecompressionStream is supported
+            if (!('DecompressionStream' in window)) {
+                throw new Error('DecompressionStream not supported in this browser');
+            }
+
+            try {
+                const stream = new DecompressionStream('gzip');
+                const writer = stream.writable.getWriter();
+                const reader = stream.readable.getReader();
+
+                writer.write(data);
+                writer.close();
+
+                const chunks = [];
+                let done = false;
+
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    if (value) {
+                        chunks.push(value);
+                    }
+                }
+
+                const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                const result = new Uint8Array(totalLength);
+                let offset = 0;
+
+                for (const chunk of chunks) {
+                    result.set(chunk, offset);
+                    offset += chunk.length;
+                }
+
+                return result;
+            } catch (error) {
+                throw new Error(`Failed to decompress gzip data: ${error.message}`);
+            }
         }
 
         function scheduleAutoSave(uniqueId) {
