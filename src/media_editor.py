@@ -29,16 +29,16 @@ from flask import Flask, jsonify, render_template, request, send_file
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
-# Add src to path to import from the main codebase
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add current directory to path to import from the main codebase
+sys.path.insert(0, str(Path(__file__).parent))
 
 from agent import all_agents as get_all_agents
-from media_source import (
+from media.media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
 )
-from mime_utils import detect_mime_type_from_bytes
+from media.mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes

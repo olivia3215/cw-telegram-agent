@@ -20,7 +20,7 @@ from google.genai.types import (
     HarmCategory,
 )
 
-from mime_utils import detect_mime_type_from_bytes
+from media.mime_utils import detect_mime_type_from_bytes
 
 from .base import LLM, ChatMsg, MsgPart
 

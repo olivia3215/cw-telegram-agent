@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from media_format import (
+from media.media_format import (
     _extract_sticker_set_name,
     _format_sticker_sentence_internal,
     format_media_description,

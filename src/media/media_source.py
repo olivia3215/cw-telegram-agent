@@ -1,4 +1,4 @@
-# media_source.py
+# media/media_source.py
 
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
@@ -22,16 +22,17 @@ from typing import Any
 
 import httpx
 
-from media_budget import (
+from prompt_loader import get_config_directories
+from telegram_download import download_media_bytes
+
+from .media_budget import (
     consume_description_budget,
     has_description_budget,
 )
-from mime_utils import (
+from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
 )
-from prompt_loader import get_config_directories
-from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
 

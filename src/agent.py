@@ -13,7 +13,7 @@ from telethon.tl.functions.contacts import GetBlockedRequest
 
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
-from media_source import (
+from media.media_source import (
     CompositeMediaSource,
     DirectoryMediaSource,
     get_default_media_source_chain,

@@ -18,7 +18,7 @@ from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
 from exceptions import ShutdownException
-from media_budget import reset_description_budget
+from media.media_budget import reset_description_budget
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
