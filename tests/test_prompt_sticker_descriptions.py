@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from media_source import MediaSource
+from media_source import MediaSource, MediaStatus
 
 
 class FakeLLM:
@@ -50,7 +50,7 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
             return {
                 "unique_id": unique_id,
                 "description": f"desc for {sticker_name}",
-                "status": "ok",
+                "status": MediaStatus.GENERATED.value,
             }
 
     fake_media_source = FakeMediaSource()

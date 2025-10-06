@@ -9,7 +9,9 @@ from typing import Any, Literal
 
 @dataclass
 class MediaItem:
-    kind: Literal["photo", "sticker", "gif", "png", "animation"]
+    kind: Literal[
+        "photo", "sticker", "gif", "png", "animation", "video", "animated_sticker"
+    ]
     unique_id: str  # REQUIRED stable ID (e.g., Telegram file_unique_id)
     mime: str | None = None
     sticker_set_name: str | None = None

@@ -27,9 +27,15 @@ def detect_mime_type_from_bytes(data: bytes) -> str:
 
     # Video formats
     elif data[4:8] == b"ftyp":  # MP4 family (video/mp4, audio/mp4)
-        return "video/mp4"
+        # Check for QuickTime/MOV specific brand
+        if len(data) >= 12 and data[8:12] == b"qt  ":
+            return "video/quicktime"
+        else:
+            return "video/mp4"
     elif data[:4] == b"\x1a\x45\xdf\xa3":  # WebM/Matroska (EBML)
         return "video/webm"
+    elif data[:4] == b"RIFF" and data[8:12] == b"AVI ":  # AVI
+        return "video/x-msvideo"
 
     # Audio formats
     elif data.startswith(b"ID3") or data[0:4] == b"\xff\xfb":  # MP3
@@ -69,12 +75,15 @@ def get_file_extension_for_mime_type(mime_type: str) -> str:
         "image/webp": "webp",
         "video/mp4": "mp4",
         "video/webm": "webm",
+        "video/quicktime": "mov",
+        "video/x-msvideo": "avi",
         "audio/mpeg": "mp3",
         "audio/ogg": "ogg",
         "audio/flac": "flac",
         "audio/wav": "wav",
         "audio/mp4": "m4a",
         "application/gzip": "tgs",  # TGS files are gzip-compressed
+        "application/x-tgsticker": "tgs",  # Telegram animated stickers
         "application/zip": "zip",
         "application/octet-stream": "bin",
     }

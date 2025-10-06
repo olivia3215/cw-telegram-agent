@@ -15,10 +15,12 @@ from media_budget import (
     reset_description_budget,
 )
 from media_source import (
+    AIChainMediaSource,
     AIGeneratingMediaSource,
     BudgetExhaustedMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
+    MediaStatus,
     NothingMediaSource,
 )
 
@@ -104,12 +106,12 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     # Assert: first consumed budget and produced a description
     assert result1["unique_id"] == "uid-1"
     assert result1["description"] == "first desc"
-    assert result1["status"] == "ok"
+    assert result1["status"] == MediaStatus.GENERATED.value
 
     # Second should return fallback due to budget exhaustion
     assert result2["unique_id"] == "uid-2"
     assert result2["description"] is None
-    assert result2["status"] == "budget_exhausted"
+    assert result2["status"] == MediaStatus.BUDGET_EXHAUSTED.value
 
     # Budget should now be 0
     assert get_remaining_description_budget() == 0
@@ -135,7 +137,7 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
         "sticker_set_name": "WendyDancer",
         "sticker_name": "😉",
         "description": "cached desc",
-        "status": "ok"
+        "status": "generated"
     }"""
     )
 
@@ -166,15 +168,15 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
 
     assert result["unique_id"] == "uid-42"
     assert result["description"] == "cached desc"
-    assert result["status"] == "ok"
+    assert result["status"] == MediaStatus.GENERATED.value
     assert get_remaining_description_budget() == 1  # unchanged
 
 
 @pytest.mark.asyncio
-async def test_ai_generation_updates_in_memory_cache(monkeypatch, tmp_path):
+async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     """
-    When AIGeneratingMediaSource generates a new description, it should update
-    the in-memory cache of the DirectoryMediaSource that reads from the same directory.
+    When AIChainMediaSource generates a new description via AIGeneratingMediaSource,
+    it should cache the result to both disk and in-memory cache.
     """
     # Arrange
     llm = FakeLLM("generated description")
@@ -199,26 +201,29 @@ async def test_ai_generation_updates_in_memory_cache(monkeypatch, tmp_path):
     # Create DirectoryMediaSource for AI cache
     ai_cache_source = DirectoryMediaSource(ai_cache_dir)
 
-    # Create AIGeneratingMediaSource with reference to the cache source
-    ai_generator = AIGeneratingMediaSource(
-        cache_directory=ai_cache_dir, cache_source=ai_cache_source
+    # Create AIChainMediaSource that handles caching
+    ai_chain = AIChainMediaSource(
+        cache_source=ai_cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=BudgetExhaustedMediaSource(),
+        ai_source=AIGeneratingMediaSource(cache_directory=ai_cache_dir),
     )
 
     # Budget = 1 AI attempt
     reset_description_budget(1)
 
-    # Act: Generate a description
-    result = await ai_generator.get(
+    # Act: Generate a description through the AI chain
+    result = await ai_chain.get(
         unique_id="test-uid-123",
         agent=agent,
         doc=SimpleNamespace(uid="test-uid-123"),
         kind="photo",
     )
 
-    # Assert: Description was generated and cached
+    # Assert: Description was generated and returned
     assert result["unique_id"] == "test-uid-123"
     assert result["description"] == "generated description"
-    assert result["status"] == "ok"
+    assert result["status"] == MediaStatus.GENERATED.value
 
     # Assert: File was written to disk
     cache_file = ai_cache_dir / "test-uid-123.json"
@@ -228,11 +233,4 @@ async def test_ai_generation_updates_in_memory_cache(monkeypatch, tmp_path):
     assert "test-uid-123" in ai_cache_source._mem_cache
     cached_record = ai_cache_source._mem_cache["test-uid-123"]
     assert cached_record["description"] == "generated description"
-    assert cached_record["status"] == "ok"
-
-    # Assert: DirectoryMediaSource can now return the cached result without disk I/O
-    # (We can verify this by checking that the record is in memory cache)
-    assert (
-        ai_cache_source._mem_cache["test-uid-123"]["description"]
-        == "generated description"
-    )
+    assert cached_record["status"] == MediaStatus.GENERATED.value

@@ -16,6 +16,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,6 @@ import httpx
 
 from media_budget import (
     consume_description_budget,
-    debug_save_media,
     has_description_budget,
 )
 from mime_utils import (
@@ -34,6 +34,38 @@ from prompt_loader import get_config_directories
 from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
+
+
+class MediaStatus(Enum):
+    """Standardized status values for media records."""
+
+    GENERATED = "generated"  # AI successfully generated description
+    BUDGET_EXHAUSTED = "budget_exhausted"  # Budget limits reached (temporary)
+    UNSUPPORTED = "unsupported"  # Media format not supported (permanent)
+    TEMPORARY_FAILURE = "temporary_failure"  # Download failed, timeout, etc.
+    PERMANENT_FAILURE = "permanent_failure"  # API misuse, permanent errors
+
+    @classmethod
+    def is_temporary_failure(cls, status):
+        """Check if a status represents a temporary failure that should be retried."""
+        if isinstance(status, cls):
+            return status in [cls.BUDGET_EXHAUSTED, cls.TEMPORARY_FAILURE]
+        return status in [cls.BUDGET_EXHAUSTED.value, cls.TEMPORARY_FAILURE.value]
+
+    @classmethod
+    def is_permanent_failure(cls, status):
+        """Check if a status represents a permanent failure that should not be retried."""
+        if isinstance(status, cls):
+            return status in [cls.UNSUPPORTED, cls.PERMANENT_FAILURE]
+        return status in [cls.UNSUPPORTED.value, cls.PERMANENT_FAILURE.value]
+
+    @classmethod
+    def is_successful(cls, status):
+        """Check if a status represents successful generation."""
+        if isinstance(status, cls):
+            return status == cls.GENERATED
+        return status == cls.GENERATED.value
+
 
 # Timeout for LLM description
 _DESCRIBE_TIMEOUT_SECS = 12
@@ -65,7 +97,7 @@ class MediaSource(ABC):
             unique_id: The Telegram file unique ID
             agent: The agent instance (for accessing client, LLM, etc.)
             doc: The Telegram document reference (for downloading)
-            kind: Media type (sticker, photo, gif, animation)
+            kind: Media type (sticker, photo, gif, animation, video, animated_sticker)
             sticker_set_name: Sticker set name (if applicable)
             sticker_name: Sticker name/emoji (if applicable)
             **metadata: Additional metadata (sender_id, channel_id, etc.)
@@ -174,6 +206,49 @@ class DirectoryMediaSource(MediaSource):
         )
         return None
 
+    def put(
+        self,
+        unique_id: str,
+        record: dict[str, Any],
+        media_bytes: bytes = None,
+        file_extension: str = None,
+    ) -> None:
+        """Store metadata record and optionally media file to disk."""
+        # Always store the JSON metadata
+        self._write_to_disk(unique_id, record)
+
+        # Optionally store media file if provided
+        if media_bytes and file_extension:
+            media_file = self.directory / f"{unique_id}{file_extension}"
+            media_file.write_bytes(media_bytes)
+            logger.debug(f"DirectoryMediaSource: stored media file {media_file.name}")
+
+    def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
+        """Write a record to disk cache and update in-memory cache."""
+        try:
+            file_path = self.directory / f"{unique_id}.json"
+            temp_path = self.directory / f"{unique_id}.json.tmp"
+
+            # Mark record as stored on disk
+            record["_on_disk"] = True
+
+            # Write to temporary file first, then atomically rename
+            temp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            temp_path.replace(file_path)
+
+            logger.debug(f"DirectoryMediaSource: cached {unique_id} to disk")
+
+            # Update the in-memory cache
+            self._mem_cache[unique_id] = record
+            logger.debug(
+                f"DirectoryMediaSource: updated in-memory cache for {unique_id}"
+            )
+
+        except Exception as e:
+            logger.exception(
+                f"DirectoryMediaSource: failed to cache {unique_id} to disk: {e}"
+            )
+
 
 class CompositeMediaSource(MediaSource):
     """
@@ -276,14 +351,15 @@ class BudgetExhaustedMediaSource(MediaSource):
                 "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
                 "description": None,
-                "status": "budget_exhausted",
+                "status": MediaStatus.BUDGET_EXHAUSTED.value,
                 "ts": datetime.now(UTC).isoformat(),
+                "_on_disk": False,
             }
 
 
 def make_error_record(
     unique_id: str,
-    status: str,
+    status,
     failure_reason: str,
     retryable: bool = False,
     kind: str | None = None,
@@ -292,15 +368,17 @@ def make_error_record(
     **extra,
 ) -> dict[str, Any]:
     """Helper to create an error record."""
+    status_value = status.value if isinstance(status, MediaStatus) else status
     record = {
         "unique_id": unique_id,
         "kind": kind,
         "sticker_set_name": sticker_set_name,
         "sticker_name": sticker_name,
         "description": None,
-        "status": status,
+        "status": status_value,
         "failure_reason": failure_reason,
         "ts": datetime.now(UTC).isoformat(),
+        "_on_disk": False,  # Track whether this record is stored on disk
         **extra,
     }
     if retryable:
@@ -354,7 +432,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                 # Return unsupported format record
                 return make_error_record(
                     unique_id,
-                    "unsupported_format",
+                    MediaStatus.UNSUPPORTED,
                     f"MIME type {mime_type} not supported by LLM",
                     kind=kind,
                     sticker_set_name=sticker_set_name,
@@ -372,27 +450,25 @@ class UnsupportedFormatMediaSource(MediaSource):
 
 class AIGeneratingMediaSource(MediaSource):
     """
-    Generates media descriptions using AI and caches them to disk.
+    Generates media descriptions using AI.
 
     This source always succeeds (never returns None). It either:
-    1. Successfully generates and caches a description
-    2. Caches an "unsupported format" record (no LLM call)
-    3. Returns a transient failure fallback (no disk cache)
+    1. Successfully generates a description
+    2. Returns a transient failure record (timeouts, etc.)
+    3. Returns a permanent failure record (LLM errors, etc.)
+
+    Caching is handled by the calling AIChainMediaSource.
     """
 
-    def __init__(
-        self, cache_directory: Path, cache_source: DirectoryMediaSource | None = None
-    ):
+    def __init__(self, cache_directory: Path):
         """
         Initialize the AI generating source.
 
         Args:
-            cache_directory: Directory to store generated descriptions
-            cache_source: Optional DirectoryMediaSource to update in-memory cache
+            cache_directory: Directory for debug saves (no longer used for caching)
         """
         self.cache_directory = Path(cache_directory)
         self.cache_directory.mkdir(parents=True, exist_ok=True)
-        self.cache_source = cache_source
 
     async def get(
         self,
@@ -412,44 +488,17 @@ class AIGeneratingMediaSource(MediaSource):
         """
 
         if agent is None:
-            logger.error("AIGeneratingMediaSource: agent is required but was None")
-            return make_error_record(
-                unique_id,
-                "error",
-                "agent is None",
-                kind=kind,
-                sticker_set_name=sticker_set_name,
-                sticker_name=sticker_name,
-                **metadata,
-            )
+            raise ValueError("AIGeneratingMediaSource: agent is required but was None")
 
         if doc is None:
-            logger.error("AIGeneratingMediaSource: doc is required but was None")
-            return make_error_record(
-                unique_id,
-                "error",
-                "doc is None",
-                kind=kind,
-                sticker_set_name=sticker_set_name,
-                sticker_name=sticker_name,
-                **metadata,
-            )
+            raise ValueError("AIGeneratingMediaSource: doc is required but was None")
 
         client = getattr(agent, "client", None)
         llm = getattr(agent, "llm", None)
 
         if not client or not llm:
-            logger.error(
+            raise ValueError(
                 f"AIGeneratingMediaSource: agent missing client or llm for {unique_id}"
-            )
-            return make_error_record(
-                unique_id,
-                "error",
-                "agent missing client or llm",
-                kind=kind,
-                sticker_set_name=sticker_set_name,
-                sticker_name=sticker_name,
-                **metadata,
             )
 
         # Special handling for AnimatedEmojies - use sticker name as description
@@ -463,8 +512,9 @@ class AIGeneratingMediaSource(MediaSource):
                 "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
                 "description": sticker_name,  # Use the emoji name as description
-                "status": "ok",
+                "status": MediaStatus.GENERATED.value,
                 "ts": datetime.now(UTC).isoformat(),
+                "_on_disk": False,
                 **metadata,
             }
 
@@ -483,7 +533,7 @@ class AIGeneratingMediaSource(MediaSource):
             # Transient failure - don't cache to disk
             return make_error_record(
                 unique_id,
-                "error",
+                MediaStatus.TEMPORARY_FAILURE,
                 f"download failed: {str(e)[:100]}",
                 retryable=True,
                 kind=kind,
@@ -509,14 +559,10 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: timeout after {_DESCRIBE_TIMEOUT_SECS}s for {unique_id}"
             )
 
-            # Debug save
-            file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            debug_save_media(data, unique_id, file_ext)
-
-            # Transient failure - don't cache to disk
+            # Transient failure - return error record for AIChainMediaSource to handle
             return make_error_record(
                 unique_id,
-                "timeout",
+                MediaStatus.TEMPORARY_FAILURE,
                 f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
                 retryable=True,
                 kind=kind,
@@ -529,33 +575,23 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
             )
 
-            # Debug save
-            file_ext = get_file_extension_for_mime_type(detected_mime_type)
-            debug_save_media(data, unique_id, file_ext)
-
-            # Cache permanent failure to disk
-            record = make_error_record(
+            # Permanent failure - return error record for AIChainMediaSource to handle
+            return make_error_record(
                 unique_id,
-                "error",
+                MediaStatus.PERMANENT_FAILURE,
                 f"description failed: {str(e)[:100]}",
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 **metadata,
             )
-            self._write_to_disk(unique_id, record)
-            return record
 
         llm_ms = (time.perf_counter() - t1) * 1000
 
         # Determine status
-        status = "ok" if desc else "not_understood"
+        status = MediaStatus.GENERATED if desc else MediaStatus.PERMANENT_FAILURE
 
-        # Debug save
-        file_ext = get_file_extension_for_mime_type(detected_mime_type)
-        debug_save_media(data, unique_id, file_ext)
-
-        # Cache result to disk
+        # Return record for AIChainMediaSource to handle caching
         record = {
             "unique_id": unique_id,
             "kind": kind,
@@ -565,14 +601,14 @@ class AIGeneratingMediaSource(MediaSource):
             "failure_reason": (
                 "LLM returned empty or invalid description" if not desc else None
             ),
-            "status": status,
+            "status": status.value,
             "ts": datetime.now(UTC).isoformat(),
+            "_on_disk": False,  # Will be set to True by AIChainMediaSource
             **metadata,
         }
-        self._write_to_disk(unique_id, record)
 
         total_ms = (time.perf_counter() - t0) * 1000
-        if status == "ok":
+        if status == MediaStatus.GENERATED:
             logger.debug(
                 f"AIGeneratingMediaSource: SUCCESS {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
             )
@@ -583,29 +619,146 @@ class AIGeneratingMediaSource(MediaSource):
 
         return record
 
-    def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
-        """Write a record to disk cache and update in-memory cache if available."""
-        try:
-            file_path = self.cache_directory / f"{unique_id}.json"
-            temp_path = self.cache_directory / f"{unique_id}.json.tmp"
 
-            # Write to temporary file first, then atomically rename
-            temp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
-            temp_path.replace(file_path)
+class AIChainMediaSource(MediaSource):
+    """
+    Orchestrates caching and chaining of media sources with proper temporary failure handling.
 
-            logger.debug(f"AIGeneratingMediaSource: cached {unique_id} to disk")
+    This source manages the flow between:
+    1. Cache source (for persistent storage)
+    2. Unsupported format source (to avoid budget consumption)
+    3. Budget source (to limit processing)
+    4. AI generating source (for actual description generation)
 
-            # Also update the in-memory cache if we have a reference to it
-            if self.cache_source is not None:
-                self.cache_source._mem_cache[unique_id] = record
-                logger.debug(
-                    f"AIGeneratingMediaSource: updated in-memory cache for {unique_id}"
-                )
+    Key behaviors:
+    - Non-temporary cached records are returned immediately
+    - Temporary failures (budget exhaustion, timeouts) are retried
+    - Avoids storing new temporary failures when replacing cached temporary failures
+    - Optimizes downloads by passing doc=None when media is already cached
+    """
 
-        except Exception as e:
-            logger.exception(
-                f"AIGeneratingMediaSource: failed to cache {unique_id} to disk: {e}"
+    def __init__(
+        self,
+        cache_source: MediaSource,
+        unsupported_source: MediaSource,
+        budget_source: MediaSource,
+        ai_source: MediaSource,
+    ):
+        """
+        Initialize the AI chain source.
+
+        Args:
+            cache_source: Source for persistent cache storage
+            unsupported_source: Source to check unsupported formats
+            budget_source: Source to manage budget limits
+            ai_source: Source for AI generation
+        """
+        self.cache_source = cache_source
+        self.unsupported_source = unsupported_source
+        self.budget_source = budget_source
+        self.ai_source = ai_source
+
+    async def get(
+        self,
+        unique_id: str,
+        agent: Any = None,
+        doc: Any = None,
+        **metadata,
+    ) -> dict[str, Any]:
+        """
+        Get media description with proper caching and temporary failure handling.
+
+        Returns:
+            Media record with description, status, and metadata
+        """
+        # 1. Try cache first
+        cached_record = await self.cache_source.get(unique_id, agent, doc)
+
+        # 2. If we have a cached record that's NOT temporary failure, return it
+        if cached_record and not MediaStatus.is_temporary_failure(
+            cached_record.get("status")
+        ):
+            return cached_record
+
+        # 3. Chain through sources (skip download if we have cached doc)
+        record = None
+        doc_already_cached = cached_record is not None  # We have doc from cache
+
+        for source in [self.unsupported_source, self.budget_source, self.ai_source]:
+            record = await source.get(
+                unique_id, agent, doc if not doc_already_cached else None, **metadata
             )
+            if record:
+                break
+
+        # 4. Store if we got a new record and it's not another temporary failure
+        if record and not record.get("_on_disk", False):
+            should_store = True
+
+            # Don't store if it's another temporary failure replacing a cached temporary failure
+            if (
+                cached_record
+                and MediaStatus.is_temporary_failure(cached_record.get("status"))
+                and MediaStatus.is_temporary_failure(record.get("status"))
+            ):
+                should_store = False
+
+            if should_store:
+                record["_on_disk"] = True
+
+                # Check if we need to download and store the media file
+                media_bytes = None
+                file_extension = None
+
+                # Only download if we don't already have the media file on disk
+                media_file_exists = False
+                if isinstance(self.cache_source, DirectoryMediaSource):
+                    # Check if media file already exists
+                    for ext in [
+                        ".webp",
+                        ".tgs",
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".gif",
+                        ".mp4",
+                        ".webm",
+                        ".mov",
+                        ".avi",
+                    ]:
+                        media_file = self.cache_source.directory / f"{unique_id}{ext}"
+                        if media_file.exists():
+                            media_file_exists = True
+                            break
+
+                # Download media if we have a doc and media file doesn't exist
+                if not media_file_exists and doc is not None and agent is not None:
+                    try:
+                        logger.debug(
+                            f"AIChainMediaSource: downloading media for {unique_id}"
+                        )
+                        media_bytes = await download_media_bytes(agent.client, doc)
+
+                        # Get file extension from MIME type
+                        mime_type = getattr(doc, "mime_type", None)
+                        if mime_type:
+                            file_extension = get_file_extension_for_mime_type(mime_type)
+                            if file_extension:
+                                file_extension = f".{file_extension}"
+
+                        logger.debug(
+                            f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"AIChainMediaSource: failed to download media for {unique_id}: {e}"
+                        )
+                        # Continue without media file - metadata is still valuable
+
+                # Store record with optional media file
+                self.cache_source.put(unique_id, record, media_bytes, file_extension)
+
+        return record
 
 
 # ---------- singleton helpers ----------
@@ -637,29 +790,27 @@ def _create_default_chain() -> CompositeMediaSource:
 
     sources: list[MediaSource] = []
 
-    # Add config directories (curated descriptions)
+    # Add config directories (curated descriptions) - checked first
     for config_dir in get_config_directories():
         media_dir = Path(config_dir) / "media"
         if media_dir.exists() and media_dir.is_dir():
             sources.append(DirectoryMediaSource(media_dir))
             logger.info(f"Added curated media directory: {media_dir}")
 
-    # Add AI cache directory
+    # Set up AI cache directory
     state_dir = Path(os.environ.get("CINDY_AGENT_STATE_DIR", "state"))
     ai_cache_dir = state_dir / "media"
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
     ai_cache_source = DirectoryMediaSource(ai_cache_dir)
-    sources.append(ai_cache_source)
     logger.info(f"Added AI cache directory: {ai_cache_dir}")
 
-    # Add unsupported format check (before budget management)
-    sources.append(UnsupportedFormatMediaSource())
-
-    # Add budget management and AI generation
-    sources.append(BudgetExhaustedMediaSource())
+    # Add AI chain source that orchestrates unsupported/budget/AI generation
     sources.append(
-        AIGeneratingMediaSource(
-            cache_directory=ai_cache_dir, cache_source=ai_cache_source
+        AIChainMediaSource(
+            cache_source=ai_cache_source,
+            unsupported_source=UnsupportedFormatMediaSource(),
+            budget_source=BudgetExhaustedMediaSource(),
+            ai_source=AIGeneratingMediaSource(cache_directory=ai_cache_dir),
         )
     )
 
