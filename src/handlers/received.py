@@ -47,30 +47,6 @@ def is_retryable_llm_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in retryable_indicators)
 
 
-def _to_chatmsg_single_text_part(
-    *,
-    rendered: str,
-    sender: str,
-    sender_id: str,
-    msg_id: str,
-    is_agent: bool,
-) -> dict:
-    """
-    Wrap a single already-rendered message string into the ChatMsg 'parts' shape that
-    GeminiLLM.query_structured() expects. The structured builder will add the 'From: ... — id: ...'
-    header for non-agent messages, so we do NOT include it here.
-    """
-    return {
-        "sender": sender,
-        "sender_id": sender_id,
-        "msg_id": msg_id,
-        "is_agent": is_agent,
-        "parts": [
-            {"kind": "text", "text": rendered},
-        ],
-    }
-
-
 async def _build_sticker_list(agent, media_chain) -> str | None:
     """
     Build a formatted list of available stickers with descriptions.
@@ -329,14 +305,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     )
 
     # Map each Telethon message to a 5-tuple:
-    # (rendered_text, sender_display, sender_id, message_id, is_agent)
-    history_rendered_items: list[tuple[str, str, str, str, bool]] = []
+    # (message_parts, sender_display, sender_id, message_id, is_agent)
+    history_rendered_items: list[tuple[list[dict[str, str]], str, str, str, bool]] = []
     chronological = list(reversed(messages))  # oldest → newest
     for m in chronological:
-        rendered_text = await format_message_for_prompt(
+        message_parts = await format_message_for_prompt(
             m, agent=agent, media_chain=media_chain
         )
-        if not rendered_text:
+        if not message_parts:
             continue
 
         # sender_id is stable; get display name for better context
@@ -353,7 +329,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         is_from_agent = bool(getattr(m, "out", False))
 
         history_rendered_items.append(
-            (rendered_text, sender_display, sender_id, message_id, is_from_agent)
+            (message_parts, sender_display, sender_id, message_id, is_from_agent)
         )
 
     # Determine which message we want to respond to
@@ -386,9 +362,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                     "sender_id": sid,
                     "msg_id": mid,
                     "is_agent": is_self,
-                    "parts": [{"kind": "text", "text": rendered}],
+                    "parts": message_parts,
                 }
-                for (rendered, s, sid, mid, is_self) in history_rendered_items
+                for (message_parts, s, sid, mid, is_self) in history_rendered_items
             ),
             history_size=agent.llm.history_size,
             timeout_s=None,

@@ -246,10 +246,12 @@ async def inject_media_descriptions(
     return messages
 
 
-async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str:
+async def format_message_for_prompt(
+    msg: Any, *, agent, media_chain=None
+) -> list[dict[str, str]]:
     """
     Format a single Telethon message content for the structured prompt system.
-    Returns clean content without metadata prefixes - just the message content.
+    Returns a list of message parts (text and media) without metadata prefixes.
     Must NOT trigger downloads or LLM calls.
 
     Args:
@@ -257,6 +259,9 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
         agent: Agent instance
         media_chain: Media source chain to use for description lookups.
                     If None, uses default global chain (not recommended).
+
+    Returns:
+        List of message parts in the format expected by ChatMsg.parts
     """
     if media_chain is None:
         media_chain = get_default_media_source_chain()
@@ -266,7 +271,7 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
     if getattr(msg, "text", None):
         text = msg.text.strip()
         if text:
-            parts.append(text)
+            parts.append({"kind": "text", "text": text})
 
     # include media (photos/stickers/gif/animation); use cached descriptions & metadata
     try:
@@ -283,7 +288,16 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
                 media_chain=media_chain,
                 resolve_sticker_set_name=_maybe_get_sticker_set_short_name,
             )
-            parts.append(sticker_sentence)
+            parts.append(
+                {
+                    "kind": "media",
+                    "media_kind": "sticker",
+                    "rendered_text": sticker_sentence,
+                    "unique_id": it.unique_id,
+                    "sticker_set_name": getattr(it, "sticker_set_name", None),
+                    "sticker_name": getattr(it, "sticker_name", None),
+                }
+            )
         else:
             # For non-stickers, get description from cache record
             meta = None
@@ -292,7 +306,14 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
             except Exception:
                 meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None
-            parts.append(format_media_sentence(it.kind, desc_text))
+            media_sentence = format_media_sentence(it.kind, desc_text)
+            parts.append(
+                {
+                    "kind": "media",
+                    "media_kind": it.kind,
+                    "rendered_text": media_sentence,
+                    "unique_id": it.unique_id,
+                }
+            )
 
-    content = " ".join(parts) if parts else None
-    return content
+    return parts
