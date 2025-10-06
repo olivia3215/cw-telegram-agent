@@ -7,8 +7,8 @@ import datetime as _dt
 
 import pytest
 
-# Import the pure builder from llm.py
-from llm import build_gemini_contents
+# Import the GeminiLLM class to test its private methods
+from llm import GeminiLLM
 
 
 def _now_iso():
@@ -59,7 +59,9 @@ def test_history_roles_and_order_with_parts():
         ),
     ]
 
-    contents = build_gemini_contents(history)
+    # Create a GeminiLLM instance to test the private method
+    llm = GeminiLLM(api_key="test_key")
+    contents = llm._build_gemini_contents(history)
 
     # system + 3 history turns (target is no longer appended as separate turn) = 4
     assert len(contents) == 3
@@ -94,7 +96,9 @@ def test_placeholder_emitted_when_media_has_no_rendering():
             msg_id="m9",
         )
     ]
-    contents = build_gemini_contents(history=history)
+    # Create a GeminiLLM instance to test the private method
+    llm = GeminiLLM(api_key="test_key")
+    contents = llm._build_gemini_contents(history=history)
     assert len(contents) == 1
     parts = contents[0]["parts"]
     # header + two placeholders
