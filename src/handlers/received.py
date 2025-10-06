@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from agent import get_agent_for_id
+from llm.base import MsgPart
 from media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
@@ -30,7 +31,7 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 class ProcessedMessage:
     """Represents a processed message with all its components for LLM history."""
 
-    message_parts: list[dict[str, str]]
+    message_parts: list[MsgPart]
     sender_display: str
     sender_id: str
     message_id: str

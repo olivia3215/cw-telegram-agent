@@ -11,6 +11,8 @@ from typing import Any
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetID
 
+from llm.base import MsgPart
+
 # MediaCache removed - using MediaSource architecture instead
 from media_format import (
     format_media_sentence,
@@ -248,7 +250,7 @@ async def inject_media_descriptions(
 
 async def format_message_for_prompt(
     msg: Any, *, agent, media_chain=None
-) -> list[dict[str, str]]:
+) -> list[MsgPart]:
     """
     Format a single Telethon message content for the structured prompt system.
     Returns a list of message parts (text and media) without metadata prefixes.
@@ -261,7 +263,7 @@ async def format_message_for_prompt(
                     If None, uses default global chain (not recommended).
 
     Returns:
-        List of message parts in the format expected by ChatMsg.parts
+        List of MsgPart objects (text and media parts)
     """
     if media_chain is None:
         media_chain = get_default_media_source_chain()
