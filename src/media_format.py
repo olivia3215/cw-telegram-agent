@@ -50,35 +50,17 @@ async def _extract_sticker_set_name(media_item, agent, resolve_sticker_set_name)
     # Method 1: Get sticker set name from MediaItem first
     sticker_set_name = getattr(media_item, "sticker_set_name", None)
     if sticker_set_name:
-        logger.info(
-            f"[DEBUG] Found sticker set name in MediaItem for {media_item.unique_id}: '{sticker_set_name}'"
-        )
         return sticker_set_name
 
     # Method 2: If not in MediaItem, try to resolve from attributes via API
-    logger.info(
-        f"[DEBUG] Attempting to resolve sticker set name for {media_item.unique_id} from MediaItem attributes"
-    )
     try:
         sticker_set_name = await resolve_sticker_set_name(agent, media_item)
         if sticker_set_name:
-            logger.info(
-                f"[DEBUG] Successfully resolved sticker set name for {media_item.unique_id}: '{sticker_set_name}'"
-            )
             return sticker_set_name
-        else:
-            logger.warning(
-                f"[DEBUG] Failed to resolve sticker set name for {media_item.unique_id}: returned None"
-            )
-    except Exception as e:
-        logger.warning(
-            f"[DEBUG] Exception during sticker set name resolution for {media_item.unique_id}: {e}"
-        )
+    except Exception:
+        pass
 
     # Method 3: Final fallback
-    logger.debug(
-        f"[DEBUG] Sticker set name unresolved for sticker {media_item.unique_id}, using final fallback: (unknown)"
-    )
     return "(unknown)"
 
 
@@ -119,8 +101,6 @@ async def format_sticker_sentence(
         Formatted sticker sentence ready for conversation history
     """
 
-    logger.info(f"[DEBUG] Processing sticker {media_item.unique_id}")
-
     # Get sticker name from MediaItem
     sticker_name = getattr(media_item, "sticker_name", None)
 
@@ -133,11 +113,7 @@ async def format_sticker_sentence(
     meta = None
     try:
         meta = await media_chain.get(media_item.unique_id, agent=agent)
-        logger.info(f"[DEBUG] Sticker {media_item.unique_id} metadata: {meta}")
-    except Exception as e:
-        logger.warning(
-            f"[DEBUG] Failed to get metadata for {media_item.unique_id}: {e}"
-        )
+    except Exception:
         meta = None
 
     # Use the resolved sticker name, with fallback

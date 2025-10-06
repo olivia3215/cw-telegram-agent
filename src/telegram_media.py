@@ -77,23 +77,12 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     emoji_name = getattr(doc, "emoji", None)
                     file_name = getattr(doc, "file_name", None)
 
-                    logger.info(
-                        f"[DEBUG] Sticker name extraction for {uid}: alt='{alt_name}', emoji='{emoji_name}', file_name='{file_name}'"
-                    )
-
                     name = alt_name or emoji_name or file_name
                     # sticker set short name if present directly on attribute
                     ss = getattr(a, "stickerset", None)
                     short_name = getattr(ss, "short_name", None)
                     ss_name = getattr(ss, "name", None)
                     title = getattr(ss, "title", None)
-
-                    logger.info(
-                        f"[DEBUG] Creating MediaItem for sticker {uid}: stickerset type={type(ss).__name__ if ss else None}"
-                    )
-                    logger.info(
-                        f"[DEBUG] StickerSet fields: short_name='{short_name}', name='{ss_name}', title='{title}'"
-                    )
 
                     sticker_set_name = short_name or ss_name or title
                     mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
