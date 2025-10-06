@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+import unicodedata
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from enum import Enum
@@ -35,6 +36,19 @@ from .mime_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def get_emoji_unicode_name(emoji: str) -> str:
+    """Get Unicode name(s) for an emoji, handling multi-character emojis."""
+    names = []
+    for char in emoji:
+        try:
+            name = unicodedata.name(char)
+            names.append(name.lower())
+        except ValueError:
+            # Some characters don't have names
+            names.append(f"u+{ord(char):04x}")
+    return " + ".join(names)
 
 
 class MediaStatus(Enum):
@@ -354,7 +368,6 @@ class BudgetExhaustedMediaSource(MediaSource):
                 "description": None,
                 "status": MediaStatus.BUDGET_EXHAUSTED.value,
                 "ts": datetime.now(UTC).isoformat(),
-                "_on_disk": False,
             }
 
 
@@ -379,7 +392,6 @@ def make_error_record(
         "status": status_value,
         "failure_reason": failure_reason,
         "ts": datetime.now(UTC).isoformat(),
-        "_on_disk": False,  # Track whether this record is stored on disk
         **extra,
     }
     if retryable:
@@ -410,7 +422,28 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         Returns None if format is supported (let other sources handle it).
         Returns unsupported record if format is not supported.
+        Special handling for AnimatedEmojies - use sticker name as description.
         """
+
+        # Special handling for AnimatedEmojies - use sticker name as description
+        if sticker_set_name == "AnimatedEmojies" and sticker_name:
+            description = f"an animated emoji: {get_emoji_unicode_name(sticker_name)}"
+            logger.info(
+                f"AnimatedEmojies sticker {unique_id}: using '{description}' as description"
+            )
+            record = {
+                "unique_id": unique_id,
+                "kind": kind,
+                "sticker_set_name": sticker_set_name,
+                "sticker_name": sticker_name,
+                "description": description,
+                "status": MediaStatus.GENERATED.value,
+                "ts": datetime.now(UTC).isoformat(),
+                **metadata,
+            }
+
+            # Don't cache AnimatedEmojies descriptions to disk - return directly
+            return record
 
         # Only check if we have a document to download
         if doc is None:
@@ -502,26 +535,6 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: agent missing client or llm for {unique_id}"
             )
 
-        # Special handling for AnimatedEmojies - use sticker name as description
-        if sticker_set_name == "AnimatedEmojies" and sticker_name:
-            logger.info(
-                f"AnimatedEmojies sticker {unique_id}: using sticker name '{sticker_name}' as description"
-            )
-            record = {
-                "unique_id": unique_id,
-                "kind": kind,
-                "sticker_set_name": sticker_set_name,
-                "sticker_name": sticker_name,
-                "description": sticker_name,  # Use the emoji name as description
-                "status": MediaStatus.GENERATED.value,
-                "ts": datetime.now(UTC).isoformat(),
-                "_on_disk": False,
-                **metadata,
-            }
-
-            # Don't cache AnimatedEmojies descriptions to disk - return directly
-            return record
-
         t0 = time.perf_counter()
 
         # Download media bytes
@@ -604,7 +617,6 @@ class AIGeneratingMediaSource(MediaSource):
             ),
             "status": status.value,
             "ts": datetime.now(UTC).isoformat(),
-            "_on_disk": False,  # Will be set to True by AIChainMediaSource
             **metadata,
         }
 
@@ -705,8 +717,6 @@ class AIChainMediaSource(MediaSource):
                 should_store = False
 
             if should_store:
-                record["_on_disk"] = True
-
                 # Check if we need to download and store the media file
                 media_bytes = None
                 file_extension = None
