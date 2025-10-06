@@ -1,4 +1,4 @@
-# media_injector.py
+# media/media_injector.py
 
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
@@ -12,15 +12,15 @@ from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetID
 
 from llm.base import MsgPart
+from telegram_media import iter_media_parts
+from telegram_util import get_channel_name  # for sender/channel names
 
 # MediaCache removed - using MediaSource architecture instead
-from media_format import (
+from .media_format import (
     format_media_sentence,
     format_sticker_sentence,
 )
-from media_source import get_default_media_source_chain
-from telegram_media import iter_media_parts
-from telegram_util import get_channel_name  # for sender/channel names
+from .media_source import get_default_media_source_chain
 
 logger = logging.getLogger(__name__)
 

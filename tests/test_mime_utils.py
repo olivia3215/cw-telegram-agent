@@ -5,7 +5,7 @@
 
 import pytest
 
-from mime_utils import (
+from media.mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
     is_audio_mime_type,

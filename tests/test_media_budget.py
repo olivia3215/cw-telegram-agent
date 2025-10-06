@@ -7,14 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import media_injector as mi
+import media.media_injector as mi
 
 # We test the public helpers we added in media_budget
-from media_budget import (
+from media.media_budget import (
     get_remaining_description_budget,
     reset_description_budget,
 )
-from media_source import (
+from media.media_source import (
     AIChainMediaSource,
     AIGeneratingMediaSource,
     BudgetExhaustedMediaSource,
@@ -74,7 +74,7 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
         return b"\x89PNG..."
 
     # Import the module where download_media_bytes is actually used
-    import media_source
+    import media.media_source as media_source
 
     monkeypatch.setattr(
         media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
@@ -188,7 +188,7 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
         return b"\x89PNG..."
 
     # Import the module where download_media_bytes is actually used
-    import media_source
+    import media.media_source as media_source
 
     monkeypatch.setattr(
         media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
