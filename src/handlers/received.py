@@ -6,6 +6,7 @@
 import logging
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from agent import get_agent_for_id
@@ -23,6 +24,17 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+@dataclass
+class ProcessedMessage:
+    """Represents a processed message with all its components for LLM history."""
+
+    message_parts: list[dict[str, str]]
+    sender_display: str
+    sender_id: str
+    message_id: str
+    is_from_agent: bool
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -304,9 +316,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
 
-    # Map each Telethon message to a 5-tuple:
-    # (message_parts, sender_display, sender_id, message_id, is_agent)
-    history_rendered_items: list[tuple[list[dict[str, str]], str, str, str, bool]] = []
+    # Map each Telethon message to a ProcessedMessage object
+    history_rendered_items: list[ProcessedMessage] = []
     chronological = list(reversed(messages))  # oldest → newest
     for m in chronological:
         message_parts = await format_message_for_prompt(
@@ -329,7 +340,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         is_from_agent = bool(getattr(m, "out", False))
 
         history_rendered_items.append(
-            (message_parts, sender_display, sender_id, message_id, is_from_agent)
+            ProcessedMessage(
+                message_parts=message_parts,
+                sender_display=sender_display,
+                sender_id=sender_id,
+                message_id=message_id,
+                is_from_agent=is_from_agent,
+            )
         )
 
     # Determine which message we want to respond to
@@ -358,13 +375,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             chat_type=chat_type,
             history=(
                 {
-                    "sender": s,
-                    "sender_id": sid,
-                    "msg_id": mid,
-                    "is_agent": is_self,
-                    "parts": message_parts,
+                    "sender": item.sender_display,
+                    "sender_id": item.sender_id,
+                    "msg_id": item.message_id,
+                    "is_agent": item.is_from_agent,
+                    "parts": item.message_parts,
                 }
-                for (message_parts, s, sid, mid, is_self) in history_rendered_items
+                for item in history_rendered_items
             ),
             history_size=agent.llm.history_size,
             timeout_s=None,
