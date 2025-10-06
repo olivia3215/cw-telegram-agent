@@ -422,8 +422,8 @@
                 const writer = stream.writable.getWriter();
                 const reader = stream.readable.getReader();
 
-                writer.write(data);
-                writer.close();
+                await writer.write(data);
+                await writer.close();
 
                 const chunks = [];
                 let done = false;
