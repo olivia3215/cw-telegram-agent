@@ -3,9 +3,12 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import logging
 from typing import Any
 
 from media_types import MediaItem
+
+logger = logging.getLogger(__name__)
 
 
 def iter_media_parts(msg: Any) -> list[MediaItem]:
@@ -77,11 +80,18 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     )
                     # sticker set short name if present directly on attribute
                     ss = getattr(a, "stickerset", None)
-                    sticker_set_name = (
-                        getattr(ss, "short_name", None)
-                        or getattr(ss, "name", None)
-                        or getattr(ss, "title", None)
+                    short_name = getattr(ss, "short_name", None)
+                    name = getattr(ss, "name", None)
+                    title = getattr(ss, "title", None)
+
+                    logger.info(
+                        f"[DEBUG] Creating MediaItem for sticker {uid}: stickerset type={type(ss).__name__ if ss else None}"
                     )
+                    logger.info(
+                        f"[DEBUG] StickerSet fields: short_name='{short_name}', name='{name}', title='{title}'"
+                    )
+
+                    sticker_set_name = short_name or name or title
                     mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
                     out.append(
                         MediaItem(

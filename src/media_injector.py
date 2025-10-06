@@ -31,37 +31,78 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
     - Else call messages.GetStickerSet with hash=0 (forces fetch), passing the existing
       stickerset object when possible; fall back to constructing InputStickerSetID.
     """
+    logger.info(f"[DEBUG] Starting sticker set name resolution for {it.unique_id}")
+
     doc = getattr(it, "file_ref", None)
+    if not doc:
+        logger.warning(f"[DEBUG] No file_ref found for {it.unique_id}")
+        return None
+
     attrs = getattr(doc, "attributes", None)
     if not isinstance(attrs, (list, tuple)):
+        logger.warning(
+            f"[DEBUG] No attributes found for {it.unique_id}, attrs type: {type(attrs)}"
+        )
         return None
+
+    logger.info(f"[DEBUG] Found {len(attrs)} attributes for {it.unique_id}")
 
     ss = None
-    for a in attrs:
+    for i, a in enumerate(attrs):
+        logger.info(f"[DEBUG] Attribute {i}: {type(a).__name__}")
         if hasattr(a, "stickerset"):
             ss = getattr(a, "stickerset", None)
+            logger.info(
+                f"[DEBUG] Found stickerset attribute: {type(ss).__name__ if ss else None}"
+            )
             break
+
     if ss is None:
+        logger.warning(f"[DEBUG] No stickerset found in attributes for {it.unique_id}")
         return None
 
-    direct = (
-        getattr(ss, "short_name", None)
-        or getattr(ss, "name", None)
-        or getattr(ss, "title", None)
+    # Check for direct name fields
+    short_name = getattr(ss, "short_name", None)
+    name = getattr(ss, "name", None)
+    title = getattr(ss, "title", None)
+
+    logger.info(
+        f"[DEBUG] StickerSet fields for {it.unique_id}: short_name='{short_name}', name='{name}', title='{title}'"
     )
+
+    direct = short_name or name or title
     if isinstance(direct, str) and direct.strip():
+        logger.info(
+            f"[DEBUG] Found direct sticker set name for {it.unique_id}: '{direct.strip()}'"
+        )
         return direct.strip()
 
+    logger.info(f"[DEBUG] No direct name found, attempting API call for {it.unique_id}")
+
     try:
+        logger.info(
+            f"[DEBUG] Attempting first API call for {it.unique_id} with stickerset object"
+        )
         try:
             result = await agent.client(GetStickerSetRequest(stickerset=ss, hash=0))
-        except TypeError:
-
+            logger.info(f"[DEBUG] First API call succeeded for {it.unique_id}")
+        except TypeError as e:
+            logger.info(
+                f"[DEBUG] First API call failed with TypeError for {it.unique_id}: {e}"
+            )
             set_id = getattr(ss, "id", None)
             access_hash = getattr(ss, "access_hash", None) or getattr(
                 ss, "access", None
             )
+
+            logger.info(
+                f"[DEBUG] StickerSet ID fields for {it.unique_id}: id={set_id}, access_hash={access_hash}"
+            )
+
             if isinstance(set_id, int) and isinstance(access_hash, int):
+                logger.info(
+                    f"[DEBUG] Attempting second API call with InputStickerSetID for {it.unique_id}"
+                )
                 result = await agent.client(
                     GetStickerSetRequest(
                         stickerset=InputStickerSetID(
@@ -70,20 +111,47 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
                         hash=0,
                     )
                 )
+                logger.info(f"[DEBUG] Second API call succeeded for {it.unique_id}")
             else:
+                logger.warning(
+                    f"[DEBUG] Cannot make API call for {it.unique_id}: missing ID or access_hash"
+                )
                 return None
+        except Exception as e:
+            logger.error(f"[DEBUG] API call failed for {it.unique_id}: {e}")
+            return None
+
         st = getattr(result, "set", None)
-        resolved = (
-            getattr(st, "short_name", None)
-            or getattr(st, "name", None)
-            or getattr(st, "title", None)
+        if not st:
+            logger.warning(f"[DEBUG] No 'set' field in API result for {it.unique_id}")
+            return None
+
+        api_short_name = getattr(st, "short_name", None)
+        api_name = getattr(st, "name", None)
+        api_title = getattr(st, "title", None)
+
+        logger.info(
+            f"[DEBUG] API result fields for {it.unique_id}: short_name='{api_short_name}', name='{api_name}', title='{api_title}'"
         )
+
+        resolved = api_short_name or api_name or api_title
         if isinstance(resolved, str) and resolved.strip():
+            logger.info(
+                f"[DEBUG] Successfully resolved sticker set name for {it.unique_id}: '{resolved.strip()}'"
+            )
             return resolved.strip()
+        else:
+            logger.warning(
+                f"[DEBUG] API call succeeded but no name found for {it.unique_id}"
+            )
+            return None
+
     except Exception as e:
+        logger.error(
+            f"[DEBUG] Exception in sticker set name resolution for {it.unique_id}: {e}"
+        )
         logger.exception(f"Failed to get sticker set short name: {e}")
         return None
-    return None
 
 
 # ---------- provenance helpers ----------
@@ -266,20 +334,42 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
         meta = await media_chain.get(it.unique_id, agent=agent)
 
         if it.kind == "sticker":
+            logger.info(f"[DEBUG] Processing sticker {it.unique_id}")
+
             # Try to get sticker set name from metadata first
             sticker_set_name = None
             if isinstance(meta, dict):
                 sticker_set_name = meta.get("sticker_set_name")
+                logger.info(f"[DEBUG] Sticker {it.unique_id} metadata: {meta}")
+                if sticker_set_name:
+                    logger.info(
+                        f"[DEBUG] Found cached sticker set name for {it.unique_id}: '{sticker_set_name}'"
+                    )
+                else:
+                    logger.info(
+                        f"[DEBUG] No cached sticker set name for {it.unique_id}"
+                    )
 
             # If not in metadata, try to resolve from the MediaItem
             if not sticker_set_name:
+                logger.info(
+                    f"[DEBUG] Attempting to resolve sticker set name for {it.unique_id} from MediaItem"
+                )
                 try:
                     sticker_set_name = await _maybe_get_sticker_set_short_name(
                         agent, it
                     )
+                    if sticker_set_name:
+                        logger.info(
+                            f"[DEBUG] Successfully resolved sticker set name for {it.unique_id}: '{sticker_set_name}'"
+                        )
+                    else:
+                        logger.warning(
+                            f"[DEBUG] Failed to resolve sticker set name for {it.unique_id}: returned None"
+                        )
                 except Exception as e:
                     logger.warning(
-                        f"Failed to resolve sticker set name for {it.unique_id}: {e}"
+                        f"[DEBUG] Exception during sticker set name resolution for {it.unique_id}: {e}"
                     )
 
             # Final fallback - try to use a more descriptive fallback
