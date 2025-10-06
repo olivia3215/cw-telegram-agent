@@ -132,7 +132,8 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     """
     Heuristics:
       • image/gif OR DocumentAttributeAnimated => kind 'gif'
-      • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'animation'
+      • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'video' or 'animated_sticker'
+      • TGS files (gzip) => kind 'animated_sticker'
     """
     # Bot API fallbacks first (simple shapes)
     anim = getattr(msg, "animation", None)
@@ -180,8 +181,17 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=doc))
         return
 
-    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+    # Check for animated stickers (TGS files) first
+    if mime and "gzip" in mime.lower():
+        # TGS files are gzip-compressed Lottie animations (animated stickers)
         out.append(
-            MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=doc)
+            MediaItem(
+                kind="animated_sticker", unique_id=str(uid), mime=mime, file_ref=doc
+            )
         )
+        return
+
+    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+        # Regular video files
+        out.append(MediaItem(kind="video", unique_id=str(uid), mime=mime, file_ref=doc))
         return

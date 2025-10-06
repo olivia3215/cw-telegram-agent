@@ -65,7 +65,7 @@ class MediaSource(ABC):
             unique_id: The Telegram file unique ID
             agent: The agent instance (for accessing client, LLM, etc.)
             doc: The Telegram document reference (for downloading)
-            kind: Media type (sticker, photo, gif, animation)
+            kind: Media type (sticker, photo, gif, animation, video, animated_sticker)
             sticker_set_name: Sticker set name (if applicable)
             sticker_name: Sticker name/emoji (if applicable)
             **metadata: Additional metadata (sender_id, channel_id, etc.)

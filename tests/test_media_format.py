@@ -85,6 +85,22 @@ def test_format_media_sentence_without_description():
     assert out == "[media] ‹the video that is not understood›"
 
 
+def test_format_media_sentence_animated_sticker():
+    out = format_media_sentence("animated_sticker", "A dancing cat with sparkles")
+    assert (
+        out
+        == "[media] ‹the animated_sticker that appears as A dancing cat with sparkles›"
+    )
+
+
+def test_format_media_sentence_video_with_description():
+    out = format_media_sentence("video", "A tutorial showing how to bake cookies")
+    assert (
+        out
+        == "[media] ‹the video that appears as A tutorial showing how to bake cookies›"
+    )
+
+
 @pytest.mark.parametrize("desc", ["", "   "])
 def test_format_media_sentence_not_understood(desc):
     out = format_media_sentence("audio", desc)

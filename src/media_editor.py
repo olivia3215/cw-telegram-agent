@@ -237,7 +237,18 @@ def api_media_list():
 
                 # Look for associated media file
                 media_file = None
-                for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+                for ext in [
+                    ".webp",
+                    ".tgs",
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".mp4",
+                    ".webm",
+                    ".mov",
+                    ".avi",
+                ]:
                     potential_file = media_dir / f"{unique_id}{ext}"
                     if potential_file.exists():
                         media_file = str(potential_file)
@@ -302,7 +313,18 @@ def api_media_file(unique_id: str):
         media_dir = resolve_media_path(directory_path)
 
         # Try different extensions with proper MIME types
-        for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+        ]:
             media_file = media_dir / f"{unique_id}{ext}"
             if media_file.exists():
                 # Set appropriate MIME type for TGS files
@@ -318,6 +340,12 @@ def api_media_file(unique_id: str):
                     return send_file(media_file, mimetype="image/gif")
                 elif ext == ".mp4":
                     return send_file(media_file, mimetype="video/mp4")
+                elif ext == ".webm":
+                    return send_file(media_file, mimetype="video/webm")
+                elif ext == ".mov":
+                    return send_file(media_file, mimetype="video/quicktime")
+                elif ext == ".avi":
+                    return send_file(media_file, mimetype="video/x-msvideo")
                 else:
                     return send_file(media_file)
 
@@ -401,7 +429,18 @@ def api_refresh_from_ai(unique_id: str):
 
         # Find the media file
         media_file = None
-        for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+        ]:
             potential_file = media_dir / f"{unique_id}{ext}"
             if potential_file.exists():
                 media_file = potential_file
@@ -502,7 +541,17 @@ def api_move_media(unique_id: str):
 
         # Find the media file (could be .webp, .tgs, etc.)
         media_file_from = None
-        for ext in [".webp", ".tgs", ".gif", ".mp4", ".jpg", ".png"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+            ".jpg",
+            ".png",
+        ]:
             potential_file = from_dir / f"{unique_id}{ext}"
             if potential_file.exists():
                 media_file_from = potential_file
