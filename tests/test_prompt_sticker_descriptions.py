@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from media_source import MediaSource, MediaStatus
+from media.media_source import MediaSource, MediaStatus
 
 
 class FakeLLM:

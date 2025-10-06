@@ -6,7 +6,7 @@
 import logging
 from typing import Any
 
-from media_types import MediaItem
+from media.media_types import MediaItem
 
 logger = logging.getLogger(__name__)
 

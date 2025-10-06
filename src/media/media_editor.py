@@ -1,4 +1,4 @@
-# media_editor.py
+# media/media_editor.py
 
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
@@ -33,16 +33,17 @@ from telethon.tl.types import InputStickerSetShortName
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from agent import all_agents as get_all_agents
-from media_source import (
-    AIGeneratingMediaSource,
-    CompositeMediaSource,
-    DirectoryMediaSource,
-)
-from mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
+
+from .media_source import (
+    AIGeneratingMediaSource,
+    CompositeMediaSource,
+    DirectoryMediaSource,
+)
+from .mime_utils import detect_mime_type_from_bytes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from media_types import MediaItem
+from media.media_types import MediaItem
 from telegram_media import iter_media_parts
 
 # --- tiny fakes (duck-typed to match what iter_media_parts looks for) ---
