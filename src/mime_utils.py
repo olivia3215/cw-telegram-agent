@@ -83,6 +83,7 @@ def get_file_extension_for_mime_type(mime_type: str) -> str:
         "audio/wav": "wav",
         "audio/mp4": "m4a",
         "application/gzip": "tgs",  # TGS files are gzip-compressed
+        "application/x-tgsticker": "tgs",  # Telegram animated stickers
         "application/zip": "zip",
         "application/octet-stream": "bin",
     }

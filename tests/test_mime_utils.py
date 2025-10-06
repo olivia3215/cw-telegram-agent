@@ -39,6 +39,12 @@ def test_get_file_extension_for_video_types():
     assert get_file_extension_for_mime_type("video/x-msvideo") == "avi"
 
 
+def test_get_file_extension_for_sticker_types():
+    """Test file extension mapping for sticker MIME types."""
+    assert get_file_extension_for_mime_type("application/gzip") == "tgs"
+    assert get_file_extension_for_mime_type("application/x-tgsticker") == "tgs"
+
+
 def test_is_video_mime_type():
     assert is_video_mime_type("video/mp4") is True
     assert is_video_mime_type("video/webm") is True
