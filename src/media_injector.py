@@ -331,29 +331,27 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
         items = []
 
     for it in items:
-        meta = await media_chain.get(it.unique_id, agent=agent)
+        # First, try to resolve sticker information from the MediaItem itself
+        sticker_set_name = None
+        sticker_name = None
 
         if it.kind == "sticker":
             logger.info(f"[DEBUG] Processing sticker {it.unique_id}")
 
-            # Try to get sticker set name from metadata first
-            sticker_set_name = None
-            if isinstance(meta, dict):
-                sticker_set_name = meta.get("sticker_set_name")
-                logger.info(f"[DEBUG] Sticker {it.unique_id} metadata: {meta}")
-                if sticker_set_name:
-                    logger.info(
-                        f"[DEBUG] Found cached sticker set name for {it.unique_id}: '{sticker_set_name}'"
-                    )
-                else:
-                    logger.info(
-                        f"[DEBUG] No cached sticker set name for {it.unique_id}"
-                    )
+            # Get sticker name from MediaItem
+            sticker_name = getattr(it, "sticker_name", None)
 
-            # If not in metadata, try to resolve from the MediaItem
+            # Get sticker set name from MediaItem first
+            sticker_set_name = getattr(it, "sticker_set_name", None)
+            if sticker_set_name:
+                logger.info(
+                    f"[DEBUG] Found sticker set name in MediaItem for {it.unique_id}: '{sticker_set_name}'"
+                )
+
+            # If not in MediaItem, try to resolve from attributes
             if not sticker_set_name:
                 logger.info(
-                    f"[DEBUG] Attempting to resolve sticker set name for {it.unique_id} from MediaItem"
+                    f"[DEBUG] Attempting to resolve sticker set name for {it.unique_id} from MediaItem attributes"
                 )
                 try:
                     sticker_set_name = await _maybe_get_sticker_set_short_name(
@@ -371,6 +369,20 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
                     logger.warning(
                         f"[DEBUG] Exception during sticker set name resolution for {it.unique_id}: {e}"
                     )
+
+        # Only call media_chain.get() if we need cached metadata (like descriptions)
+        # Don't call it if we already have the sticker information resolved
+        meta = None
+        if it.kind == "sticker":
+            # Check if we already have cached metadata
+            try:
+                meta = await media_chain.get(it.unique_id, agent=agent)
+                logger.info(f"[DEBUG] Sticker {it.unique_id} metadata: {meta}")
+            except Exception as e:
+                logger.warning(
+                    f"[DEBUG] Failed to get metadata for {it.unique_id}: {e}"
+                )
+                meta = None
 
             # Final fallback - try to use a more descriptive fallback
             if not sticker_set_name:
@@ -396,11 +408,10 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
                 logger.debug(
                     f"Sticker set name unresolved for sticker {it.unique_id}, using fallback: {sticker_set_name}"
                 )
-            sticker_name = (
-                (meta.get("sticker_name") if isinstance(meta, dict) else None)
-                or getattr(it, "sticker_name", None)
-                or "(unnamed)"
-            )
+
+            # Use the resolved sticker name, with fallback
+            if not sticker_name:
+                sticker_name = "(unnamed)"
             # Get raw description from cache for format_sticker_sentence
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(
