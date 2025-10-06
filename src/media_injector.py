@@ -266,11 +266,46 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
         meta = await media_chain.get(it.unique_id, agent=agent)
 
         if it.kind == "sticker":
-            sticker_set_name = (
-                (meta.get("sticker_set_name") if isinstance(meta, dict) else None)
-                or getattr(it, "sticker_set", None)
-                or "(unknown)"
-            )
+            # Try to get sticker set name from metadata first
+            sticker_set_name = None
+            if isinstance(meta, dict):
+                sticker_set_name = meta.get("sticker_set_name")
+
+            # If not in metadata, try to resolve from the MediaItem
+            if not sticker_set_name:
+                try:
+                    sticker_set_name = await _maybe_get_sticker_set_short_name(
+                        agent, it
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to resolve sticker set name for {it.unique_id}: {e}"
+                    )
+
+            # Final fallback - try to use a more descriptive fallback
+            if not sticker_set_name:
+                # Try to get any identifying information from the MediaItem
+                file_ref = getattr(it, "file_ref", None)
+                if file_ref:
+                    file_name = getattr(file_ref, "file_name", None)
+                    if file_name:
+                        # Extract potential set name from filename if it follows a pattern
+                        if "_" in file_name:
+                            potential_set = file_name.split("_")[0]
+                            if len(potential_set) > 2:  # Reasonable set name length
+                                sticker_set_name = f"({potential_set})"
+                            else:
+                                sticker_set_name = "(unknown)"
+                        else:
+                            sticker_set_name = "(unknown)"
+                    else:
+                        sticker_set_name = "(unknown)"
+                else:
+                    sticker_set_name = "(unknown)"
+
+                logger.debug(
+                    f"Sticker set name unresolved for sticker {it.unique_id}, using fallback: {sticker_set_name}"
+                )
             sticker_name = (
                 (meta.get("sticker_name") if isinstance(meta, dict) else None)
                 or getattr(it, "sticker_name", None)
