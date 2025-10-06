@@ -26,6 +26,12 @@ from .prompt_builder import build_gemini_contents
 
 logger = logging.getLogger(__name__)
 
+GEMINI_DEBUG_LOGGING = os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
@@ -232,7 +238,7 @@ class GeminiLLM(LLM):
                 contents_norm = contents
 
             # Optional comprehensive logging for debugging
-            if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in ("true", "1", "yes"):
+            if GEMINI_DEBUG_LOGGING:
                 logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE PROMPT ===")
                 logger.info(f"System Instruction: {system_instruction}")
                 logger.info(f"Contents ({len(contents_norm)} turns):")
@@ -269,15 +275,12 @@ class GeminiLLM(LLM):
                 )
 
                 # Optional comprehensive logging for debugging
-                if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in (
-                    "true",
-                    "1",
-                    "yes",
-                ):
+                if GEMINI_DEBUG_LOGGING:
                     logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
-                    logger.info(f"Response text: {text}")
                     if response is not None:
                         logger.info(f"Response object type: {type(response)}")
+                        if hasattr(response, "text") and isinstance(response.text, str):
+                            logger.info(f"Response text: {response.text}")
                         if hasattr(response, "candidates") and response.candidates:
                             logger.info(
                                 f"Number of candidates: {len(response.candidates)}"

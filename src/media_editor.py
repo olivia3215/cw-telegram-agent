@@ -716,6 +716,9 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     imported_count = 0
     skipped_count = 0
 
+    # Create a single DirectoryMediaSource instance outside the loop to enable in-memory caching
+    cache_source = DirectoryMediaSource(target_dir)
+
     try:
         # Download sticker set using the same pattern as run.py
         logger.info(f"Requesting sticker set: {sticker_set_name}")
@@ -843,7 +846,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     }
 
                     # Save both media file and JSON record using DirectoryMediaSource
-                    cache_source = DirectoryMediaSource(target_dir)
                     cache_source.put(unique_id, media_record, media_bytes, file_ext)
 
                     imported_count += 1
@@ -863,8 +865,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "mime_type": getattr(doc, "mime_type", None),
                     }
                     # Save error record using DirectoryMediaSource (no media file for errors)
-                    cache_source = DirectoryMediaSource(target_dir)
-                    cache_source.put(unique_id, error_record)
+                    cache_source.put(unique_id, error_record, None, None)
                     imported_count += 1
 
             except Exception as e:
