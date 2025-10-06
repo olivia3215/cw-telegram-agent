@@ -17,7 +17,7 @@ from .base import LLM, ChatMsg, MsgMediaPart, MsgPart, MsgTextPart
 from .gemini import GeminiLLM
 
 # Import utility functions
-from .prompt_builder import build_gemini_contents
+# (prompt_builder functions moved to GeminiLLM as private methods)
 
 # Maintain backward compatibility by exposing everything at package level
 __all__ = [
@@ -29,6 +29,4 @@ __all__ = [
     "MsgMediaPart",
     # LLM implementations
     "GeminiLLM",
-    # Utility functions
-    "build_gemini_contents",
 ]

@@ -6,9 +6,11 @@
 import logging
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from agent import get_agent_for_id
+from llm.base import MsgPart
 from media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
@@ -23,6 +25,17 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+@dataclass
+class ProcessedMessage:
+    """Represents a processed message with all its components for LLM history."""
+
+    message_parts: list[MsgPart]
+    sender_display: str
+    sender_id: str
+    message_id: str
+    is_from_agent: bool
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -45,30 +58,6 @@ def is_retryable_llm_error(error: Exception) -> bool:
     ]
 
     return any(indicator in error_str for indicator in retryable_indicators)
-
-
-def _to_chatmsg_single_text_part(
-    *,
-    rendered: str,
-    sender: str,
-    sender_id: str,
-    msg_id: str,
-    is_agent: bool,
-) -> dict:
-    """
-    Wrap a single already-rendered message string into the ChatMsg 'parts' shape that
-    GeminiLLM.query_structured() expects. The structured builder will add the 'From: ... — id: ...'
-    header for non-agent messages, so we do NOT include it here.
-    """
-    return {
-        "sender": sender,
-        "sender_id": sender_id,
-        "msg_id": msg_id,
-        "is_agent": is_agent,
-        "parts": [
-            {"kind": "text", "text": rendered},
-        ],
-    }
 
 
 async def _build_sticker_list(agent, media_chain) -> str | None:
@@ -328,15 +317,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
 
-    # Map each Telethon message to a 5-tuple:
-    # (rendered_text, sender_display, sender_id, message_id, is_agent)
-    history_rendered_items: list[tuple[str, str, str, str, bool]] = []
+    # Map each Telethon message to a ProcessedMessage object
+    history_rendered_items: list[ProcessedMessage] = []
     chronological = list(reversed(messages))  # oldest → newest
     for m in chronological:
-        rendered_text = await format_message_for_prompt(
+        message_parts = await format_message_for_prompt(
             m, agent=agent, media_chain=media_chain
         )
-        if not rendered_text:
+        if not message_parts:
             continue
 
         # sender_id is stable; get display name for better context
@@ -353,7 +341,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         is_from_agent = bool(getattr(m, "out", False))
 
         history_rendered_items.append(
-            (rendered_text, sender_display, sender_id, message_id, is_from_agent)
+            ProcessedMessage(
+                message_parts=message_parts,
+                sender_display=sender_display,
+                sender_id=sender_id,
+                message_id=message_id,
+                is_from_agent=is_from_agent,
+            )
         )
 
     # Determine which message we want to respond to
@@ -382,13 +376,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             chat_type=chat_type,
             history=(
                 {
-                    "sender": s,
-                    "sender_id": sid,
-                    "msg_id": mid,
-                    "is_agent": is_self,
-                    "parts": [{"kind": "text", "text": rendered}],
+                    "sender": item.sender_display,
+                    "sender_id": item.sender_id,
+                    "msg_id": item.message_id,
+                    "is_agent": item.is_from_agent,
+                    "parts": item.message_parts,
                 }
-                for (rendered, s, sid, mid, is_self) in history_rendered_items
+                for item in history_rendered_items
             ),
             history_size=agent.llm.history_size,
             timeout_s=None,
