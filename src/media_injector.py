@@ -31,24 +31,30 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
     - Else call messages.GetStickerSet with hash=0 (forces fetch), passing the existing
       stickerset object when possible; fall back to constructing InputStickerSetID.
     """
+
     doc = getattr(it, "file_ref", None)
+    if not doc:
+        return None
+
     attrs = getattr(doc, "attributes", None)
     if not isinstance(attrs, (list, tuple)):
         return None
 
     ss = None
-    for a in attrs:
+    for _i, a in enumerate(attrs):
         if hasattr(a, "stickerset"):
             ss = getattr(a, "stickerset", None)
             break
+
     if ss is None:
         return None
 
-    direct = (
-        getattr(ss, "short_name", None)
-        or getattr(ss, "name", None)
-        or getattr(ss, "title", None)
-    )
+    # Check for direct name fields
+    short_name = getattr(ss, "short_name", None)
+    name = getattr(ss, "name", None)
+    title = getattr(ss, "title", None)
+
+    direct = short_name or name or title
     if isinstance(direct, str) and direct.strip():
         return direct.strip()
 
@@ -56,11 +62,11 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
         try:
             result = await agent.client(GetStickerSetRequest(stickerset=ss, hash=0))
         except TypeError:
-
             set_id = getattr(ss, "id", None)
             access_hash = getattr(ss, "access_hash", None) or getattr(
                 ss, "access", None
             )
+
             if isinstance(set_id, int) and isinstance(access_hash, int):
                 result = await agent.client(
                     GetStickerSetRequest(
@@ -72,18 +78,24 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
                 )
             else:
                 return None
+
         st = getattr(result, "set", None)
-        resolved = (
-            getattr(st, "short_name", None)
-            or getattr(st, "name", None)
-            or getattr(st, "title", None)
-        )
+        if not st:
+            return None
+
+        api_short_name = getattr(st, "short_name", None)
+        api_name = getattr(st, "name", None)
+        api_title = getattr(st, "title", None)
+
+        resolved = api_short_name or api_name or api_title
         if isinstance(resolved, str) and resolved.strip():
             return resolved.strip()
+        else:
+            return None
+
     except Exception as e:
         logger.exception(f"Failed to get sticker set short name: {e}")
         return None
-    return None
 
 
 # ---------- provenance helpers ----------
@@ -263,30 +275,22 @@ async def format_message_for_prompt(msg: Any, *, agent, media_chain=None) -> str
         items = []
 
     for it in items:
-        meta = await media_chain.get(it.unique_id, agent=agent)
-
         if it.kind == "sticker":
-            sticker_set_name = (
-                (meta.get("sticker_set_name") if isinstance(meta, dict) else None)
-                or getattr(it, "sticker_set", None)
-                or "(unknown)"
+            # Use the new comprehensive sticker processing function
+            sticker_sentence = await format_sticker_sentence(
+                media_item=it,
+                agent=agent,
+                media_chain=media_chain,
+                resolve_sticker_set_name=_maybe_get_sticker_set_short_name,
             )
-            sticker_name = (
-                (meta.get("sticker_name") if isinstance(meta, dict) else None)
-                or getattr(it, "sticker_name", None)
-                or "(unnamed)"
-            )
-            # Get raw description from cache for format_sticker_sentence
-            desc_text = meta.get("description") if isinstance(meta, dict) else None
-            parts.append(
-                format_sticker_sentence(
-                    sticker_name=sticker_name,
-                    sticker_set_name=sticker_set_name,
-                    description=desc_text,
-                )
-            )
+            parts.append(sticker_sentence)
         else:
             # For non-stickers, get description from cache record
+            meta = None
+            try:
+                meta = await media_chain.get(it.unique_id, agent=agent)
+            except Exception:
+                meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             parts.append(format_media_sentence(it.kind, desc_text))
 

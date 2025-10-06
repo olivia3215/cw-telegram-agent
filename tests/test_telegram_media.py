@@ -87,3 +87,41 @@ def test_detect_gif_and_animation():
     msg_anim = make_msg(animation=anim)
     parts_anim = iter_media_parts(msg_anim)
     assert len(parts_anim) == 1 and parts_anim[0].kind == "animation"
+
+
+def test_detect_video_and_animated_sticker():
+    # Regular video via document mime type
+    video_doc = Obj(file_unique_id="vid_u5", mime_type="video/mp4")
+    msg_video = make_msg(document=video_doc)
+    parts_video = iter_media_parts(msg_video)
+    assert len(parts_video) == 1 and parts_video[0].kind == "video"
+    assert parts_video[0].unique_id == "vid_u5"
+    assert parts_video[0].mime == "video/mp4"
+
+    # WebM video
+    webm_doc = Obj(file_unique_id="webm_u6", mime_type="video/webm")
+    msg_webm = make_msg(document=webm_doc)
+    parts_webm = iter_media_parts(msg_webm)
+    assert len(parts_webm) == 1 and parts_webm[0].kind == "video"
+    assert parts_webm[0].mime == "video/webm"
+
+    # Animated sticker (TGS file) - gzip-compressed Lottie
+    tgs_doc = Obj(file_unique_id="tgs_u7", mime_type="application/gzip")
+    msg_tgs = make_msg(document=tgs_doc)
+    parts_tgs = iter_media_parts(msg_tgs)
+    assert len(parts_tgs) == 1 and parts_tgs[0].kind == "animated_sticker"
+    assert parts_tgs[0].unique_id == "tgs_u7"
+    assert parts_tgs[0].mime == "application/gzip"
+
+    # Video with DocumentAttributeVideo
+    attr_video = Obj()
+    attr_video.__class__.__name__ = "DocumentAttributeVideo"
+    video_attr_doc = Obj(
+        file_unique_id="vid_attr_u8",
+        mime_type="video/quicktime",
+        attributes=[attr_video],
+    )
+    msg_video_attr = make_msg(document=video_attr_doc)
+    parts_video_attr = iter_media_parts(msg_video_attr)
+    assert len(parts_video_attr) == 1 and parts_video_attr[0].kind == "video"
+    assert parts_video_attr[0].mime == "video/quicktime"

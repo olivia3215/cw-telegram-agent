@@ -36,6 +36,7 @@ from agent import all_agents as get_all_agents
 from media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
+    DirectoryMediaSource,
 )
 from mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
@@ -46,6 +47,7 @@ from telegram_media import get_unique_id
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
 
@@ -237,7 +239,18 @@ def api_media_list():
 
                 # Look for associated media file
                 media_file = None
-                for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+                for ext in [
+                    ".webp",
+                    ".tgs",
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".mp4",
+                    ".webm",
+                    ".mov",
+                    ".avi",
+                ]:
                     potential_file = media_dir / f"{unique_id}{ext}"
                     if potential_file.exists():
                         media_file = str(potential_file)
@@ -302,7 +315,18 @@ def api_media_file(unique_id: str):
         media_dir = resolve_media_path(directory_path)
 
         # Try different extensions with proper MIME types
-        for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+        ]:
             media_file = media_dir / f"{unique_id}{ext}"
             if media_file.exists():
                 # Set appropriate MIME type for TGS files
@@ -318,6 +342,12 @@ def api_media_file(unique_id: str):
                     return send_file(media_file, mimetype="image/gif")
                 elif ext == ".mp4":
                     return send_file(media_file, mimetype="video/mp4")
+                elif ext == ".webm":
+                    return send_file(media_file, mimetype="video/webm")
+                elif ext == ".mov":
+                    return send_file(media_file, mimetype="video/quicktime")
+                elif ext == ".avi":
+                    return send_file(media_file, mimetype="video/x-msvideo")
                 else:
                     return send_file(media_file)
 
@@ -401,7 +431,18 @@ def api_refresh_from_ai(unique_id: str):
 
         # Find the media file
         media_file = None
-        for ext in [".webp", ".tgs", ".png", ".jpg", ".jpeg", ".gif", ".mp4"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+        ]:
             potential_file = media_dir / f"{unique_id}{ext}"
             if potential_file.exists():
                 media_file = potential_file
@@ -502,7 +543,17 @@ def api_move_media(unique_id: str):
 
         # Find the media file (could be .webp, .tgs, etc.)
         media_file_from = None
-        for ext in [".webp", ".tgs", ".gif", ".mp4", ".jpg", ".png"]:
+        for ext in [
+            ".webp",
+            ".tgs",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".avi",
+            ".jpg",
+            ".png",
+        ]:
             potential_file = from_dir / f"{unique_id}{ext}"
             if potential_file.exists():
                 media_file_from = potential_file
@@ -665,6 +716,9 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     imported_count = 0
     skipped_count = 0
 
+    # Create a single DirectoryMediaSource instance outside the loop to enable in-memory caching
+    cache_source = DirectoryMediaSource(target_dir)
+
     try:
         # Download sticker set using the same pattern as run.py
         logger.info(f"Requesting sticker set: {sticker_set_name}")
@@ -756,8 +810,8 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     continue
 
                 # Check if already exists
-                json_file = target_dir / f"{unique_id}.json"
-                if json_file.exists():
+                existing_file = target_dir / f"{unique_id}.json"
+                if existing_file.exists():
                     skipped_count += 1
                     continue
 
@@ -776,10 +830,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     else:
                         file_ext = ".webp"
 
-                    # Save media file
-                    media_file = target_dir / f"{unique_id}{file_ext}"
-                    media_file.write_bytes(media_bytes)
-
                     # Detect actual MIME type from file bytes for accurate processing
                     detected_mime_type = detect_mime_type_from_bytes(media_bytes)
 
@@ -795,10 +845,8 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }
 
-                    # Save JSON record
-                    json_file.write_text(
-                        json.dumps(media_record, indent=2), encoding="utf-8"
-                    )
+                    # Save both media file and JSON record using DirectoryMediaSource
+                    cache_source.put(unique_id, media_record, media_bytes, file_ext)
 
                     imported_count += 1
 
@@ -816,9 +864,8 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "ts": datetime.now(UTC).isoformat(),
                         "mime_type": getattr(doc, "mime_type", None),
                     }
-                    json_file.write_text(
-                        json.dumps(error_record, indent=2), encoding="utf-8"
-                    )
+                    # Save error record using DirectoryMediaSource (no media file for errors)
+                    cache_source.put(unique_id, error_record, None, None)
                     imported_count += 1
 
             except Exception as e:

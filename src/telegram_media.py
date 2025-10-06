@@ -3,9 +3,12 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import logging
 from typing import Any
 
 from media_types import MediaItem
+
+logger = logging.getLogger(__name__)
 
 
 def iter_media_parts(msg: Any) -> list[MediaItem]:
@@ -70,18 +73,18 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     if not uid:
                         return
                     # sticker name (emoji/alt/file_name)
-                    name = (
-                        getattr(a, "alt", None)
-                        or getattr(doc, "emoji", None)
-                        or getattr(doc, "file_name", None)
-                    )
+                    alt_name = getattr(a, "alt", None)
+                    emoji_name = getattr(doc, "emoji", None)
+                    file_name = getattr(doc, "file_name", None)
+
+                    name = alt_name or emoji_name or file_name
                     # sticker set short name if present directly on attribute
                     ss = getattr(a, "stickerset", None)
-                    sticker_set_name = (
-                        getattr(ss, "short_name", None)
-                        or getattr(ss, "name", None)
-                        or getattr(ss, "title", None)
-                    )
+                    short_name = getattr(ss, "short_name", None)
+                    ss_name = getattr(ss, "name", None)
+                    title = getattr(ss, "title", None)
+
+                    sticker_set_name = short_name or ss_name or title
                     mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
                     out.append(
                         MediaItem(
@@ -132,7 +135,8 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     """
     Heuristics:
       • image/gif OR DocumentAttributeAnimated => kind 'gif'
-      • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'animation'
+      • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'video' or 'animated_sticker'
+      • TGS files (gzip) => kind 'animated_sticker'
     """
     # Bot API fallbacks first (simple shapes)
     anim = getattr(msg, "animation", None)
@@ -180,8 +184,17 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=doc))
         return
 
-    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+    # Check for animated stickers (TGS files) first
+    if mime and "gzip" in mime.lower():
+        # TGS files are gzip-compressed Lottie animations (animated stickers)
         out.append(
-            MediaItem(kind="animation", unique_id=str(uid), mime=mime, file_ref=doc)
+            MediaItem(
+                kind="animated_sticker", unique_id=str(uid), mime=mime, file_ref=doc
+            )
         )
+        return
+
+    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+        # Regular video files
+        out.append(MediaItem(kind="video", unique_id=str(uid), mime=mime, file_ref=doc))
         return

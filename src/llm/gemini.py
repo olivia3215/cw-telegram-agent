@@ -26,6 +26,12 @@ from .prompt_builder import build_gemini_contents
 
 logger = logging.getLogger(__name__)
 
+GEMINI_DEBUG_LOGGING = os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
@@ -232,8 +238,8 @@ class GeminiLLM(LLM):
                 contents_norm = contents
 
             # Optional comprehensive logging for debugging
-            if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in ("true", "1", "yes"):
-                logger.info("=== GEMINI DEBUG: COMPLETE PROMPT ===")
+            if GEMINI_DEBUG_LOGGING:
+                logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE PROMPT ===")
                 logger.info(f"System Instruction: {system_instruction}")
                 logger.info(f"Contents ({len(contents_norm)} turns):")
                 for i, turn in enumerate(contents_norm):
@@ -251,7 +257,7 @@ class GeminiLLM(LLM):
                             logger.info(f"    Part {j+1}: {text}")
                         else:
                             logger.info(f"    Part {j+1}: {part}")
-                logger.info("=== END GEMINI DEBUG: PROMPT ===")
+                logger.info("=== END GEMINI_DEBUG_LOGGING: PROMPT ===")
 
             # Use the new client.models.generate_content API
             model_name = model or self.model_name
@@ -267,6 +273,29 @@ class GeminiLLM(LLM):
                     contents=contents_norm,
                     config=config,
                 )
+
+                # Optional comprehensive logging for debugging
+                if GEMINI_DEBUG_LOGGING:
+                    logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
+                    if response is not None:
+                        logger.info(f"Response object type: {type(response)}")
+                        if hasattr(response, "text") and isinstance(response.text, str):
+                            logger.info(f"Response text: {response.text}")
+                        if hasattr(response, "candidates") and response.candidates:
+                            logger.info(
+                                f"Number of candidates: {len(response.candidates)}"
+                            )
+                            for i, candidate in enumerate(response.candidates):
+                                logger.info(f"  Candidate {i+1}:")
+                                if hasattr(candidate, "finish_reason"):
+                                    logger.info(
+                                        f"    Finish reason: {candidate.finish_reason}"
+                                    )
+                                if hasattr(candidate, "safety_ratings"):
+                                    logger.info(
+                                        f"    Safety ratings: {candidate.safety_ratings}"
+                                    )
+                    logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
 
                 # Extract the first candidate's text safely
                 text = ""
@@ -292,27 +321,8 @@ class GeminiLLM(LLM):
                                     and "text" in first_part
                                 ):
                                     text = str(first_part["text"] or "")
-                break
 
-            # Optional comprehensive logging for debugging
-            if os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in ("true", "1", "yes"):
-                logger.info("=== GEMINI DEBUG: COMPLETE RESPONSE ===")
-                logger.info(f"Response text: {text}")
-                if response is not None:
-                    logger.info(f"Response object type: {type(response)}")
-                    if hasattr(response, "candidates") and response.candidates:
-                        logger.info(f"Number of candidates: {len(response.candidates)}")
-                        for i, candidate in enumerate(response.candidates):
-                            logger.info(f"  Candidate {i+1}:")
-                            if hasattr(candidate, "finish_reason"):
-                                logger.info(
-                                    f"    Finish reason: {candidate.finish_reason}"
-                                )
-                            if hasattr(candidate, "safety_ratings"):
-                                logger.info(
-                                    f"    Safety ratings: {candidate.safety_ratings}"
-                                )
-                logger.info("=== END GEMINI DEBUG: RESPONSE ===")
+                break
 
             return text or ""
         except Exception as e:
