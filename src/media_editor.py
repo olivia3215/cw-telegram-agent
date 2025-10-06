@@ -36,6 +36,7 @@ from agent import all_agents as get_all_agents
 from media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
+    DirectoryMediaSource,
 )
 from mime_utils import detect_mime_type_from_bytes
 from prompt_loader import get_config_directories
@@ -46,6 +47,7 @@ from telegram_media import get_unique_id
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
 
@@ -805,8 +807,8 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     continue
 
                 # Check if already exists
-                json_file = target_dir / f"{unique_id}.json"
-                if json_file.exists():
+                existing_file = target_dir / f"{unique_id}.json"
+                if existing_file.exists():
                     skipped_count += 1
                     continue
 
@@ -825,10 +827,6 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     else:
                         file_ext = ".webp"
 
-                    # Save media file
-                    media_file = target_dir / f"{unique_id}{file_ext}"
-                    media_file.write_bytes(media_bytes)
-
                     # Detect actual MIME type from file bytes for accurate processing
                     detected_mime_type = detect_mime_type_from_bytes(media_bytes)
 
@@ -844,10 +842,9 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }
 
-                    # Save JSON record
-                    json_file.write_text(
-                        json.dumps(media_record, indent=2), encoding="utf-8"
-                    )
+                    # Save both media file and JSON record using DirectoryMediaSource
+                    cache_source = DirectoryMediaSource(target_dir)
+                    cache_source.put(unique_id, media_record, media_bytes, file_ext)
 
                     imported_count += 1
 
@@ -865,9 +862,9 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "ts": datetime.now(UTC).isoformat(),
                         "mime_type": getattr(doc, "mime_type", None),
                     }
-                    json_file.write_text(
-                        json.dumps(error_record, indent=2), encoding="utf-8"
-                    )
+                    # Save error record using DirectoryMediaSource (no media file for errors)
+                    cache_source = DirectoryMediaSource(target_dir)
+                    cache_source.put(unique_id, error_record)
                     imported_count += 1
 
             except Exception as e:
