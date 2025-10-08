@@ -478,18 +478,17 @@ configdir/
 └── ...
 
 state/
-└── AgentName/
-    └── memory/
-        └── UserID.md            # Global episodic memories (automatically created)
+└── memory/
+    └── AgentName.md            # Global episodic memories (automatically created)
 ```
 
 - **Config memories** (`configdir/agents/AgentName/memory/UserID.md`): Manually curated memories that can be created and edited by hand
-- **State memories** (`state/AgentName/memory/UserID.md`): Global episodic memories automatically created from agent conversations
+- **State memories** (`state/AgentName/memory.md`): Global episodic memories automatically created from agent conversations
 
 **Global Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
 - Curated memories that are visible only when chatting with a given user are in the the manually created memory files `configdir/agents/AgentName/memory/UserID.md` where UserID is the unique ID assigned by Telegram to the conversation partner.
-- Memories produced by the agent are stored in `statedir/memory/AgentName.md` and are viible by the agent during all conversations.
+- Memories produced by the agent are stored in `state/AgentName/memory.md` and are viible by the agent during all conversations.
 
 ### Remember Task Processing
 
