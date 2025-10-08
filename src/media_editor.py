@@ -37,8 +37,9 @@ from media.media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
+    UnsupportedFormatMediaSource,
 )
-from media.mime_utils import detect_mime_type_from_bytes
+from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
@@ -226,15 +227,39 @@ def api_media_list():
             else:
                 return jsonify({"error": "Directory not found"}), 404
 
+        # Use MediaSource API to read media descriptions
+        # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
+        # but without AIGeneratingMediaSource (no AI generation in listing)
+        cache_source = DirectoryMediaSource(media_dir)
+        unsupported_source = UnsupportedFormatMediaSource()
+
+        media_chain = CompositeMediaSource(
+            [
+                cache_source,
+                unsupported_source,
+            ]
+        )
+
         media_files = []
 
-        # Find all JSON files (descriptions)
+        # Find all JSON files to get unique IDs
         for json_file in media_dir.glob("*.json"):
             try:
-                with open(json_file, encoding="utf-8") as f:
-                    data = json.load(f)
-
                 unique_id = json_file.stem
+
+                # Use MediaSource chain to get the record (applies all transformations)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    record = loop.run_until_complete(
+                        media_chain.get(unique_id=unique_id)
+                    )
+                finally:
+                    loop.close()
+
+                if not record:
+                    logger.warning(f"No record found for {unique_id}")
+                    continue
 
                 # Look for associated media file
                 media_file = None
@@ -256,10 +281,9 @@ def api_media_list():
                         break
 
                 # Group by sticker set for organization
-                # Use "Other Media" for non-stickers, otherwise use the sticker set name
-                kind = data.get("kind", "unknown")
+                kind = record.get("kind", "unknown")
                 if kind == "sticker":
-                    sticker_set = data.get("sticker_set_name") or "Other Media"
+                    sticker_set = record.get("sticker_set_name") or "Other Media"
                 else:
                     sticker_set = "Other Media"
 
@@ -268,18 +292,18 @@ def api_media_list():
                         "unique_id": unique_id,
                         "json_file": str(json_file),
                         "media_file": media_file,
-                        "description": data.get("description"),
-                        "kind": data.get("kind", "unknown"),
+                        "description": record.get("description"),
+                        "kind": kind,
                         "sticker_set_name": sticker_set,
-                        "sticker_name": data.get("sticker_name", ""),
-                        "status": data.get("status", "unknown"),
-                        "failure_reason": data.get("failure_reason"),
-                        "mime_type": data.get("mime_type"),
+                        "sticker_name": record.get("sticker_name", ""),
+                        "status": record.get("status", "unknown"),
+                        "failure_reason": record.get("failure_reason"),
+                        "mime_type": record.get("mime_type"),
                     }
                 )
 
             except Exception as e:
-                logger.error(f"Error reading {json_file}: {e}")
+                logger.error(f"Error processing {json_file}: {e}")
                 continue
 
         # Group by sticker set
@@ -290,13 +314,18 @@ def api_media_list():
                 grouped_media[sticker_set] = []
             grouped_media[sticker_set].append(media)
 
-        return jsonify(
+        response = jsonify(
             {
                 "media_files": media_files,
                 "grouped_media": grouped_media,
                 "directory": directory_path,
             }
         )
+        # Add cache-busting headers to ensure fresh data
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     except Exception as e:
         logger.error(f"Error listing media files: {e}")
@@ -458,8 +487,8 @@ def api_refresh_from_ai(unique_id: str):
         # Pass the media file Path directly as the doc parameter
         fake_doc = media_file
 
-        # Create a minimal chain: just AI generation (no MIME filter needed since we have the file)
-        # Cache the new AI description to the same directory as the original media
+        # For refresh, bypass cache and force fresh AI generation
+        # Create a chain with ONLY AIGeneratingMediaSource (no cache, no fallbacks)
         ai_cache_dir = media_dir
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -468,6 +497,14 @@ def api_refresh_from_ai(unique_id: str):
                 AIGeneratingMediaSource(cache_directory=ai_cache_dir),
             ]
         )
+
+        # Determine the correct media kind based on MIME type
+        # This fixes the issue where cached records have wrong kind for animated stickers
+        mime_type = data.get("mime_type")
+        if is_tgs_mime_type(mime_type):
+            media_kind = "animated_sticker"
+        else:
+            media_kind = data.get("kind", "sticker")
 
         # Process using the media source chain to get fresh description
         loop = asyncio.new_event_loop()
@@ -479,7 +516,7 @@ def api_refresh_from_ai(unique_id: str):
                     unique_id=unique_id,
                     agent=agent,
                     doc=fake_doc,
-                    kind=data.get("kind", "sticker"),
+                    kind=media_kind,
                     sticker_set_name=data.get("sticker_set_name"),
                     sticker_name=data.get("sticker_name"),
                     sender_id=None,
@@ -487,6 +524,9 @@ def api_refresh_from_ai(unique_id: str):
                     channel_id=None,
                     channel_name=None,
                     media_ts=None,
+                    duration=data.get(
+                        "duration"
+                    ),  # Include duration for video/animated stickers
                 )
             )
         finally:
@@ -820,7 +860,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                     # Determine file extension
                     mime_type = getattr(doc, "mime_type", None)
-                    if mime_type in ["application/gzip", "application/x-tgsticker"]:
+                    if is_tgs_mime_type(mime_type):
                         file_ext = ".tgs"
                     elif mime_type == "image/webp":
                         file_ext = ".webp"
@@ -832,10 +872,13 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                     # Detect actual MIME type from file bytes for accurate processing
                     detected_mime_type = detect_mime_type_from_bytes(media_bytes)
 
+                    # All stickers use kind="sticker" (MIME type distinguishes static vs animated)
+                    media_kind = "sticker"
+
                     # Create JSON record with empty description (AI will be used on-demand via refresh)
                     media_record = {
                         "unique_id": unique_id,
-                        "kind": "sticker",
+                        "kind": media_kind,
                         "sticker_set_name": sticker_set_name,
                         "sticker_name": sticker_name,
                         "description": None,  # Leave empty, use AI refresh when needed
@@ -851,17 +894,22 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                 except Exception as e:
                     logger.error(f"Failed to download sticker {unique_id}: {e}")
+                    # Determine correct kind for error record
+                    telegram_mime = getattr(doc, "mime_type", None)
+                    # All stickers use kind="sticker" (MIME type distinguishes static vs animated)
+                    error_kind = "sticker"
+
                     # Create error record
                     error_record = {
                         "unique_id": unique_id,
-                        "kind": "sticker",
+                        "kind": error_kind,
                         "sticker_set_name": sticker_set_name,
                         "sticker_name": sticker_name,
                         "description": None,
                         "status": "error",
                         "failure_reason": f"Download failed: {str(e)}",
                         "ts": datetime.now(UTC).isoformat(),
-                        "mime_type": getattr(doc, "mime_type", None),
+                        "mime_type": telegram_mime,
                     }
                     # Save error record using DirectoryMediaSource (no media file for errors)
                     cache_source.put(unique_id, error_record, None, None)

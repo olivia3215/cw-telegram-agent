@@ -32,9 +32,26 @@ from .media_budget import (
 from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
+    is_tgs_mime_type,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Helper functions for checking media types (works with string kind values from records)
+def _needs_video_analysis(kind: str | None, mime_type: str | None) -> bool:
+    """
+    Check if media should use video description API.
+
+    Returns True for:
+    - Videos and animations (by kind)
+    - TGS animated stickers (sticker kind + gzip mime)
+    """
+    if kind in ("video", "animation"):
+        return True
+    if kind == "sticker" and mime_type:
+        return is_tgs_mime_type(mime_type)
+    return False
 
 
 def get_emoji_unicode_name(emoji: str) -> str:
@@ -193,6 +210,12 @@ class DirectoryMediaSource(MediaSource):
             f"DirectoryMediaSource: loaded {loaded_count} entries from {self.directory}"
         )
 
+    def refresh_cache(self) -> None:
+        """Reload the cache from disk (useful when files have been updated externally)."""
+        logger.info(f"DirectoryMediaSource: refreshing cache for {self.directory}")
+        self._mem_cache.clear()
+        self._load_cache()
+
     async def get(
         self,
         unique_id: str,
@@ -213,7 +236,38 @@ class DirectoryMediaSource(MediaSource):
             logger.debug(
                 f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
             )
-            return self._mem_cache[unique_id]
+            record = self._mem_cache[unique_id].copy()
+
+            # Special handling for TGS animated stickers with null descriptions
+            # Provide fallback description for TGS files that don't have descriptions
+            mime_type = record.get("mime_type")
+            if (
+                record.get("kind") == "sticker"
+                and record.get("description") is None
+                and mime_type
+                and is_tgs_mime_type(mime_type)
+            ):
+
+                # Create fallback description for TGS files
+                sticker_name = record.get("sticker_name") or sticker_name
+                if sticker_name:
+                    description = f"an animated sticker: {sticker_name}"
+                else:
+                    description = "an animated sticker"
+
+                logger.info(
+                    f"TGS animated sticker {unique_id}: providing fallback description '{description}'"
+                )
+
+                # Update the record with fallback description
+                record["description"] = description
+                record["status"] = MediaStatus.GENERATED.value
+                record["ts"] = datetime.now(UTC).isoformat()
+
+                # Update the cache with the new description
+                self._mem_cache[unique_id] = record.copy()
+
+            return record
 
         logger.debug(
             f"DirectoryMediaSource: cache miss for {unique_id} in {self.directory.name}"
@@ -422,6 +476,7 @@ class UnsupportedFormatMediaSource(MediaSource):
         Returns None if format is supported (let other sources handle it).
         Returns unsupported record if format is not supported.
         Special handling for AnimatedEmojies - use sticker name as description.
+        Special handling for videos - check duration limit.
         """
 
         # Special handling for AnimatedEmojies - use sticker name as description
@@ -443,6 +498,50 @@ class UnsupportedFormatMediaSource(MediaSource):
 
             # Don't cache AnimatedEmojies descriptions to disk - return directly
             return record
+
+        # Check video duration for media that needs video analysis
+        # This includes videos, animations, and TGS animated stickers
+        if _needs_video_analysis(kind, metadata.get("mime_type")):
+            duration = metadata.get("duration")
+            if duration is not None and duration > 10:
+                logger.info(
+                    f"Video {unique_id} is too long to analyze: {duration}s (max 10s)"
+                )
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.UNSUPPORTED,
+                    f"too long to analyze (duration: {duration}s, max: 10s)",
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    duration=duration,
+                )
+
+        # Special handling for TGS animated stickers - provide fallback description
+        if kind == "sticker" and doc is not None:
+            mime_type = getattr(doc, "mime_type", None)
+            if mime_type and is_tgs_mime_type(mime_type):
+                # Create a fallback description for TGS files
+                if sticker_name:
+                    description = f"an animated sticker: {sticker_name}"
+                else:
+                    description = "an animated sticker"
+
+                logger.info(
+                    f"TGS animated sticker {unique_id}: using fallback description '{description}'"
+                )
+                record = {
+                    "unique_id": unique_id,
+                    "kind": kind,
+                    "sticker_set_name": sticker_set_name,
+                    "sticker_name": sticker_name,
+                    "description": description,
+                    "status": MediaStatus.GENERATED.value,
+                    "ts": datetime.now(UTC).isoformat(),
+                    "mime_type": mime_type,
+                    **metadata,
+                }
+                return record
 
         # Only check if we have a document to download
         if doc is None:
@@ -560,12 +659,23 @@ class AIGeneratingMediaSource(MediaSource):
         # Detect MIME type before LLM call so it's available in exception handlers
         detected_mime_type = detect_mime_type_from_bytes(data)
 
-        # Call LLM to generate description
+        # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
-            desc = await llm.describe_image(
-                data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
-            )
+
+            # Use describe_video for media that needs video analysis, describe_image for others
+            if _needs_video_analysis(kind, detected_mime_type):
+                duration = metadata.get("duration")
+                desc = await llm.describe_video(
+                    data,
+                    detected_mime_type,
+                    duration=duration,
+                    timeout_s=_DESCRIBE_TIMEOUT_SECS,
+                )
+            else:
+                desc = await llm.describe_image(
+                    data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
+                )
             desc = (desc or "").strip()
         except httpx.TimeoutException:
             logger.debug(
@@ -578,6 +688,23 @@ class AIGeneratingMediaSource(MediaSource):
                 MediaStatus.TEMPORARY_FAILURE,
                 f"timeout after {_DESCRIBE_TIMEOUT_SECS}s",
                 retryable=True,
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
+        except ValueError as e:
+            # ValueError is raised for unsupported formats or videos that are too long
+            # These are permanent failures
+            logger.info(
+                f"AIGeneratingMediaSource: format check failed for {unique_id}: {e}"
+            )
+
+            # Permanent failure - return error record for AIChainMediaSource to handle
+            return make_error_record(
+                unique_id,
+                MediaStatus.UNSUPPORTED,
+                str(e),
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,

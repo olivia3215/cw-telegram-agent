@@ -309,7 +309,7 @@
                     <div class="media-info">
                         <h3>${media.sticker_name || media.unique_id}</h3>
                         <p><strong>Type:</strong> ${media.kind}</p>
-                        ${media.kind === 'sticker' ? `<p><strong>Set:</strong> ${media.sticker_set_name}</p>` : ''}
+                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_name}</p>` : ''}
                         <p><strong>Status:</strong> ${media.status}</p>
                         ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
 
@@ -332,11 +332,13 @@
         async function loadTGSAnimations() {
             // Find all TGS player containers
             const tgsContainers = document.querySelectorAll('[id^="tgs-player-"]');
+            console.log(`Found ${tgsContainers.length} TGS containers to load`);
 
             for (const container of tgsContainers) {
                 const uniqueId = container.id.replace('tgs-player-', '');
                 const encodedDir = encodeURIComponent(currentDirectory);
                 const mediaUrl = `/api/media/${uniqueId}?directory=${encodedDir}`;
+                console.log(`Loading TGS for ${uniqueId} from ${mediaUrl}`);
 
                 try {
                     // Fetch the TGS file
@@ -346,23 +348,32 @@
                     }
 
                     const tgsData = await response.arrayBuffer();
+                    console.log(`Fetched TGS data: ${tgsData.byteLength} bytes`);
 
                     // Decompress the gzipped Lottie data
                     let lottieJson;
-                    try {
-                        const decompressedData = await decompressGzip(tgsData);
-                        const jsonText = new TextDecoder().decode(decompressedData);
-                        lottieJson = JSON.parse(jsonText);
-                    } catch (decompError) {
-                        // Fallback: try using pako library if available
-                        if (typeof pako !== 'undefined') {
-                            try {
-                                const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
-                                lottieJson = JSON.parse(decompressed);
-                            } catch (pakoError) {
-                                throw new Error('Failed to decompress TGS file with all methods');
-                            }
-                        } else {
+
+                    // Try pako first since DecompressionStream is unreliable
+                    if (typeof pako !== 'undefined') {
+                        try {
+                            console.log('Attempting pako decompression...');
+                            const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
+                            lottieJson = JSON.parse(decompressed);
+                            console.log('Pako decompression successful');
+                        } catch (pakoError) {
+                            console.error('Pako decompression failed:', pakoError);
+                            throw new Error('Failed to decompress TGS file with pako');
+                        }
+                    } else {
+                        // Fallback to DecompressionStream if pako not available
+                        try {
+                            console.log('Attempting DecompressionStream decompression...');
+                            const decompressedData = await decompressGzip(tgsData);
+                            const jsonText = new TextDecoder().decode(decompressedData);
+                            lottieJson = JSON.parse(jsonText);
+                            console.log('DecompressionStream decompression successful');
+                        } catch (decompError) {
+                            console.error('DecompressionStream failed:', decompError.message);
                             throw new Error('Failed to decompress TGS file - no suitable decompression method available');
                         }
                     }
@@ -379,6 +390,7 @@
                     container.appendChild(animationContainer);
 
                     // Initialize Lottie animation
+                    console.log('Initializing Lottie animation...');
                     const animation = lottie.loadAnimation({
                         container: animationContainer,
                         renderer: 'svg',
@@ -386,9 +398,11 @@
                         autoplay: true,
                         animationData: lottieJson
                     });
+                    console.log('Lottie animation initialized successfully');
 
                     // Handle animation errors
                     animation.addEventListener('error', (error) => {
+                        console.error('Lottie animation error:', error);
                         container.innerHTML = `
                             <div style="text-align: center; color: #dc3545;">
                                 <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
@@ -398,11 +412,18 @@
                         `;
                     });
 
+                    // Handle successful loading
+                    animation.addEventListener('DOMLoaded', () => {
+                        console.log('Lottie animation DOM loaded successfully');
+                    });
+
                 } catch (error) {
+                    console.error(`Failed to load TGS animation for ${uniqueId}:`, error);
                     container.innerHTML = `
                         <div style="text-align: center; color: #dc3545;">
                             <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
                             <div style="font-size: 11px;">Load Failed</div>
+                            <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
                             <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
                         </div>
                     `;
@@ -414,17 +435,21 @@
         async function decompressGzip(data) {
             // Check if DecompressionStream is supported
             if (!('DecompressionStream' in window)) {
+                console.log('DecompressionStream not supported in this browser');
                 throw new Error('DecompressionStream not supported in this browser');
             }
 
             try {
+                console.log('Creating DecompressionStream...');
                 const stream = new DecompressionStream('gzip');
                 const writer = stream.writable.getWriter();
                 const reader = stream.readable.getReader();
 
+                console.log('Writing data to stream...');
                 await writer.write(data);
                 await writer.close();
 
+                console.log('Reading decompressed data...');
                 const chunks = [];
                 let done = false;
 
@@ -436,6 +461,7 @@
                     }
                 }
 
+                console.log(`Decompressed into ${chunks.length} chunks`);
                 const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
                 const result = new Uint8Array(totalLength);
                 let offset = 0;
@@ -445,8 +471,10 @@
                     offset += chunk.length;
                 }
 
+                console.log(`Total decompressed size: ${result.length} bytes`);
                 return result;
             } catch (error) {
+                console.error('DecompressionStream error:', error);
                 throw new Error(`Failed to decompress gzip data: ${error.message}`);
             }
         }

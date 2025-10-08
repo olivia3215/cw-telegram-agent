@@ -6,7 +6,7 @@
 import logging
 from typing import Any
 
-from media.media_types import MediaItem
+from media.media_types import MediaItem, MediaKind
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:
     mime = getattr(photo, "mime_type", None) or getattr(photo, "mime", None)
     out.append(
         MediaItem(
-            kind="photo",
+            kind=MediaKind.PHOTO,
             unique_id=str(uid),
             mime=mime,
             file_ref=photo,
@@ -88,7 +88,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
                     out.append(
                         MediaItem(
-                            kind="sticker",
+                            kind=MediaKind.STICKER,
                             unique_id=str(uid),
                             mime=mime,
                             sticker_set_name=sticker_set_name,
@@ -121,7 +121,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
         mime = getattr(st, "mime_type", None) or getattr(st, "mime", None)
         out.append(
             MediaItem(
-                kind="sticker",
+                kind=MediaKind.STICKER,
                 unique_id=str(uid),
                 mime=mime,
                 sticker_set_name=sticker_set_name,
@@ -144,9 +144,14 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         uid = get_unique_id(anim)
         if uid:
             mime = getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
+            duration = getattr(anim, "duration", None)
             out.append(
                 MediaItem(
-                    kind="animation", unique_id=str(uid), mime=mime, file_ref=anim
+                    kind=MediaKind.ANIMATION,
+                    unique_id=str(uid),
+                    mime=mime,
+                    file_ref=anim,
+                    duration=duration,
                 )
             )
     gif = getattr(msg, "gif", None)
@@ -155,7 +160,9 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         if uid:
             mime = getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
             out.append(
-                MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=gif)
+                MediaItem(
+                    kind=MediaKind.GIF, unique_id=str(uid), mime=mime, file_ref=gif
+                )
             )
 
     # Telethon document path
@@ -168,6 +175,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
 
     is_animated = False
     is_video = False
+    video_duration = None
     if isinstance(attrs, (list, tuple)):
         for a in attrs:
             n = a.__class__.__name__
@@ -175,26 +183,43 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
                 is_animated = True
             elif n == "DocumentAttributeVideo":
                 is_video = True
+                # Extract duration from DocumentAttributeVideo
+                video_duration = getattr(a, "duration", None)
 
     uid = get_unique_id(doc)
     if not uid:
         return
 
     if (mime and "gif" in mime.lower()) or is_animated:
-        out.append(MediaItem(kind="gif", unique_id=str(uid), mime=mime, file_ref=doc))
+        out.append(
+            MediaItem(kind=MediaKind.GIF, unique_id=str(uid), mime=mime, file_ref=doc)
+        )
         return
 
     # Check for animated stickers (TGS files) first
-    if mime and "gzip" in mime.lower():
+    if mime and ("gzip" in mime.lower() or "x-tgsticker" in mime.lower()):
         # TGS files are gzip-compressed Lottie animations (animated stickers)
+        # Use STICKER kind - the mime type will distinguish static from animated
         out.append(
             MediaItem(
-                kind="animated_sticker", unique_id=str(uid), mime=mime, file_ref=doc
+                kind=MediaKind.STICKER,
+                unique_id=str(uid),
+                mime=mime,
+                file_ref=doc,
+                duration=video_duration,
             )
         )
         return
 
     if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
-        # Regular video files
-        out.append(MediaItem(kind="video", unique_id=str(uid), mime=mime, file_ref=doc))
+        # Regular video files - include duration
+        out.append(
+            MediaItem(
+                kind=MediaKind.VIDEO,
+                unique_id=str(uid),
+                mime=mime,
+                file_ref=doc,
+                duration=video_duration,
+            )
+        )
         return
