@@ -66,6 +66,9 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
 
         memory_entry = f"\n## Memory from {timestamp} conversation with {partner_name} ({channel_id})\n\n{memory_content.strip()}\n"
 
+        # Ensure parent directory exists
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+
         # Append to memory file
         with open(memory_file, "a", encoding="utf-8") as f:
             f.write(memory_entry)
