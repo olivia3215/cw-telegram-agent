@@ -6,9 +6,9 @@
 from handlers.received import parse_llm_reply
 
 
-def test_sticker_two_line_no_reply():
+async def test_sticker_two_line_no_reply():
     md = "# «sticker»\n\nWendyDancer\n😀\n"
-    tasks = parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 1
     t = tasks[0]
@@ -18,9 +18,9 @@ def test_sticker_two_line_no_reply():
     assert "in_reply_to" not in t.params  # no reply id present
 
 
-def test_sticker_two_line_with_reply():
+async def test_sticker_two_line_with_reply():
     md = "# «sticker» 1234\n\nWendyDancer\n😘\n"
-    tasks = parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 1
     t = tasks[0]
@@ -30,13 +30,13 @@ def test_sticker_two_line_with_reply():
     assert t.params["in_reply_to"] == 1234  # header-provided reply id
 
 
-def test_multiple_sticker_blocks_produce_multiple_tasks_and_sequence():
+async def test_multiple_sticker_blocks_produce_multiple_tasks_and_sequence():
     md = (
         "# «sticker»\n\nWendyDancer\n😀\n\n"
         "Some narrative text.\n\n"
         "# «sticker» 42\n\nWendyDancer\n😘\n"
     )
-    tasks = parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 2
 
