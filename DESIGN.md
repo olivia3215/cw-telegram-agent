@@ -487,10 +487,9 @@ state/
 - **State memories** (`state/AgentName/memory/UserID.md`): Global episodic memories automatically created from agent conversations
 
 **Global Memory Design:**
-- Memories are organized by **user ID** rather than conversation ID
-- Each user has a single memory file containing all memories about them
-- Memories persist across different conversations with the same user
-- Works seamlessly for both direct messages and group chats
+- Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
+- Curated memories that are visible only when chatting with a given user are in the the manually created memory files `configdir/agents/AgentName/memory/UserID.md` where UserID is the unique ID assigned by Telegram to the conversation partner.
+- Memories produced by the agent are stored in `statedir/memory/AgentName.md` and are viible by the agent during all conversations.
 
 ### Remember Task Processing
 
@@ -518,8 +517,7 @@ Memory content is integrated into the system prompt in a specific position withi
 - For direct messages: Uses the channel ID as the user ID
 - For group chats: Currently uses the channel ID (future enhancement to support multiple users)
 - Memory files are loaded dynamically on each prompt construction
-- No caching ensures fresh memory content is always included
-- Memory is positioned after stickers and before current time for optimal context
+- No caching ensures fresh memory content is always included. You can edit the memory state.
 
 ### Memory Loading and Caching
 
