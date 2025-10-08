@@ -3,25 +3,9 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
-import os
 from pathlib import Path
 
-
-def get_config_directories():
-    """
-    Get configuration directories from environment variables.
-    Supports multiple directories via CINDY_AGENT_CONFIG_PATH (colon-separated).
-    """
-    config_path = os.environ.get("CINDY_AGENT_CONFIG_PATH")
-    if config_path:
-        # Split by colon and strip whitespace
-        dirs = [d.strip() for d in config_path.split(":") if d.strip()]
-        # If we have valid directories after filtering, return them
-        if dirs:
-            return dirs
-
-    # Default to samples directory if CINDY_AGENT_CONFIG_PATH is not set or contains only whitespace/separators
-    return ["samples"]
+from config import CONFIG_DIRECTORIES
 
 
 def load_system_prompt(prompt_name: str, agent_name: str | None = None):
@@ -33,7 +17,7 @@ def load_system_prompt(prompt_name: str, agent_name: str | None = None):
         agent_name: Optional agent name for agent-specific prompt loading
     """
     # Search all config directories
-    config_path = get_config_directories()
+    config_path = CONFIG_DIRECTORIES
 
     for config_dir in config_path:
         path = Path(config_dir)

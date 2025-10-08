@@ -14,6 +14,7 @@ UtyaDuck
 
 Chatbot
 Student
+Memory
 
 # Agent Instructions
 

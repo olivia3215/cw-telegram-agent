@@ -20,16 +20,19 @@ from google.genai.types import (
     HarmCategory,
 )
 
+from config import GOOGLE_GEMINI_API_KEY
 from media.mime_utils import detect_mime_type_from_bytes
 
 from .base import LLM, ChatMsg, MsgPart
 
 logger = logging.getLogger(__name__)
 
-GEMINI_DEBUG_LOGGING = os.getenv("GEMINI_DEBUG_LOGGING", "").lower() in (
+# Debug logging flag
+GEMINI_DEBUG_LOGGING: bool = os.environ.get("GEMINI_DEBUG_LOGGING", "").lower() in (
     "true",
     "1",
     "yes",
+    "on",
 )
 
 
@@ -42,7 +45,7 @@ class GeminiLLM(LLM):
         api_key: str | None = None,
     ):
         self.model_name = model
-        self.api_key = api_key or os.getenv("GOOGLE_GEMINI_API_KEY")
+        self.api_key = api_key or GOOGLE_GEMINI_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
@@ -133,7 +136,7 @@ class GeminiLLM(LLM):
         Raises on failures so the scheduler's retry policy can handle it.
         """
         if not self.api_key:
-            raise ValueError("Missing Gemini API key (GOOGLE_GEMINI_API_KEY)")
+            raise ValueError("Missing Gemini API key")
 
         # Use centralized MIME type detection if not provided
         if not mime_type:

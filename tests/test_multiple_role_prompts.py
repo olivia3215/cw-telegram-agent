@@ -42,10 +42,8 @@ def test_agent_multiple_role_prompts():
         llm_prompt = prompts_dir / "Gemini.md"
         llm_prompt.write_text("You are a chatbot.")
 
-        # Mock the get_config_directories to return our temp directory
-        with patch(
-            "prompt_loader.get_config_directories", return_value=[str(temp_path)]
-        ):
+        # Mock the CONFIG_DIRECTORIES to return our temp directory
+        with patch("prompt_loader.CONFIG_DIRECTORIES", [str(temp_path)]):
             # Create an agent with multiple role prompts
             agent = Agent(
                 name="TestAgent",
@@ -105,10 +103,8 @@ def test_agent_single_role_prompt():
         llm_prompt = prompts_dir / "Gemini.md"
         llm_prompt.write_text("You are a chatbot.")
 
-        # Mock the get_config_directories to return our temp directory
-        with patch(
-            "prompt_loader.get_config_directories", return_value=[str(temp_path)]
-        ):
+        # Mock the CONFIG_DIRECTORIES to return our temp directory
+        with patch("prompt_loader.CONFIG_DIRECTORIES", [str(temp_path)]):
             # Create an agent with a single role prompt
             agent = Agent(
                 name="TestAgent",
@@ -140,10 +136,8 @@ def test_agent_no_role_prompts():
         llm_prompt = prompts_dir / "Gemini.md"
         llm_prompt.write_text("You are a chatbot.")
 
-        # Mock the get_config_directories to return our temp directory
-        with patch(
-            "prompt_loader.get_config_directories", return_value=[str(temp_path)]
-        ):
+        # Mock the CONFIG_DIRECTORIES to return our temp directory
+        with patch("prompt_loader.CONFIG_DIRECTORIES", [str(temp_path)]):
             # Create an agent with no role prompts
             agent = Agent(
                 name="TestAgent",

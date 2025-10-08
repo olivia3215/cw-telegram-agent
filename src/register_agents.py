@@ -4,12 +4,12 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import logging
-import os
 from pathlib import Path
 
 import mistune
 
 from agent import all_agents, register_telegram_agent
+from config import CONFIG_DIRECTORIES
 from markdown_utils import flatten_node_text
 
 logger = logging.getLogger("register_agents")
@@ -142,25 +142,8 @@ def parse_agent_markdown(path):
         return None
 
 
-def get_config_directories():
-    """
-    Get configuration directories from environment variables.
-    Supports multiple directories via CINDY_AGENT_CONFIG_PATH (colon-separated).
-    """
-    config_path = os.environ.get("CINDY_AGENT_CONFIG_PATH")
-    if config_path:
-        # Split by colon and strip whitespace
-        dirs = [d.strip() for d in config_path.split(":") if d.strip()]
-        # If we have valid directories after filtering, return them
-        if dirs:
-            return dirs
-
-    # Default to samples directory if CINDY_AGENT_CONFIG_PATH is not set or contains only whitespace/separators
-    return ["samples"]
-
-
 def register_all_agents():
-    config_path = get_config_directories()
+    config_path = CONFIG_DIRECTORIES
 
     # Track registered agent names to avoid duplicates
     registered_agents = set()
@@ -203,6 +186,7 @@ def register_all_agents():
                     role_prompt_names=parsed["role_prompt_names"],
                     sticker_set_names=parsed.get("sticker_set_names") or [],
                     explicit_stickers=parsed.get("explicit_stickers") or [],
+                    config_directory=config_dir,
                 )
                 registered_agents.add(agent_name)
 

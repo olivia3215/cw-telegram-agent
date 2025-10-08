@@ -8,8 +8,10 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from agent import get_agent_for_id
+from config import STATE_DIRECTORY
 from llm.base import MsgPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -25,6 +27,59 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+async def _process_remember_task(agent, channel_id: int, memory_content: str):
+    """
+    Process a remember task by appending content to the agent's global memory file.
+
+    All memories produced by an agent go into a single agent-specific global memory file,
+    regardless of which user the memory is about. This enables the agent to have a
+    comprehensive memory of all interactions across all conversations.
+
+    Args:
+        agent: The agent instance
+        channel_id: The conversation ID (Telegram channel/user ID)
+        memory_content: The content to remember
+    """
+    try:
+        # Get state directory
+        state_dir = STATE_DIRECTORY
+
+        # Memory file path: state/AgentName/memory.md (agent-specific global memory)
+        memory_file = Path(state_dir) / agent.name / "memory.md"
+
+        # Get the conversation partner's name
+        try:
+            from telegram_util import get_channel_name
+
+            partner_name = await get_channel_name(agent, channel_id)
+        except Exception as e:
+            logger.warning(
+                f"[{agent.name}] Failed to get partner name for channel {channel_id}: {e}"
+            )
+            partner_name = "Unknown"
+
+        # Format the memory entry with timestamp, partner name, and ID
+        now = datetime.now(UTC)
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        memory_entry = f"\n## Memory from {timestamp} conversation with {partner_name} ({channel_id})\n\n{memory_content.strip()}\n"
+
+        # Ensure parent directory exists
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Append to memory file
+        with open(memory_file, "a", encoding="utf-8") as f:
+            f.write(memory_entry)
+
+        logger.info(
+            f"[{agent.name}] Added memory for conversation {channel_id}: {memory_content[:50]}..."
+        )
+
+    except Exception as e:
+        logger.exception(f"[{agent.name}] Failed to process remember task: {e}")
+        # Don't raise - we don't want to block the conversation
 
 
 @dataclass
@@ -119,19 +174,21 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-def parse_llm_reply_from_markdown(
-    md_text: str, *, agent_id, channel_id
+async def parse_llm_reply_from_markdown(
+    md_text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
-    Recognized task types: send, sticker, wait, shutdown.
+    Recognized task types: send, sticker, wait, shutdown, remember.
+
+    Remember tasks are processed immediately and not added to the task graph.
     """
     task_nodes = []
     current_type = None
     current_reply_to = None
     buffer = []
 
-    def flush():
+    async def flush():
         if current_type is None:
             return
 
@@ -186,6 +243,12 @@ def parse_llm_reply_from_markdown(
         elif current_type == "clear-conversation":
             pass  # No parameters needed
 
+        elif current_type == "remember":
+            # Remember tasks are processed immediately, not added to task graph
+            if agent and body:
+                await _process_remember_task(agent, channel_id, body)
+            return  # Don't add to task_nodes
+
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
@@ -198,7 +261,7 @@ def parse_llm_reply_from_markdown(
     for line in md_text.splitlines():
         heading_match = re.match(r"# «([^»]+)»(?:\s+(\d+))?", line)
         if heading_match:
-            flush()
+            await flush()
             current_type = heading_match.group(1).strip().lower()
             reply_to_str = heading_match.group(2)
             current_reply_to = int(reply_to_str) if reply_to_str else None
@@ -206,11 +269,13 @@ def parse_llm_reply_from_markdown(
         else:
             buffer.append(line)
 
-    flush()
+    await flush()
     return task_nodes
 
 
-def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
+async def parse_llm_reply(
+    text: str, *, agent_id, channel_id, agent=None
+) -> list[TaskNode]:
     # Gemini generates this, and prompting doesn't seem to discourage it.
     if text.startswith("```markdown\n") and text.endswith("```"):
         text = text.removeprefix("```markdown\n").removesuffix("```")
@@ -220,7 +285,9 @@ def parse_llm_reply(text: str, *, agent_id, channel_id) -> list[TaskNode]:
     # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
     if not text.startswith("# "):
         text = "# «send»\n\n" + text
-    return parse_llm_reply_from_markdown(text, agent_id=agent_id, channel_id=channel_id)
+    return await parse_llm_reply_from_markdown(
+        text, agent_id=agent_id, channel_id=channel_id, agent=agent
+    )
 
     # # Dumb models might reply with just the reply text and not understand the task machinery.
     # task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
@@ -273,7 +340,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     is_group = hasattr(dialog, "title")
 
     # ----- Build "system" content using agent's cached system prompt -----
-    system_prompt = agent.get_system_prompt()
+    system_prompt = agent.get_system_prompt(channel_id)
 
     # Apply template substitution to the cached system prompt
     system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
@@ -293,6 +360,16 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     if sticker_list:
         system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
         system_prompt += "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name.\n"
+
+    # Add memory content after stickers and before current time
+    memory_content = agent._load_memory_content(channel_id)
+    if memory_content:
+        system_prompt += f"\n\n{memory_content}\n"
+        logger.info(
+            f"[{agent_name}] Added memory content to system prompt for channel {channel_id}"
+        )
+    else:
+        logger.info(f"[{agent_name}] No memory content found for channel {channel_id}")
 
     is_conversation_start = True
     for m in messages:
@@ -428,7 +505,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Parse the tasks from the LLM response (unchanged)
     try:
-        tasks = parse_llm_reply(reply, agent_id=agent_id, channel_id=channel_id)
+        tasks = await parse_llm_reply(
+            reply, agent_id=agent_id, channel_id=channel_id, agent=agent
+        )
     except ValueError as e:
         logger.exception(f"[{agent_name}] Failed to parse LLM response '{reply}': {e}")
         return

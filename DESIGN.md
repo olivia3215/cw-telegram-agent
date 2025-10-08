@@ -460,3 +460,117 @@ To add a new service:
 4. **Test** using the standard commands (`start`, `stop`, `status`, etc.)
 
 The shared library handles all common functionality automatically.
+
+## Memory System Architecture
+
+The memory system enables agents to remember important information about conversation partners, creating more personalized and context-aware interactions.
+
+### Memory File Structure
+
+Memory files are organized in two locations using **global user-centric memory**:
+
+```
+configdir/
+├── agents/
+│   └── AgentName/
+│       └── memory/
+│           └── UserID.md        # Curated memories (manually created)
+└── ...
+
+state/
+└── memory/
+    └── AgentName.md            # Global episodic memories (automatically created)
+```
+
+- **Config memories** (`configdir/agents/AgentName/memory/UserID.md`): Manually curated memories that can be created and edited by hand
+- **State memories** (`state/AgentName/memory.md`): Global episodic memories automatically created from agent conversations
+
+**Global Memory Design:**
+- Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
+- Curated memories that are visible only when chatting with a given user are in the the manually created memory files `configdir/agents/AgentName/memory/UserID.md` where UserID is the unique ID assigned by Telegram to the conversation partner.
+- Memories produced by the agent are stored in `state/AgentName/memory.md` and are viible by the agent during all conversations.
+
+### Remember Task Processing
+
+The `remember` task is processed immediately during LLM response parsing and does not go through the task graph:
+
+1. **Immediate processing**: `remember` tasks are handled in `parse_llm_reply_from_markdown()`
+2. **File writing**: Content is appended to the state memory file with timestamp
+3. **No task graph**: These tasks are not added to the task graph, avoiding delays
+4. **Error handling**: File write failures are logged but don't block conversation
+
+### Memory Integration in Prompts
+
+Memory content is integrated into the system prompt in a specific position within the complete prompt structure:
+
+1. **LLM-specific prompt** (e.g., `Gemini.md`)
+2. **Role prompts** (in the order specified in the agent configuration)
+3. **Agent instructions** (the specific behavior instructions for this agent)
+4. **Stickers section** (available stickers for the agent to send)
+5. **Memory content** (curated and global memories)
+6. **Current Time** (timestamp of the conversation)
+7. **Chat Type** (direct or group chat)
+8. **Message history** (conversation messages)
+
+**Memory Loading Logic:**
+- For direct messages: Uses the channel ID as the user ID
+- For group chats: Currently uses the channel ID (future enhancement to support multiple users)
+- Memory files are loaded dynamically on each prompt construction
+- No caching ensures fresh memory content is always included. You can edit the memory state.
+
+### Memory Loading and Caching
+
+- **Dynamic loading**: System prompts are built fresh each time when memory is involved
+- **No caching**: Memory content is loaded from disk on each prompt construction
+- **Performance**: Acceptable since memory files are small and reads are infrequent
+- **Freshness**: Ensures new memories appear immediately in subsequent conversations
+
+### Memory File Format
+
+Memory files use markdown format with timestamps:
+
+```markdown
+# Memory from 2025-01-26 14:30:15 UTC
+
+User mentioned they have a younger sister named Sarah who is studying abroad.
+
+# Memory from 2025-01-26 15:45:22 UTC
+
+User works as a software engineer and enjoys hiking on weekends.
+```
+
+### Config Directory Tracking
+
+Agents track their source config directory to enable memory loading:
+
+- **Single directory**: Each agent is associated with one config directory where its `.md` file was found
+- **Registration**: Config directory is stored during agent registration in `register_agents.py`
+- **Memory loading**: Used to locate curated memory files in the correct config directory
+
+### Memory Guidelines for Agents
+
+The Memory role prompt teaches agents what to remember and what to avoid:
+
+**Should remember:**
+- Personal details (name, age, family, pets, job, hobbies)
+- Important events (birthdays, anniversaries, achievements)
+- Preferences (food, music, activities, communication style)
+- Shared experiences and conversations
+- Goals and aspirations
+- Challenges they're facing
+
+**Should avoid:**
+- Temporary information (what they ate for lunch today)
+- Sensitive personal details they haven't explicitly shared
+- Information that might be private or confidential
+- Negative judgments or opinions about others
+- Details that already appear in their memory
+
+### Privacy and Security Considerations
+
+- **Local storage**: Memory files are stored locally and not shared between agents
+- **Per-user**: Each user has their own memory file identified by user ID, containing all memories about them
+- **LLM visibility**: Memory content is included in the system prompt, making it visible to the LLM
+- **Selective memory**: Agents are instructed to be selective about what they remember to respect privacy
+- **Manual curation**: Config memories allow manual review and editing of important information
+- **Global persistence**: Memories persist across all conversations with the same user, enabling better relationship building

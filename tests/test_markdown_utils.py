@@ -3,6 +3,8 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import pytest
+
 from handlers.received import parse_llm_reply
 from markdown_utils import flatten_node_text
 
@@ -34,7 +36,8 @@ def test_flatten_unknown_type():
     assert flatten_node_text(node) == []
 
 
-def test_parse_markdown_reply_all_task_types():
+@pytest.mark.asyncio
+async def test_parse_markdown_reply_all_task_types():
     md = """# «send»
 
 I'll reply shortly.
@@ -54,7 +57,7 @@ Because I was asked to stop.
 
 # «clear-conversation»
 """
-    tasks = parse_llm_reply(md, agent_id="123", channel_id="456")
+    tasks = await parse_llm_reply(md, agent_id="123", channel_id="456")
     assert len(tasks) == 5
 
     assert tasks[0].type == "send"
@@ -73,15 +76,17 @@ Because I was asked to stop.
     assert tasks[4].params == {"agent_id": "123", "channel_id": "456"}
 
 
-def test_parse_clear_conversation_task():
+@pytest.mark.asyncio
+async def test_parse_clear_conversation_task():
     md = """# «clear-conversation»"""
-    tasks = parse_llm_reply(md, agent_id="123", channel_id="456")
+    tasks = await parse_llm_reply(md, agent_id="123", channel_id="456")
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
     assert tasks[0].params == {"agent_id": "123", "channel_id": "456"}
 
 
-def test_parse_markdown_reply_with_reply_to():
+@pytest.mark.asyncio
+async def test_parse_markdown_reply_with_reply_to():
     """
     Tests that the parser correctly extracts the 'in_reply_to' message ID
     from the task heading.
@@ -95,7 +100,7 @@ This is a reply.
 WendyDancer
 👍
 """
-    tasks = parse_llm_reply(md, agent_id="agent1", channel_id="channel1")
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="channel1")
     assert len(tasks) == 2
 
     # Check the 'send' task
@@ -109,12 +114,13 @@ WendyDancer
     assert tasks[1].params["name"] == "👍"
 
 
-def test_parse_markdown_block_unblock_tasks():
+@pytest.mark.asyncio
+async def test_parse_markdown_block_unblock_tasks():
     md = """# «block»
 
 # «unblock»
 """
-    tasks = parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
     assert len(tasks) == 2
     assert tasks[0].type == "block"
     assert tasks[1].type == "unblock"
