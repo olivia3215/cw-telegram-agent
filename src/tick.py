@@ -17,6 +17,7 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
+from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from task_graph import TaskStatus, WorkQueue
@@ -24,7 +25,6 @@ from task_graph import TaskStatus, WorkQueue
 logger = logging.getLogger(__name__)
 
 # per-tick AI description budget (default 8; env override)
-MEDIA_DESC_BUDGET_PER_TICK = int(os.getenv("MEDIA_DESC_BUDGET_PER_TICK", "8"))
 
 # Dispatch table for task type handlers
 _dispatch_table = {}

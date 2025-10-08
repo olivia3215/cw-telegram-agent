@@ -9,6 +9,7 @@ import os
 from telethon import TelegramClient
 
 from agent import Agent
+from config import STATE_DIRECTORY, TELEGRAM_API_HASH, TELEGRAM_API_ID
 from id_utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,9 @@ def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
     if phone_number == "" or agent_name == "":
         raise RuntimeError("Missing agent name or phone number")
 
-    api_id = os.environ.get("TELEGRAM_API_ID")
-    api_hash = os.environ.get("TELEGRAM_API_HASH")
-    session_root = os.environ.get("CINDY_AGENT_STATE_DIR")
+    api_id = TELEGRAM_API_ID
+    api_hash = TELEGRAM_API_HASH
+    session_root = STATE_DIRECTORY
 
     if not all([api_id, api_hash, session_root]):
         raise RuntimeError(

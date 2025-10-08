@@ -11,8 +11,9 @@ media descriptions, limiting the number of expensive operations per tick.
 """
 
 import logging
-import os
 from pathlib import Path
+
+from config import STATE_DIRECTORY
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 MEDIA_DEBUG_SAVE = True and "pytest" not in __import__("sys").modules
 
 # Path helpers
-STATE_DIR: Path = Path(os.environ.get("CINDY_AGENT_STATE_DIR", "state"))
+STATE_DIR: Path = Path(STATE_DIRECTORY)
 MEDIA_DIR: Path = STATE_DIR / "media"  # used for both JSON and media files
 
 # Per-tick budget for AI description attempts

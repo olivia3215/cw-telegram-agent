@@ -12,7 +12,6 @@ including curated descriptions, cached AI-generated descriptions, and on-demand 
 
 import json
 import logging
-import os
 import time
 import unicodedata
 from abc import ABC, abstractmethod
@@ -23,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from prompt_loader import get_config_directories
+from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from telegram_download import download_media_bytes
 
 from .media_budget import (
@@ -802,14 +801,14 @@ def _create_default_chain() -> CompositeMediaSource:
     sources: list[MediaSource] = []
 
     # Add config directories (curated descriptions) - checked first
-    for config_dir in get_config_directories():
+    for config_dir in CONFIG_DIRECTORIES:
         media_dir = Path(config_dir) / "media"
         if media_dir.exists() and media_dir.is_dir():
             sources.append(DirectoryMediaSource(media_dir))
             logger.info(f"Added curated media directory: {media_dir}")
 
     # Set up AI cache directory
-    state_dir = Path(os.environ.get("CINDY_AGENT_STATE_DIR", "state"))
+    state_dir = Path(STATE_DIRECTORY)
     ai_cache_dir = state_dir / "media"
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
     ai_cache_source = DirectoryMediaSource(ai_cache_dir)

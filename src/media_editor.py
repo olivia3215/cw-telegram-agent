@@ -18,7 +18,6 @@ import asyncio
 import concurrent.futures
 import json
 import logging
-import os
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -33,13 +32,13 @@ from telethon.tl.types import InputStickerSetShortName
 sys.path.insert(0, str(Path(__file__).parent))
 
 from agent import all_agents as get_all_agents
+from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from media.media_source import (
     AIGeneratingMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
 )
 from media.mime_utils import detect_mime_type_from_bytes
-from prompt_loader import get_config_directories
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
@@ -74,7 +73,7 @@ def scan_media_directories() -> list[dict[str, str]]:
     directories = []
 
     # First, collect global media directories from config directories
-    for config_dir in get_config_directories():
+    for config_dir in CONFIG_DIRECTORIES:
         config_path = Path(config_dir)
         if not config_path.exists():
             logger.warning(f"Config directory does not exist: {config_dir}")
@@ -102,7 +101,7 @@ def scan_media_directories() -> list[dict[str, str]]:
         for agent in registered_agents:
             # Find the config directory that contains this agent
             agent_config_path = None
-            for config_dir in get_config_directories():
+            for config_dir in CONFIG_DIRECTORIES:
                 config_path = Path(config_dir)
                 agent_dir = config_path / "agents" / agent.name
                 if agent_dir.exists():
@@ -110,8 +109,8 @@ def scan_media_directories() -> list[dict[str, str]]:
                     break
 
             # If agent not found in any config directory, use the first one
-            if agent_config_path is None and get_config_directories():
-                agent_config_path = Path(get_config_directories()[0])
+            if agent_config_path is None and CONFIG_DIRECTORIES:
+                agent_config_path = Path(CONFIG_DIRECTORIES[0])
                 logger.info(
                     f"Agent {agent.name} not found in config dirs, using {agent_config_path}"
                 )
@@ -134,7 +133,7 @@ def scan_media_directories() -> list[dict[str, str]]:
         logger.warning(f"Failed to get registered agents: {e}")
 
     # Add AI cache directory from CINDY_AGENT_STATE_DIR
-    state_dir = os.environ.get("CINDY_AGENT_STATE_DIR")
+    state_dir = STATE_DIRECTORY
     if state_dir:
         state_media_dir = Path(state_dir) / "media"
         directories.append(
