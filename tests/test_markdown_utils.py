@@ -3,6 +3,8 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import pytest
+
 from handlers.received import parse_llm_reply
 from markdown_utils import flatten_node_text
 
@@ -34,6 +36,7 @@ def test_flatten_unknown_type():
     assert flatten_node_text(node) == []
 
 
+@pytest.mark.asyncio
 async def test_parse_markdown_reply_all_task_types():
     md = """# «send»
 
@@ -73,6 +76,7 @@ Because I was asked to stop.
     assert tasks[4].params == {"agent_id": "123", "channel_id": "456"}
 
 
+@pytest.mark.asyncio
 async def test_parse_clear_conversation_task():
     md = """# «clear-conversation»"""
     tasks = await parse_llm_reply(md, agent_id="123", channel_id="456")
@@ -81,6 +85,7 @@ async def test_parse_clear_conversation_task():
     assert tasks[0].params == {"agent_id": "123", "channel_id": "456"}
 
 
+@pytest.mark.asyncio
 async def test_parse_markdown_reply_with_reply_to():
     """
     Tests that the parser correctly extracts the 'in_reply_to' message ID
@@ -109,6 +114,7 @@ WendyDancer
     assert tasks[1].params["name"] == "👍"
 
 
+@pytest.mark.asyncio
 async def test_parse_markdown_block_unblock_tasks():
     md = """# «block»
 

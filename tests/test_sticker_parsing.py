@@ -3,9 +3,12 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import pytest
+
 from handlers.received import parse_llm_reply
 
 
+@pytest.mark.asyncio
 async def test_sticker_two_line_no_reply():
     md = "# «sticker»\n\nWendyDancer\n😀\n"
     tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
@@ -18,6 +21,7 @@ async def test_sticker_two_line_no_reply():
     assert "in_reply_to" not in t.params  # no reply id present
 
 
+@pytest.mark.asyncio
 async def test_sticker_two_line_with_reply():
     md = "# «sticker» 1234\n\nWendyDancer\n😘\n"
     tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
@@ -30,6 +34,7 @@ async def test_sticker_two_line_with_reply():
     assert t.params["in_reply_to"] == 1234  # header-provided reply id
 
 
+@pytest.mark.asyncio
 async def test_multiple_sticker_blocks_produce_multiple_tasks_and_sequence():
     md = (
         "# «sticker»\n\nWendyDancer\n😀\n\n"
