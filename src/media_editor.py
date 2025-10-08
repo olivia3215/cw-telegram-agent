@@ -38,6 +38,7 @@ from media.media_source import (
     CompositeMediaSource,
     DirectoryMediaSource,
     UnsupportedFormatMediaSource,
+    get_emoji_unicode_name,
 )
 from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
@@ -287,6 +288,15 @@ def api_media_list():
                 else:
                     sticker_set = "Other Media"
 
+                # Add emoji description for sticker names
+                sticker_name = record.get("sticker_name", "")
+                emoji_description = ""
+                if sticker_name and kind == "sticker":
+                    try:
+                        emoji_description = get_emoji_unicode_name(sticker_name)
+                    except Exception:
+                        emoji_description = ""
+
                 media_files.append(
                     {
                         "unique_id": unique_id,
@@ -295,7 +305,8 @@ def api_media_list():
                         "description": record.get("description"),
                         "kind": kind,
                         "sticker_set_name": sticker_set,
-                        "sticker_name": record.get("sticker_name", ""),
+                        "sticker_name": sticker_name,
+                        "emoji_description": emoji_description,
                         "status": record.get("status", "unknown"),
                         "failure_reason": record.get("failure_reason"),
                         "mime_type": record.get("mime_type"),
