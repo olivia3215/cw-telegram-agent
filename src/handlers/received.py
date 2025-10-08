@@ -91,6 +91,7 @@ class ProcessedMessage:
     sender_id: str
     message_id: str
     is_from_agent: bool
+    reply_to_msg_id: str | None = None
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -417,6 +418,15 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         # Telethon marks messages sent by the logged-in account with .out == True
         is_from_agent = bool(getattr(m, "out", False))
 
+        # Extract reply_to information if the message is a reply
+        reply_to_msg_id = None
+        reply_to = getattr(m, "reply_to", None)
+        if reply_to:
+            # reply_to has a reply_to_msg_id attribute
+            reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
+            if reply_to_msg_id_val is not None:
+                reply_to_msg_id = str(reply_to_msg_id_val)
+
         history_rendered_items.append(
             ProcessedMessage(
                 message_parts=message_parts,
@@ -424,6 +434,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 sender_id=sender_id,
                 message_id=message_id,
                 is_from_agent=is_from_agent,
+                reply_to_msg_id=reply_to_msg_id,
             )
         )
 
@@ -458,6 +469,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                     "msg_id": item.message_id,
                     "is_agent": item.is_from_agent,
                     "parts": item.message_parts,
+                    "reply_to_msg_id": item.reply_to_msg_id,
                 }
                 for item in history_rendered_items
             ),

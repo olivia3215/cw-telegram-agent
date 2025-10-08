@@ -352,19 +352,20 @@ class GeminiLLM(LLM):
         """
         parts: list[dict[str, str]] = []
 
-        # 1) Metadata header (always, per spec)
-        if not is_agent:
-            header_bits: list[str] = []
-            who = m.get("sender") or ""
-            sid = m.get("sender_id") or ""
-            if who and sid:
-                header_bits.append(f'sender="{who}" sender_id={sid}')
-            elif who or sid:
-                header_bits.append(f"sender_id={who or sid}")
-            if m.get("msg_id"):
-                header_bits.append(f'message_id={m["msg_id"]}')
-            if header_bits:
-                parts.append(self._mk_text_part(f"[metadata] {' '.join(header_bits)}"))
+        # 1) Metadata header
+        header_bits: list[str] = []
+        who = m.get("sender") or ""
+        sid = m.get("sender_id") or ""
+        if who and sid:
+            header_bits.append(f'sender="{who}" sender_id={sid}')
+        elif who or sid:
+            header_bits.append(f"sender_id={who or sid}")
+        if m.get("msg_id"):
+            header_bits.append(f'message_id={m["msg_id"]}')
+        if m.get("reply_to_msg_id"):
+            header_bits.append(f'reply_to_msg_id={m["reply_to_msg_id"]}')
+        if header_bits:
+            parts.append(self._mk_text_part(f"[metadata] {' '.join(header_bits)}"))
 
         # 2) Original message content in original order
         raw_parts: list[MsgPart] | None = m.get("parts")
