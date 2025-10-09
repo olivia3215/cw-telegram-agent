@@ -300,7 +300,7 @@
             const pageItems = allMediaFiles.slice(startIndex, endIndex);
 
             // Build HTML for current page
-            let html = '<div class="media-grid">';
+            let html = '';
 
             let lastStickerSet = null;
             pageItems.forEach(media => {
@@ -316,7 +316,10 @@
                 html += createMediaItemHTML(media);
             });
 
-            html += '</div>';
+            // Close the last grid if we opened one
+            if (lastStickerSet !== null) {
+                html += '</div>';
+            }
             container.innerHTML = html;
 
             // Update pagination controls
