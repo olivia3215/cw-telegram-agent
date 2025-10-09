@@ -113,8 +113,8 @@ def test_placeholder_emitted_when_media_has_no_rendering():
     parts = contents[0]["parts"]
     # header + two placeholders
     assert parts[0]["text"].startswith("⟦metadata⟧")
-    assert parts[1]["text"].startswith("[audio present")
-    assert parts[2]["text"].startswith("[music present")
+    assert parts[1]["text"].startswith("⟦audio present")
+    assert parts[2]["text"].startswith("⟦music present")
 
 
 def test_reply_to_msg_id_in_metadata():
