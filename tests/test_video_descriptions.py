@@ -505,20 +505,40 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
 
-            result = await source.get(
-                unique_id="test_animated_sticker_456",
-                agent=agent,
-                doc=doc,
-                kind="sticker",
-                duration=4,
-            )
+            # Mock the TGS converter to return a fake video
+            with patch("media.tgs_converter.convert_tgs_to_video") as mock_converter:
+                from pathlib import Path
 
-            # Verify describe_video was called (not describe_image)
-            llm.describe_video.assert_called_once()
+                mock_converter.return_value = Path("/tmp/fake_video.mp4")
 
-            # Verify result
-            assert result["status"] == MediaStatus.GENERATED.value
-            assert result["description"] == "An animated dancing cat."
+                # Mock reading the converted video
+                with patch("builtins.open", create=True) as mock_open:
+                    mock_open.return_value.__enter__.return_value.read.return_value = (
+                        b"fake_video_bytes"
+                    )
+
+                    result = await source.get(
+                        unique_id="test_animated_sticker_456",
+                        agent=agent,
+                        doc=doc,
+                        kind="sticker",
+                        duration=4,
+                    )
+
+                    # Verify TGS converter was called
+                    mock_converter.assert_called_once()
+
+                    # Verify describe_video was called with video data (not describe_image)
+                    llm.describe_video.assert_called_once()
+                    call_args = llm.describe_video.call_args
+                    assert (
+                        call_args[0][0] == b"fake_video_bytes"
+                    )  # First positional arg should be video bytes
+                    assert call_args[0][1] == "video/mp4"  # Second should be MIME type
+
+                    # Verify result
+                    assert result["status"] == MediaStatus.GENERATED.value
+                    assert result["description"] == "An animated dancing cat."
 
 
 @pytest.mark.asyncio

@@ -7,8 +7,12 @@ Conversational Telegram agents powered by an LLM. This README covers how to **se
 ## Requirements
 
 * **Python 3.13**
+* **Cairo library** (for animated sticker rendering)
+  - macOS: `brew install cairo`
+  - Ubuntu/Debian: `sudo apt-get install libcairo2-dev pkg-config`
+  - Other Linux: Install cairo development packages for your distribution
 * A Telegram account (for each agent persona you run)
-* A Google Gemini API key (for image/sticker descriptions)
+* A Google Gemini API key (for image/sticker descriptions and video analysis)
 
 ---
 

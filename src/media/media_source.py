@@ -659,12 +659,69 @@ class AIGeneratingMediaSource(MediaSource):
         # Detect MIME type before LLM call so it's available in exception handlers
         detected_mime_type = detect_mime_type_from_bytes(data)
 
+        # For TGS files (animated stickers), convert to video first
+        video_file_path = None
+        is_converted_tgs = False
+        if is_tgs_mime_type(detected_mime_type):
+            try:
+                import tempfile
+
+                from media.tgs_converter import convert_tgs_to_video
+
+                # Save TGS data to temporary file
+                with tempfile.NamedTemporaryFile(
+                    suffix=".tgs", delete=False
+                ) as tgs_file:
+                    tgs_path = Path(tgs_file.name)
+                    tgs_file.write(data)
+
+                # Convert TGS to video
+                video_file_path = convert_tgs_to_video(
+                    tgs_path,
+                    tgs_path.with_suffix(".mp4"),
+                    width=512,
+                    height=512,
+                    duration=metadata.get("duration"),
+                )
+
+                # Read the video data
+                with open(video_file_path, "rb") as f:
+                    data = f.read()
+
+                # Update MIME type to video/mp4
+                detected_mime_type = "video/mp4"
+                is_converted_tgs = True
+
+                logger.info(
+                    f"Converted TGS to video for {unique_id}: {len(data)} bytes"
+                )
+
+            except Exception as e:
+                logger.error(f"TGS to video conversion failed for {unique_id}: {e}")
+                # Clean up temporary files
+                if tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                # Return error
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.PERMANENT_FAILURE,
+                    f"TGS conversion failed: {str(e)[:100]}",
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    **metadata,
+                )
+
         # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
 
-            # Use describe_video for media that needs video analysis, describe_image for others
-            if _needs_video_analysis(kind, detected_mime_type):
+            # Use describe_video for:
+            # - Media that needs video analysis (videos, animations)
+            # - Converted TGS files (now in video format)
+            if _needs_video_analysis(kind, detected_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
                 desc = await llm.describe_video(
                     data,
@@ -755,6 +812,12 @@ class AIGeneratingMediaSource(MediaSource):
             logger.debug(
                 f"AIGeneratingMediaSource: NOT_UNDERSTOOD {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
             )
+
+        # Clean up temporary TGS and video files
+        if video_file_path and video_file_path.exists():
+            video_file_path.unlink()
+        if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+            tgs_path.unlink()
 
         return record
 
