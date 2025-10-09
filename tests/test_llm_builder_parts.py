@@ -231,15 +231,15 @@ def test_timestamp_in_metadata():
 
     # First message should have timestamp in metadata
     first_msg_metadata = contents[0]["parts"][0]["text"]
-    assert first_msg_metadata.startswith("[metadata]")
+    assert first_msg_metadata.startswith("⟦metadata⟧")
     assert 'time="2025-01-15 10:00:00 PST"' in first_msg_metadata
 
     # Agent message should have timestamp in metadata
     agent_msg_metadata = contents[1]["parts"][0]["text"]
-    assert agent_msg_metadata.startswith("[metadata]")
+    assert agent_msg_metadata.startswith("⟦metadata⟧")
     assert 'time="2025-01-15 10:05:30 PST"' in agent_msg_metadata
 
     # Third message should NOT have timestamp in metadata
     third_msg_metadata = contents[2]["parts"][0]["text"]
-    assert third_msg_metadata.startswith("[metadata]")
+    assert third_msg_metadata.startswith("⟦metadata⟧")
     assert "time=" not in third_msg_metadata

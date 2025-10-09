@@ -158,9 +158,9 @@ async def inject_media_descriptions(
     if not agent:
         return messages
 
-    # Get the agent's media source chain
-    # This includes: agent curated (cached) -> global curated -> AI cache -> budget -> AI gen
-    media_chain = agent.get_media_source()
+    # Get the global media source chain
+    # This includes: global curated -> AI cache -> budget -> AI gen
+    media_chain = get_default_media_source_chain()
 
     client = getattr(agent, "client", None)
     llm = getattr(agent, "llm", None)

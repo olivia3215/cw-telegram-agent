@@ -11,14 +11,9 @@ from zoneinfo import ZoneInfo
 from telethon.tl.functions.account import GetNotifySettingsRequest
 from telethon.tl.functions.contacts import GetBlockedRequest
 
-from config import CONFIG_DIRECTORIES, GOOGLE_GEMINI_API_KEY, STATE_DIRECTORY
+from config import GOOGLE_GEMINI_API_KEY, STATE_DIRECTORY
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
-from media.media_source import (
-    CompositeMediaSource,
-    DirectoryMediaSource,
-    get_default_media_source_chain,
-)
 from prompt_loader import load_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -95,9 +90,6 @@ class Agent:
         # Tracks which sticker set short names have been loaded into caches
         self.loaded_sticker_sets = set()  # e.g., {"WendyDancer", "CINDYAI"}
 
-        # Cache for the complete media source chain (includes all sources)
-        self._media_source = None
-
         # System prompt is built dynamically to include fresh memory content
 
         self._llm = llm
@@ -144,38 +136,6 @@ class Agent:
         logger.info(f"Connected client for agent '{self.name}'")
         return client
 
-    def get_media_source(self):
-        """
-        Get the complete media source chain for this agent, creating and caching it if needed.
-
-        This source includes:
-        1. Agent-specific curated descriptions (highest priority)
-        2. Global curated + AI cache + budget + AI generation (from default chain)
-
-        Returns:
-            CompositeMediaSource with all media sources for this agent
-        """
-        if self._media_source is None:
-
-            sources = []
-
-            # Add agent-specific curated descriptions (highest priority)
-            for config_dir in CONFIG_DIRECTORIES:
-                agent_media_dir = Path(config_dir) / "agents" / self.name / "media"
-                if agent_media_dir.exists() and agent_media_dir.is_dir():
-                    sources.append(DirectoryMediaSource(agent_media_dir))
-                    logger.debug(
-                        f"Agent {self.name}: Added curated media from {agent_media_dir}"
-                    )
-
-            # Add the default chain (global curated + AI cache + budget + AI generation)
-            # This is a singleton, so we reuse the same instance everywhere
-            sources.append(get_default_media_source_chain())
-
-            self._media_source = CompositeMediaSource(sources)
-
-        return self._media_source
-
     def get_system_prompt(self, channel_id: int = None):
         """
         Get the base system prompt for this agent (core prompt components only).
@@ -200,9 +160,9 @@ class Agent:
         llm_prompt = load_system_prompt(self.llm.prompt_name)
         prompt_parts.append(llm_prompt)
 
-        # Add all role prompts in order (with agent-specific loading)
+        # Add all role prompts in order
         for role_prompt_name in self.role_prompt_names:
-            role_prompt = load_system_prompt(role_prompt_name, agent_name=self.name)
+            role_prompt = load_system_prompt(role_prompt_name)
             prompt_parts.append(role_prompt)
 
         # Add agent instructions

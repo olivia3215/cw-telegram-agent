@@ -95,45 +95,6 @@ def scan_media_directories() -> list[dict[str, str]]:
             )
             logger.info(f"Found global media directory: {global_media}")
 
-    # Get all registered agents and add them to the directories list
-    try:
-        register_all_agents()  # Ensure all agents are registered
-        registered_agents = list(get_all_agents())
-
-        for agent in registered_agents:
-            # Find the config directory that contains this agent
-            agent_config_path = None
-            for config_dir in CONFIG_DIRECTORIES:
-                config_path = Path(config_dir)
-                agent_dir = config_path / "agents" / agent.name
-                if agent_dir.exists():
-                    agent_config_path = config_path
-                    break
-
-            # If agent not found in any config directory, use the first one
-            if agent_config_path is None and CONFIG_DIRECTORIES:
-                agent_config_path = Path(CONFIG_DIRECTORIES[0])
-                logger.info(
-                    f"Agent {agent.name} not found in config dirs, using {agent_config_path}"
-                )
-
-            # Add agent media directory (will be created when needed)
-            if agent_config_path:
-                agent_media = agent_config_path / "agents" / agent.name / "media"
-                directories.append(
-                    {
-                        "path": str(agent_media),
-                        "name": f"Agent: {agent.name}",
-                        "type": "agent",
-                    }
-                )
-                logger.info(
-                    f"Added agent: {agent.name} (config: {agent_config_path.name})"
-                )
-
-    except Exception as e:
-        logger.warning(f"Failed to get registered agents: {e}")
-
     # Add AI cache directory from CINDY_AGENT_STATE_DIR
     state_dir = STATE_DIRECTORY
     if state_dir:
@@ -154,7 +115,7 @@ def scan_media_directories() -> list[dict[str, str]]:
 
 
 def get_agent_for_directory(target_directory: str = None) -> Any:
-    """Get an agent for the specified directory."""
+    """Get an agent for the specified directory (always returns the first agent)."""
     # Register all agents to get the list
     register_all_agents()
     agents = list(get_all_agents())
@@ -162,25 +123,9 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     if not agents:
         raise RuntimeError("No agents found. Please configure at least one agent.")
 
-    # If target directory is specified, try to find the matching agent
-    agent = None
-    if target_directory:
-        target_path = Path(target_directory)
-        for a in agents:
-            # Check if this is an agent-specific media directory
-            if f"/agents/{a.name}/media" in str(target_path):
-                agent = a
-                logger.info(
-                    f"Found matching agent '{a.name}' for directory: {target_directory}"
-                )
-                break
-
-    # Fall back to first agent if no match found
-    if agent is None:
-        agent = agents[0]
-        logger.info(
-            f"Using default agent '{agent.name}' for directory: {target_directory}"
-        )
+    # Return the first agent (agent-specific media directories no longer exist)
+    agent = agents[0]
+    logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
 
     return agent
 
@@ -219,23 +164,7 @@ def api_media_list():
 
         media_dir = resolve_media_path(directory_path)
         if not media_dir.exists():
-            # Try to create the directory if it's an agent media directory
-            if "/agents/" in directory_path and "/media" in directory_path:
-                try:
-                    media_dir.mkdir(parents=True, exist_ok=True)
-                    logger.info(f"Created missing media directory: {media_dir}")
-                except Exception as e:
-                    logger.error(f"Failed to create directory {media_dir}: {e}")
-                    return (
-                        jsonify(
-                            {
-                                "error": f"Directory not found and could not be created: {e}"
-                            }
-                        ),
-                        404,
-                    )
-            else:
-                return jsonify({"error": "Directory not found"}), 404
+            return jsonify({"error": "Directory not found"}), 404
 
         # Use MediaSource API to read media descriptions
         # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource

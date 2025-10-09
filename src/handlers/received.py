@@ -17,8 +17,7 @@ from media.media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
 )
-
-# Media source is now accessed via agent.get_media_source()
+from media.media_source import get_default_media_source_chain
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from telegram_media import get_unique_id
@@ -325,8 +324,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # 1) Fetch recent messages (chronological list returned by Telethon when reversed)
     messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
 
-    # 2) Get agent's media source chain (used for all media operations)
-    media_chain = agent.get_media_source()
+    # 2) Get the global media source chain (used for all media operations)
+    media_chain = get_default_media_source_chain()
 
     # 3) Inject/refresh media descriptions so single-line renderings are available
     # Priority: Process messages newest→oldest (messages from get_messages are newest-first)
