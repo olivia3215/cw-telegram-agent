@@ -267,8 +267,18 @@ class DirectoryMediaSource(MediaSource):
 
             # Special handling for stickers with null descriptions
             # Provide fallback description for stickers that don't have descriptions
+            # BUT NOT if there's a failure_reason (user might want to clear errors)
+            # AND NOT if status is curated (user has manually curated this)
             mime_type = record.get("mime_type")
-            if record.get("kind") == "sticker" and record.get("description") is None:
+            has_failure_reason = record.get("failure_reason") is not None
+            is_curated = record.get("status") == "curated"
+
+            if (
+                record.get("kind") == "sticker"
+                and record.get("description") is None
+                and not has_failure_reason
+                and not is_curated
+            ):
 
                 # Create fallback description for stickers
                 sticker_name = record.get("sticker_name") or sticker_name
@@ -399,6 +409,12 @@ class CompositeMediaSource(MediaSource):
 
         # All sources returned None
         return None
+
+    def refresh_cache(self) -> None:
+        """Refresh cache for all sources that support it."""
+        for source in self.sources:
+            if hasattr(source, "refresh_cache"):
+                source.refresh_cache()
 
 
 class BudgetExhaustedMediaSource(MediaSource):
