@@ -6,6 +6,10 @@ Heidi
 
 +14083607039
 
+# Agent Timezone
+
+America/Los_Angeles
+
 # Agent Sticker Sets
 
 UtyaDuck

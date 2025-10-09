@@ -6,6 +6,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from telethon.tl.functions.account import GetNotifySettingsRequest
 from telethon.tl.functions.contacts import GetBlockedRequest
@@ -40,12 +41,34 @@ class Agent:
         explicit_stickers=None,
         # Config directory tracking
         config_directory=None,
+        # Timezone configuration
+        timezone=None,
     ):
         self.name = name
         self.phone = phone
         self.instructions = instructions
         self.role_prompt_names = list(role_prompt_names or [])
         self.config_directory = config_directory
+
+        # Set timezone: use provided timezone, or default to server's local timezone
+        if timezone is None:
+            # Get server's local timezone
+            self.timezone = datetime.now().astimezone().tzinfo
+            logger.debug(f"Agent {name}: Using server timezone {self.timezone}")
+        elif isinstance(timezone, str):
+            # Parse timezone string to ZoneInfo
+            try:
+                self.timezone = ZoneInfo(timezone)
+                logger.info(f"Agent {name}: Using timezone {timezone}")
+            except Exception as e:
+                logger.warning(
+                    f"Agent {name}: Invalid timezone '{timezone}', falling back to server timezone: {e}"
+                )
+                self.timezone = datetime.now().astimezone().tzinfo
+        else:
+            # Assume it's already a timezone object
+            self.timezone = timezone
+            logger.debug(f"Agent {name}: Using timezone {timezone}")
 
         # Multi-set config (lists)
         self.sticker_set_names = list(
@@ -99,6 +122,10 @@ class Agent:
             self._llm = GeminiLLM(api_key=api_key)
 
         return self._llm
+
+    def get_current_time(self):
+        """Get the current time in the agent's timezone."""
+        return datetime.now(self.timezone)
 
     @property
     def client(self):
@@ -368,6 +395,7 @@ class AgentRegistry:
         sticker_set_names=None,
         explicit_stickers=None,
         config_directory=None,
+        timezone=None,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -390,6 +418,7 @@ class AgentRegistry:
             sticker_set_names=sticker_set_names,
             explicit_stickers=explicit_stickers,
             config_directory=config_directory,
+            timezone=timezone,
         )
         # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
 

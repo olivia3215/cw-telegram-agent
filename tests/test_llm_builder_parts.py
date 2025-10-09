@@ -22,6 +22,7 @@ def _mk_user_msg(
     parts=None,
     text=None,
     reply_to_msg_id=None,
+    ts_iso=None,
 ):
     return {
         "sender": sender,
@@ -31,10 +32,11 @@ def _mk_user_msg(
         **({"parts": parts} if parts is not None else {}),
         **({"text": text} if text is not None else {}),
         **({"reply_to_msg_id": reply_to_msg_id} if reply_to_msg_id is not None else {}),
+        **({"ts_iso": ts_iso} if ts_iso is not None else {}),
     }
 
 
-def _mk_agent_msg(text="ok", msg_id="a1", reply_to_msg_id=None):
+def _mk_agent_msg(text="ok", msg_id="a1", reply_to_msg_id=None, ts_iso=None):
     return {
         "sender": "Agent",
         "sender_id": "agent-1",
@@ -42,6 +44,7 @@ def _mk_agent_msg(text="ok", msg_id="a1", reply_to_msg_id=None):
         "is_agent": True,
         "parts": [{"kind": "text", "text": text}],
         **({"reply_to_msg_id": reply_to_msg_id} if reply_to_msg_id is not None else {}),
+        **({"ts_iso": ts_iso} if ts_iso is not None else {}),
     }
 
 
@@ -200,3 +203,43 @@ def test_agent_reply_to_msg_id_in_metadata():
     assert "sender_id=agent-1" in agent_msg2_parts[0]["text"]
     assert "message_id=a2" in agent_msg2_parts[0]["text"]
     assert "reply_to_msg_id" not in agent_msg2_parts[0]["text"]
+
+
+def test_timestamp_in_metadata():
+    """Test that timestamps appear in metadata when provided."""
+    history = [
+        _mk_user_msg(
+            msg_id="m1",
+            parts=[{"kind": "text", "text": "Message at 10 AM"}],
+            ts_iso="2025-01-15 10:00:00 PST",
+        ),
+        _mk_agent_msg(
+            text="Agent reply",
+            msg_id="a1",
+            ts_iso="2025-01-15 10:05:30 PST",
+        ),
+        _mk_user_msg(
+            msg_id="m2",
+            parts=[{"kind": "text", "text": "Message without timestamp"}],
+        ),
+    ]
+
+    llm = GeminiLLM(api_key="test_key")
+    contents = llm._build_gemini_contents(history=history)
+
+    assert len(contents) == 3
+
+    # First message should have timestamp in metadata
+    first_msg_metadata = contents[0]["parts"][0]["text"]
+    assert first_msg_metadata.startswith("[metadata]")
+    assert 'time="2025-01-15 10:00:00 PST"' in first_msg_metadata
+
+    # Agent message should have timestamp in metadata
+    agent_msg_metadata = contents[1]["parts"][0]["text"]
+    assert agent_msg_metadata.startswith("[metadata]")
+    assert 'time="2025-01-15 10:05:30 PST"' in agent_msg_metadata
+
+    # Third message should NOT have timestamp in metadata
+    third_msg_metadata = contents[2]["parts"][0]["text"]
+    assert third_msg_metadata.startswith("[metadata]")
+    assert "time=" not in third_msg_metadata

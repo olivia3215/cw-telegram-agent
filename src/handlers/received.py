@@ -61,8 +61,8 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
             partner_name = "Unknown"
 
         # Format the memory entry with timestamp, partner name, and ID
-        now = datetime.now(UTC)
-        timestamp = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+        now = agent.get_current_time()
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S %Z")
 
         memory_entry = f"\n## Memory from {timestamp} conversation with {partner_name} ({channel_id})\n\n{memory_content.strip()}\n"
 
@@ -92,6 +92,7 @@ class ProcessedMessage:
     message_id: str
     is_from_agent: bool
     reply_to_msg_id: str | None = None
+    timestamp: str | None = None  # Agent-local timestamp string
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -389,7 +390,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction due to {m}"
         )
 
-    now = datetime.now().astimezone()
+    now = agent.get_current_time()
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
@@ -427,6 +428,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             if reply_to_msg_id_val is not None:
                 reply_to_msg_id = str(reply_to_msg_id_val)
 
+        # Extract and format timestamp in agent's local timezone
+        timestamp_str = None
+        msg_date = getattr(m, "date", None)
+        if msg_date:
+            # Convert to agent's timezone and format as readable string
+            local_time = msg_date.astimezone(agent.timezone)
+            timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+
         history_rendered_items.append(
             ProcessedMessage(
                 message_parts=message_parts,
@@ -435,6 +444,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 message_id=message_id,
                 is_from_agent=is_from_agent,
                 reply_to_msg_id=reply_to_msg_id,
+                timestamp=timestamp_str,
             )
         )
 
@@ -470,6 +480,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                     "is_agent": item.is_from_agent,
                     "parts": item.message_parts,
                     "reply_to_msg_id": item.reply_to_msg_id,
+                    "ts_iso": item.timestamp,
                 }
                 for item in history_rendered_items
             ),

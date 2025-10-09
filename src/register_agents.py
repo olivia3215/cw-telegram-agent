@@ -128,6 +128,9 @@ def parse_agent_markdown(path):
             line.strip() for line in role_prompt_text.split("\n") if line.strip()
         ]
 
+        # Parse timezone (optional field)
+        timezone = _norm_set(fields.get("Agent Timezone"))
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
@@ -136,6 +139,8 @@ def parse_agent_markdown(path):
             # multi-set config:
             "sticker_set_names": sticker_set_names,  # list[str]
             "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
+            # timezone config:
+            "timezone": timezone,  # str | None
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -187,6 +192,7 @@ def register_all_agents():
                     sticker_set_names=parsed.get("sticker_set_names") or [],
                     explicit_stickers=parsed.get("explicit_stickers") or [],
                     config_directory=config_dir,
+                    timezone=parsed.get("timezone"),
                 )
                 registered_agents.add(agent_name)
 

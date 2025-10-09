@@ -128,6 +128,9 @@ Wendy
 # Agent Phone
 +15551234567
 
+# Agent Timezone
+America/Los_Angeles   # optional; IANA timezone (e.g., America/New_York, Pacific/Honolulu)
+
 # Role Prompt
 Chatbot
 
@@ -165,8 +168,11 @@ Student
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
-* **Optional fields:** `Agent Sticker Sets`, `Agent Stickers`.
+* **Optional fields:** `Agent Timezone`, `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely.
+* **Agent Timezone:** Specifies the agent's timezone using [IANA timezone database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) names (e.g., `America/Los_Angeles`, `Pacific/Honolulu`, `Europe/London`). If not specified, the agent uses the server's local timezone. This timezone is used for:
+  - Displaying the current time in the agent's system prompt
+  - Timestamping memory entries
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
 > Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
