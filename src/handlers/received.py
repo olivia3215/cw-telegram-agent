@@ -432,6 +432,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         timestamp_str = None
         msg_date = getattr(m, "date", None)
         if msg_date:
+            # Ensure msg_date is timezone-aware before converting
+            if msg_date.tzinfo is None:
+                # Naive datetime - assume UTC (Telethon default)
+                msg_date = msg_date.replace(tzinfo=UTC)
             # Convert to agent's timezone and format as readable string
             local_time = msg_date.astimezone(agent.timezone)
             timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
