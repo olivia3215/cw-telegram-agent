@@ -191,6 +191,15 @@ def index():
     return render_template("media_editor.html", directories=_available_directories)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Serve the favicon."""
+    favicon_path = Path(__file__).parent.parent / "favicon.ico"
+    if not favicon_path.exists():
+        return jsonify({"error": "Favicon not found"}), 404
+    return send_file(favicon_path, mimetype="image/x-icon")
+
+
 @app.route("/api/directories")
 def api_directories():
     """Get list of available media directories."""
