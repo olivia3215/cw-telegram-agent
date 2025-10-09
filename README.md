@@ -172,8 +172,6 @@ Notes:
   You may omit these entirely.
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
-> **Agent Timezone:** See [samples/README.md](samples/README.md#agent-timezone) for detailed information about configuring agent timezones and how they affect conversation context.
-
 > Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
 
 ---
