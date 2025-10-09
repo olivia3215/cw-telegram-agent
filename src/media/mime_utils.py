@@ -64,6 +64,9 @@ def get_file_extension_for_mime_type(mime_type: str) -> str:
     Get the appropriate file extension for a MIME type.
     Used for debug saving and cache organization.
     """
+    if not mime_type:
+        return "bin"
+
     mime_to_ext = {
         "image/jpeg": "jpg",
         "image/jpg": "jpg",
@@ -91,6 +94,8 @@ def is_image_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents an image format.
     """
+    if not mime_type:
+        return False
     return mime_type.lower().startswith("image/")
 
 
@@ -98,6 +103,8 @@ def is_audio_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents an audio format.
     """
+    if not mime_type:
+        return False
     return mime_type.lower().startswith("audio/")
 
 
@@ -105,6 +112,8 @@ def is_video_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents a video format.
     """
+    if not mime_type:
+        return False
     return mime_type.lower().startswith("video/")
 
 
@@ -115,4 +124,6 @@ def is_tgs_mime_type(mime_type: str) -> bool:
     TGS files are gzip-compressed Lottie animations used by Telegram.
     They can have either 'application/gzip' or 'application/x-tgsticker' MIME type.
     """
+    if not mime_type:
+        return False
     return mime_type.lower() in ("application/gzip", "application/x-tgsticker")
