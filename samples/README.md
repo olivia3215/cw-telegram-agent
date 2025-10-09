@@ -147,6 +147,75 @@ Roleplay
 
 This loads only the `Roleplay` prompt from `samples/prompts/Roleplay.md`.
 
+## Agent Timezone
+
+Each agent can specify a timezone that determines how time is displayed and recorded throughout the conversation.
+
+### Configuration
+
+Add the `Agent Timezone` field to your agent's markdown file using [IANA timezone database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) names:
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Agent Timezone
+America/Los_Angeles
+
+# Role Prompt
+Chatbot
+Student
+
+# Agent Instructions
+You are Heidi...
+```
+
+**Common timezone examples:**
+- `America/Los_Angeles` - US Pacific Time
+- `America/New_York` - US Eastern Time
+- `America/Chicago` - US Central Time
+- `Pacific/Honolulu` - Hawaii Time
+- `Europe/London` - UK Time
+- `Asia/Tokyo` - Japan Time
+
+### Default Behavior
+
+If no timezone is specified, the agent uses the server's local timezone. Invalid timezone strings will fall back to the server timezone with a warning in the logs.
+
+### How Timezone Affects the Agent
+
+The agent's timezone is used in three important ways:
+
+1. **Current Time Display**
+   - The current time shown in the agent's system prompt uses the agent's timezone
+   - Example: "The current time is: Wednesday January 15, 2025 at 02:30 PM PST"
+
+2. **Message Timestamps in Conversation History**
+   - Every message in the conversation history includes a timestamp in the metadata
+   - These timestamps are converted to the agent's local timezone
+   - The LLM sees these timestamps and can reason about timing in conversations
+   - Example metadata: `[metadata] sender="Alice" sender_id=123456 message_id=789 time="2025-01-15 14:30:00 PST"`
+
+3. **Memory Timestamps**
+   - When the agent saves memories, they are timestamped in the agent's timezone
+   - Example: `## Memory from 2025-01-15 14:30:00 PST conversation with Alice (123456)`
+
+### Benefits
+
+By using the agent's timezone:
+- The agent experiences time from their perspective (e.g., a Hawaii-based agent knows when it's morning/evening in Hawaii)
+- Temporal reasoning is more natural (the agent can understand "earlier today" or "last night" in their local context)
+- Conversation timestamps help the agent understand the pacing and timing of discussions
+- Memories are recorded in a way that's meaningful to the agent's location and daily rhythm
+
+### Example Agents
+
+- **Heidi** (`samples/agents/Heidi.md`): Uses `America/Los_Angeles` timezone
+- See your agent configurations for more examples
+
 ## Configuration
 
 To use custom prompt directories, set the `CINDY_AGENT_CONFIG_PATH` environment variable:

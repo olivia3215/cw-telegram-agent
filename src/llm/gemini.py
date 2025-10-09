@@ -501,6 +501,8 @@ class GeminiLLM(LLM):
             header_bits.append(f'message_id={m["msg_id"]}')
         if m.get("reply_to_msg_id"):
             header_bits.append(f'reply_to_msg_id={m["reply_to_msg_id"]}')
+        if m.get("ts_iso"):
+            header_bits.append(f'time="{m["ts_iso"]}"')
         if header_bits:
             parts.append(self._mk_text_part(f"⟦metadata⟧ {' '.join(header_bits)}"))
 

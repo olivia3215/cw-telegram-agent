@@ -128,6 +128,9 @@ Wendy
 # Agent Phone
 +15551234567
 
+# Agent Timezone
+America/Los_Angeles   # optional; IANA timezone (e.g., America/New_York, Pacific/Honolulu)
+
 # Role Prompt
 Chatbot
 
@@ -165,7 +168,7 @@ Student
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
-* **Optional fields:** `Agent Sticker Sets`, `Agent Stickers`.
+* **Optional fields:** `Agent Timezone`, `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely.
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
