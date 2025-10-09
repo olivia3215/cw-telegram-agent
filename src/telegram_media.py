@@ -177,6 +177,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     is_animated = False
     is_video = False
     video_duration = None
+    audio_duration = None
     if isinstance(attrs, (list, tuple)):
         for a in attrs:
             n = a.__class__.__name__
@@ -186,6 +187,9 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
                 is_video = True
                 # Extract duration from DocumentAttributeVideo
                 video_duration = getattr(a, "duration", None)
+            elif n == "DocumentAttributeAudio":
+                # Extract duration from DocumentAttributeAudio
+                audio_duration = getattr(a, "duration", None)
 
     uid = get_unique_id(doc)
     if not uid:
@@ -221,18 +225,12 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
                 unique_id=str(uid),
                 mime=mime,
                 file_ref=doc,
-                duration=video_duration,
+                duration=audio_duration,
             )
         )
         return
 
-    if (
-        mime
-        and (
-            "video" in mime.lower()
-            or ("mp4" in mime.lower() and not mime.lower().startswith("audio/"))
-        )
-    ) or is_video:
+    if (mime and mime.lower().startswith("video/")) or is_video:
         # Regular video files - include duration
         out.append(
             MediaItem(
