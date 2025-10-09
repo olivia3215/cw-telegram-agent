@@ -124,14 +124,10 @@ class MediaSource:
 
 ### Chain Structure
 
-The system builds prioritized chains:
+The system builds a single global prioritized chain shared by all agents:
 
 ```
 CompositeMediaSource([
-    # All agent-specific curated (all config dirs)
-    DirectoryMediaSource(config_dir1/agents/Wendy/media),
-    DirectoryMediaSource(config_dir2/agents/Wendy/media),
-
     # All global curated (all config dirs)
     DirectoryMediaSource(config_dir1/media),
     DirectoryMediaSource(config_dir2/media),
@@ -143,7 +139,7 @@ CompositeMediaSource([
 ])
 ```
 
-**Priority order**: All agent-specific > All global > AI cache
+**Priority order**: Global curated > AI cache > AI generation
 **Within each level**: Earlier config directories in `CINDY_AGENT_CONFIG_PATH` take precedence
 
 ### Directory Hierarchy
@@ -151,11 +147,10 @@ CompositeMediaSource([
 Curated descriptions (human-generated) are in **config directories**, NOT state:
 
 For each config directory in `CINDY_AGENT_CONFIG_PATH`:
-1. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
-2. **Global curated**: `{config_dir}/media/` (if exists)
+1. **Global curated**: `{config_dir}/media/` (if exists)
 
 Then:
-3. **AI cache** (state directory): `state/media/` (AI-generated descriptions, runtime state)
+2. **AI cache** (state directory): `state/media/` (AI-generated descriptions, runtime state)
 
 ### Budget System
 

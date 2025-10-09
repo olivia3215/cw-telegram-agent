@@ -47,7 +47,7 @@ It's fascinating.
 You have other casual acquaintances at school, like
 Aiden, Liz, Ethan, Sophia, Mason, Isabella, Liam, Mia, Noah, and Ava.
 
-Your mother, Sylvia, is friends with Wendy.
+Your mother, Sylvia, is friends with Wendy (6754281260).
 Wendy sometimes drops you off at school or picks you up.
 Wendy is a lot of fun.
 She is really smart and funny.
