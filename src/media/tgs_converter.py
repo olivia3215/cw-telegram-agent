@@ -33,6 +33,7 @@ def render_tgs_to_frames(
     width: int = 512,
     height: int = 512,
     duration: float | None = None,
+    target_fps: float = 4.0,
 ) -> tuple[list[np.ndarray], float]:
     """
     Render a TGS file to individual frames using python-lottie and cairosvg.
@@ -42,9 +43,11 @@ def render_tgs_to_frames(
         width: Frame width in pixels
         height: Frame height in pixels
         duration: Maximum duration in seconds (None for full animation)
+        target_fps: Target frames per second for output video (default: 4.0)
+                   Lower values speed up conversion with minimal impact on AI analysis
 
     Returns:
-        Tuple of (list of frames as numpy arrays, fps)
+        Tuple of (list of frames as numpy arrays, target_fps)
 
     Raises:
         ValueError: If rendering fails
@@ -74,13 +77,23 @@ def render_tgs_to_frames(
         else:
             frames_to_render = total_frames
 
-        # Render all frames
-        frames = []
-        log_interval = max(1, frames_to_render // 10)  # Log every 10%
+        # Calculate frame skip interval to achieve target FPS
+        # This dramatically speeds up conversion since AI only needs key frames
+        frame_skip = max(1, int(fps / target_fps))
 
-        for frame_num in range(frames_to_render):
-            if frame_num % log_interval == 0:
-                logger.info(f"Rendering frame {frame_num + 1}/{frames_to_render}...")
+        logger.info(
+            f"Sampling frames: original {fps} fps → target {target_fps} fps "
+            f"(rendering every {frame_skip} frames)"
+        )
+
+        # Render sampled frames
+        frames = []
+        frame_indices = list(range(0, frames_to_render, frame_skip))
+        log_interval = max(1, len(frame_indices) // 10)  # Log every 10%
+
+        for i, frame_num in enumerate(frame_indices):
+            if i % log_interval == 0:
+                logger.info(f"Rendering frame {i + 1}/{len(frame_indices)}...")
 
             # Export frame as SVG to a string buffer
             svg_buffer = io.StringIO()
@@ -100,8 +113,11 @@ def render_tgs_to_frames(
 
             frames.append(frame_array)
 
-        logger.info(f"Successfully rendered {len(frames)} frames from TGS file")
-        return frames, fps
+        logger.info(
+            f"Successfully rendered {len(frames)} frames from TGS file "
+            f"(sampled from {frames_to_render} total frames)"
+        )
+        return frames, target_fps
 
     except Exception as e:
         raise ValueError(f"Failed to render TGS to frames: {e}") from e
@@ -168,6 +184,7 @@ def convert_tgs_to_video(
     width: int = 512,
     height: int = 512,
     duration: float | None = None,
+    target_fps: float = 4.0,
 ) -> Path:
     """
     Convert a TGS file to MP4 video.
@@ -178,6 +195,7 @@ def convert_tgs_to_video(
         width: Video width in pixels
         height: Video height in pixels
         duration: Maximum duration in seconds (None for full animation)
+        target_fps: Target frames per second for output video (default: 4.0)
 
     Returns:
         Path to the created MP4 file
@@ -187,7 +205,9 @@ def convert_tgs_to_video(
     """
     try:
         # Render TGS to frames
-        frames, fps = render_tgs_to_frames(tgs_filepath, width, height, duration)
+        frames, fps = render_tgs_to_frames(
+            tgs_filepath, width, height, duration, target_fps
+        )
 
         # Create video from frames
         return create_video_from_frames(frames, output_path, fps)
@@ -201,6 +221,7 @@ def convert_tgs_to_video_temp(
     width: int = 512,
     height: int = 512,
     duration: float | None = None,
+    target_fps: float = 4.0,
 ) -> Path:
     """
     Convert a TGS file to MP4 video using a temporary file.
@@ -210,6 +231,7 @@ def convert_tgs_to_video_temp(
         width: Video width in pixels
         height: Video height in pixels
         duration: Maximum duration in seconds (None for full animation)
+        target_fps: Target frames per second for output video (default: 4.0)
 
     Returns:
         Path to the created temporary MP4 file
@@ -221,7 +243,9 @@ def convert_tgs_to_video_temp(
         temp_path = Path(temp_file.name)
 
     try:
-        return convert_tgs_to_video(tgs_filepath, temp_path, width, height, duration)
+        return convert_tgs_to_video(
+            tgs_filepath, temp_path, width, height, duration, target_fps
+        )
     except Exception:
         # Clean up temp file if conversion fails
         if temp_path.exists():
