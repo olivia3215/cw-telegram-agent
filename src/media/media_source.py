@@ -67,6 +67,33 @@ def get_emoji_unicode_name(emoji: str) -> str:
     return " + ".join(names)
 
 
+def fallback_sticker_description(
+    sticker_name: str | None, *, animated: bool = True
+) -> str:
+    """
+    Create a fallback description for a sticker.
+
+    Args:
+        sticker_name: The sticker emoji/name
+        animated: Whether this is an animated sticker (default: True)
+
+    Returns:
+        A formatted description string with emoji and unicode name in parentheses
+    """
+    prefix = "an animated sticker" if animated else "a sticker"
+
+    if sticker_name:
+        try:
+            emoji_description = get_emoji_unicode_name(sticker_name)
+            return f"{prefix}: {sticker_name} ({emoji_description})"
+        except Exception:
+            # If we can't get emoji description, just use the name
+            return f"{prefix}: {sticker_name}"
+    else:
+        # No sticker name provided
+        return prefix
+
+
 class MediaStatus(Enum):
     """Standardized status values for media records."""
 
@@ -238,25 +265,21 @@ class DirectoryMediaSource(MediaSource):
             )
             record = self._mem_cache[unique_id].copy()
 
-            # Special handling for TGS animated stickers with null descriptions
-            # Provide fallback description for TGS files that don't have descriptions
+            # Special handling for stickers with null descriptions
+            # Provide fallback description for stickers that don't have descriptions
             mime_type = record.get("mime_type")
-            if (
-                record.get("kind") == "sticker"
-                and record.get("description") is None
-                and mime_type
-                and is_tgs_mime_type(mime_type)
-            ):
+            if record.get("kind") == "sticker" and record.get("description") is None:
 
-                # Create fallback description for TGS files
+                # Create fallback description for stickers
                 sticker_name = record.get("sticker_name") or sticker_name
-                if sticker_name:
-                    description = f"an animated sticker: {sticker_name}"
-                else:
-                    description = "an animated sticker"
+                is_animated = mime_type and is_tgs_mime_type(mime_type)
+                description = fallback_sticker_description(
+                    sticker_name, animated=is_animated
+                )
 
+                sticker_type = "animated" if is_animated else "static"
                 logger.info(
-                    f"TGS animated sticker {unique_id}: providing fallback description '{description}'"
+                    f"{sticker_type.capitalize()} sticker {unique_id}: providing fallback description '{description}'"
                 )
 
                 # Update the record with fallback description
@@ -481,7 +504,7 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         # Special handling for AnimatedEmojies - use sticker name as description
         if sticker_set_name == "AnimatedEmojies" and sticker_name:
-            description = f"an animated emoji: {get_emoji_unicode_name(sticker_name)}"
+            description = fallback_sticker_description(sticker_name, animated=True)
             logger.info(
                 f"AnimatedEmojies sticker {unique_id}: using '{description}' as description"
             )
@@ -522,10 +545,7 @@ class UnsupportedFormatMediaSource(MediaSource):
             mime_type = getattr(doc, "mime_type", None)
             if mime_type and is_tgs_mime_type(mime_type):
                 # Create a fallback description for TGS files
-                if sticker_name:
-                    description = f"an animated sticker: {sticker_name}"
-                else:
-                    description = "an animated sticker"
+                description = fallback_sticker_description(sticker_name)
 
                 logger.info(
                     f"TGS animated sticker {unique_id}: using fallback description '{description}'"
