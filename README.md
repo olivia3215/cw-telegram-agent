@@ -170,10 +170,9 @@ Notes:
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
 * **Optional fields:** `Agent Timezone`, `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely.
-* **Agent Timezone:** Specifies the agent's timezone using [IANA timezone database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) names (e.g., `America/Los_Angeles`, `Pacific/Honolulu`, `Europe/London`). If not specified, the agent uses the server's local timezone. This timezone is used for:
-  - Displaying the current time in the agent's system prompt
-  - Timestamping memory entries
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
+
+> **Agent Timezone:** See [samples/README.md](samples/README.md#agent-timezone) for detailed information about configuring agent timezones and how they affect conversation context.
 
 > Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
 
