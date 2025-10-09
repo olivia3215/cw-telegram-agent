@@ -214,7 +214,7 @@ async def parse_llm_reply_from_markdown(
             parsed = parse_sticker_body(body)
             if not parsed:
                 # Silent on Telegram; note in logs only
-                print("[sticker] malformed or empty sticker body; dropping")
+                logger.info("[sticker] malformed or empty sticker body; dropping")
                 return
 
             set_short, sticker_name = parsed
