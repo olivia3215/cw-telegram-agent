@@ -75,7 +75,7 @@ def _format_sticker_sentence_internal(
     """
     base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set_name}`"
     s = (description or "").strip()
-    return f"[media] {ANGLE_OPEN}{base} {format_media_description(s)}{ANGLE_CLOSE}"
+    return f"⟦media⟧ {ANGLE_OPEN}{base} {format_media_description(s)}{ANGLE_CLOSE}"
 
 
 async def format_sticker_sentence(
@@ -137,4 +137,4 @@ def format_media_sentence(kind: str, description: str | None) -> str:
     Falls back to 'that is not understood' when description is missing.
     """
     media_desc = format_media_description(description)
-    return f"[media] {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"
+    return f"⟦media⟧ {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"

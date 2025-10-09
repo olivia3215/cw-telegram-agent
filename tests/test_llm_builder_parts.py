@@ -82,15 +82,15 @@ def test_history_roles_and_order_with_parts():
     assert u2["role"] == "user"
 
     # Each non-agent message starts with a metadata header part
-    assert u1["parts"][0]["text"].startswith('[metadata] sender="Alice" sender_id=u123')
+    assert u1["parts"][0]["text"].startswith('⟦metadata⟧ sender="Alice" sender_id=u123')
     assert "message_id=m1" in u1["parts"][0]["text"]
-    assert u2["parts"][0]["text"].startswith('[metadata] sender="Bob" sender_id=u456')
+    assert u2["parts"][0]["text"].startswith('⟦metadata⟧ sender="Bob" sender_id=u456')
     assert "message_id=m2" in u2["parts"][0]["text"]
 
     # Message content preserves order and rendered media
     assert u1["parts"][1]["text"] == "hello there"
     # Agent message now has metadata header with message_id
-    assert a1["parts"][0]["text"].startswith("[metadata]")
+    assert a1["parts"][0]["text"].startswith("⟦metadata⟧")
     assert "message_id=a1" in a1["parts"][0]["text"]
     assert a1["parts"][1]["text"] == "hi!"  # content part follows metadata
     assert "{sticker OliviaAI/🙏" in u2["parts"][1]["text"]
@@ -112,7 +112,7 @@ def test_placeholder_emitted_when_media_has_no_rendering():
     assert len(contents) == 1
     parts = contents[0]["parts"]
     # header + two placeholders
-    assert parts[0]["text"].startswith("[metadata]")
+    assert parts[0]["text"].startswith("⟦metadata⟧")
     assert parts[1]["text"].startswith("[audio present")
     assert parts[2]["text"].startswith("[music present")
 
@@ -138,12 +138,12 @@ def test_reply_to_msg_id_in_metadata():
 
     # First message should NOT have reply_to_msg_id in metadata
     first_msg_metadata = contents[0]["parts"][0]["text"]
-    assert first_msg_metadata.startswith("[metadata]")
+    assert first_msg_metadata.startswith("⟦metadata⟧")
     assert "reply_to_msg_id" not in first_msg_metadata
 
     # Second message SHOULD have reply_to_msg_id in metadata
     second_msg_metadata = contents[1]["parts"][0]["text"]
-    assert second_msg_metadata.startswith("[metadata]")
+    assert second_msg_metadata.startswith("⟦metadata⟧")
     assert "reply_to_msg_id=m1" in second_msg_metadata
 
 
@@ -176,13 +176,13 @@ def test_agent_reply_to_msg_id_in_metadata():
 
     # User message should have full metadata (sender, sender_id, message_id)
     user_msg1_parts = contents[0]["parts"]
-    assert user_msg1_parts[0]["text"].startswith("[metadata]")
+    assert user_msg1_parts[0]["text"].startswith("⟦metadata⟧")
     assert 'sender="Alice"' in user_msg1_parts[0]["text"]
     assert "message_id=m1" in user_msg1_parts[0]["text"]
 
     # Agent message with reply should have metadata (sender, sender_id, message_id, reply_to_msg_id)
     agent_msg1_parts = contents[1]["parts"]
-    assert agent_msg1_parts[0]["text"].startswith("[metadata]")
+    assert agent_msg1_parts[0]["text"].startswith("⟦metadata⟧")
     assert 'sender="Agent"' in agent_msg1_parts[0]["text"]
     assert "sender_id=agent-1" in agent_msg1_parts[0]["text"]
     assert "message_id=a1" in agent_msg1_parts[0]["text"]
@@ -190,12 +190,12 @@ def test_agent_reply_to_msg_id_in_metadata():
 
     # Another user message
     user_msg2_parts = contents[2]["parts"]
-    assert user_msg2_parts[0]["text"].startswith("[metadata]")
+    assert user_msg2_parts[0]["text"].startswith("⟦metadata⟧")
     assert "message_id=m2" in user_msg2_parts[0]["text"]
 
     # Agent message without reply should have metadata (sender, sender_id, message_id) but no reply_to_msg_id
     agent_msg2_parts = contents[3]["parts"]
-    assert agent_msg2_parts[0]["text"].startswith("[metadata]")
+    assert agent_msg2_parts[0]["text"].startswith("⟦metadata⟧")
     assert 'sender="Agent"' in agent_msg2_parts[0]["text"]
     assert "sender_id=agent-1" in agent_msg2_parts[0]["text"]
     assert "message_id=a2" in agent_msg2_parts[0]["text"]

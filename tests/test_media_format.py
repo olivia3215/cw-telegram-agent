@@ -55,7 +55,7 @@ def test_format_sticker_sentence_internal_with_desc():
     )
     assert (
         out
-        == "[media] ‹the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up›"
+        == "⟦media⟧ ‹the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up›"
     )
 
 
@@ -64,7 +64,7 @@ def test_format_sticker_sentence_internal_without_desc(desc):
     out = _format_sticker_sentence_internal("👋", "WendyDancer", desc)
     assert (
         out
-        == "[media] ‹the sticker `👋` from the sticker set `WendyDancer` that is not understood›"
+        == "⟦media⟧ ‹the sticker `👋` from the sticker set `WendyDancer` that is not understood›"
     )
 
 
@@ -75,27 +75,27 @@ def test_format_sticker_sentence_internal_with_not_understood_text(desc):
     out = _format_sticker_sentence_internal("👋", "WendyDancer", desc)
     assert (
         out
-        == f"[media] ‹the sticker `👋` from the sticker set `WendyDancer` that appears as {desc}›"
+        == f"⟦media⟧ ‹the sticker `👋` from the sticker set `WendyDancer` that appears as {desc}›"
     )
 
 
 def test_format_media_sentence_with_description():
     out = format_media_sentence("photo", "A beautiful sunset over mountains")
     assert (
-        out == "[media] ‹the photo that appears as A beautiful sunset over mountains›"
+        out == "⟦media⟧ ‹the photo that appears as A beautiful sunset over mountains›"
     )
 
 
 def test_format_media_sentence_without_description():
     out = format_media_sentence("video", None)
-    assert out == "[media] ‹the video that is not understood›"
+    assert out == "⟦media⟧ ‹the video that is not understood›"
 
 
 def test_format_media_sentence_animated_sticker():
     out = format_media_sentence("animated_sticker", "A dancing cat with sparkles")
     assert (
         out
-        == "[media] ‹the animated_sticker that appears as A dancing cat with sparkles›"
+        == "⟦media⟧ ‹the animated_sticker that appears as A dancing cat with sparkles›"
     )
 
 
@@ -103,19 +103,19 @@ def test_format_media_sentence_video_with_description():
     out = format_media_sentence("video", "A tutorial showing how to bake cookies")
     assert (
         out
-        == "[media] ‹the video that appears as A tutorial showing how to bake cookies›"
+        == "⟦media⟧ ‹the video that appears as A tutorial showing how to bake cookies›"
     )
 
 
 @pytest.mark.parametrize("desc", ["", "   "])
 def test_format_media_sentence_not_understood(desc):
     out = format_media_sentence("audio", desc)
-    assert out == "[media] ‹the audio that is not understood›"
+    assert out == "⟦media⟧ ‹the audio that is not understood›"
 
 
 def test_format_media_sentence_with_not_understood_text():
     out = format_media_sentence("audio", "not understood")
-    assert out == "[media] ‹the audio that appears as not understood›"
+    assert out == "⟦media⟧ ‹the audio that appears as not understood›"
 
 
 # Tests for the new async format_sticker_sentence function
@@ -140,7 +140,7 @@ async def test_format_sticker_sentence_with_existing_attributes():
     )
 
     # Verify result
-    expected = "[media] ‹the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up›"
+    expected = "⟦media⟧ ‹the sticker `😊` from the sticker set `HotCherry` that appears as Kermit gives a thumbs up›"
     assert result == expected
 
     # Verify media_chain.get was called
@@ -172,7 +172,7 @@ async def test_format_sticker_sentence_resolves_missing_set_name():
     )
 
     # Verify result
-    expected = "[media] ‹the sticker `👋` from the sticker set `WendyDancer` that appears as Waving hello›"
+    expected = "⟦media⟧ ‹the sticker `👋` from the sticker set `WendyDancer` that appears as Waving hello›"
     assert result == expected
 
     # Verify both functions were called
@@ -202,7 +202,7 @@ async def test_format_sticker_sentence_fallback_behavior():
     )
 
     # Verify result with fallbacks
-    expected = "[media] ‹the sticker `(unnamed)` from the sticker set `(unknown)` that is not understood›"
+    expected = "⟦media⟧ ‹the sticker `(unnamed)` from the sticker set `(unknown)` that is not understood›"
     assert result == expected
 
 
@@ -228,7 +228,7 @@ async def test_format_sticker_sentence_handles_exceptions():
     )
 
     # Verify result with fallbacks (should still work despite exceptions)
-    expected = "[media] ‹the sticker `🔥` from the sticker set `(unknown)` that is not understood›"
+    expected = "⟦media⟧ ‹the sticker `🔥` from the sticker set `(unknown)` that is not understood›"
     assert result == expected
 
 

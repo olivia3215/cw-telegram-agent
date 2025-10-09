@@ -502,7 +502,7 @@ class GeminiLLM(LLM):
         if m.get("reply_to_msg_id"):
             header_bits.append(f'reply_to_msg_id={m["reply_to_msg_id"]}')
         if header_bits:
-            parts.append(self._mk_text_part(f"[metadata] {' '.join(header_bits)}"))
+            parts.append(self._mk_text_part(f"⟦metadata⟧ {' '.join(header_bits)}"))
 
         # 2) Original message content in original order
         raw_parts: list[MsgPart] | None = m.get("parts")
