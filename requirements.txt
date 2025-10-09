@@ -10,4 +10,8 @@ telethon
 pytest-asyncio
 mistune
 google-genai
-flask
+pillow
+lottie
+cairosvg
+imageio
+imageio-ffmpeg

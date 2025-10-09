@@ -109,7 +109,9 @@ def test_detect_video_and_animated_sticker():
     tgs_doc = Obj(file_unique_id="tgs_u7", mime_type="application/gzip")
     msg_tgs = make_msg(document=tgs_doc)
     parts_tgs = iter_media_parts(msg_tgs)
-    assert len(parts_tgs) == 1 and parts_tgs[0].kind == "animated_sticker"
+    # TGS files are now classified as "sticker" kind (MIME type distinguishes animated from static)
+    assert len(parts_tgs) == 1 and parts_tgs[0].kind == "sticker"
+    assert parts_tgs[0].is_animated_sticker()  # Helper method to check if it's animated
     assert parts_tgs[0].unique_id == "tgs_u7"
     assert parts_tgs[0].mime == "application/gzip"
 

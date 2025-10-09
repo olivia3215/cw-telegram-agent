@@ -188,10 +188,10 @@ async def inject_media_descriptions(
 
                 # Process using the media source chain
                 try:
-                    # Get sticker metadata if applicable
+                    # Get sticker metadata if applicable (for both regular and animated stickers)
                     sticker_set_name = None
                     sticker_name = None
-                    if it.kind == "sticker":
+                    if it.is_sticker():
                         sticker_set_name = await _maybe_get_sticker_set_short_name(
                             agent, it
                         )
@@ -217,7 +217,9 @@ async def inject_media_descriptions(
                         unique_id=it.unique_id,
                         agent=agent,
                         doc=it.file_ref,
-                        kind=it.kind,
+                        kind=(
+                            it.kind.value if hasattr(it.kind, "value") else str(it.kind)
+                        ),
                         sticker_set_name=sticker_set_name,
                         sticker_name=sticker_name,
                         sender_id=sender_id,
@@ -225,6 +227,7 @@ async def inject_media_descriptions(
                         channel_id=chan_id,
                         channel_name=chan_name,
                         media_ts=media_ts,
+                        duration=getattr(it, "duration", None),
                     )
 
                     if record:
@@ -282,8 +285,8 @@ async def format_message_for_prompt(
         items = []
 
     for it in items:
-        if it.kind == "sticker":
-            # Use the new comprehensive sticker processing function
+        if it.is_sticker():
+            # Use the new comprehensive sticker processing function (handles both regular and animated)
             sticker_sentence = await format_sticker_sentence(
                 media_item=it,
                 agent=agent,
@@ -293,7 +296,9 @@ async def format_message_for_prompt(
             parts.append(
                 {
                     "kind": "media",
-                    "media_kind": "sticker",
+                    "media_kind": (
+                        it.kind.value if hasattr(it.kind, "value") else str(it.kind)
+                    ),
                     "rendered_text": sticker_sentence,
                     "unique_id": it.unique_id,
                     "sticker_set_name": getattr(it, "sticker_set_name", None),
@@ -308,11 +313,15 @@ async def format_message_for_prompt(
             except Exception:
                 meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None
-            media_sentence = format_media_sentence(it.kind, desc_text)
+            media_sentence = format_media_sentence(
+                it.kind.value if hasattr(it.kind, "value") else str(it.kind), desc_text
+            )
             parts.append(
                 {
                     "kind": "media",
-                    "media_kind": it.kind,
+                    "media_kind": (
+                        it.kind.value if hasattr(it.kind, "value") else str(it.kind)
+                    ),
                     "rendered_text": media_sentence,
                     "unique_id": it.unique_id,
                 }

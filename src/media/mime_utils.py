@@ -56,10 +56,7 @@ def detect_mime_type_from_bytes(data: bytes) -> str:
         return "application/zip"
 
     # Size check
-    elif len(data) < 10:
-        return "application/octet-stream"  # Too small to be valid
-    else:
-        return "application/octet-stream"  # Unknown binary data
+    return "application/octet-stream"
 
 
 def get_file_extension_for_mime_type(mime_type: str) -> str:
@@ -109,3 +106,13 @@ def is_video_mime_type(mime_type: str) -> bool:
     Check if a MIME type represents a video format.
     """
     return mime_type.lower().startswith("video/")
+
+
+def is_tgs_mime_type(mime_type: str) -> bool:
+    """
+    Check if a MIME type represents a TGS animated sticker.
+
+    TGS files are gzip-compressed Lottie animations used by Telegram.
+    They can have either 'application/gzip' or 'application/x-tgsticker' MIME type.
+    """
+    return mime_type.lower() in ("application/gzip", "application/x-tgsticker")
