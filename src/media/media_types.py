@@ -19,6 +19,7 @@ class MediaKind(str, Enum):
     - GIF: GIF animations
     - ANIMATION: Telegram animations (typically MP4)
     - VIDEO: Video files
+    - AUDIO: Audio files
     """
 
     PHOTO = "photo"
@@ -26,6 +27,7 @@ class MediaKind(str, Enum):
     GIF = "gif"
     ANIMATION = "animation"
     VIDEO = "video"
+    AUDIO = "audio"
 
 
 @dataclass
@@ -74,3 +76,7 @@ class MediaItem:
     def is_video(self) -> bool:
         """Check if this is a video or animation."""
         return self.kind in (MediaKind.VIDEO, MediaKind.ANIMATION)
+
+    def is_audio(self) -> bool:
+        """Check if this is an audio file."""
+        return self.kind == MediaKind.AUDIO

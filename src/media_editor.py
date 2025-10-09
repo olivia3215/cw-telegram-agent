@@ -213,6 +213,10 @@ def api_media_list():
                     ".webm",
                     ".mov",
                     ".avi",
+                    ".mp3",
+                    ".m4a",
+                    ".wav",
+                    ".ogg",
                 ]:
                     potential_file = media_dir / f"{unique_id}{ext}"
                     if potential_file.exists():
@@ -303,6 +307,10 @@ def api_media_file(unique_id: str):
             ".webm",
             ".mov",
             ".avi",
+            ".mp3",
+            ".m4a",
+            ".wav",
+            ".ogg",
         ]:
             media_file = media_dir / f"{unique_id}{ext}"
             if media_file.exists():
@@ -325,6 +333,14 @@ def api_media_file(unique_id: str):
                     return send_file(media_file, mimetype="video/quicktime")
                 elif ext == ".avi":
                     return send_file(media_file, mimetype="video/x-msvideo")
+                elif ext == ".mp3":
+                    return send_file(media_file, mimetype="audio/mpeg")
+                elif ext == ".m4a":
+                    return send_file(media_file, mimetype="audio/mp4")
+                elif ext == ".wav":
+                    return send_file(media_file, mimetype="audio/wav")
+                elif ext == ".ogg":
+                    return send_file(media_file, mimetype="audio/ogg")
                 else:
                     return send_file(media_file)
 
@@ -419,6 +435,10 @@ def api_refresh_from_ai(unique_id: str):
             ".webm",
             ".mov",
             ".avi",
+            ".mp3",
+            ".m4a",
+            ".wav",
+            ".ogg",
         ]:
             potential_file = media_dir / f"{unique_id}{ext}"
             if potential_file.exists():
@@ -541,6 +561,10 @@ def api_move_media(unique_id: str):
             ".avi",
             ".jpg",
             ".png",
+            ".mp3",
+            ".m4a",
+            ".wav",
+            ".ogg",
         ]:
             potential_file = from_dir / f"{unique_id}{ext}"
             if potential_file.exists():

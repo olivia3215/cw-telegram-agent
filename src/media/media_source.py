@@ -961,6 +961,10 @@ class AIChainMediaSource(MediaSource):
                         ".webm",
                         ".mov",
                         ".avi",
+                        ".mp3",
+                        ".m4a",
+                        ".wav",
+                        ".ogg",
                     ]:
                         media_file = self.cache_source.directory / f"{unique_id}{ext}"
                         if media_file.exists():

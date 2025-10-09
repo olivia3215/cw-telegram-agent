@@ -113,6 +113,10 @@
             height: auto;
             object-fit: contain;
         }
+        .media-preview audio {
+            width: 100%;
+            height: auto;
+        }
         .media-info {
             flex: 1;
             padding: 8px 0;
@@ -416,6 +420,12 @@
                         <source src="${mediaUrl}" type="video/webm">
                         Your browser does not support the video tag.
                     </video>`;
+                } else if (media.kind === 'audio' || (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))) {
+                    // Audio files - Audio controls
+                    mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto;">
+                        <source src="${mediaUrl}" type="${media.mime_type || 'audio/mpeg'}">
+                        Your browser does not support the audio tag.
+                    </audio>`;
                 } else {
                     mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
                 }

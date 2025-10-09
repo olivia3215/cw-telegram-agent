@@ -136,6 +136,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     Heuristics:
       • image/gif OR DocumentAttributeAnimated => kind 'gif'
       • video/* (incl mp4/webm) OR DocumentAttributeVideo => kind 'video' or 'animated_sticker'
+      • audio/* (incl mp4/m4a) => kind 'audio'
       • TGS files (gzip) => kind 'animated_sticker'
     """
     # Bot API fallbacks first (simple shapes)
@@ -211,7 +212,27 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         )
         return
 
-    if (mime and ("video" in mime.lower() or "mp4" in mime.lower())) or is_video:
+    # Check for audio files first (before video check to avoid misclassifying audio/mp4 as video)
+    if mime and mime.lower().startswith("audio/"):
+        # Audio files - include duration
+        out.append(
+            MediaItem(
+                kind=MediaKind.AUDIO,
+                unique_id=str(uid),
+                mime=mime,
+                file_ref=doc,
+                duration=video_duration,
+            )
+        )
+        return
+
+    if (
+        mime
+        and (
+            "video" in mime.lower()
+            or ("mp4" in mime.lower() and not mime.lower().startswith("audio/"))
+        )
+    ) or is_video:
         # Regular video files - include duration
         out.append(
             MediaItem(
