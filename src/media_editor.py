@@ -195,6 +195,8 @@ def index():
 def favicon():
     """Serve the favicon."""
     favicon_path = Path(__file__).parent.parent / "favicon.ico"
+    if not favicon_path.exists():
+        return jsonify({"error": "Favicon not found"}), 404
     return send_file(favicon_path, mimetype="image/x-icon")
 
 
