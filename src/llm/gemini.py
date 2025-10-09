@@ -502,7 +502,7 @@ class GeminiLLM(LLM):
         if m.get("reply_to_msg_id"):
             header_bits.append(f'reply_to_msg_id={m["reply_to_msg_id"]}')
         if header_bits:
-            parts.append(self._mk_text_part(f"[metadata] {' '.join(header_bits)}"))
+            parts.append(self._mk_text_part(f"⟦metadata⟧ {' '.join(header_bits)}"))
 
         # 2) Original message content in original order
         raw_parts: list[MsgPart] | None = m.get("parts")
@@ -522,13 +522,13 @@ class GeminiLLM(LLM):
                         # Fallback: brief placeholder so the LLM knows something was here.
                         mk = (p.get("media_kind") or "media").strip()
                         uid = (p.get("unique_id") or "").strip()
-                        placeholder = f"[{mk} present" + (
-                            f" uid={uid}]" if uid else "]"
+                        placeholder = f"⟦{mk} present" + (
+                            f" uid={uid}⟧" if uid else "⟧"
                         )
                         parts.append(self._mk_text_part(placeholder))
                 else:
                     # Unknown part type: surface minimally instead of dropping.
-                    parts.append(self._mk_text_part(f"[{k or 'unknown'} part]"))
+                    parts.append(self._mk_text_part(f"⟦{k or 'unknown'} part⟧"))
         else:
             # Fallback: single text
             fallback = (m.get("text") or "").strip()

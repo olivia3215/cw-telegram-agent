@@ -271,6 +271,6 @@ if __name__ == "__main__":
         if tgs_path.exists():
             test_tgs_conversion(tgs_path)
         else:
-            print(f"File not found: {tgs_path}")
+            logger.info(f"File not found: {tgs_path}")
     else:
-        print("Usage: python tgs_converter.py <path_to_tgs_file>")
+        logger.info("Usage: python tgs_converter.py <path_to_tgs_file>")
