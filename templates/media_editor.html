@@ -250,9 +250,11 @@
             }
         });
 
-        function loadMediaFiles(directoryPath) {
+        function loadMediaFiles(directoryPath, preservePage = false) {
             document.getElementById('media-container').innerHTML =
                 '<div class="loading">Loading media files...</div>';
+
+            const savedPage = currentPage; // Save current page
 
             const encodedPath = encodeURIComponent(directoryPath);
             fetch(`/api/media?directory=${encodedPath}`)
@@ -273,8 +275,14 @@
                         });
                     }
 
-                    // Reset to page 1
-                    currentPage = 1;
+                    // Reset to page 1 unless preservePage is true
+                    if (!preservePage) {
+                        currentPage = 1;
+                    } else {
+                        // Restore the saved page, but ensure it's within bounds
+                        const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+                        currentPage = Math.min(savedPage, Math.max(1, totalPages));
+                    }
                     displayCurrentPage();
                 })
                 .catch(error => {
@@ -669,13 +677,15 @@
                 } else {
                     updateSaveStatus(uniqueId, 'saved');
 
-                    // Update the status display to show "curated"
+                    // Update the status display to show "curated" and clear error message
                     const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
                     const statusElements = mediaItem.querySelectorAll('p');
                     for (const p of statusElements) {
                         if (p.textContent.includes('Status:')) {
                             p.innerHTML = '<strong>Status:</strong> curated';
-                            break;
+                        } else if (p.classList.contains('error')) {
+                            // Clear the error message (failure_reason)
+                            p.remove();
                         }
                     }
                 }
@@ -797,8 +807,8 @@
                     select.style.background = 'white';
                     select.value = '';
                 } else {
-                    // Reload the current directory to refresh the list
-                    loadMediaFiles(currentDirectory);
+                    // Reload the current directory to refresh the list, preserving current page
+                    loadMediaFiles(currentDirectory, true);
                 }
             })
             .catch(error => {
@@ -835,8 +845,8 @@
                         button.textContent = 'Delete';
                         button.style.background = '#dc3545';
                     } else {
-                        // Reload the current directory to refresh the list
-                        loadMediaFiles(currentDirectory);
+                        // Reload the current directory to refresh the list, preserving current page
+                        loadMediaFiles(currentDirectory, true);
                     }
                 })
                 .catch(error => {
