@@ -201,8 +201,20 @@
     </div>
 
     <div class="main-container">
+        <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+            <div id="page-info" style="font-size: 14px; color: #333;"></div>
+            <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+        </div>
+
         <div id="media-container">
             <div class="loading">Select a directory to view media files</div>
+        </div>
+
+        <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+            <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
+            <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
         </div>
     </div>
 
@@ -210,6 +222,9 @@
         let currentDirectory = '';
         let autoSaveTimers = {}; // Track auto-save timers for each textarea
         let savingStates = {}; // Track saving state for each textarea
+        let currentPage = 1;
+        let itemsPerPage = 10;
+        let allMediaFiles = []; // Store all media files for pagination
 
         // Load directories on page load
         fetch('/api/directories')
@@ -249,7 +264,18 @@
                         return;
                     }
 
-                    displayMediaFiles(data.grouped_media);
+                    // Flatten the grouped media into a single array
+                    allMediaFiles = [];
+                    for (const [stickerSet, mediaFiles] of Object.entries(data.grouped_media)) {
+                        mediaFiles.forEach(media => {
+                            media.sticker_set_display = stickerSet;
+                            allMediaFiles.push(media);
+                        });
+                    }
+
+                    // Reset to page 1
+                    currentPage = 1;
+                    displayCurrentPage();
                 })
                 .catch(error => {
                     document.getElementById('media-container').innerHTML =
@@ -257,27 +283,44 @@
                 });
         }
 
-        function displayMediaFiles(groupedMedia) {
+        function displayCurrentPage() {
             const container = document.getElementById('media-container');
 
-            if (Object.keys(groupedMedia).length === 0) {
+            if (allMediaFiles.length === 0) {
                 container.innerHTML = '<div class="loading">No media files found</div>';
+                document.getElementById('pagination-top').style.display = 'none';
+                document.getElementById('pagination-bottom').style.display = 'none';
                 return;
             }
 
-            let html = '';
+            // Calculate pagination
+            const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, allMediaFiles.length);
+            const pageItems = allMediaFiles.slice(startIndex, endIndex);
 
-            for (const [stickerSet, mediaFiles] of Object.entries(groupedMedia)) {
-                html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${stickerSet}</h2>`;
+            // Build HTML for current page
+            let html = '<div class="media-grid">';
 
-                html += '<div class="media-grid">';
-                mediaFiles.forEach(media => {
-                    html += createMediaItemHTML(media);
-                });
-                html += '</div>';
-            }
+            let lastStickerSet = null;
+            pageItems.forEach(media => {
+                // Add sticker set header if it changed
+                if (media.sticker_set_display !== lastStickerSet) {
+                    if (lastStickerSet !== null) {
+                        html += '</div>'; // Close previous grid
+                    }
+                    html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${media.sticker_set_display}</h2>`;
+                    html += '<div class="media-grid">';
+                    lastStickerSet = media.sticker_set_display;
+                }
+                html += createMediaItemHTML(media);
+            });
 
+            html += '</div>';
             container.innerHTML = html;
+
+            // Update pagination controls
+            updatePaginationControls(totalPages);
 
             // Populate move directory dropdowns
             populateMoveDirectoryDropdowns();
@@ -286,6 +329,55 @@
             setTimeout(() => {
                 loadTGSAnimations();
             }, 100);
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function updatePaginationControls(totalPages) {
+            const pageInfo = `Page ${currentPage} of ${totalPages} (${allMediaFiles.length} items total)`;
+
+            // Update both top and bottom pagination
+            document.getElementById('page-info').textContent = pageInfo;
+            document.getElementById('page-info-bottom').textContent = pageInfo;
+
+            // Show/hide and enable/disable buttons
+            const showPagination = totalPages > 1;
+            document.getElementById('pagination-top').style.display = showPagination ? 'flex' : 'none';
+            document.getElementById('pagination-bottom').style.display = showPagination ? 'flex' : 'none';
+
+            // Disable previous button on first page
+            const prevDisabled = currentPage === 1;
+            document.getElementById('prev-btn').disabled = prevDisabled;
+            document.getElementById('prev-btn-bottom').disabled = prevDisabled;
+            document.getElementById('prev-btn').style.opacity = prevDisabled ? '0.5' : '1';
+            document.getElementById('prev-btn-bottom').style.opacity = prevDisabled ? '0.5' : '1';
+            document.getElementById('prev-btn').style.cursor = prevDisabled ? 'not-allowed' : 'pointer';
+            document.getElementById('prev-btn-bottom').style.cursor = prevDisabled ? 'not-allowed' : 'pointer';
+
+            // Disable next button on last page
+            const nextDisabled = currentPage === totalPages;
+            document.getElementById('next-btn').disabled = nextDisabled;
+            document.getElementById('next-btn-bottom').disabled = nextDisabled;
+            document.getElementById('next-btn').style.opacity = nextDisabled ? '0.5' : '1';
+            document.getElementById('next-btn-bottom').style.opacity = nextDisabled ? '0.5' : '1';
+            document.getElementById('next-btn').style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
+            document.getElementById('next-btn-bottom').style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                displayCurrentPage();
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                displayCurrentPage();
+            }
         }
 
         function createMediaItemHTML(media) {
@@ -698,21 +790,19 @@
             .then(data => {
                 if (data.error) {
                     alert('Error moving media: ' + data.error);
+                    select.disabled = false;
+                    select.style.background = 'white';
+                    select.value = '';
                 } else {
-                    // If moved to a different directory, reload the current view
-                    if (targetDirectory !== currentDirectory) {
-                        loadMediaFiles(currentDirectory);
-                    }
+                    // Reload the current directory to refresh the list
+                    loadMediaFiles(currentDirectory);
                 }
             })
             .catch(error => {
                 alert('Error moving media: ' + error);
-            })
-            .finally(() => {
-                // Reset select
                 select.disabled = false;
                 select.style.background = 'white';
-                select.value = ''; // Reset selection
+                select.value = '';
             });
         }
 
@@ -738,19 +828,16 @@
                 .then(data => {
                     if (data.error) {
                         alert('Error deleting media: ' + data.error);
+                        button.disabled = false;
+                        button.textContent = 'Delete';
+                        button.style.background = '#dc3545';
                     } else {
-                        // Remove the media item from the UI
-                        const mediaItem = button.closest('.media-item');
-                        if (mediaItem) {
-                            mediaItem.remove();
-                        }
+                        // Reload the current directory to refresh the list
+                        loadMediaFiles(currentDirectory);
                     }
                 })
                 .catch(error => {
                     alert('Error deleting media: ' + error);
-                })
-                .finally(() => {
-                    // Reset button
                     button.disabled = false;
                     button.textContent = 'Delete';
                     button.style.background = '#dc3545';
