@@ -431,10 +431,13 @@ async def test_unsupported_format_source_accepts_short_animated_sticker():
         sticker_name="😊",
     )
 
-    # Should return fallback description for TGS files
+    # Should return fallback description for TGS files with emoji unicode name
     assert result is not None
     assert result["status"] == MediaStatus.GENERATED.value
-    assert result["description"] == "an animated sticker: 😊"
+    assert (
+        result["description"]
+        == "an animated sticker: 😊 (smiling face with smiling eyes)"
+    )
 
 
 # --- Tests for AIGeneratingMediaSource video handling ---
