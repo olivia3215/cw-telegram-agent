@@ -549,8 +549,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             logger.info(
                 f"[{agent_name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
             )
+        else:
+            task.depends_on.append(last_id)
 
-        task.depends_on.append(last_id)
         graph.add_task(task)
         last_id = task.identifier
 
