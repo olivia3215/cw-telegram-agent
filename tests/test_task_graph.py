@@ -112,21 +112,24 @@ def test_retry_injection_and_limit(caplog):
     graph.add_task(failing)
 
     # Retry 1
-    result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
+    initial_task_count = len(graph.tasks)
+    result = failing.failed(graph, retry_interval_sec=5, max_retries=3)
     assert result is True
     assert failing.params["previous_retries"] == 1
-    assert any(dep.startswith("wait-retry-f1-") for dep in failing.depends_on)
-    assert any(n.identifier.startswith("wait-retry-f1-1") for n in graph.tasks)
+    assert len(failing.depends_on) == 1
+    assert len(graph.tasks) == initial_task_count + 1
+    assert any(n.type == "wait" for n in graph.tasks)
     assert "Retrying in 5s" in caplog.text
 
     # Retry 2
-    result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
+    result = failing.failed(graph, retry_interval_sec=5, max_retries=3)
     assert result is True
     assert failing.params["previous_retries"] == 2
-    assert any(n.identifier.startswith("wait-retry-f1-2") for n in graph.tasks)
+    assert len(failing.depends_on) == 2
+    assert len(graph.tasks) == initial_task_count + 2
 
     # Retry 3 (limit exceeded)
-    result = failing.failed(graph, retry_interval_sec=5, max_retries=3, now=NOW)
+    result = failing.failed(graph, retry_interval_sec=5, max_retries=3)
     assert result is False  # signal to delete graph
     assert failing.params["previous_retries"] == 3
     assert "exceeded max retries" in caplog.text
