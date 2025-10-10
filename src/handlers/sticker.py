@@ -59,8 +59,8 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
         )
 
     # 1) Try by-set cache
-    by_set = getattr(agent, "sticker_cache_by_set", {})
-    file = by_set.get((set_short, sticker_name))
+    stickers = getattr(agent, "stickers", {})
+    file = stickers.get((set_short, sticker_name))
 
     # 2) If miss, try a transient resolve within the requested set (no cache mutation)
     if file is None:

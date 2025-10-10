@@ -712,12 +712,14 @@ class AIGeneratingMediaSource(MediaSource):
                     tgs_file.write(data)
 
                 # Convert TGS to video
+                # Use 4 fps for efficiency - AI samples key frames anyway
                 video_file_path = convert_tgs_to_video(
                     tgs_path,
                     tgs_path.with_suffix(".mp4"),
                     width=512,
                     height=512,
                     duration=metadata.get("duration"),
+                    target_fps=4.0,
                 )
 
                 # Read the video data

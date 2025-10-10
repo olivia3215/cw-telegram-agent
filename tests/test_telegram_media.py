@@ -127,3 +127,32 @@ def test_detect_video_and_animated_sticker():
     parts_video_attr = iter_media_parts(msg_video_attr)
     assert len(parts_video_attr) == 1 and parts_video_attr[0].kind == "video"
     assert parts_video_attr[0].mime == "video/quicktime"
+
+
+def test_animated_sticker_not_duplicated():
+    """
+    Test that animated stickers (TGS) with both DocumentAttributeSticker and gzip MIME
+    are only added once, not duplicated.
+
+    This was a bug where TGS stickers were added twice:
+    - Once by _maybe_add_sticker (due to DocumentAttributeSticker)
+    - Once by _maybe_add_gif_or_animation (due to application/gzip MIME type)
+    """
+    # Create a TGS sticker as it comes from Telegram: with both stickerset attribute and gzip MIME
+    stickerset = Obj(short_name="Lamplover")
+    attr_sticker = Obj(stickerset=stickerset, alt="😂")
+    tgs_doc = Obj(
+        file_unique_id="tgs_with_stickerset",
+        mime_type="application/gzip",
+        attributes=[attr_sticker],
+    )
+    msg_tgs = make_msg(document=tgs_doc)
+    parts = iter_media_parts(msg_tgs)
+
+    # Should only have ONE sticker part, not two
+    assert len(parts) == 1
+    assert parts[0].kind == "sticker"
+    assert parts[0].is_animated_sticker()
+    assert parts[0].sticker_set_name == "Lamplover"
+    assert parts[0].sticker_name == "😂"
+    assert parts[0].mime == "application/gzip"

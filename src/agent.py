@@ -74,7 +74,7 @@ class Agent:
         )  # e.g. [("WendyDancer","Wink")]
 
         # (set_short_name, sticker_name) -> InputDocument
-        self.sticker_cache_by_set = {}
+        self.stickers = {}
 
         self._client = None
         self.agent_id = None

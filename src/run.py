@@ -122,15 +122,20 @@ async def scan_unread_messages(agent: Agent, work_queue):
 
 
 async def ensure_sticker_cache(agent, client):
-    # Build the set of sticker sets we want loaded
-    extra_sets = getattr(agent, "sticker_set_names", []) or []
+    # Determine which sets to load fully vs which to load selectively
+    full_sets = set(getattr(agent, "sticker_set_names", []) or [])
     explicit = getattr(agent, "explicit_stickers", []) or []
 
-    required_sets = set()
-    required_sets.update(extra_sets)
-    required_sets.update(
-        sticker_set_name for (sticker_set_name, _name) in explicit if sticker_set_name
-    )
+    # Group explicit stickers by set
+    explicit_by_set = {}
+    for sticker_set_name, sticker_name in explicit:
+        if sticker_set_name:
+            if sticker_set_name not in explicit_by_set:
+                explicit_by_set[sticker_set_name] = set()
+            explicit_by_set[sticker_set_name].add(sticker_name)
+
+    # All sets we need to fetch from Telegram
+    required_sets = full_sets | set(explicit_by_set.keys())
 
     # Ensure the tracking set exists
     loaded = getattr(agent, "loaded_sticker_sets", None)
@@ -142,11 +147,15 @@ async def ensure_sticker_cache(agent, client):
     if required_sets and required_sets.issubset(loaded):
         return
 
-    try:
-        for set_short in sorted(required_sets):
-            if set_short in loaded:
-                continue  # already fetched
+    # Ensure stickers dict exists
+    if not hasattr(agent, "stickers"):
+        agent.stickers = {}
 
+    for set_short in sorted(required_sets):
+        if set_short in loaded:
+            continue  # already fetched
+
+        try:
             result = await client(
                 GetStickerSetRequest(
                     stickerset=InputStickerSetShortName(short_name=set_short),
@@ -154,27 +163,30 @@ async def ensure_sticker_cache(agent, client):
                 )
             )
 
+            is_full_set = set_short in full_sets
+            explicit_names = explicit_by_set.get(set_short, set())
+
             for doc in result.documents:
                 name = next(
                     (a.alt for a in doc.attributes if hasattr(a, "alt")),
-                    f"sticker_{len(getattr(agent, 'sticker_cache_by_set', {})) + 1}",
+                    f"sticker_{len(agent.stickers) + 1}",
                 )
 
-                # by-set cache (create if absent)
-                if not hasattr(agent, "sticker_cache_by_set"):
-                    agent.sticker_cache_by_set = {}
-                agent.sticker_cache_by_set[(set_short, name)] = doc
-
-                logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
-                )
+                # Only store if:
+                # 1. This is a full set, OR
+                # 2. This specific sticker is in explicit_stickers
+                if is_full_set or name in explicit_names:
+                    agent.stickers[(set_short, name)] = doc
+                    logger.debug(
+                        f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                    )
 
             loaded.add(set_short)
 
-    except Exception as e:
-        logger.exception(
-            f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
-        )
+        except Exception as e:
+            logger.exception(
+                f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+            )
 
 
 async def run_telegram_loop(agent: Agent, work_queue):

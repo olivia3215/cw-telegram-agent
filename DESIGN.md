@@ -198,9 +198,9 @@ Agents can be configured with:
 3. **Telegram fetch**: Fetch from Telegram if not cached
 
 **Current system:**
-- `sticker_cache_by_set`: Multi-set cache `(sticker_set_name, sticker_name) -> document`
-- `sticker_set_names`: List of available sets
-- `explicit_stickers`: Specific set::sticker mappings
+- `stickers`: Agent's configured stickers `(sticker_set_name, sticker_name) -> document`
+- `sticker_set_names`: List of full sets to include
+- `explicit_stickers`: Specific set::sticker mappings to include
 
 **Requirements:**
 - Both set name and sticker name are required in sticker triggers
