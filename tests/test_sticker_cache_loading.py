@@ -34,7 +34,7 @@ class FakeAgent:
     def __init__(self, name="Wendy", sticker_set_names=None):
         self.name = name
         self.sticker_set_names = sticker_set_names or ["WendyDancer"]
-        self.sticker_cache_by_set = {}
+        self.stickers = {}
         self.loaded_sticker_sets = set()
 
 
@@ -53,9 +53,9 @@ async def test_ensure_sticker_cache_populates_both_caches(monkeypatch, tmp_path)
 
     await ensure_sticker_cache(agent, client)
 
-    # Cache by (set, name)
-    assert ("WendyDancer", "Wink") in agent.sticker_cache_by_set
-    assert ("WendyDancer", "Smile") in agent.sticker_cache_by_set
+    # Should have stickers by (set, name)
+    assert ("WendyDancer", "Wink") in agent.stickers
+    assert ("WendyDancer", "Smile") in agent.stickers
 
     # Idempotent
     await ensure_sticker_cache(agent, client)
@@ -104,14 +104,14 @@ async def test_ensure_sticker_cache_skips_failed_sets(monkeypatch, tmp_path):
     assert set(client.attempted_sets) == {"GoodSet1", "BadSet", "GoodSet2"}
 
     # Should have loaded the two good sets
-    assert ("GoodSet1", "Wink") in agent.sticker_cache_by_set
-    assert ("GoodSet1", "Smile") in agent.sticker_cache_by_set
-    assert ("GoodSet2", "Wink") in agent.sticker_cache_by_set
-    assert ("GoodSet2", "Smile") in agent.sticker_cache_by_set
+    assert ("GoodSet1", "Wink") in agent.stickers
+    assert ("GoodSet1", "Smile") in agent.stickers
+    assert ("GoodSet2", "Wink") in agent.stickers
+    assert ("GoodSet2", "Smile") in agent.stickers
 
     # Should not have loaded the bad set
-    assert ("BadSet", "Wink") not in agent.sticker_cache_by_set
-    assert ("BadSet", "Smile") not in agent.sticker_cache_by_set
+    assert ("BadSet", "Wink") not in agent.stickers
+    assert ("BadSet", "Smile") not in agent.stickers
 
     # Should have marked the good sets as loaded, but not the bad set
     assert "GoodSet1" in agent.loaded_sticker_sets

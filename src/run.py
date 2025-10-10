@@ -147,9 +147,9 @@ async def ensure_sticker_cache(agent, client):
     if required_sets and required_sets.issubset(loaded):
         return
 
-    # Ensure cache exists
-    if not hasattr(agent, "sticker_cache_by_set"):
-        agent.sticker_cache_by_set = {}
+    # Ensure stickers dict exists
+    if not hasattr(agent, "stickers"):
+        agent.stickers = {}
 
     for set_short in sorted(required_sets):
         if set_short in loaded:
@@ -169,14 +169,14 @@ async def ensure_sticker_cache(agent, client):
             for doc in result.documents:
                 name = next(
                     (a.alt for a in doc.attributes if hasattr(a, "alt")),
-                    f"sticker_{len(agent.sticker_cache_by_set) + 1}",
+                    f"sticker_{len(agent.stickers) + 1}",
                 )
 
-                # Only cache if:
+                # Only store if:
                 # 1. This is a full set, OR
                 # 2. This specific sticker is in explicit_stickers
                 if is_full_set or name in explicit_names:
-                    agent.sticker_cache_by_set[(set_short, name)] = doc
+                    agent.stickers[(set_short, name)] = doc
                     logger.debug(
                         f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
                     )

@@ -35,13 +35,13 @@ class FakeDoc:
 
 @pytest.mark.asyncio
 async def test_prompt_includes_sticker_descriptions(monkeypatch):
-    # Arrange a fake agent with by-set cache preloaded for two stickers
+    # Arrange a fake agent with configured stickers
     agent = SimpleNamespace(
         name="Wendy",
         sticker_set_name="WendyDancer",
         sticker_set_names=["WendyDancer"],
         explicit_stickers=[],
-        sticker_cache_by_set={
+        stickers={
             ("WendyDancer", "😉"): FakeDoc("😉"),
             ("WendyDancer", "😀"): FakeDoc("😀"),
         },
@@ -79,10 +79,10 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
 
     async def build_prompt_like_code(is_group=False):
         system_prompt = "SYSTEM\n"
-        if agent.sticker_cache_by_set:
+        if agent.stickers:
             lines = []
             media_chain = agent.get_media_source()
-            for (set_short, name), doc in agent.sticker_cache_by_set.items():
+            for (set_short, name), doc in agent.stickers.items():
                 record = await media_chain.get(
                     unique_id=f"uid-{name}",
                     agent=agent,
@@ -114,7 +114,7 @@ class FakeResult:
 
 @pytest.mark.asyncio
 async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
-    """Test that cache only contains explicit stickers and full sets."""
+    """Test that agent.stickers only contains explicit stickers and full sets."""
     # Simulate what ensure_sticker_cache does
 
     class FakeClientWithSets:
@@ -145,7 +145,7 @@ async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
             ("CloudiaSheep", "😳"),
             ("MrCat", "😠"),
         ],
-        sticker_cache_by_set={},
+        stickers={},
         loaded_sticker_sets=set(),
     )
 
@@ -163,17 +163,17 @@ async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
     # Should have loaded 4 sets (1 full + 3 with explicit stickers)
     assert client.calls == 4
 
-    # Cache should include all stickers from OliviaAI (full set)
-    assert ("OliviaAI", "👋") in agent.sticker_cache_by_set
-    assert ("OliviaAI", "👍") in agent.sticker_cache_by_set
+    # Should include all stickers from OliviaAI (full set)
+    assert ("OliviaAI", "👋") in agent.stickers
+    assert ("OliviaAI", "👍") in agent.stickers
 
-    # Cache should include only explicit stickers from other sets
-    assert ("Lamplover", "😂") in agent.sticker_cache_by_set
-    assert ("CloudiaSheep", "😳") in agent.sticker_cache_by_set
-    assert ("MrCat", "😠") in agent.sticker_cache_by_set
+    # Should include only explicit stickers from other sets
+    assert ("Lamplover", "😂") in agent.stickers
+    assert ("CloudiaSheep", "😳") in agent.stickers
+    assert ("MrCat", "😠") in agent.stickers
 
-    # Cache should NOT include non-explicit stickers from partial sets
-    assert ("Lamplover", "😘") not in agent.sticker_cache_by_set
-    assert ("Lamplover", "🤷‍♀️") not in agent.sticker_cache_by_set
-    assert ("CloudiaSheep", "😭") not in agent.sticker_cache_by_set
-    assert ("MrCat", "😡") not in agent.sticker_cache_by_set
+    # Should NOT include non-explicit stickers from partial sets
+    assert ("Lamplover", "😘") not in agent.stickers
+    assert ("Lamplover", "🤷‍♀️") not in agent.stickers
+    assert ("CloudiaSheep", "😭") not in agent.stickers
+    assert ("MrCat", "😡") not in agent.stickers

@@ -121,25 +121,25 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     Build a formatted list of available stickers with descriptions.
 
     Args:
-        agent: Agent instance with sticker cache
+        agent: Agent instance with configured stickers
         media_chain: Media source chain for description lookups
 
     Returns:
         Formatted sticker list string or None if no stickers available
     """
-    if not agent.sticker_cache_by_set:
+    if not agent.stickers:
         return None
 
     lines: list[str] = []
     try:
-        for set_short, name in sorted(agent.sticker_cache_by_set.keys()):
+        for set_short, name in sorted(agent.stickers.keys()):
             try:
                 if set_short == "AnimatedEmojies":
                     # Don't describe these - they are just animated emojis
                     desc = None
                 else:
-                    # Get the document from the sticker cache
-                    doc = agent.sticker_cache_by_set.get((set_short, name))
+                    # Get the document from the configured stickers
+                    doc = agent.stickers.get((set_short, name))
                     if doc:
                         # Get unique_id from document
                         _uid = get_unique_id(doc)
@@ -168,9 +168,7 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
         logger.warning(
             f"Failed to build sticker descriptions, falling back to names-only: {e}"
         )
-        lines = [
-            f"- {s} :: {n}" for (s, n) in sorted(agent.sticker_cache_by_set.keys())
-        ]
+        lines = [f"- {s} :: {n}" for (s, n) in sorted(agent.stickers.keys())]
 
     return "\n".join(lines) if lines else None
 
