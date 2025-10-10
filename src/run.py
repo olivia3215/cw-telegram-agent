@@ -142,11 +142,11 @@ async def ensure_sticker_cache(agent, client):
     if required_sets and required_sets.issubset(loaded):
         return
 
-    try:
-        for set_short in sorted(required_sets):
-            if set_short in loaded:
-                continue  # already fetched
+    for set_short in sorted(required_sets):
+        if set_short in loaded:
+            continue  # already fetched
 
+        try:
             result = await client(
                 GetStickerSetRequest(
                     stickerset=InputStickerSetShortName(short_name=set_short),
@@ -171,10 +171,10 @@ async def ensure_sticker_cache(agent, client):
 
             loaded.add(set_short)
 
-    except Exception as e:
-        logger.exception(
-            f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
-        )
+        except Exception as e:
+            logger.exception(
+                f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+            )
 
 
 async def run_telegram_loop(agent: Agent, work_queue):
