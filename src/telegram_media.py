@@ -174,12 +174,17 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
     attrs = getattr(doc, "attributes", None)
 
+    # Check if this document is a sticker (already handled by _maybe_add_sticker)
+    # Animated stickers (TGS) have both DocumentAttributeSticker and gzip MIME type,
+    # so we need to skip them here to avoid duplication
     is_animated = False
     is_video = False
     video_duration = None
     audio_duration = None
     if isinstance(attrs, (list, tuple)):
         for a in attrs:
+            if hasattr(a, "stickerset"):  # This is a sticker, skip it
+                return
             n = a.__class__.__name__
             if n == "DocumentAttributeAnimated":
                 is_animated = True

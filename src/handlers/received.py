@@ -360,7 +360,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     if sticker_list:
         system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
-        system_prompt += "\n\nYou may also send any sticker you've seen in chat using the sticker set name and sticker name.\n"
+        system_prompt += "\n\nYou may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
 
     # Add memory content after stickers and before current time
     memory_content = agent._load_memory_content(channel_id)

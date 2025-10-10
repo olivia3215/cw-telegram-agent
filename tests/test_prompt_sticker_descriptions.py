@@ -20,9 +20,17 @@ class FakeLLM:
         return "unused"
 
 
+class FakeAttr:
+    def __init__(self, alt: str):
+        self.alt = alt
+
+
 class FakeDoc:
-    # Just a stub to carry through to the helper
-    pass
+    def __init__(self, alt: str = ""):
+        if alt:
+            self.attributes = [FakeAttr(alt)]
+        else:
+            self.attributes = []
 
 
 @pytest.mark.asyncio
@@ -34,8 +42,8 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
         sticker_set_names=["WendyDancer"],
         explicit_stickers=[],
         sticker_cache_by_set={
-            ("WendyDancer", "😉"): FakeDoc(),
-            ("WendyDancer", "😀"): FakeDoc(),
+            ("WendyDancer", "😉"): FakeDoc("😉"),
+            ("WendyDancer", "😀"): FakeDoc("😀"),
         },
         client=object(),
         _llm=FakeLLM(),
@@ -97,3 +105,75 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
     # Assert both lines present with our formatted description suffix
     assert "- WendyDancer :: 😉 - desc for 😉" in system_prompt
     assert "- WendyDancer :: 😀 - desc for 😀" in system_prompt
+
+
+class FakeResult:
+    def __init__(self, docs):
+        self.documents = docs
+
+
+@pytest.mark.asyncio
+async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
+    """Test that cache only contains explicit stickers and full sets."""
+    # Simulate what ensure_sticker_cache does
+
+    class FakeClientWithSets:
+        def __init__(self):
+            self.calls = 0
+
+        async def __call__(self, request):
+            self.calls += 1
+            set_name = request.stickerset.short_name
+
+            # Simulate different sets with multiple stickers each
+            if set_name == "OliviaAI":
+                return FakeResult([FakeDoc("👋"), FakeDoc("👍")])
+            elif set_name == "Lamplover":
+                return FakeResult([FakeDoc("😂"), FakeDoc("😘"), FakeDoc("🤷‍♀️")])
+            elif set_name == "CloudiaSheep":
+                return FakeResult([FakeDoc("😳"), FakeDoc("😭")])
+            elif set_name == "MrCat":
+                return FakeResult([FakeDoc("😠"), FakeDoc("😡")])
+            return FakeResult([])
+
+    # Arrange an agent with one full set and some explicit stickers from other sets
+    agent = SimpleNamespace(
+        name="Olivia",
+        sticker_set_names=["OliviaAI"],  # Full set
+        explicit_stickers=[
+            ("Lamplover", "😂"),
+            ("CloudiaSheep", "😳"),
+            ("MrCat", "😠"),
+        ],
+        sticker_cache_by_set={},
+        loaded_sticker_sets=set(),
+    )
+
+    client = FakeClientWithSets()
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
+
+    import importlib
+
+    run = importlib.import_module("run")
+    ensure_sticker_cache = run.ensure_sticker_cache
+
+    # Load stickers
+    await ensure_sticker_cache(agent, client)
+
+    # Should have loaded 4 sets (1 full + 3 with explicit stickers)
+    assert client.calls == 4
+
+    # Cache should include all stickers from OliviaAI (full set)
+    assert ("OliviaAI", "👋") in agent.sticker_cache_by_set
+    assert ("OliviaAI", "👍") in agent.sticker_cache_by_set
+
+    # Cache should include only explicit stickers from other sets
+    assert ("Lamplover", "😂") in agent.sticker_cache_by_set
+    assert ("CloudiaSheep", "😳") in agent.sticker_cache_by_set
+    assert ("MrCat", "😠") in agent.sticker_cache_by_set
+
+    # Cache should NOT include non-explicit stickers from partial sets
+    assert ("Lamplover", "😘") not in agent.sticker_cache_by_set
+    assert ("Lamplover", "🤷‍♀️") not in agent.sticker_cache_by_set
+    assert ("CloudiaSheep", "😭") not in agent.sticker_cache_by_set
+    assert ("MrCat", "😡") not in agent.sticker_cache_by_set
