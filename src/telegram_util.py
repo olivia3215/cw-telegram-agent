@@ -84,3 +84,19 @@ async def get_channel_name(agent: Agent, channel_id: int):
 
 async def get_dialog_name(agent, channel_id):
     return await get_channel_name(agent, channel_id)
+
+
+def is_group_or_channel(entity) -> bool:
+    """
+    Returns True if the entity is a group or channel (has a title attribute).
+    Returns False if the entity is a user/DM.
+    """
+    return hasattr(entity, "title")
+
+
+def is_dm(entity) -> bool:
+    """
+    Returns True if the entity is a direct message with a user.
+    Returns False if the entity is a group or channel.
+    """
+    return not hasattr(entity, "title")

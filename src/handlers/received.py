@@ -21,7 +21,7 @@ from media.media_source import get_default_media_source_chain
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from telegram_media import get_unique_id
-from telegram_util import get_channel_name, get_dialog_name
+from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -336,7 +336,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     dialog = await agent.get_cached_entity(channel_id)
 
     # A group or channel will have a .title attribute, a user will not.
-    is_group = hasattr(dialog, "title")
+    is_group = is_group_or_channel(dialog)
 
     # ----- Build "system" content using agent's cached system prompt -----
     system_prompt = agent.get_system_prompt(channel_id)

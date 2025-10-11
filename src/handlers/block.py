@@ -9,7 +9,7 @@ from telethon.tl.functions.contacts import BlockRequest
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode
-from telegram_util import get_channel_name
+from telegram_util import get_channel_name, is_group_or_channel
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ async def handle_block(task: TaskNode, graph: TaskGraph):
 
     # Safety check: ensure this is a one-on-one conversation
     dialog = await agent.get_dialog(channel_id)
-    if hasattr(dialog.entity, "title"):
+    if is_group_or_channel(dialog.entity):
         logger.warning(
             f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting."
         )

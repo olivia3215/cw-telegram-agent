@@ -154,8 +154,9 @@ async def test_execute_clear_conversation(monkeypatch):
     # This configures the mock to work correctly with 'async with'
     mock_client.__aenter__.return_value = mock_client
 
-    mock_user = MagicMock()
-    mock_user.is_user = True
+    # Mock user entity - users don't have a 'title' attribute
+    # Use spec to limit what attributes can be accessed
+    mock_user = MagicMock(spec=["id", "first_name", "last_name", "username"])
     mock_client.get_entity.return_value = mock_user
 
     # Register a mock agent
