@@ -9,7 +9,7 @@ from telethon.tl.functions.messages import DeleteHistoryRequest
 
 from agent import Agent, get_agent_for_id
 from task_graph import TaskGraph, TaskNode
-from telegram_util import get_channel_name
+from telegram_util import get_channel_name, is_dm
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
         f"[{agent_name}] Resolved channel for ID [{await get_channel_name(agent, channel_id)}]: {channel} (type: {type(channel)})"
     )
 
-    if not getattr(channel, "is_user", False):
+    if not is_dm(channel):
         logger.info(
             f"[{agent_name}] Skipping clear-conversation: channel [{await get_channel_name(agent, channel_id)}] is not a DM."
         )
