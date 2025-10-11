@@ -46,7 +46,8 @@ async def test_run_one_tick_retries_on_failure():
 
     assert "previous_retries" in task.params
     assert task.status == TaskStatus.PENDING
-    assert any(n.identifier.startswith("wait-retry-") for n in graph.tasks)
+    assert any(n.type == "wait" for n in graph.tasks)
+    assert len(task.depends_on) == 1
     assert graph in queue._task_graphs
 
 

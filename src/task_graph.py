@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import threading
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -97,9 +98,7 @@ class TaskNode:
         graph: "TaskGraph",
         retry_interval_sec: int = 10,
         max_retries: int = 10,
-        now: datetime | None = None,
     ):
-        now = now or datetime.now(UTC)
         retry_count = self.params.get("previous_retries", 0) + 1
         self.params["previous_retries"] = retry_count
 
@@ -110,20 +109,50 @@ class TaskNode:
             self.status = TaskStatus.FAILED
             return False  # signal to delete graph
 
-        wait_id = f"wait-retry-{self.identifier}-{retry_count}"
-        wait_until = (now + timedelta(seconds=retry_interval_sec)).strftime(ISO_FORMAT)
-        wait_task = TaskNode(
-            identifier=wait_id, type="wait", params={"until": wait_until}, depends_on=[]
-        )
-
-        graph.add_task(wait_task)
-        self.depends_on.append(wait_id)
+        self.insert_delay(graph, retry_interval_sec)
 
         logger.warning(
             f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries})."
         )
         self.status = TaskStatus.PENDING
         return True
+
+    def insert_delay(
+        self,
+        graph: "TaskGraph",
+        delay_seconds: int,
+    ) -> "TaskNode":
+        """Insert a delay/wait task before this task.
+
+        Creates a new wait task with the specified delay and makes this task
+        depend on it. The returned wait task can be further mutated by the caller
+        (e.g., to add a "typing" parameter).
+
+        Args:
+            graph: The TaskGraph to add the wait task to
+            delay_seconds: Number of seconds to delay
+
+        Returns:
+            The newly created wait TaskNode
+        """
+        now = datetime.now(UTC)
+        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
+        wait_until = (now + timedelta(seconds=delay_seconds)).strftime(ISO_FORMAT)
+
+        wait_task = TaskNode(
+            identifier=wait_id,
+            type="wait",
+            params={
+                "delay": delay_seconds,
+                "until": wait_until,
+            },
+            depends_on=[],
+        )
+
+        graph.add_task(wait_task)
+        self.depends_on.append(wait_id)
+
+        return wait_task
 
 
 @dataclass

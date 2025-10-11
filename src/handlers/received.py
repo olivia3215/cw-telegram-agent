@@ -493,26 +493,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
             # Create a wait task for several seconds
             several = 15
-            wait_task_id = f"wait-{uuid.uuid4().hex[:8]}"
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=several)
-            wait_task = TaskNode(
-                identifier=wait_task_id,
-                type="wait",
-                params={
-                    "delay": several,
-                    "until": wait_until_time.strftime(ISO_FORMAT),
-                },
-                depends_on=[],
-            )
-
-            # Make the current received task depend on the wait task
-            task.depends_on.append(wait_task_id)
-
-            # Add the wait task to the graph
-            graph.add_task(wait_task)
+            wait_task = task.insert_delay(graph, several)
 
             logger.info(
-                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task_id}, received task {task.identifier}"
+                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
             )
             # Let the exception propagate - the task will be retried automatically several times, then marked as failed.
             raise
@@ -557,28 +541,17 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 delay_seconds = 4
 
             # Create wait task for typing indicator
-            wait_task_id = f"wait-typing-{uuid.uuid4().hex[:8]}"
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
-            wait_task = TaskNode(
-                identifier=wait_task_id,
-                type="wait",
-                params={
-                    "delay": delay_seconds,
-                    "until": wait_until_time.strftime(ISO_FORMAT),
-                    "typing": True,
-                },
-                depends_on=[last_id],
-            )
-
-            # Add wait task to graph
-            graph.add_task(wait_task)
-            last_id = wait_task_id
+            wait_task = task.insert_delay(graph, delay_seconds)
+            wait_task.depends_on.append(last_id)
+            wait_task.params["typing"] = True
+            last_id = wait_task.identifier
 
             logger.info(
                 f"[{agent_name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
             )
+        else:
+            task.depends_on.append(last_id)
 
-        task.depends_on.append(last_id)
         graph.add_task(task)
         last_id = task.identifier
 
