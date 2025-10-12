@@ -60,10 +60,13 @@ class GeminiLLM(LLM):
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
                 "threshold": HarmBlockThreshold.BLOCK_NONE,
             },
+            {
+                "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+                "threshold": HarmBlockThreshold.BLOCK_NONE,
+            },
             # Other categories commented out as they may cause problems:
             # - HARM_CATEGORY_CIVIC_INTEGRITY
             # - HARM_CATEGORY_DANGEROUS_CONTENT
-            # - HARM_CATEGORY_HARASSMENT
             # - HARM_CATEGORY_HATE_SPEECH
             # These categories are NOT supported by the stable model:
             # - HARM_CATEGORY_IMAGE_* (all image-related categories)
