@@ -6,11 +6,8 @@
 import logging
 from pathlib import Path
 
-import mistune
-
 from agent import all_agents, register_telegram_agent
 from config import CONFIG_DIRECTORIES
-from markdown_utils import flatten_node_text
 
 logger = logging.getLogger("register_agents")
 
@@ -53,32 +50,49 @@ def _parse_explicit_stickers(lines: list[str]) -> list[tuple[str, str]]:
 
 
 def extract_fields_from_markdown(md_text):
-    markdown = mistune.create_markdown(renderer="ast")
-    ast = markdown(md_text)
-
-    logger.debug("Markdown AST:")
-    for node in ast:
-        logger.debug(node)
+    """
+    Extract fields from markdown by splitting on level 1 headings.
+    Preserves all markdown content (including subheadings) under each level 1 heading.
+    """
+    import re
 
     fields = {}
-    current_header = None
-    paragraph_blocks = []
 
-    for node in ast:
-        if node["type"] == "heading" and node.get("attrs", {}).get("level") == 1:
-            if current_header:
-                fields[current_header] = "\n\n".join(paragraph_blocks).strip()
-            current_header = node["children"][0].get("raw", "")
-            paragraph_blocks = []
-        elif current_header and node["type"] == "paragraph":
-            text_lines = flatten_node_text(node)
-            paragraph_blocks.append("\n".join(text_lines))
-            logger.debug(f"Extracted paragraph (raw): {repr(text_lines)}")
+    # Split on level 1 headings (# Heading) while capturing the heading text
+    # Pattern matches: start of line, single #, space, heading text, end of line
+    pattern = r"^# +(.+?)$"
 
-    if current_header:
-        fields[current_header] = "\n\n".join(paragraph_blocks).strip()
+    # Find all level 1 headings and their positions
+    headings = []
+    for match in re.finditer(pattern, md_text, re.MULTILINE):
+        heading_text = match.group(1).strip()
+        start_pos = match.end()  # Position after the heading line
+        headings.append((heading_text, start_pos))
 
-    logger.debug(f"Extracted fields: {fields}")
+    logger.debug(f"Found {len(headings)} level 1 headings")
+
+    # Extract content between each heading
+    for i, (heading_text, start_pos) in enumerate(headings):
+        # Find the end position (start of next heading, or end of text)
+        if i + 1 < len(headings):
+            # Find the start of the next heading line (not just after it)
+            next_heading_pattern = r"^# +" + re.escape(headings[i + 1][0])
+            next_match = re.search(
+                next_heading_pattern, md_text[start_pos:], re.MULTILINE
+            )
+            if next_match:
+                end_pos = start_pos + next_match.start()
+            else:
+                end_pos = len(md_text)
+        else:
+            end_pos = len(md_text)
+
+        # Extract and clean the content
+        content = md_text[start_pos:end_pos].strip()
+        fields[heading_text] = content
+        logger.debug(f"Extracted field '{heading_text}': {len(content)} chars")
+
+    logger.debug(f"Extracted fields: {list(fields.keys())}")
     return fields
 
 

@@ -107,3 +107,55 @@ OliviaRole
     assert parsed is not None
     assert parsed["sticker_set_names"] == ["OLIVIAAI"]
     assert parsed["explicit_stickers"] == [("OLIVIAAI", "Smile")]
+
+
+def test_parse_agent_markdown_preserves_subheadings(tmp_path: Path):
+    """Test that level 2 headings (##) and other markdown formatting are preserved."""
+    md = """# Agent Name
+Mary
+
+# Agent Phone
++19714153741
+
+# Agent Instructions
+You should adopt the writing style of a romance novel.
+
+## Scenario
+
+{character} is a nun who maintains the run-down church in her parish.
+
+## Character Persona
+
+{character} is a 35-year-old nun.
+She is lonely.
+
+## First Message
+
+Welcome to the church!
+
+# Role Prompt
+Roleplay
+"""
+    path = _write(tmp_path, "mary.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["name"] == "Mary"
+    assert parsed["phone"] == "+19714153741"
+
+    # Verify that the instructions contain the subheadings
+    instructions = parsed["instructions"]
+    assert "## Scenario" in instructions
+    assert "## Character Persona" in instructions
+    assert "## First Message" in instructions
+
+    # Verify content is preserved
+    assert "{character} is a nun" in instructions
+    assert "{character} is a 35-year-old nun" in instructions
+    assert "She is lonely." in instructions
+    assert "Welcome to the church!" in instructions
+
+    # Verify the order is correct (should appear in this order)
+    scenario_pos = instructions.index("## Scenario")
+    persona_pos = instructions.index("## Character Persona")
+    first_msg_pos = instructions.index("## First Message")
+    assert scenario_pos < persona_pos < first_msg_pos
