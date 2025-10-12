@@ -381,7 +381,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Add conversation start instruction if this is the beginning of a conversation
     if is_conversation_start:
-        conversation_start_instruction = f"\n\n***IMPORTANT***\n\nThis is the beginning of a conversation with {channel_name}. Please respond with your first message."
+        conversation_start_instruction = (
+            "\n\n***IMPORTANT***"
+            + f"\n\nThis is the beginning of a conversation with {channel_name}."
+            + " Respond with your first message or an adaptation of it if needed."
+        )
         system_prompt = system_prompt + conversation_start_instruction
         logger.info(
             f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction due to {m}"
