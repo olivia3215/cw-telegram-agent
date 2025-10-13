@@ -360,95 +360,51 @@ async def parse_llm_reply_from_markdown(
     return task_nodes
 
 
-async def parse_llm_reply(
-    text: str, *, agent_id, channel_id, agent=None
-) -> list[TaskNode]:
-    # Gemini generates this, and prompting doesn't seem to discourage it.
-    if text.startswith("```markdown\n") and text.endswith("```"):
-        text = text.removeprefix("```markdown\n").removesuffix("```")
-    if text.startswith("```markdown\n") and text.endswith("```\n"):
-        text = text.removeprefix("```markdown\n").removesuffix("```\n")
-
-    # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
-    if not text.startswith("# "):
-        text = "# «send»\n\n" + text
-    return await parse_llm_reply_from_markdown(
-        text, agent_id=agent_id, channel_id=channel_id, agent=agent
-    )
-
-    # # Dumb models might reply with just the reply text and not understand the task machinery.
-    # task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
-    # params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
-    # task_nodes = [
-    #     TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
-    # ]
-    # return task_nodes
-
-
-@register_task_handler("received")
-async def handle_received(task: TaskNode, graph: TaskGraph):
+async def _build_complete_system_prompt(
+    agent,
+    channel_id: int,
+    messages,
+    media_chain,
+    is_group: bool,
+    channel_name: str,
+    target_msg,
+) -> str:
     """
-    Process an inbound 'received' event:
-      1) Fetch recent messages
-      2) Run media description injection (stickers + photos together), newest→oldest
-      3) Call Gemini via role-structured 'contents' using one text part per message
-      4) Parse tasks and enqueue
+    Build the complete system prompt with all sections.
+
+    Args:
+        agent: The agent instance
+        channel_id: The conversation ID
+        messages: List of Telegram messages
+        media_chain: Media source chain for sticker descriptions
+        is_group: Whether this is a group chat
+        channel_name: Display name of the conversation partner
+        target_msg: Optional target message to respond to
+
+    Returns:
+        Complete system prompt string
     """
-    channel_id = graph.context.get("channel_id")
-    assert channel_id
-    agent_id = graph.context.get("agent_id")
-    assert agent_id
-    agent = get_agent_for_id(agent_id)
-    assert agent_id
-    client = agent.client
-    llm = agent.llm
     agent_name = agent.name
 
-    if not channel_id or not agent_id or not client:
-        raise RuntimeError("Missing context or Telegram client")
-
-    # 1) Fetch recent messages (chronological list returned by Telethon when reversed)
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
-
-    # 2) Get the global media source chain (used for all media operations)
-    media_chain = get_default_media_source_chain()
-
-    # 3) Inject/refresh media descriptions so single-line renderings are available
-    # Priority: Process messages newest→oldest (messages from get_messages are newest-first)
-    # This ensures recent message media gets described before budget is exhausted
-    messages = await inject_media_descriptions(
-        messages, agent=agent, peer_id=channel_id
-    )
-
-    is_callout = task.params.get("callout", False)
-    dialog = await agent.get_cached_entity(channel_id)
-
-    # A group or channel will have a .title attribute, a user will not.
-    is_group = is_group_or_channel(dialog)
-
-    # ----- Build "system" content using agent's cached system prompt -----
+    # Get base system prompt
     system_prompt = agent.get_system_prompt(channel_id)
 
-    # Apply template substitution to the cached system prompt
+    # Apply template substitution
     system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
     system_prompt = system_prompt.replace("{{character}}", agent.name)
     system_prompt = system_prompt.replace("{character}", agent.name)
     system_prompt = system_prompt.replace("{{char}}", agent.name)
     system_prompt = system_prompt.replace("{char}", agent.name)
-    channel_name = await get_dialog_name(agent, channel_id)
     system_prompt = system_prompt.replace("{{user}}", channel_name)
     system_prompt = system_prompt.replace("{user}", channel_name)
 
-    # Build the by-set sticker list, computing descriptions via helper so tests can monkeypatch it.
-    # Priority: Stickers already described in messages (step 3) will be cache hits (no budget consumed)
-    # Only new stickers not in messages will consume remaining budget
+    # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
-
     if sticker_list:
         system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
         system_prompt += "\n\nYou may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
 
-    # Add memory content after stickers and before current time
+    # Add memory content
     memory_content = agent._load_memory_content(channel_id)
     if memory_content:
         system_prompt += f"\n\n{memory_content}\n"
@@ -458,7 +414,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     else:
         logger.info(f"[{agent_name}] No memory content found for channel {channel_id}")
 
+    # Check if this is conversation start
     is_conversation_start = True
+    agent_id = (
+        agent.client.session.user_id if hasattr(agent.client, "session") else None
+    )
     for m in messages:
         if (
             getattr(m, "from_id", None)
@@ -467,7 +427,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             is_conversation_start = False
             break
 
-    # Add conversation start instruction if this is the beginning of a conversation
+    # Add conversation start instruction if needed
     if is_conversation_start:
         conversation_start_instruction = (
             "\n\n***IMPORTANT***"
@@ -476,18 +436,40 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         )
         system_prompt = system_prompt + conversation_start_instruction
         logger.info(
-            f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages), added first message instruction due to {m}"
+            f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages)"
         )
 
+    # Add current time and chat type
     now = agent.get_current_time()
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
 
-    # Map each Telethon message to a ProcessedMessage object
+    # Add target message instruction if provided
+    if target_msg is not None and getattr(target_msg, "id", ""):
+        system_prompt += f"\n# Target Message\nConsider responding to message with message_id {getattr(target_msg, 'id', '')}.\n"
+
+    return system_prompt
+
+
+async def _process_message_history(
+    messages, agent, media_chain
+) -> list[ProcessedMessage]:
+    """
+    Convert Telegram messages to ProcessedMessage objects.
+
+    Args:
+        messages: List of Telegram messages (newest first)
+        agent: The agent instance
+        media_chain: Media source chain for formatting
+
+    Returns:
+        List of ProcessedMessage objects in chronological order (oldest first)
+    """
     history_rendered_items: list[ProcessedMessage] = []
     chronological = list(reversed(messages))  # oldest → newest
+
     for m in chronological:
         message_parts = await format_message_for_prompt(
             m, agent=agent, media_chain=media_chain
@@ -495,37 +477,29 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         if not message_parts:
             continue
 
-        # sender_id is stable; get display name for better context
+        # Get sender information
         sender_id_val = getattr(m, "sender_id", None)
         sender_id = str(sender_id_val) if sender_id_val is not None else "unknown"
-
-        # Get actual sender name for better context in prompts
         sender_display = (
             await get_channel_name(agent, sender_id_val) if sender_id_val else "unknown"
         )
         message_id = str(getattr(m, "id", ""))
-
-        # Telethon marks messages sent by the logged-in account with .out == True
         is_from_agent = bool(getattr(m, "out", False))
 
-        # Extract reply_to information if the message is a reply
+        # Extract reply_to information
         reply_to_msg_id = None
         reply_to = getattr(m, "reply_to", None)
         if reply_to:
-            # reply_to has a reply_to_msg_id attribute
             reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
             if reply_to_msg_id_val is not None:
                 reply_to_msg_id = str(reply_to_msg_id_val)
 
-        # Extract and format timestamp in agent's local timezone
+        # Extract and format timestamp
         timestamp_str = None
         msg_date = getattr(m, "date", None)
         if msg_date:
-            # Ensure msg_date is timezone-aware before converting
             if msg_date.tzinfo is None:
-                # Naive datetime - assume UTC (Telethon default)
                 msg_date = msg_date.replace(tzinfo=UTC)
-            # Convert to agent's timezone and format as readable string
             local_time = msg_date.astimezone(agent.timezone)
             timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
@@ -541,41 +515,57 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             )
         )
 
-    # Determine which message we want to respond to
-    message_id_param = task.params.get("message_id", None)
-    target_msg = None
-    if message_id_param is not None:
-        for m in messages:
-            if getattr(m, "id", None) == message_id_param:
-                target_msg = m
-                break
+    return history_rendered_items
 
-    # Add target message instruction if provided
-    if target_msg is not None and getattr(target_msg, "id", ""):
-        system_prompt += f"\n# Target Message\nConsider responding to message with message_id {getattr(target_msg, "id", "")}.\n"
 
-    # We keep your existing prompt strings intact, but pass history as parts.
-    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
-    chat_type = "group" if is_group else "direct"
+async def _run_llm_with_retrieval(
+    agent,
+    system_prompt: str,
+    history_items: list[ProcessedMessage],
+    now_iso: str,
+    chat_type: str,
+    agent_id: int,
+    channel_id: int,
+    task: TaskNode,
+    graph: TaskGraph,
+) -> list[TaskNode]:
+    """
+    Run LLM query loop with retrieval augmentation support.
+
+    Args:
+        agent: The agent instance
+        system_prompt: Base system prompt
+        history_items: Processed message history
+        now_iso: Current time in ISO format
+        chat_type: "group" or "direct"
+        agent_id: Agent's Telegram user ID
+        channel_id: Conversation ID
+        task: The received task being processed
+        graph: Task graph for error handling
+
+    Returns:
+        List of TaskNode objects from LLM response
+    """
+    agent_name = agent.name
+    llm = agent.llm
 
     # Retrieval augmentation loop
     retrieval_round = 0
     retrieved_urls: set[str] = set()
-    retrieved_contents: list[tuple[str, str]] = []  # List of (url, content) tuples
+    retrieved_contents: list[tuple[str, str]] = []
     tasks = []
     suppress_retrieve = False
 
     while True:
-        # Build the final system prompt with retrieval content if any
+        # Build final system prompt with retrieval content
         final_system_prompt = system_prompt
 
-        # Inject retrieved content as system messages at the beginning of conversation
+        # Inject retrieved content as system messages
         retrieval_history_items = []
         for url, content in retrieved_contents:
-            # Create a system message for each retrieved URL
             retrieval_history_items.append(
                 {
-                    "sender": "",  # No sender name for system messages
+                    "sender": "",
                     "sender_id": "system",
                     "msg_id": "",
                     "is_agent": False,
@@ -589,7 +579,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 }
             )
 
-        # Conditionally include Retrieve.md in the system prompt (only if agent has it configured)
+        # Conditionally include Retrieve.md
         if not suppress_retrieve and "Retrieve" in agent.role_prompt_names:
             try:
                 from prompt_loader import load_system_prompt
@@ -599,7 +589,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             except Exception as e:
                 logger.debug(f"[{agent_name}] Could not load Retrieve.md prompt: {e}")
 
-        # Combine retrieval items (at beginning) with regular history
+        # Combine retrieval items with regular history
         combined_history = list(retrieval_history_items) + [
             {
                 "sender": item.sender_display,
@@ -610,11 +600,10 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 "reply_to_msg_id": item.reply_to_msg_id,
                 "ts_iso": item.timestamp,
             }
-            for item in history_rendered_items
+            for item in history_items
         ]
 
-        # system_prompt: we use the full system_prompt you've assembled (keeps behavior identical)
-        # role_prompt and llm_specific_prompt are passed as None because they are already included in system_prompt.
+        # Query LLM
         try:
             reply = await llm.query_structured(
                 system_prompt=final_system_prompt,
@@ -627,29 +616,23 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         except Exception as e:
             if is_retryable_llm_error(e):
                 logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
-                # Create a wait task for several seconds
                 several = 15
                 wait_task = task.insert_delay(graph, several)
-
                 logger.info(
                     f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
                 )
-                # Let the exception propagate - the task will be retried automatically several times, then marked as failed.
                 raise
             else:
                 logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-                # For permanent failures, don't retry - just return to mark task as done
-                return
+                return []
 
         if reply == "":
-            logger.info(
-                f"[{agent_name}] LLM decided not to reply to {message_id_param}"
-            )
-            return
+            logger.info(f"[{agent_name}] LLM decided not to reply")
+            return []
 
         logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
-        # Parse the tasks from the LLM response
+        # Parse the tasks
         try:
             tasks = await parse_llm_reply(
                 reply, agent_id=agent_id, channel_id=channel_id, agent=agent
@@ -658,26 +641,25 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             logger.exception(
                 f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
             )
-            return
+            return []
 
-        # Check if there are retrieve tasks
+        # Check for retrieve tasks
         retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
 
         if not retrieve_tasks:
-            # No retrieve tasks, exit the loop
             break
 
-        # We have retrieve tasks - process them
+        # Process retrieve tasks
         retrieval_round += 1
         logger.info(
             f"[{agent_name}] Retrieval round {retrieval_round}: Found {len(retrieve_tasks)} retrieve task(s)"
         )
 
-        # Collect all URLs from retrieve tasks (limit to 3 per round)
+        # Collect URLs to fetch (limit 3)
         urls_to_fetch = []
         for retrieve_task in retrieve_tasks:
             task_urls = retrieve_task.params.get("urls", [])
-            for url in task_urls[:3]:  # Limit to 3 URLs
+            for url in task_urls[:3]:
                 if url not in retrieved_urls:
                     urls_to_fetch.append(url)
                     if len(urls_to_fetch) >= 3:
@@ -685,7 +667,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             if len(urls_to_fetch) >= 3:
                 break
 
-        # Check if all requested URLs have already been retrieved (duplicate request)
+        # Check for duplicate URLs
         if not urls_to_fetch:
             logger.info(
                 f"[{agent_name}] All requested URLs already retrieved - suppressing Retrieve.md and retrying"
@@ -693,7 +675,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             suppress_retrieve = True
             continue
 
-        # Fetch the URLs
+        # Fetch URLs
         logger.info(
             f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
         )
@@ -705,18 +687,37 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
                 f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
             )
 
-        # Check if we've reached max retrieval rounds
+        # Check max rounds
         if retrieval_round >= RETRIEVAL_MAX_ROUNDS:
             logger.info(
                 f"[{agent_name}] Reached max retrieval rounds ({RETRIEVAL_MAX_ROUNDS}) - suppressing Retrieve.md"
             )
             suppress_retrieve = True
 
-        # Continue the loop to re-query the LLM with the new content
+    return tasks
 
-    # Inject conversation-specific context into each task and insert wait tasks for typing
-    fallback_reply_to = task.params.get("message_id") if is_group else None
-    last_id = task.identifier
+
+async def _schedule_tasks(
+    tasks: list[TaskNode],
+    received_task: TaskNode,
+    graph: TaskGraph,
+    is_callout: bool,
+    is_group: bool,
+    agent_name: str,
+):
+    """
+    Add tasks to graph with proper dependencies and typing delays.
+
+    Args:
+        tasks: List of tasks to schedule
+        received_task: The original received task
+        graph: Task graph to add tasks to
+        is_callout: Whether this was a callout message
+        is_group: Whether this is a group chat
+        agent_name: Agent name for logging
+    """
+    fallback_reply_to = received_task.params.get("message_id") if is_group else None
+    last_id = received_task.identifier
 
     for task in tasks:
         if is_callout:
@@ -749,4 +750,103 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
         graph.add_task(task)
         last_id = task.identifier
 
+
+async def parse_llm_reply(
+    text: str, *, agent_id, channel_id, agent=None
+) -> list[TaskNode]:
+    # Gemini generates this, and prompting doesn't seem to discourage it.
+    if text.startswith("```markdown\n") and text.endswith("```"):
+        text = text.removeprefix("```markdown\n").removesuffix("```")
+    if text.startswith("```markdown\n") and text.endswith("```\n"):
+        text = text.removeprefix("```markdown\n").removesuffix("```\n")
+
+    # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
+    if not text.startswith("# "):
+        text = "# «send»\n\n" + text
+    return await parse_llm_reply_from_markdown(
+        text, agent_id=agent_id, channel_id=channel_id, agent=agent
+    )
+
+    # # Dumb models might reply with just the reply text and not understand the task machinery.
+    # task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
+    # params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
+    # task_nodes = [
+    #     TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
+    # ]
+    # return task_nodes
+
+
+@register_task_handler("received")
+async def handle_received(task: TaskNode, graph: TaskGraph):
+    """
+    Process an inbound 'received' event:
+      1) Fetch recent messages and inject media descriptions
+      2) Build system prompt with all sections
+      3) Process message history
+      4) Run LLM with retrieval augmentation loop
+      5) Schedule output tasks
+    """
+    # Extract context
+    channel_id = graph.context.get("channel_id")
+    assert channel_id
+    agent_id = graph.context.get("agent_id")
+    assert agent_id
+    agent = get_agent_for_id(agent_id)
+    assert agent_id
+    client = agent.client
+    agent_name = agent.name
+
+    if not channel_id or not agent_id or not client:
+        raise RuntimeError("Missing context or Telegram client")
+
+    # Fetch and prepare messages
+    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    media_chain = get_default_media_source_chain()
+    messages = await inject_media_descriptions(
+        messages, agent=agent, peer_id=channel_id
+    )
+
+    # Get conversation context
+    is_callout = task.params.get("callout", False)
+    dialog = await agent.get_cached_entity(channel_id)
+    is_group = is_group_or_channel(dialog)
+    channel_name = await get_dialog_name(agent, channel_id)
+
+    # Find target message if specified
+    message_id_param = task.params.get("message_id", None)
+    target_msg = None
+    if message_id_param is not None:
+        for m in messages:
+            if getattr(m, "id", None) == message_id_param:
+                target_msg = m
+                break
+
+    # Build complete system prompt
+    system_prompt = await _build_complete_system_prompt(
+        agent, channel_id, messages, media_chain, is_group, channel_name, target_msg
+    )
+
+    # Process message history
+    history_items = await _process_message_history(messages, agent, media_chain)
+
+    # Run LLM with retrieval augmentation
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    chat_type = "group" if is_group else "direct"
+
+    tasks = await _run_llm_with_retrieval(
+        agent,
+        system_prompt,
+        history_items,
+        now_iso,
+        chat_type,
+        agent_id,
+        channel_id,
+        task,
+        graph,
+    )
+
+    # Schedule output tasks
+    await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent_name)
+
+    # Mark conversation as read
     await client.send_read_acknowledge(channel_id)
