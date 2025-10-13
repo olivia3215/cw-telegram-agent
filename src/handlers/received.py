@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import requests
+import httpx
 
 from agent import get_agent_for_id
 from config import RETRIEVAL_MAX_ROUNDS, STATE_DIRECTORY
@@ -47,7 +47,8 @@ async def _fetch_url(url: str) -> tuple[str, str]:
     """
     try:
         # Fetch with 10 second timeout, follow redirects
-        response = requests.get(url, timeout=10, allow_redirects=True)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+            response = await client.get(url)
 
         # Check content type
         content_type = response.headers.get("content-type", "").lower()
@@ -66,18 +67,18 @@ async def _fetch_url(url: str) -> tuple[str, str]:
 
         return (url, content)
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         return (
             url,
             "<html><body><h1>Error: Request Timeout</h1><p>The request timed out after 10 seconds.</p></body></html>",
         )
-    except requests.exceptions.TooManyRedirects:
+    except httpx.TooManyRedirects:
         return (
             url,
             "<html><body><h1>Error: Too Many Redirects</h1><p>The request resulted in too many redirects.</p></body></html>",
         )
-    except requests.exceptions.RequestException as e:
-        # Generic request exception - return error HTML
+    except httpx.HTTPError as e:
+        # Generic HTTP exception - return error HTML
         error_type = type(e).__name__
         return (
             url,
