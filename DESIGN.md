@@ -224,8 +224,9 @@ Retrieve
 The `Retrieve.md` prompt provides comprehensive instructions:
 
 **Search Resources:**
-- Google Search: `https://www.google.com/search?q=...`
+- DuckDuckGo HTML (recommended): `https://html.duckduckgo.com/html/?q=...`
 - Wikipedia: `https://en.wikipedia.org/w/index.php?search=...`
+- Google Search: `https://www.google.com/search?q=...` (may require JavaScript)
 - Google Scholar: `https://scholar.google.com/scholar?q=...`
 - Google News: `https://news.google.com/` or `https://news.google.com/search?q=...`
 

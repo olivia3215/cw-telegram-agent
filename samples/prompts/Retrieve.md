@@ -22,8 +22,15 @@ https://en.wikipedia.org/wiki/Topic
 
 ## Useful Search Resources
 
+### DuckDuckGo HTML Search (Recommended)
+DuckDuckGo's HTML version works great without JavaScript:
+```
+https://html.duckduckgo.com/html/?q=your+search+terms+here
+```
+Replace spaces with `+` in your search query.
+
 ### Google Search
-To search for general information:
+Google search may require JavaScript. For better results, try DuckDuckGo above or Wikipedia directly:
 ```
 https://www.google.com/search?q=your+search+terms+here
 ```
@@ -83,7 +90,7 @@ The user asked about recent developments in quantum computing. I should search f
 
 # «retrieve»
 
-https://www.google.com/search?q=quantum+computing+recent+developments+2025
+https://html.duckduckgo.com/html/?q=quantum+computing+recent+developments+2025
 ```
 
 ### Example 2: Search Then Retrieve Specific Pages
@@ -92,7 +99,7 @@ First retrieval (search):
 ```
 # «retrieve»
 
-https://www.google.com/search?q=python+asyncio+tutorial
+https://html.duckduckgo.com/html/?q=python+asyncio+tutorial
 ```
 
 After seeing the search results, second retrieval:

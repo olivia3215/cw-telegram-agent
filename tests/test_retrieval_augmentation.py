@@ -118,11 +118,14 @@ async def test_fetch_url_success():
 
         assert url == "https://example.com"
         assert content == "<html><body>Test content</body></html>"
-        # Verify User-Agent header is set
+        # Verify headers are set for no-JS compatibility
         call_args = mock_client.__aenter__.return_value.get.call_args
         assert call_args[0][0] == "https://example.com"
-        assert "User-Agent" in call_args[1]["headers"]
-        assert "Mozilla" in call_args[1]["headers"]["User-Agent"]
+        headers = call_args[1]["headers"]
+        assert "User-Agent" in headers
+        assert "Mozilla" in headers["User-Agent"]
+        assert "Accept" in headers
+        assert "Accept-Language" in headers
 
 
 @pytest.mark.asyncio

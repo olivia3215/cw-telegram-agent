@@ -46,9 +46,11 @@ async def _fetch_url(url: str) -> tuple[str, str]:
     Follows redirects, uses 10 second timeout.
     """
     try:
-        # Fetch with 10 second timeout, follow redirects, realistic User-Agent
+        # Fetch with 10 second timeout, follow redirects, headers optimized for no-JS
         headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
             response = await client.get(url, headers=headers)
