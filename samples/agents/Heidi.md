@@ -20,6 +20,8 @@ Chatbot
 Student
 Person
 Memory
+Think
+Retrieve
 
 # Agent Instructions
 
