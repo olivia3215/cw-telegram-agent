@@ -574,9 +574,8 @@ async def _run_llm_with_retrieval(
                     "msg_id": "",
                     "is_agent": False,
                     "parts": [
-                        MsgTextPart(
-                            kind="text", text=f"Retrieved from {url}:\n\n{content}"
-                        )
+                        MsgTextPart(kind="text", text=f"Retrieved from {url}:"),
+                        MsgTextPart(kind="text", text=content),
                     ],
                     "reply_to_msg_id": None,
                     "ts_iso": None,

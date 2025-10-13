@@ -174,11 +174,10 @@ Don't use retrieval for:
 
 ## How Retrieved Content Appears
 
-When you retrieve URLs, their content will be injected as system messages at the beginning of the conversation. You'll see messages like:
+When you retrieve URLs, their content will be injected as system messages at the beginning of the conversation. Each retrieval appears as two message parts:
 
-```
-Retrieved from https://example.com: [content here...]
-```
+1. **Part 1**: `Retrieved from https://example.com:`
+2. **Part 2**: The actual page content
 
 Check these system messages to see what's already been retrieved before requesting more URLs.
 
