@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import requests
+
 from agent import get_agent_for_id
-from config import STATE_DIRECTORY
-from llm.base import MsgPart
+from config import RETRIEVAL_MAX_ROUNDS, STATE_DIRECTORY
+from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
@@ -26,6 +28,69 @@ from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+async def _fetch_url(url: str) -> tuple[str, str]:
+    """
+    Fetch a URL and return (url, content) tuple.
+
+    Args:
+        url: The URL to fetch
+
+    Returns:
+        Tuple of (url, content) where content is:
+        - The HTML content (truncated to 8k) if successful and content-type is HTML
+        - Error message describing the failure if request failed
+        - Note about content type if non-HTML
+
+    Follows redirects, uses 10 second timeout.
+    """
+    try:
+        # Fetch with 10 second timeout, follow redirects
+        response = requests.get(url, timeout=10, allow_redirects=True)
+
+        # Check content type
+        content_type = response.headers.get("content-type", "").lower()
+
+        # If not HTML, return a note about the content type
+        if "html" not in content_type:
+            return (
+                url,
+                f"Content-Type: {content_type} - not fetched (non-HTML content)",
+            )
+
+        # Get the content, truncate to 8k
+        content = response.text
+        if len(content) > 8000:
+            content = content[:8000] + "\n\n[Content truncated at 8000 characters]"
+
+        return (url, content)
+
+    except requests.exceptions.Timeout:
+        return (
+            url,
+            "<html><body><h1>Error: Request Timeout</h1><p>The request timed out after 10 seconds.</p></body></html>",
+        )
+    except requests.exceptions.TooManyRedirects:
+        return (
+            url,
+            "<html><body><h1>Error: Too Many Redirects</h1><p>The request resulted in too many redirects.</p></body></html>",
+        )
+    except requests.exceptions.RequestException as e:
+        # Generic request exception - return error HTML
+        error_type = type(e).__name__
+        return (
+            url,
+            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+        )
+    except Exception as e:
+        # Unexpected exception
+        error_type = type(e).__name__
+        logger.exception(f"Unexpected error fetching URL {url}: {e}")
+        return (
+            url,
+            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+        )
 
 
 async def _process_remember_task(agent, channel_id: int, memory_content: str):
@@ -178,10 +243,11 @@ async def parse_llm_reply_from_markdown(
 ) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
-    Recognized task types: send, sticker, wait, shutdown, remember, think.
+    Recognized task types: send, sticker, wait, shutdown, remember, think, retrieve.
 
     Remember tasks are processed immediately and not added to the task graph.
     Think tasks are discarded and not added to the task graph - they exist only to allow the LLM to reason before producing output.
+    Retrieve tasks are used for retrieval augmentation and are handled specially in handle_received.
     """
     task_nodes = []
     current_type = None
@@ -255,6 +321,20 @@ async def parse_llm_reply_from_markdown(
                 f"[think] Discarding think task content (length: {len(body)} chars)"
             )
             return  # Don't add to task_nodes
+
+        elif current_type == "retrieve":
+            # Parse URLs from retrieve task body (one URL per line)
+            urls = []
+            for line in body.strip().split("\n"):
+                line = line.strip()
+                if line and (line.startswith("http://") or line.startswith("https://")):
+                    urls.append(line)
+
+            if not urls:
+                logger.warning("[retrieve] No valid URLs found in retrieve task body")
+                return  # Don't add to task_nodes
+
+            params["urls"] = urls
 
         else:
             raise ValueError(f"Unknown task type: {current_type}")
@@ -478,59 +558,161 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     now_iso = datetime.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
-    # system_prompt: we use the full system_prompt you've assembled (keeps behavior identical)
-    # role_prompt and llm_specific_prompt are passed as None because they are already included in system_prompt.
-    try:
-        reply = await llm.query_structured(
-            system_prompt=system_prompt,
-            now_iso=now_iso,
-            chat_type=chat_type,
-            history=(
-                {
-                    "sender": item.sender_display,
-                    "sender_id": item.sender_id,
-                    "msg_id": item.message_id,
-                    "is_agent": item.is_from_agent,
-                    "parts": item.message_parts,
-                    "reply_to_msg_id": item.reply_to_msg_id,
-                    "ts_iso": item.timestamp,
-                }
-                for item in history_rendered_items
-            ),
-            history_size=agent.llm.history_size,
-            timeout_s=None,
-        )
-    except Exception as e:
-        if is_retryable_llm_error(e):
-            logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
-            # Create a wait task for several seconds
-            several = 15
-            wait_task = task.insert_delay(graph, several)
+    # Retrieval augmentation loop
+    retrieval_round = 0
+    retrieved_urls: set[str] = set()
+    retrieved_contents: list[tuple[str, str]] = []  # List of (url, content) tuples
+    tasks = []
+    suppress_retrieve = False
 
-            logger.info(
-                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
+    while True:
+        # Build the final system prompt with retrieval content if any
+        final_system_prompt = system_prompt
+
+        # Inject retrieved content as system messages at the beginning of conversation
+        retrieval_history_items = []
+        for url, content in retrieved_contents:
+            # Create a system message for each retrieved URL
+            retrieval_history_items.append(
+                {
+                    "sender": "",  # No sender name for system messages
+                    "sender_id": "system",
+                    "msg_id": "",
+                    "is_agent": False,
+                    "parts": [
+                        MsgTextPart(
+                            kind="text", text=f"Retrieved from {url}:\n\n{content}"
+                        )
+                    ],
+                    "reply_to_msg_id": None,
+                    "ts_iso": None,
+                }
             )
-            # Let the exception propagate - the task will be retried automatically several times, then marked as failed.
-            raise
-        else:
-            logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-            # For permanent failures, don't retry - just return to mark task as done
+
+        # Conditionally include Retrieve.md in the system prompt (only if agent has it configured)
+        if not suppress_retrieve and "Retrieve" in agent.role_prompt_names:
+            try:
+                from prompt_loader import load_system_prompt
+
+                retrieve_prompt = load_system_prompt("Retrieve")
+                final_system_prompt += f"\n\n{retrieve_prompt}\n"
+            except Exception as e:
+                logger.debug(f"[{agent_name}] Could not load Retrieve.md prompt: {e}")
+
+        # Combine retrieval items (at beginning) with regular history
+        combined_history = list(retrieval_history_items) + [
+            {
+                "sender": item.sender_display,
+                "sender_id": item.sender_id,
+                "msg_id": item.message_id,
+                "is_agent": item.is_from_agent,
+                "parts": item.message_parts,
+                "reply_to_msg_id": item.reply_to_msg_id,
+                "ts_iso": item.timestamp,
+            }
+            for item in history_rendered_items
+        ]
+
+        # system_prompt: we use the full system_prompt you've assembled (keeps behavior identical)
+        # role_prompt and llm_specific_prompt are passed as None because they are already included in system_prompt.
+        try:
+            reply = await llm.query_structured(
+                system_prompt=final_system_prompt,
+                now_iso=now_iso,
+                chat_type=chat_type,
+                history=combined_history,
+                history_size=agent.llm.history_size,
+                timeout_s=None,
+            )
+        except Exception as e:
+            if is_retryable_llm_error(e):
+                logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
+                # Create a wait task for several seconds
+                several = 15
+                wait_task = task.insert_delay(graph, several)
+
+                logger.info(
+                    f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
+                )
+                # Let the exception propagate - the task will be retried automatically several times, then marked as failed.
+                raise
+            else:
+                logger.error(f"[{agent_name}] LLM permanent failure: {e}")
+                # For permanent failures, don't retry - just return to mark task as done
+                return
+
+        if reply == "":
+            logger.info(
+                f"[{agent_name}] LLM decided not to reply to {message_id_param}"
+            )
             return
 
-    if reply == "":
-        logger.info(f"[{agent_name}] LLM decided not to reply to {message_id_param}")
-        return
+        logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
-    logger.debug(f"[{agent_name}] LLM reply: {reply}")
+        # Parse the tasks from the LLM response
+        try:
+            tasks = await parse_llm_reply(
+                reply, agent_id=agent_id, channel_id=channel_id, agent=agent
+            )
+        except ValueError as e:
+            logger.exception(
+                f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
+            )
+            return
 
-    # Parse the tasks from the LLM response (unchanged)
-    try:
-        tasks = await parse_llm_reply(
-            reply, agent_id=agent_id, channel_id=channel_id, agent=agent
+        # Check if there are retrieve tasks
+        retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
+
+        if not retrieve_tasks:
+            # No retrieve tasks, exit the loop
+            break
+
+        # We have retrieve tasks - process them
+        retrieval_round += 1
+        logger.info(
+            f"[{agent_name}] Retrieval round {retrieval_round}: Found {len(retrieve_tasks)} retrieve task(s)"
         )
-    except ValueError as e:
-        logger.exception(f"[{agent_name}] Failed to parse LLM response '{reply}': {e}")
-        return
+
+        # Collect all URLs from retrieve tasks (limit to 3 per round)
+        urls_to_fetch = []
+        for retrieve_task in retrieve_tasks:
+            task_urls = retrieve_task.params.get("urls", [])
+            for url in task_urls[:3]:  # Limit to 3 URLs
+                if url not in retrieved_urls:
+                    urls_to_fetch.append(url)
+                    if len(urls_to_fetch) >= 3:
+                        break
+            if len(urls_to_fetch) >= 3:
+                break
+
+        # Check if all requested URLs have already been retrieved (duplicate request)
+        if not urls_to_fetch:
+            logger.info(
+                f"[{agent_name}] All requested URLs already retrieved - suppressing Retrieve.md and retrying"
+            )
+            suppress_retrieve = True
+            continue
+
+        # Fetch the URLs
+        logger.info(
+            f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
+        )
+        for url in urls_to_fetch:
+            fetched_url, content = await _fetch_url(url)
+            retrieved_urls.add(fetched_url)
+            retrieved_contents.append((fetched_url, content))
+            logger.info(
+                f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
+            )
+
+        # Check if we've reached max retrieval rounds
+        if retrieval_round >= RETRIEVAL_MAX_ROUNDS:
+            logger.info(
+                f"[{agent_name}] Reached max retrieval rounds ({RETRIEVAL_MAX_ROUNDS}) - suppressing Retrieve.md"
+            )
+            suppress_retrieve = True
+
+        # Continue the loop to re-query the LLM with the new content
 
     # Inject conversation-specific context into each task and insert wait tasks for typing
     fallback_reply_to = task.params.get("message_id") if is_group else None

@@ -44,3 +44,15 @@ def _parse_media_budget() -> int:
 
 
 MEDIA_DESC_BUDGET_PER_TICK: int = _parse_media_budget()
+
+
+# Retrieval augmentation maximum rounds
+def _parse_retrieval_max_rounds() -> int:
+    """Parse RETRIEVAL_MAX_ROUNDS with error handling."""
+    try:
+        return int(os.environ.get("RETRIEVAL_MAX_ROUNDS", "8"))
+    except ValueError:
+        return 8
+
+
+RETRIEVAL_MAX_ROUNDS: int = _parse_retrieval_max_rounds()
