@@ -417,16 +417,16 @@ async def _build_complete_system_prompt(
 
     # Check if this is conversation start
     is_conversation_start = True
-    agent_id = (
-        agent.client.session.user_id if hasattr(agent.client, "session") else None
-    )
-    for m in messages:
-        if (
-            getattr(m, "from_id", None)
-            and getattr(m.from_id, "user_id", None) == agent_id
-        ):
-            is_conversation_start = False
-            break
+    # Use cached agent_id from agent object (set during initialization)
+    agent_id = agent.agent_id
+    if agent_id is not None:
+        for m in messages:
+            if (
+                getattr(m, "from_id", None)
+                and getattr(m.from_id, "user_id", None) == agent_id
+            ):
+                is_conversation_start = False
+                break
 
     # Add conversation start instruction if needed
     if is_conversation_start:
