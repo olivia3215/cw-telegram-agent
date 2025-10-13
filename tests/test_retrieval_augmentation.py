@@ -105,7 +105,7 @@ Let me look that up for you!
 
 @pytest.mark.asyncio
 async def test_fetch_url_success():
-    """Test successful URL fetching."""
+    """Test successful URL fetching with User-Agent header."""
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "text/html; charset=utf-8"}
     mock_response.text = "<html><body>Test content</body></html>"
@@ -118,9 +118,11 @@ async def test_fetch_url_success():
 
         assert url == "https://example.com"
         assert content == "<html><body>Test content</body></html>"
-        mock_client.__aenter__.return_value.get.assert_called_once_with(
-            "https://example.com"
-        )
+        # Verify User-Agent header is set
+        call_args = mock_client.__aenter__.return_value.get.call_args
+        assert call_args[0][0] == "https://example.com"
+        assert "User-Agent" in call_args[1]["headers"]
+        assert "Mozilla" in call_args[1]["headers"]["User-Agent"]
 
 
 @pytest.mark.asyncio

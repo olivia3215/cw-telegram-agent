@@ -169,7 +169,8 @@ The `_fetch_url()` function handles web requests:
 
 **Features:**
 - 10-second timeout
-- Follows redirects (`allow_redirects=True`)
+- Follows redirects (`follow_redirects=True`)
+- Realistic browser User-Agent header (to avoid bot detection)
 - Content-type validation (HTML only)
 - 40k character truncation
 - Comprehensive error handling

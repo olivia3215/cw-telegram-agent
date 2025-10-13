@@ -394,9 +394,9 @@ class GeminiLLM(LLM):
                             text = part["text"]
                             # Replace newlines with \n for better log readability
                             text = text.replace("\n", "\\n")
-                            # Truncate very long text for readability
-                            if len(text) > 1000:
-                                text = text[:1000] + "... [truncated]"
+                            # Truncate very long text for readability (5000 chars for retrieval debugging)
+                            if len(text) > 5000:
+                                text = text[:5000] + "... [truncated]"
                             logger.info(f"    Part {j+1}: {text}")
                         else:
                             logger.info(f"    Part {j+1}: {part}")
