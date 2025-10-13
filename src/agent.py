@@ -142,11 +142,14 @@ class Agent:
 
         This includes:
         1. LLM-specific prompt (e.g., Gemini.md)
-        2. All role prompts (in order)
+        2. All role prompts (in order) - EXCEPT Retrieve which is handled separately
         3. Agent instructions
 
         Note: Memory content is added later in the prompt construction process,
         positioned after stickers and before current time.
+
+        Note: The Retrieve prompt is excluded here because it's conditionally
+        included during the retrieval augmentation loop in handle_received.
 
         Args:
             channel_id: Optional conversation ID (not used in base prompt)
@@ -160,8 +163,11 @@ class Agent:
         llm_prompt = load_system_prompt(self.llm.prompt_name)
         prompt_parts.append(llm_prompt)
 
-        # Add all role prompts in order
+        # Add all role prompts in order (except Retrieve which is handled separately)
         for role_prompt_name in self.role_prompt_names:
+            if role_prompt_name == "Retrieve":
+                # Skip Retrieve - it's conditionally added during retrieval loop
+                continue
             role_prompt = load_system_prompt(role_prompt_name)
             prompt_parts.append(role_prompt)
 
