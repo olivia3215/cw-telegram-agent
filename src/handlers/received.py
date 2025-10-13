@@ -178,9 +178,10 @@ async def parse_llm_reply_from_markdown(
 ) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
-    Recognized task types: send, sticker, wait, shutdown, remember.
+    Recognized task types: send, sticker, wait, shutdown, remember, think.
 
     Remember tasks are processed immediately and not added to the task graph.
+    Think tasks are discarded and not added to the task graph - they exist only to allow the LLM to reason before producing output.
     """
     task_nodes = []
     current_type = None
@@ -246,6 +247,13 @@ async def parse_llm_reply_from_markdown(
             # Remember tasks are processed immediately, not added to task graph
             if agent and body:
                 await _process_remember_task(agent, channel_id, body)
+            return  # Don't add to task_nodes
+
+        elif current_type == "think":
+            # Think tasks are discarded - they exist only to allow the LLM to reason before producing output
+            logger.debug(
+                f"[think] Discarding think task content (length: {len(body)} chars)"
+            )
             return  # Don't add to task_nodes
 
         else:

@@ -81,6 +81,38 @@ Tasks can depend on other tasks using the `depends_on` field. When a task fails:
 
 **Why delete the entire graph?** Later tasks may depend on failed tasks, so it's better to start fresh rather than leave the conversation in an inconsistent state.
 
+### Task Types and Special Handling
+
+The system supports multiple task types, each with specific behavior:
+
+**Standard Tasks** (added to task graph):
+- `send` - Send a text message to the user
+- `sticker` - Send a sticker to the user
+- `wait` - Wait for a specified duration
+- `block` - Block the user
+- `unblock` - Unblock the user
+- `shutdown` - Shut down the agent
+- `clear-conversation` - Clear the conversation history
+
+**Special Tasks** (processed immediately, not added to task graph):
+- `remember` - Store information in the agent's memory (processed during parsing, written to disk)
+- `think` - Allow the LLM to reason before producing output (discarded during parsing)
+
+**Think Task Rationale:**
+
+The `think` task enables the LLM to reason before producing any output tokens. This is inspired by research showing that allowing models to think before responding can improve coherence and emotional appropriateness, even without specific training for this capability.
+
+**Key characteristics:**
+- The body of a think task is completely discarded - never stored, never shown to users
+- Multiple think tasks can appear anywhere in the LLM response
+- Think tasks allow the model to:
+  - Plan the structure of the entire response rather than generating token-by-token
+  - Consider emotional context before responding
+  - Reason through complex situations step-by-step
+  - Avoid errors by thinking through potential issues
+
+The LLM is instructed on how to use think tasks via the `samples/prompts/Think.md` role prompt.
+
 ## Media Description Architecture
 
 The system enriches conversations by describing photos and stickers using AI. This is managed through a composable chain of description sources with clear precedence and budget control.
