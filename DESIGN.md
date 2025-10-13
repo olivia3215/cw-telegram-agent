@@ -97,6 +97,7 @@ The system supports multiple task types, each with specific behavior:
 **Special Tasks** (processed immediately, not added to task graph):
 - `remember` - Store information in the agent's memory (processed during parsing, written to disk)
 - `think` - Allow the LLM to reason before producing output (discarded during parsing)
+- `retrieve` - Fetch web pages for retrieval augmentation (triggers retrieval loop, see below)
 
 **Think Task Rationale:**
 
@@ -112,6 +113,160 @@ The `think` task enables the LLM to reason before producing any output tokens. T
   - Avoid errors by thinking through potential issues
 
 The LLM is instructed on how to use think tasks via the `samples/prompts/Think.md` role prompt.
+
+## Retrieval Augmentation Architecture
+
+The retrieval augmentation system enables agents to fetch information from the internet, allowing them to provide up-to-date information and answer questions that require external knowledge.
+
+### Overview
+
+When an agent needs information from the web, it can use the `retrieve` task to fetch URLs. The system then:
+1. Fetches the requested web pages
+2. Injects the content as system messages in the conversation
+3. Re-queries the LLM with the new context
+4. Repeats until the LLM has enough information or reaches a limit
+
+### Retrieve Task Processing
+
+The `retrieve` task is processed specially during the LLM response loop:
+
+**Task Format:**
+```markdown
+# «retrieve»
+
+https://www.google.com/search?q=quantum+computing
+https://en.wikipedia.org/wiki/Quantum_computing
+```
+
+**URL Limits:**
+- Maximum 3 URLs per retrieve task
+- URLs must start with `http://` or `https://`
+- Non-URL lines are ignored
+
+### Retrieval Loop
+
+The retrieval loop is implemented in `handle_received()`:
+
+```python
+while True:
+    # 1. Build system prompt (conditionally include Retrieve.md)
+    # 2. Inject retrieved content as system messages at conversation start
+    # 3. Query LLM with combined history
+    # 4. Parse response for retrieve tasks
+    # 5. If no retrieve tasks: exit loop and process other tasks
+    # 6. If retrieve tasks: fetch URLs and continue loop
+```
+
+**Key Features:**
+- Retrieved content appears as system messages before conversation history
+- Format: Two message parts - Part 1: `"Retrieved from {url}:"`, Part 2: `{content}`
+- Attributed to model/agent (`is_agent: True`) with system sender_id
+- Retrieved content is cumulative across rounds
+
+### URL Fetching
+
+The `_fetch_url()` function handles web requests:
+
+**Features:**
+- 10-second timeout
+- Follows redirects (`follow_redirects=True`)
+- Realistic browser User-Agent header (to avoid bot detection)
+- Content-type validation (HTML only)
+- 40k character truncation
+- Comprehensive error handling
+
+**Non-HTML Content:**
+```
+Content-Type: application/pdf - not fetched (non-HTML content)
+```
+
+**Error Handling:**
+```html
+<html><body><h1>Error: Request Timeout</h1>
+<p>The request timed out after 10 seconds.</p></body></html>
+```
+
+### Loop Control
+
+**Duplicate Detection:**
+- Tracks all retrieved URLs in a set
+- If all requested URLs already retrieved → suppress Retrieve.md and retry
+- Prevents infinite loops from repeated requests
+
+**Maximum Rounds:**
+- Default: 8 rounds (configurable via `RETRIEVAL_MAX_ROUNDS`)
+- After max rounds → suppress Retrieve.md
+- Ensures eventual termination even with persistent retrieve tasks
+
+**Retrieve.md Suppression:**
+The `Retrieve.md` prompt is conditionally included:
+- Included: First N rounds, agent has "Retrieve" in role_prompt_names
+- Suppressed: After max rounds OR duplicate URL detection
+- Prevents infinite retrieval loops
+
+### Configuration
+
+**Environment Variable:**
+```bash
+export RETRIEVAL_MAX_ROUNDS=8  # Default: 8
+```
+
+**Agent Configuration:**
+Only agents with `Retrieve` in their role prompts can use retrieval:
+```markdown
+# Role Prompt
+Chatbot
+Retrieve
+```
+
+### Retrieve.md Prompt
+
+The `Retrieve.md` prompt provides comprehensive instructions:
+
+**Search Resources:**
+- DuckDuckGo HTML (recommended): `https://html.duckduckgo.com/html/?q=...`
+- Wikipedia: `https://en.wikipedia.org/w/index.php?search=...`
+- Google Search: `https://www.google.com/search?q=...` (may require JavaScript)
+- Google Scholar: `https://scholar.google.com/scholar?q=...`
+- Google News: `https://news.google.com/` or `https://news.google.com/search?q=...`
+
+**Search-Then-Retrieve Pattern:**
+1. First retrieve a search results page
+2. Examine the results in the retrieved content
+3. Retrieve specific pages from those results
+
+**Geographic Awareness:**
+The prompt includes examples for location-specific searches (e.g., India news)
+
+### Security Considerations
+
+**Current Implementation:**
+- No domain whitelisting/blacklisting (may be added later)
+- No content sanitization (HTML preserved as-is)
+- 3 URL limit per task prevents excessive requests
+- 40k truncation limits memory usage
+
+**Future Enhancements:**
+- Domain filtering
+- Content extraction/cleaning
+- Caching to avoid re-fetching
+- State persistence across tasks
+
+### Integration with LLM Loop
+
+The retrieval system integrates seamlessly with the existing LLM query loop:
+
+1. **System Prompt:** Conditionally includes Retrieve.md
+2. **History:** Prepends retrieval system messages before conversation
+3. **Task Parsing:** Detects retrieve tasks and triggers loop
+4. **Task Execution:** Only executes retrieve tasks during retrieval rounds
+5. **Final Response:** Processes send/sticker/etc. tasks after retrieval complete
+
+**Benefits:**
+- No changes to existing task types
+- Transparent to non-retrieval agents
+- Self-contained loop with clear exit conditions
+- Maintains conversation context throughout retrieval
 
 ## Media Description Architecture
 

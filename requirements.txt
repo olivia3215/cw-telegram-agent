@@ -1,6 +1,7 @@
 flask
 pyyaml
 requests
+httpx
 python-dotenv
 openai
 pathspec
