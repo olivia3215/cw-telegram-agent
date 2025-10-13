@@ -160,11 +160,11 @@ async def test_fetch_url_timeout():
 
 @pytest.mark.asyncio
 async def test_fetch_url_truncation():
-    """Test that long content is truncated to 8k characters."""
+    """Test that long content is truncated to 40k characters."""
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "text/html"}
-    # Create content longer than 8000 characters
-    mock_response.text = "x" * 10000
+    # Create content longer than 40000 characters
+    mock_response.text = "x" * 50000
 
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
@@ -173,7 +173,7 @@ async def test_fetch_url_truncation():
         url, content = await _fetch_url("https://example.com")
 
         assert url == "https://example.com"
-        assert len(content) <= 8100  # 8000 + truncation message
+        assert len(content) <= 40100  # 40000 + truncation message
         assert "Content truncated" in content
 
 
