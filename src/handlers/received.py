@@ -647,7 +647,7 @@ async def _run_llm_with_retrieval(
         # Check for retrieve tasks
         retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
 
-        if not retrieve_tasks:
+        if not retrieve_tasks or suppress_retrieve:
             break
 
         # Process retrieve tasks
