@@ -160,7 +160,7 @@ while True:
 **Key Features:**
 - Retrieved content appears as system messages before conversation history
 - Format: Two message parts - Part 1: `"Retrieved from {url}:"`, Part 2: `{content}`
-- No sender name for system messages (empty string)
+- Attributed to model/agent (`is_agent: True`) with system sender_id
 - Retrieved content is cumulative across rounds
 
 ### URL Fetching

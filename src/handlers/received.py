@@ -566,7 +566,7 @@ async def _run_llm_with_retrieval(
         # Build final system prompt with retrieval content
         final_system_prompt = system_prompt
 
-        # Inject retrieved content as system messages
+        # Inject retrieved content as system messages (attributed to model/agent)
         retrieval_history_items = []
         for url, content in retrieved_contents:
             retrieval_history_items.append(
@@ -574,7 +574,7 @@ async def _run_llm_with_retrieval(
                     "sender": "",
                     "sender_id": "system",
                     "msg_id": "",
-                    "is_agent": False,
+                    "is_agent": True,
                     "parts": [
                         MsgTextPart(kind="text", text=f"Retrieved from {url}:"),
                         MsgTextPart(kind="text", text=content),
