@@ -83,3 +83,7 @@ Using think tasks allows you to:
 - Reason about the structure of your entire reply rather than generating one token at a time
 
 Remember: Think tasks are exclusively for your benefit. The user never sees them. Use them freely to improve your responses.
+
+## Note
+
+If you want to send something after a `think` task, you need to begin a new task, for example by producing a new `send` section.
