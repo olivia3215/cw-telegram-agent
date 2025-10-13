@@ -124,3 +124,85 @@ async def test_parse_markdown_block_unblock_tasks():
     assert len(tasks) == 2
     assert tasks[0].type == "block"
     assert tasks[1].type == "unblock"
+
+
+@pytest.mark.asyncio
+async def test_parse_think_task_is_discarded():
+    """Test that think tasks are discarded and not added to the task graph."""
+    md = """# «think»
+
+Let me reason about this... I should respond warmly.
+
+# «send»
+
+Hello there!
+"""
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    # Think task should be discarded, only send task should remain
+    assert len(tasks) == 1
+    assert tasks[0].type == "send"
+    assert "Hello there!" in tasks[0].params["message"]
+
+
+@pytest.mark.asyncio
+async def test_parse_multiple_think_tasks():
+    """Test that multiple think tasks are all discarded."""
+    md = """# «think»
+
+First reasoning step...
+
+# «think»
+
+Second reasoning step...
+
+# «send»
+
+Final response!
+"""
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    # Both think tasks should be discarded
+    assert len(tasks) == 1
+    assert tasks[0].type == "send"
+
+
+@pytest.mark.asyncio
+async def test_parse_think_tasks_between_other_tasks():
+    """Test that think tasks can appear between other tasks."""
+    md = """# «send»
+
+First message.
+
+# «think»
+
+Now I'll send a sticker to lighten the mood...
+
+# «sticker»
+
+WendyDancer
+👍
+
+# «think»
+
+That should work well.
+"""
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    # Both think tasks should be discarded, leaving only send and sticker
+    assert len(tasks) == 2
+    assert tasks[0].type == "send"
+    assert tasks[1].type == "sticker"
+
+
+@pytest.mark.asyncio
+async def test_parse_only_think_tasks():
+    """Test that if only think tasks are present, no tasks are returned."""
+    md = """# «think»
+
+Just thinking...
+
+# «think»
+
+More thinking...
+"""
+    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    # All think tasks should be discarded
+    assert len(tasks) == 0
