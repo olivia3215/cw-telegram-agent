@@ -110,15 +110,16 @@ async def test_fetch_url_success():
     mock_response.headers = {"content-type": "text/html; charset=utf-8"}
     mock_response.text = "<html><body>Test content</body></html>"
 
-    with patch(
-        "handlers.received.requests.get", return_value=mock_response
-    ) as mock_get:
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
+
+    with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
         url, content = await _fetch_url("https://example.com")
 
         assert url == "https://example.com"
         assert content == "<html><body>Test content</body></html>"
-        mock_get.assert_called_once_with(
-            "https://example.com", timeout=10, allow_redirects=True
+        mock_client.__aenter__.return_value.get.assert_called_once_with(
+            "https://example.com"
         )
 
 
@@ -128,7 +129,10 @@ async def test_fetch_url_non_html():
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "application/pdf"}
 
-    with patch("handlers.received.requests.get", return_value=mock_response):
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
+
+    with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
         url, content = await _fetch_url("https://example.com/doc.pdf")
 
         assert url == "https://example.com/doc.pdf"
@@ -139,11 +143,14 @@ async def test_fetch_url_non_html():
 @pytest.mark.asyncio
 async def test_fetch_url_timeout():
     """Test URL fetching with timeout."""
-    import requests
+    import httpx
 
-    with patch(
-        "handlers.received.requests.get", side_effect=requests.exceptions.Timeout
-    ):
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.get = AsyncMock(
+        side_effect=httpx.TimeoutException("Timeout")
+    )
+
+    with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
         url, content = await _fetch_url("https://slow-site.com")
 
         assert url == "https://slow-site.com"
@@ -159,7 +166,10 @@ async def test_fetch_url_truncation():
     # Create content longer than 8000 characters
     mock_response.text = "x" * 10000
 
-    with patch("handlers.received.requests.get", return_value=mock_response):
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
+
+    with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
         url, content = await _fetch_url("https://example.com")
 
         assert url == "https://example.com"
@@ -170,14 +180,16 @@ async def test_fetch_url_truncation():
 @pytest.mark.asyncio
 async def test_fetch_url_connection_error():
     """Test URL fetching with connection error."""
-    import requests
+    import httpx
 
-    with patch(
-        "handlers.received.requests.get",
-        side_effect=requests.exceptions.ConnectionError("Connection refused"),
-    ):
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value.get = AsyncMock(
+        side_effect=httpx.ConnectError("Connection refused")
+    )
+
+    with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
         url, content = await _fetch_url("https://unreachable.com")
 
         assert url == "https://unreachable.com"
         assert "Error:" in content
-        assert "ConnectionError" in content
+        assert "ConnectError" in content
