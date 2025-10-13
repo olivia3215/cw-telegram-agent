@@ -171,7 +171,7 @@ The `_fetch_url()` function handles web requests:
 - 10-second timeout
 - Follows redirects (`allow_redirects=True`)
 - Content-type validation (HTML only)
-- 8k character truncation
+- 40k character truncation
 - Comprehensive error handling
 
 **Non-HTML Content:**
@@ -242,7 +242,7 @@ The prompt includes examples for location-specific searches (e.g., India news)
 - No domain whitelisting/blacklisting (may be added later)
 - No content sanitization (HTML preserved as-is)
 - 3 URL limit per task prevents excessive requests
-- 8k truncation limits memory usage
+- 40k truncation limits memory usage
 
 **Future Enhancements:**
 - Domain filtering

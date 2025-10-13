@@ -39,7 +39,7 @@ async def _fetch_url(url: str) -> tuple[str, str]:
 
     Returns:
         Tuple of (url, content) where content is:
-        - The HTML content (truncated to 8k) if successful and content-type is HTML
+        - The HTML content (truncated to 40k) if successful and content-type is HTML
         - Error message describing the failure if request failed
         - Note about content type if non-HTML
 
@@ -60,10 +60,10 @@ async def _fetch_url(url: str) -> tuple[str, str]:
                 f"Content-Type: {content_type} - not fetched (non-HTML content)",
             )
 
-        # Get the content, truncate to 8k
+        # Get the content, truncate to 40k
         content = response.text
-        if len(content) > 8000:
-            content = content[:8000] + "\n\n[Content truncated at 8000 characters]"
+        if len(content) > 40000:
+            content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
 
         return (url, content)
 
