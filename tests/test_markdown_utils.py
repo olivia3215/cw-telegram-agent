@@ -64,7 +64,7 @@ Because I was asked to stop.
     assert "I'll reply shortly." in tasks[0].params["message"]
 
     assert tasks[1].type == "wait"
-    assert tasks[1].params["duration"] == 10
+    assert tasks[1].params["delay"] == 10
 
     assert tasks[2].type == "sticker"
     assert tasks[2].params["name"] == "👍"

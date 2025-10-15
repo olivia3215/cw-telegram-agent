@@ -15,16 +15,16 @@ logger = logging.getLogger(__name__)
 
 def make_wait_task(
     identifier: str | None = None,
-    duration_seconds: int = 0,
+    delay_seconds: int = 0,
     preserve: bool = False,
     depends_on: list[str] | None = None,
 ) -> TaskNode:
     """
-    Create a wait task with the new duration-based format.
+    Create a wait task with the delay-based format.
 
     Args:
         identifier: Task identifier. If None, generates a UUID-based one.
-        duration_seconds: Duration to wait in seconds
+        delay_seconds: Delay to wait in seconds
         preserve: Whether this task should be preserved during replanning
         depends_on: List of task IDs this task depends on
 
@@ -34,7 +34,7 @@ def make_wait_task(
     if identifier is None:
         identifier = f"wait-{uuid.uuid4().hex[:8]}"
 
-    params = {"duration": duration_seconds}
+    params = {"delay": delay_seconds}
     if preserve:
         params["preserve"] = preserve
 

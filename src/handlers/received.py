@@ -303,7 +303,7 @@ async def parse_llm_reply_from_markdown(
                 raise ValueError("Wait task must contain 'delay: <seconds>'")
 
             delay_seconds = int(match.group(1))
-            params["duration"] = delay_seconds
+            params["delay"] = delay_seconds
 
         elif current_type == "block":
             pass  # No parameters needed
@@ -875,7 +875,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # Add a wait task to keep the graph alive if we fetched new resources
     if fetched_new_resources:
         wait_task = make_wait_task(
-            duration_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+            delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
             preserve=True,
         )
         graph.add_task(wait_task)

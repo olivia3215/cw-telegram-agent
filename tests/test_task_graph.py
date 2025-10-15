@@ -44,7 +44,7 @@ def test_task_readiness():
     t1 = make_wait_task_legacy("wait1", -10)
     assert t1.is_ready(set(), NOW)
 
-    t2 = make_wait_task("wait2", duration_seconds=10)
+    t2 = make_wait_task("wait2", delay_seconds=10)
     assert not t2.is_ready(set(), NOW)
 
     t3 = make_send_task("send1", depends=["wait1"])
@@ -65,7 +65,7 @@ def test_graph_pending_tasks():
 def test_round_robin_rotation():
     g1 = make_graph("g1", [make_wait_task_legacy("w1", -10)])
     g2 = make_graph("g2", [make_wait_task_legacy("w2", -10)])
-    g3 = make_graph("g3", [make_wait_task("w3", duration_seconds=10)])  # not ready
+    g3 = make_graph("g3", [make_wait_task("w3", delay_seconds=10)])  # not ready
 
     q = WorkQueue(_task_graphs=[g1, g2, g3])
 
@@ -98,7 +98,7 @@ def test_invalid_wait_task_logs(caplog):
     missing_until = TaskNode(identifier="t1", type="wait", params={}, depends_on=[])
     assert not missing_until.is_ready(set(), NOW)
     assert any(
-        "missing both 'duration' and 'until'" in m for m in caplog.text.splitlines()
+        "missing both 'delay' and 'until'" in m for m in caplog.text.splitlines()
     )
 
     bad_format = TaskNode(
@@ -192,8 +192,8 @@ def test_cancelled_status():
     assert task.status != TaskStatus.FAILED
 
 
-def test_cumulative_wait_duration():
-    """Test that serial wait tasks use cumulative duration, not absolute expiration."""
+def test_cumulative_wait_delay():
+    """Test that serial wait tasks use cumulative delay, not absolute expiration."""
     # Create a chain: Task A -> Wait 5min -> Task B -> Wait 5min -> Task C
     # Both waits should be 5 minutes from when they become unblocked, not from creation time
 
@@ -202,12 +202,12 @@ def test_cumulative_wait_duration():
     task_b = make_send_task("task_b", depends=["wait1"])
     task_c = make_send_task("task_c", depends=["wait2"])
 
-    # Create wait tasks with duration (not until)
+    # Create wait tasks with delay (not until)
     wait1 = TaskNode(
-        identifier="wait1", type="wait", params={"duration": 300}, depends_on=["task_a"]
+        identifier="wait1", type="wait", params={"delay": 300}, depends_on=["task_a"]
     )  # 5 minutes
     wait2 = TaskNode(
-        identifier="wait2", type="wait", params={"duration": 300}, depends_on=["task_b"]
+        identifier="wait2", type="wait", params={"delay": 300}, depends_on=["task_b"]
     )  # 5 minutes
 
     make_graph("cumulative_test", [task_a, wait1, task_b, wait2, task_c])
@@ -223,11 +223,9 @@ def test_cumulative_wait_duration():
     task_a.status = TaskStatus.DONE
     completed_ids = {"task_a"}
 
-    # Now wait1 should be unblocked and should convert duration to until
-    # But it won't be ready until the duration has passed
-    assert not wait1.is_ready(
-        completed_ids, NOW
-    )  # Not ready yet, duration hasn't passed
+    # Now wait1 should be unblocked and should convert delay to until
+    # But it won't be ready until the delay has passed
+    assert not wait1.is_ready(completed_ids, NOW)  # Not ready yet, delay hasn't passed
 
     # Check that wait1 now has an "until" parameter set to NOW + 5 minutes
     assert "until" in wait1.params
@@ -251,11 +249,11 @@ def test_cumulative_wait_duration():
     task_b.status = TaskStatus.DONE
     completed_ids.add("task_b")
 
-    # Now wait2 should be unblocked and should convert its duration to until
-    # But it won't be ready until the duration has passed
+    # Now wait2 should be unblocked and should convert its delay to until
+    # But it won't be ready until the delay has passed
     assert not wait2.is_ready(
         completed_ids, future_time
-    )  # Not ready yet, duration hasn't passed
+    )  # Not ready yet, delay hasn't passed
     assert "until" in wait2.params
 
     # wait2's until should be set to future_time + 5 minutes (not NOW + 5 minutes)

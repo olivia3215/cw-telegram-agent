@@ -72,18 +72,18 @@ class TaskNode:
         if not self.is_unblocked(completed_ids):
             return False
         if self.type == "wait":
-            # Check if we have duration (new format) or until (legacy format)
-            duration = self.params.get("duration")
+            # Check if we have delay (new format) or until (legacy format)
+            delay = self.params.get("delay")
             until = self.params.get("until")
 
-            if duration is not None:
-                # New format: convert duration to until when first unblocked
+            if delay is not None:
+                # New format: convert delay to until when first unblocked
                 if not until:
-                    # Set the expiration time to now + duration
-                    wait_until_time = now + timedelta(seconds=duration)
+                    # Set the expiration time to now + delay
+                    wait_until_time = now + timedelta(seconds=delay)
                     self.params["until"] = wait_until_time.strftime(ISO_FORMAT)
                     logger.debug(
-                        f"Task {self.identifier} converted duration {duration}s to until {self.params['until']}"
+                        f"Task {self.identifier} converted delay {delay}s to until {self.params['until']}"
                     )
                 else:
                     # Already converted, use the existing until time
@@ -93,11 +93,11 @@ class TaskNode:
                 pass
             else:
                 logger.warning(
-                    f"Task {self.identifier} of type 'wait' missing both 'duration' and 'until' parameters."
+                    f"Task {self.identifier} of type 'wait' missing both 'delay' and 'until' parameters."
                 )
                 return False
 
-            # Now check the until time (either converted from duration or legacy)
+            # Now check the until time (either converted from delay or legacy)
             if not until:
                 return False
 
@@ -159,7 +159,7 @@ class TaskNode:
         """
         from task_graph_helpers import make_wait_task
 
-        wait_task = make_wait_task(duration_seconds=delay_seconds)
+        wait_task = make_wait_task(delay_seconds=delay_seconds)
 
         graph.add_task(wait_task)
         self.depends_on.append(wait_task.identifier)

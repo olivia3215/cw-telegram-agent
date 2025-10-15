@@ -62,12 +62,12 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
             ),
             make_wait_task(
                 identifier="wait-preserve-1",
-                duration_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
                 preserve=True,
             ),
             make_wait_task(
                 identifier="wait-regular-1",
-                duration_seconds=10,
+                delay_seconds=10,
             ),
         ],
     )
@@ -101,9 +101,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     ]
     assert len(preserve_wait_tasks) == 1
     assert preserve_wait_tasks[0].type == "wait"
-    assert (
-        preserve_wait_tasks[0].params["duration"] == FETCHED_RESOURCE_LIFETIME_SECONDS
-    )
+    assert preserve_wait_tasks[0].params["delay"] == FETCHED_RESOURCE_LIFETIME_SECONDS
 
     # Verify regular tasks were cancelled
     regular_send_tasks = [t for t in new_graph.tasks if t.identifier == "send-1"]
@@ -223,16 +221,16 @@ def test_preserve_flag_on_wait_task():
     # Create a wait task with preserve flag
     wait_task = make_wait_task(
         identifier="wait-preserve",
-        duration_seconds=300,
+        delay_seconds=300,
         preserve=True,
     )
 
-    # Verify preserve flag and duration
+    # Verify preserve flag and delay
     assert wait_task.params.get("preserve") is True
     assert wait_task.type == "wait"
-    assert wait_task.params["duration"] == 300
+    assert wait_task.params["delay"] == 300
 
-    # Test that the task is ready when unblocked (duration converts to until)
+    # Test that the task is ready when unblocked (delay converts to until)
     from datetime import timedelta
 
     now = datetime.now(UTC)
@@ -240,10 +238,10 @@ def test_preserve_flag_on_wait_task():
     # Initially not ready (not unblocked)
     assert not wait_task.is_ready(set(), now)
 
-    # When unblocked, should convert duration to until and not be ready yet
-    assert not wait_task.is_ready(set(), now)  # Duration hasn't passed
-    assert "until" in wait_task.params  # Should have converted duration to until
+    # When unblocked, should convert delay to until and not be ready yet
+    assert not wait_task.is_ready(set(), now)  # Delay hasn't passed
+    assert "until" in wait_task.params  # Should have converted delay to until
 
-    # Should be ready after duration passes
+    # Should be ready after delay passes
     future_time = now + timedelta(seconds=300)
     assert wait_task.is_ready(set(), future_time)
