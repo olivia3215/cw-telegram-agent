@@ -7,7 +7,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -874,9 +874,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # Add a wait task to keep the graph alive if we fetched new resources
     if fetched_new_resources:
         wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-        (
-            datetime.now(UTC) + timedelta(seconds=FETCHED_RESOURCE_LIFETIME_SECONDS)
-        ).strftime(ISO_FORMAT)
 
         wait_task = TaskNode(
             identifier=wait_id,
