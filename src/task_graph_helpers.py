@@ -12,6 +12,40 @@ from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
 
+
+def make_wait_task(
+    identifier: str | None = None,
+    duration_seconds: int = 0,
+    preserve: bool = False,
+    depends_on: list[str] | None = None,
+) -> TaskNode:
+    """
+    Create a wait task with the new duration-based format.
+
+    Args:
+        identifier: Task identifier. If None, generates a UUID-based one.
+        duration_seconds: Duration to wait in seconds
+        preserve: Whether this task should be preserved during replanning
+        depends_on: List of task IDs this task depends on
+
+    Returns:
+        TaskNode configured as a wait task
+    """
+    if identifier is None:
+        identifier = f"wait-{uuid.uuid4().hex[:8]}"
+
+    params = {"duration": duration_seconds}
+    if preserve:
+        params["preserve"] = preserve
+
+    return TaskNode(
+        identifier=identifier,
+        type="wait",
+        params=params,
+        depends_on=depends_on or [],
+    )
+
+
 # --------------------------------------------------------------------------------------
 # CALLOUT / REPLAN SEMANTICS — CURRENT BEHAVIOR vs INTENT (2025-09-14)
 #
@@ -47,39 +81,6 @@ logger = logging.getLogger(__name__)
 # - Update tests to reflect the chosen policy.
 # - Implement pruning/aborting here in insert_received_task_for_conversation.
 # --------------------------------------------------------------------------------------
-
-
-def make_wait_task(
-    identifier: str | None = None,
-    duration_seconds: int = 0,
-    preserve: bool = False,
-    depends_on: list[str] | None = None,
-) -> TaskNode:
-    """
-    Create a wait task with the new duration-based format.
-
-    Args:
-        identifier: Task identifier. If None, generates a UUID-based one.
-        duration_seconds: Duration to wait in seconds
-        preserve: Whether this task should be preserved during replanning
-        depends_on: List of task IDs this task depends on
-
-    Returns:
-        TaskNode configured as a wait task
-    """
-    if identifier is None:
-        identifier = f"wait-{uuid.uuid4().hex[:8]}"
-
-    params = {"duration": duration_seconds}
-    if preserve:
-        params["preserve"] = preserve
-
-    return TaskNode(
-        identifier=identifier,
-        type="wait",
-        params=params,
-        depends_on=depends_on or [],
-    )
 
 
 async def insert_received_task_for_conversation(
