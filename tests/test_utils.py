@@ -14,7 +14,10 @@ def monkeypatch_fake_clock(clock, monkeypatch, target_module):
     """
     Replaces asyncio.sleep and datetime.now in the given module using the FakeClock.
     """
-    monkeypatch.setattr(asyncio, "sleep", clock.sleep)
+    # Monkey-patch the asyncio module that's imported in the target module
+    if hasattr(target_module, "asyncio"):
+        monkeypatch.setattr(target_module.asyncio, "sleep", clock.sleep)
+
     monkeypatch.setattr(
         target_module,
         "datetime",
@@ -36,6 +39,8 @@ def fake_clock(monkeypatch):
     import tick
 
     clock = FakeClock()
+
+    # Apply monkey-patching to all relevant modules
     monkeypatch_fake_clock(clock, monkeypatch, tick)
     monkeypatch_fake_clock(clock, monkeypatch, task_graph)
 
