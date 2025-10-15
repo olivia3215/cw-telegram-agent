@@ -99,7 +99,6 @@ class TaskNode:
                 return False
 
             # Now check the until time (either converted from duration or legacy)
-            until = self.params.get("until")
             if not until:
                 return False
 
