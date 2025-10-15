@@ -56,3 +56,7 @@ def _parse_retrieval_max_rounds() -> int:
 
 
 RETRIEVAL_MAX_ROUNDS: int = _parse_retrieval_max_rounds()
+
+
+# Fetched resource lifetime in seconds (how long to keep fetched web resources alive)
+FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes

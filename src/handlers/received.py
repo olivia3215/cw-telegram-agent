@@ -13,7 +13,11 @@ from pathlib import Path
 import httpx
 
 from agent import get_agent_for_id
-from config import RETRIEVAL_MAX_ROUNDS, STATE_DIRECTORY
+from config import (
+    FETCHED_RESOURCE_LIFETIME_SECONDS,
+    RETRIEVAL_MAX_ROUNDS,
+    STATE_DIRECTORY,
+)
 from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -534,7 +538,7 @@ async def _run_llm_with_retrieval(
     channel_id: int,
     task: TaskNode,
     graph: TaskGraph,
-) -> list[TaskNode]:
+) -> tuple[list[TaskNode], bool]:
     """
     Run LLM query loop with retrieval augmentation support.
 
@@ -550,17 +554,25 @@ async def _run_llm_with_retrieval(
         graph: Task graph for error handling
 
     Returns:
-        List of TaskNode objects from LLM response
+        Tuple of (TaskNode list from LLM response, bool indicating if new resources were fetched)
     """
     agent_name = agent.name
     llm = agent.llm
 
+    # Get existing fetched resources from graph context
+    existing_resources = graph.context.get("fetched_resources", {})
+
     # Retrieval augmentation loop
     retrieval_round = 0
-    retrieved_urls: set[str] = set()
-    retrieved_contents: list[tuple[str, str]] = []
+    retrieved_urls: set[str] = set(
+        existing_resources.keys()
+    )  # Start with existing URLs
+    retrieved_contents: list[tuple[str, str]] = list(
+        existing_resources.items()
+    )  # Start with existing content
     tasks = []
     suppress_retrieve = False
+    fetched_new_resources = False
 
     while True:
         # Build final system prompt with retrieval content
@@ -629,11 +641,11 @@ async def _run_llm_with_retrieval(
                 raise
             else:
                 logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-                return []
+                return [], False
 
         if reply == "":
             logger.info(f"[{agent_name}] LLM decided not to reply")
-            return []
+            return [], False
 
         logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
@@ -646,7 +658,7 @@ async def _run_llm_with_retrieval(
             logger.exception(
                 f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
             )
-            return []
+            return [], False
 
         # Check for retrieve tasks
         retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
@@ -688,6 +700,7 @@ async def _run_llm_with_retrieval(
             fetched_url, content = await _fetch_url(url)
             retrieved_urls.add(fetched_url)
             retrieved_contents.append((fetched_url, content))
+            fetched_new_resources = True
             logger.info(
                 f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
             )
@@ -699,7 +712,14 @@ async def _run_llm_with_retrieval(
             )
             suppress_retrieve = True
 
-    return tasks
+    # Store fetched resources in graph context
+    if retrieved_contents:
+        graph.context["fetched_resources"] = dict(retrieved_contents)
+        logger.info(
+            f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
+        )
+
+    return tasks, fetched_new_resources
 
 
 async def _schedule_tasks(
@@ -838,7 +858,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     now_iso = datetime.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
-    tasks = await _run_llm_with_retrieval(
+    tasks, fetched_new_resources = await _run_llm_with_retrieval(
         agent,
         system_prompt,
         history_items,
@@ -852,6 +872,28 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Schedule output tasks
     await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent_name)
+
+    # Add a wait task to keep the graph alive if we fetched new resources
+    if fetched_new_resources:
+        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
+        wait_until = (
+            datetime.now(UTC) + timedelta(seconds=FETCHED_RESOURCE_LIFETIME_SECONDS)
+        ).strftime(ISO_FORMAT)
+
+        wait_task = TaskNode(
+            identifier=wait_id,
+            type="wait",
+            params={
+                "delay": FETCHED_RESOURCE_LIFETIME_SECONDS,
+                "until": wait_until,
+                "preserve": True,
+            },
+            depends_on=[],  # Independent - just keeps graph alive
+        )
+        graph.add_task(wait_task)
+        logger.info(
+            f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
+        )
 
     # Mark conversation as read
     await client.send_read_acknowledge(channel_id)
