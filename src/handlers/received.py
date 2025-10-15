@@ -874,7 +874,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     # Add a wait task to keep the graph alive if we fetched new resources
     if fetched_new_resources:
         wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-        wait_until = (
+        (
             datetime.now(UTC) + timedelta(seconds=FETCHED_RESOURCE_LIFETIME_SECONDS)
         ).strftime(ISO_FORMAT)
 
@@ -882,8 +882,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
             identifier=wait_id,
             type="wait",
             params={
-                "delay": FETCHED_RESOURCE_LIFETIME_SECONDS,
-                "until": wait_until,
+                "duration": FETCHED_RESOURCE_LIFETIME_SECONDS,
                 "preserve": True,
             },
             depends_on=[],  # Independent - just keeps graph alive

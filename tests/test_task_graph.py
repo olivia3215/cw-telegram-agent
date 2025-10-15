@@ -11,14 +11,18 @@ from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 NOW = datetime.now(UTC)
 
 
-def make_wait_task(identifier: str, delta_sec: int):
+def make_wait_task(identifier: str, delta_sec: int, preserve: bool = False):
+    """Helper function to create wait tasks with duration parameter."""
     # For testing, we'll use duration for positive values and until for negative values
     # This allows us to test both the new duration format and legacy until format
     if delta_sec > 0:
+        params = {"duration": delta_sec}
+        if preserve:
+            params["preserve"] = True
         return TaskNode(
             identifier=identifier,
             type="wait",
-            params={"duration": delta_sec},
+            params=params,
             depends_on=[],
         )
     else:
@@ -26,10 +30,13 @@ def make_wait_task(identifier: str, delta_sec: int):
         future_time = (NOW + timedelta(seconds=delta_sec)).strftime(
             "%Y-%m-%dT%H:%M:%S%z"
         )
+        params = {"until": future_time}
+        if preserve:
+            params["preserve"] = True
         return TaskNode(
             identifier=identifier,
             type="wait",
-            params={"until": future_time},
+            params=params,
             depends_on=[],
         )
 

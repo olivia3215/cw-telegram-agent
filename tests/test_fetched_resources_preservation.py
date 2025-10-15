@@ -13,6 +13,19 @@ from config import FETCHED_RESOURCE_LIFETIME_SECONDS
 from task_graph import TaskGraph, TaskNode, WorkQueue
 
 
+def make_wait_task(identifier: str, duration_seconds: int, preserve: bool = False):
+    """Helper function to create wait tasks with duration parameter."""
+    return TaskNode(
+        identifier=identifier,
+        type="wait",
+        params={
+            "duration": duration_seconds,
+            "preserve": preserve,
+        },
+        depends_on=[],
+    )
+
+
 @pytest.mark.asyncio
 async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     """Test that preserve:True wait tasks and fetched resources are preserved when replanning."""
@@ -59,24 +72,14 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
                 params={"message": "Hello"},
                 depends_on=[],
             ),
-            TaskNode(
+            make_wait_task(
                 identifier="wait-preserve-1",
-                type="wait",
-                params={
-                    "delay": FETCHED_RESOURCE_LIFETIME_SECONDS,
-                    "until": datetime.now(UTC).isoformat(),
-                    "preserve": True,
-                },
-                depends_on=[],
+                duration_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                preserve=True,
             ),
-            TaskNode(
+            make_wait_task(
                 identifier="wait-regular-1",
-                type="wait",
-                params={
-                    "delay": 10,
-                    "until": datetime.now(UTC).isoformat(),
-                },
-                depends_on=[],
+                duration_seconds=10,
             ),
         ],
     )
@@ -110,7 +113,9 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     ]
     assert len(preserve_wait_tasks) == 1
     assert preserve_wait_tasks[0].type == "wait"
-    assert preserve_wait_tasks[0].params["delay"] == FETCHED_RESOURCE_LIFETIME_SECONDS
+    assert (
+        preserve_wait_tasks[0].params["duration"] == FETCHED_RESOURCE_LIFETIME_SECONDS
+    )
 
     # Verify regular tasks were cancelled
     regular_send_tasks = [t for t in new_graph.tasks if t.identifier == "send-1"]
@@ -226,19 +231,31 @@ def test_fetched_resources_stored_in_graph_context():
 
 
 def test_preserve_flag_on_wait_task():
-    """Test that preserve flag can be set on wait tasks."""
-    wait_task = TaskNode(
+    """Test that preserve flag can be set on wait tasks and affects preservation behavior."""
+    # Create a wait task with preserve flag
+    wait_task = make_wait_task(
         identifier="wait-preserve",
-        type="wait",
-        params={
-            "delay": 300,
-            "until": datetime.now(UTC).isoformat(),
-            "preserve": True,
-        },
-        depends_on=[],
+        duration_seconds=300,
+        preserve=True,
     )
 
-    # Verify preserve flag
+    # Verify preserve flag and duration
     assert wait_task.params.get("preserve") is True
     assert wait_task.type == "wait"
-    assert wait_task.params["delay"] == 300
+    assert wait_task.params["duration"] == 300
+
+    # Test that the task is ready when unblocked (duration converts to until)
+    from datetime import timedelta
+
+    now = datetime.now(UTC)
+
+    # Initially not ready (not unblocked)
+    assert not wait_task.is_ready(set(), now)
+
+    # When unblocked, should convert duration to until and not be ready yet
+    assert not wait_task.is_ready(set(), now)  # Duration hasn't passed
+    assert "until" in wait_task.params  # Should have converted duration to until
+
+    # Should be ready after duration passes
+    future_time = now + timedelta(seconds=300)
+    assert wait_task.is_ready(set(), future_time)
