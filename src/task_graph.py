@@ -81,9 +81,10 @@ class TaskNode:
                 if not until:
                     # Set the expiration time to now + delay
                     wait_until_time = now + timedelta(seconds=delay)
-                    self.params["until"] = wait_until_time.strftime(ISO_FORMAT)
+                    until = wait_until_time.strftime(ISO_FORMAT)
+                    self.params["until"] = until
                     logger.debug(
-                        f"Task {self.identifier} converted delay {delay}s to until {self.params['until']}"
+                        f"Task {self.identifier} converted delay {delay}s to until {until}"
                     )
                 else:
                     # Already converted, use the existing until time

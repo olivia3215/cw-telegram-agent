@@ -267,3 +267,125 @@ def test_cumulative_wait_delay():
     # But it should be ready at future_time + 5 minutes
     final_time = future_time + timedelta(seconds=300)
     assert wait2.is_ready(completed_ids, final_time)
+
+
+def test_delay_to_until_conversion_bug():
+    """Test that delay-based wait tasks properly convert to until format and become ready.
+
+    This test specifically reproduces and verifies the fix for the bug where the local
+    'until' variable wasn't updated after setting self.params['until'], causing delay-based
+    wait tasks to never become ready.
+
+    The bug manifests when:
+    1. A wait task has only 'delay' parameter (no 'until')
+    2. is_ready() is called, which sets self.params['until'] but doesn't update local 'until' variable
+    3. The subsequent 'if not until:' check fails because local 'until' is still None
+    4. The function returns False even when the delay has passed
+    """
+    # Create a wait task with only delay (no until initially)
+    wait_task = TaskNode(
+        identifier="delay-wait",
+        type="wait",
+        params={"delay": 5},  # 5 second delay
+        depends_on=[],
+    )
+
+    # Initially, the task should have delay but no until
+    assert "delay" in wait_task.params
+    assert "until" not in wait_task.params
+    assert wait_task.params["delay"] == 5
+
+    now = datetime.now(UTC)
+
+    # First call: should not be ready immediately (delay hasn't passed)
+    # This should trigger the delay->until conversion
+    assert not wait_task.is_ready(set(), now)
+
+    # The task should now have an until parameter set
+    assert "until" in wait_task.params
+    assert "delay" in wait_task.params  # delay should still be there
+
+    # Parse the until time to verify it's correct
+    until_time = datetime.strptime(wait_task.params["until"], "%Y-%m-%dT%H:%M:%S%z")
+    expected_time = now + timedelta(seconds=5)
+
+    # Allow for small time differences due to processing
+    assert abs((until_time - expected_time).total_seconds()) < 1
+
+    # Second call: After 5 seconds have passed, the task should be ready
+    # This is where the bug would manifest - without the fix, the local 'until'
+    # variable would still be None from the first call, causing the function to return False
+    future_time = now + timedelta(seconds=5)
+    assert wait_task.is_ready(set(), future_time)
+
+    # The until parameter should still be the same (not recalculated)
+    assert wait_task.params["until"] == until_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def test_delay_conversion_bug_reproduction():
+    """Test that reproduces the exact bug scenario.
+
+    The bug occurs when a wait task with only 'delay' parameter is first checked
+    for readiness. The local 'until' variable is not updated after setting
+    self.params['until'], causing the subsequent check to fail.
+
+    This test demonstrates the bug by showing that without the fix, a wait task
+    with delay=0 (should be ready immediately) would incorrectly return False.
+    """
+    # Create a wait task with delay=0 (should be ready immediately)
+    wait_task = TaskNode(
+        identifier="delay-wait",
+        type="wait",
+        params={"delay": 0},  # 0 second delay - should be ready immediately
+        depends_on=[],
+    )
+
+    now = datetime.now(UTC)
+
+    # With the fix: this should return True (ready immediately)
+    # Without the fix: this would return False because local 'until' variable
+    # is None, causing the 'if not until:' check to fail
+    assert wait_task.is_ready(set(), now)
+
+    # Verify the until parameter was set correctly
+    assert "until" in wait_task.params
+
+    # The until time should be very close to 'now' since delay=0
+    until_time = datetime.strptime(wait_task.params["until"], "%Y-%m-%dT%H:%M:%S%z")
+    assert abs((until_time - now).total_seconds()) < 1
+
+
+def test_delay_conversion_with_dependencies():
+    """Test that delay conversion works correctly when tasks have dependencies."""
+    # Create a task that depends on another task
+    first_task = TaskNode(
+        identifier="first", type="send", params={"message": "Hello"}, depends_on=[]
+    )
+
+    # Create a wait task that depends on the first task
+    wait_task = TaskNode(
+        identifier="wait-after-first",
+        type="wait",
+        params={"delay": 3},  # 3 second delay
+        depends_on=["first"],
+    )
+
+    now = datetime.now(UTC)
+
+    # Initially, wait task should not be ready (first task not done)
+    assert not wait_task.is_ready(set(), now)
+
+    # Mark first task as done
+    first_task.status = TaskStatus.DONE
+    completed_ids = {"first"}
+
+    # Now wait task should be unblocked and convert delay to until
+    # But it shouldn't be ready yet (delay hasn't passed)
+    assert not wait_task.is_ready(completed_ids, now)
+
+    # It should now have an until parameter
+    assert "until" in wait_task.params
+
+    # After 3 seconds, it should be ready
+    future_time = now + timedelta(seconds=3)
+    assert wait_task.is_ready(completed_ids, future_time)
