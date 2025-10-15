@@ -199,27 +199,34 @@ async def authenticate_agent(agent: Agent):
     agent._client = client
 
     try:
-        async with client:
-            # Check if the client is authenticated before proceeding
-            if not await client.is_user_authorized():
-                logger.error(
-                    f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
-                )
-                logger.error(
-                    f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
-                )
-                logger.error(f"[{agent_name}] Authentication failed.")
-                return False
+        # Start the client connection without using async with
+        await client.start()
 
-            await ensure_sticker_cache(agent, client)
-            me = await client.get_me()
-            agent_id = me.id
-            agent.agent_id = agent_id
-            logger.info(f"[{agent_name}] Agent authenticated ({agent_id})")
-            return True
+        # Check if the client is authenticated before proceeding
+        if not await client.is_user_authorized():
+            logger.error(
+                f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
+            )
+            logger.error(
+                f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
+            )
+            logger.error(f"[{agent_name}] Authentication failed.")
+            await client.disconnect()
+            return False
+
+        await ensure_sticker_cache(agent, client)
+        me = await client.get_me()
+        agent_id = me.id
+        agent.agent_id = agent_id
+        logger.info(f"[{agent_name}] Agent authenticated ({agent_id})")
+        return True
 
     except Exception as e:
         logger.exception(f"[{agent_name}] Authentication error: {e}")
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
         return False
 
 
@@ -227,10 +234,21 @@ async def run_telegram_loop(agent: Agent, work_queue):
     agent_name = agent.name
 
     while True:
-        auth_success = await authenticate_agent(agent)
-        if not auth_success:
-            logger.error(f"[{agent_name}] Authentication failed, exiting.")
-            break
+        # Check if agent already has a connected client from initial authentication
+        if agent.client and not agent.client.is_connected():
+            # Client exists but is disconnected, need to reconnect
+            try:
+                await agent.client.disconnect()
+            except Exception:
+                pass
+            agent.client = None
+
+        if not agent.client:
+            # Need to authenticate - either first time or after disconnection
+            auth_success = await authenticate_agent(agent)
+            if not auth_success:
+                logger.error(f"[{agent_name}] Authentication failed, exiting.")
+                break
 
         client = agent.client
         if not client:

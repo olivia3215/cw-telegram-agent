@@ -45,6 +45,7 @@ async def test_authenticate_agent_success():
         assert result is True
         assert agent.agent_id == 12345
         assert agent.client == mock_client
+        mock_client.start.assert_called_once()
         mock_client.is_user_authorized.assert_called_once()
         mock_client.get_me.assert_called_once()
 
@@ -67,7 +68,9 @@ async def test_authenticate_agent_not_authorized():
 
         assert result is False
         assert agent.agent_id is None
+        mock_client.start.assert_called_once()
         mock_client.is_user_authorized.assert_called_once()
+        mock_client.disconnect.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -88,6 +91,8 @@ async def test_authenticate_agent_exception():
 
         assert result is False
         assert agent.agent_id is None
+        mock_client.start.assert_called_once()
+        mock_client.disconnect.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -210,6 +215,7 @@ async def test_authenticate_agent_client_setup():
         assert result is True
         assert agent.client == mock_client
         mock_get_client.assert_called_once_with(agent.name, agent.phone)
+        mock_client.start.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -233,4 +239,5 @@ async def test_authenticate_agent_sticker_cache():
         result = await authenticate_agent(agent)
 
         assert result is True
+        mock_client.start.assert_called_once()
         mock_ensure_stickers.assert_called_once_with(agent, mock_client)
