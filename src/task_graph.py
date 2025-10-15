@@ -73,12 +73,36 @@ class TaskNode:
         if not self.is_unblocked(completed_ids):
             return False
         if self.type == "wait":
+            # Check if we have duration (new format) or until (legacy format)
+            duration = self.params.get("duration")
             until = self.params.get("until")
-            if not until:
+
+            if duration is not None:
+                # New format: convert duration to until when first unblocked
+                if not until:
+                    # Set the expiration time to now + duration
+                    wait_until_time = now + timedelta(seconds=duration)
+                    self.params["until"] = wait_until_time.strftime(ISO_FORMAT)
+                    logger.debug(
+                        f"Task {self.identifier} converted duration {duration}s to until {self.params['until']}"
+                    )
+                else:
+                    # Already converted, use the existing until time
+                    pass
+            elif until:
+                # Legacy format: use existing until time
+                pass
+            else:
                 logger.warning(
-                    f"Task {self.identifier} of type 'wait' missing 'until' parameter."
+                    f"Task {self.identifier} of type 'wait' missing both 'duration' and 'until' parameters."
                 )
                 return False
+
+            # Now check the until time (either converted from duration or legacy)
+            until = self.params.get("until")
+            if not until:
+                return False
+
             try:
                 wait_time = datetime.strptime(until, ISO_FORMAT)
                 if now < wait_time:
@@ -135,16 +159,13 @@ class TaskNode:
         Returns:
             The newly created wait TaskNode
         """
-        now = datetime.now(UTC)
         wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-        wait_until = (now + timedelta(seconds=delay_seconds)).strftime(ISO_FORMAT)
 
         wait_task = TaskNode(
             identifier=wait_id,
             type="wait",
             params={
-                "delay": delay_seconds,
-                "until": wait_until,
+                "duration": delay_seconds,
             },
             depends_on=[],
         )

@@ -12,10 +12,26 @@ NOW = datetime.now(UTC)
 
 
 def make_wait_task(identifier: str, delta_sec: int):
-    future_time = (NOW + timedelta(seconds=delta_sec)).strftime("%Y-%m-%dT%H:%M:%S%z")
-    return TaskNode(
-        identifier=identifier, type="wait", params={"until": future_time}, depends_on=[]
-    )
+    # For testing, we'll use duration for positive values and until for negative values
+    # This allows us to test both the new duration format and legacy until format
+    if delta_sec > 0:
+        return TaskNode(
+            identifier=identifier,
+            type="wait",
+            params={"duration": delta_sec},
+            depends_on=[],
+        )
+    else:
+        # For negative values (immediate execution), use legacy until format
+        future_time = (NOW + timedelta(seconds=delta_sec)).strftime(
+            "%Y-%m-%dT%H:%M:%S%z"
+        )
+        return TaskNode(
+            identifier=identifier,
+            type="wait",
+            params={"until": future_time},
+            depends_on=[],
+        )
 
 
 def make_send_task(identifier: str, depends=None):
@@ -88,7 +104,9 @@ def test_invalid_wait_task_logs(caplog):
 
     missing_until = TaskNode(identifier="t1", type="wait", params={}, depends_on=[])
     assert not missing_until.is_ready(set(), NOW)
-    assert any("missing 'until'" in m for m in caplog.text.splitlines())
+    assert any(
+        "missing both 'duration' and 'until'" in m for m in caplog.text.splitlines()
+    )
 
     bad_format = TaskNode(
         identifier="t2", type="wait", params={"until": "not-a-date"}, depends_on=[]
@@ -179,3 +197,82 @@ def test_cancelled_status():
     assert task.status != TaskStatus.PENDING
     assert task.status != TaskStatus.DONE
     assert task.status != TaskStatus.FAILED
+
+
+def test_cumulative_wait_duration():
+    """Test that serial wait tasks use cumulative duration, not absolute expiration."""
+    # Create a chain: Task A -> Wait 5min -> Task B -> Wait 5min -> Task C
+    # Both waits should be 5 minutes from when they become unblocked, not from creation time
+
+    # Create tasks
+    task_a = make_send_task("task_a")
+    task_b = make_send_task("task_b", depends=["wait1"])
+    task_c = make_send_task("task_c", depends=["wait2"])
+
+    # Create wait tasks with duration (not until)
+    wait1 = TaskNode(
+        identifier="wait1", type="wait", params={"duration": 300}, depends_on=["task_a"]
+    )  # 5 minutes
+    wait2 = TaskNode(
+        identifier="wait2", type="wait", params={"duration": 300}, depends_on=["task_b"]
+    )  # 5 minutes
+
+    make_graph("cumulative_test", [task_a, wait1, task_b, wait2, task_c])
+
+    # Initially, only task_a should be ready
+    assert task_a.is_ready(set(), NOW)
+    assert not wait1.is_ready(set(), NOW)  # wait1 depends on task_a
+    assert not task_b.is_ready(set(), NOW)
+    assert not wait2.is_ready(set(), NOW)
+    assert not task_c.is_ready(set(), NOW)
+
+    # Mark task_a as done
+    task_a.status = TaskStatus.DONE
+    completed_ids = {"task_a"}
+
+    # Now wait1 should be unblocked and should convert duration to until
+    # But it won't be ready until the duration has passed
+    assert not wait1.is_ready(
+        completed_ids, NOW
+    )  # Not ready yet, duration hasn't passed
+
+    # Check that wait1 now has an "until" parameter set to NOW + 5 minutes
+    assert "until" in wait1.params
+    wait_until_time = datetime.strptime(wait1.params["until"], "%Y-%m-%dT%H:%M:%S%z")
+    expected_time = NOW + timedelta(seconds=300)
+    # Allow for small time differences due to processing
+    assert abs((wait_until_time - expected_time).total_seconds()) < 1
+
+    # But if we advance time by 5 minutes, wait1 should be ready
+    future_time = NOW + timedelta(seconds=300)
+    assert wait1.is_ready(completed_ids, future_time)
+
+    # Mark wait1 as done
+    wait1.status = TaskStatus.DONE
+    completed_ids.add("wait1")
+
+    # Now task_b should be ready
+    assert task_b.is_ready(completed_ids, future_time)
+
+    # Mark task_b as done
+    task_b.status = TaskStatus.DONE
+    completed_ids.add("task_b")
+
+    # Now wait2 should be unblocked and should convert its duration to until
+    # But it won't be ready until the duration has passed
+    assert not wait2.is_ready(
+        completed_ids, future_time
+    )  # Not ready yet, duration hasn't passed
+    assert "until" in wait2.params
+
+    # wait2's until should be set to future_time + 5 minutes (not NOW + 5 minutes)
+    wait2_until_time = datetime.strptime(wait2.params["until"], "%Y-%m-%dT%H:%M:%S%z")
+    expected_wait2_time = future_time + timedelta(seconds=300)
+    assert abs((wait2_until_time - expected_wait2_time).total_seconds()) < 1
+
+    # wait2 should not be ready yet at future_time
+    assert not wait2.is_ready(completed_ids, future_time)
+
+    # But it should be ready at future_time + 5 minutes
+    final_time = future_time + timedelta(seconds=300)
+    assert wait2.is_ready(completed_ids, final_time)

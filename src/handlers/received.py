@@ -302,9 +302,7 @@ async def parse_llm_reply_from_markdown(
                 raise ValueError("Wait task must contain 'delay: <seconds>'")
 
             delay_seconds = int(match.group(1))
-            params["delay"] = delay_seconds
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
-            params["until"] = wait_until_time.strftime(ISO_FORMAT)
+            params["duration"] = delay_seconds
 
         elif current_type == "block":
             pass  # No parameters needed
