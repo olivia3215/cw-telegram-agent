@@ -7,38 +7,24 @@ import logging
 from datetime import UTC, datetime, timedelta, timezone
 
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
+from task_graph_helpers import make_wait_task
 
 NOW = datetime.now(UTC)
 
 
-def make_wait_task(identifier: str, delta_sec: int, preserve: bool = False):
-    """Helper function to create wait tasks with duration parameter."""
-    # For testing, we'll use duration for positive values and until for negative values
-    # This allows us to test both the new duration format and legacy until format
-    if delta_sec > 0:
-        params = {"duration": delta_sec}
-        if preserve:
-            params["preserve"] = True
-        return TaskNode(
-            identifier=identifier,
-            type="wait",
-            params=params,
-            depends_on=[],
-        )
-    else:
-        # For negative values (immediate execution), use legacy until format
-        future_time = (NOW + timedelta(seconds=delta_sec)).strftime(
-            "%Y-%m-%dT%H:%M:%S%z"
-        )
-        params = {"until": future_time}
-        if preserve:
-            params["preserve"] = True
-        return TaskNode(
-            identifier=identifier,
-            type="wait",
-            params=params,
-            depends_on=[],
-        )
+def make_wait_task_legacy(identifier: str, delta_sec: int, preserve: bool = False):
+    """Helper function to create wait tasks with legacy until format for testing."""
+    # For negative values (immediate execution), use legacy until format
+    future_time = (NOW + timedelta(seconds=delta_sec)).strftime("%Y-%m-%dT%H:%M:%S%z")
+    params = {"until": future_time}
+    if preserve:
+        params["preserve"] = True
+    return TaskNode(
+        identifier=identifier,
+        type="wait",
+        params=params,
+        depends_on=[],
+    )
 
 
 def make_send_task(identifier: str, depends=None):
@@ -55,10 +41,10 @@ def make_graph(identifier: str, nodes):
 
 
 def test_task_readiness():
-    t1 = make_wait_task("wait1", -10)
+    t1 = make_wait_task_legacy("wait1", -10)
     assert t1.is_ready(set(), NOW)
 
-    t2 = make_wait_task("wait2", 10)
+    t2 = make_wait_task("wait2", duration_seconds=10)
     assert not t2.is_ready(set(), NOW)
 
     t3 = make_send_task("send1", depends=["wait1"])
@@ -68,7 +54,7 @@ def test_task_readiness():
 
 
 def test_graph_pending_tasks():
-    t1 = make_wait_task("wait1", -10)
+    t1 = make_wait_task_legacy("wait1", -10)
     t2 = make_send_task("send1", depends=["wait1"])
     graph = make_graph("g1", [t1, t2])
     t1.status = TaskStatus.DONE
@@ -77,9 +63,9 @@ def test_graph_pending_tasks():
 
 
 def test_round_robin_rotation():
-    g1 = make_graph("g1", [make_wait_task("w1", -10)])
-    g2 = make_graph("g2", [make_wait_task("w2", -10)])
-    g3 = make_graph("g3", [make_wait_task("w3", 10)])  # not ready
+    g1 = make_graph("g1", [make_wait_task_legacy("w1", -10)])
+    g2 = make_graph("g2", [make_wait_task_legacy("w2", -10)])
+    g3 = make_graph("g3", [make_wait_task("w3", duration_seconds=10)])  # not ready
 
     q = WorkQueue(_task_graphs=[g1, g2, g3])
 
@@ -94,7 +80,7 @@ def test_round_robin_rotation():
 
 
 def test_serialization_and_reload(tmp_path):
-    g = make_graph("gX", [make_wait_task("wX", -10)])
+    g = make_graph("gX", [make_wait_task_legacy("wX", -10)])
     queue = WorkQueue(_task_graphs=[g])
     file_path = tmp_path / "queue.md"
     queue.save(str(file_path))

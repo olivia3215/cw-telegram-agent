@@ -26,6 +26,7 @@ from media.media_injector import (
 from media.media_source import get_default_media_source_chain
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
+from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from tick import register_task_handler
@@ -873,16 +874,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Add a wait task to keep the graph alive if we fetched new resources
     if fetched_new_resources:
-        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-
-        wait_task = TaskNode(
-            identifier=wait_id,
-            type="wait",
-            params={
-                "duration": FETCHED_RESOURCE_LIFETIME_SECONDS,
-                "preserve": True,
-            },
-            depends_on=[],  # Independent - just keeps graph alive
+        wait_task = make_wait_task(
+            duration_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+            preserve=True,
         )
         graph.add_task(wait_task)
         logger.info(

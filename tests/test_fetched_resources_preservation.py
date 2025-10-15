@@ -11,19 +11,7 @@ import pytest
 
 from config import FETCHED_RESOURCE_LIFETIME_SECONDS
 from task_graph import TaskGraph, TaskNode, WorkQueue
-
-
-def make_wait_task(identifier: str, duration_seconds: int, preserve: bool = False):
-    """Helper function to create wait tasks with duration parameter."""
-    return TaskNode(
-        identifier=identifier,
-        type="wait",
-        params={
-            "duration": duration_seconds,
-            "preserve": preserve,
-        },
-        depends_on=[],
-    )
+from task_graph_helpers import make_wait_task
 
 
 @pytest.mark.asyncio

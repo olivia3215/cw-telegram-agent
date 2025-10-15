@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 import threading
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -158,19 +157,12 @@ class TaskNode:
         Returns:
             The newly created wait TaskNode
         """
-        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
+        from task_graph_helpers import make_wait_task
 
-        wait_task = TaskNode(
-            identifier=wait_id,
-            type="wait",
-            params={
-                "duration": delay_seconds,
-            },
-            depends_on=[],
-        )
+        wait_task = make_wait_task(duration_seconds=delay_seconds)
 
         graph.add_task(wait_task)
-        self.depends_on.append(wait_id)
+        self.depends_on.append(wait_task.identifier)
 
         return wait_task
 
