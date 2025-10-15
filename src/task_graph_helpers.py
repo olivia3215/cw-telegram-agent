@@ -84,9 +84,8 @@ async def insert_received_task_for_conversation(
         # preserve tasks from the old graph, but mark some as done
         for old_task in old_graph.tasks:
             old_task.params.get("callout")
-            # We no longer preserve existing tasks.
-            # preserve = was_callout and ((not is_callout) or random.random() < 0.5)
-            preserve = False
+            # Preserve tasks marked with preserve:True (e.g., wait tasks keeping resources alive)
+            preserve = old_task.params.get("preserve", False)
             if preserve and not old_task.status.is_completed():
                 last_task = old_task.identifier
             else:
@@ -126,14 +125,25 @@ async def insert_received_task_for_conversation(
     channel_name = await get_channel_name(agent, channel_id)
 
     graph_id = f"recv-{uuid.uuid4().hex[:8]}"
+
+    # Build new graph context, copying fetched_resources from old graph if present
+    new_context = {
+        "agent_id": recipient_id,
+        "channel_id": channel_id,
+        "agent_name": recipient_name,
+        "channel_name": channel_name,
+    }
+
+    # Copy fetched resources from old graph if they exist
+    if old_graph and "fetched_resources" in old_graph.context:
+        new_context["fetched_resources"] = old_graph.context["fetched_resources"]
+        logger.info(
+            f"[{recipient_name}] Copied {len(new_context['fetched_resources'])} fetched resource(s) from old graph"
+        )
+
     new_graph = TaskGraph(
         identifier=graph_id,
-        context={
-            "agent_id": recipient_id,
-            "channel_id": channel_id,
-            "agent_name": recipient_name,
-            "channel_name": channel_name,
-        },
+        context=new_context,
         tasks=preserved_tasks,
     )
 
