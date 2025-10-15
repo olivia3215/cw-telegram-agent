@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 import threading
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -73,12 +72,36 @@ class TaskNode:
         if not self.is_unblocked(completed_ids):
             return False
         if self.type == "wait":
+            # Check if we have delay (new format) or until (legacy format)
+            delay = self.params.get("delay")
             until = self.params.get("until")
-            if not until:
+
+            if delay is not None:
+                # New format: convert delay to until when first unblocked
+                if not until:
+                    # Set the expiration time to now + delay
+                    wait_until_time = now + timedelta(seconds=delay)
+                    until = wait_until_time.strftime(ISO_FORMAT)
+                    self.params["until"] = until
+                    logger.debug(
+                        f"Task {self.identifier} converted delay {delay}s to until {until}"
+                    )
+                else:
+                    # Already converted, use the existing until time
+                    pass
+            elif until:
+                # Legacy format: use existing until time
+                pass
+            else:
                 logger.warning(
-                    f"Task {self.identifier} of type 'wait' missing 'until' parameter."
+                    f"Task {self.identifier} of type 'wait' missing both 'delay' and 'until' parameters."
                 )
                 return False
+
+            # Now check the until time (either converted from delay or legacy)
+            if not until:
+                return False
+
             try:
                 wait_time = datetime.strptime(until, ISO_FORMAT)
                 if now < wait_time:
@@ -135,22 +158,12 @@ class TaskNode:
         Returns:
             The newly created wait TaskNode
         """
-        now = datetime.now(UTC)
-        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-        wait_until = (now + timedelta(seconds=delay_seconds)).strftime(ISO_FORMAT)
+        from task_graph_helpers import make_wait_task
 
-        wait_task = TaskNode(
-            identifier=wait_id,
-            type="wait",
-            params={
-                "delay": delay_seconds,
-                "until": wait_until,
-            },
-            depends_on=[],
-        )
+        wait_task = make_wait_task(delay_seconds=delay_seconds)
 
         graph.add_task(wait_task)
-        self.depends_on.append(wait_id)
+        self.depends_on.append(wait_task.identifier)
 
         return wait_task
 

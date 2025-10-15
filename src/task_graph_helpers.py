@@ -12,35 +12,69 @@ from telegram_util import get_channel_name
 
 logger = logging.getLogger(__name__)
 
+
+def make_wait_task(
+    identifier: str | None = None,
+    delay_seconds: int = 0,
+    preserve: bool = False,
+    depends_on: list[str] | None = None,
+) -> TaskNode:
+    """
+    Create a wait task with the delay-based format.
+
+    Args:
+        identifier: Task identifier. If None, generates a UUID-based one.
+        delay_seconds: Delay to wait in seconds
+        preserve: Whether this task should be preserved during replanning
+        depends_on: List of task IDs this task depends on
+
+    Returns:
+        TaskNode configured as a wait task
+    """
+    if identifier is None:
+        identifier = f"wait-{uuid.uuid4().hex[:8]}"
+
+    params = {"delay": delay_seconds}
+    if preserve:
+        params["preserve"] = preserve
+
+    return TaskNode(
+        identifier=identifier,
+        type="wait",
+        params=params,
+        depends_on=depends_on or [],
+    )
+
+
 # --------------------------------------------------------------------------------------
 # CALLOUT / REPLAN SEMANTICS — CURRENT BEHAVIOR vs INTENT (2025-09-14)
 #
 # Current behavior (observed in tests):
 # - When a new message arrives for (agent_id, channel_id), we create a new
 #   `received-<id>` TaskNode and keep it in the SAME TaskGraph instance.
-# - We DO NOT delete/abort prior tasks. Both “callout” tasks (params.callout=True)
+# - We DO NOT delete/abort prior tasks. Both "callout" tasks (params.callout=True)
 #   and regular (ephemeral) tasks remain present.
 # - We DO NOT rewire dependencies; any existing depends_on links are left as-is.
 # - We DO NOT distinguish DM vs Group here; no chat-type specific policy is applied.
 #
 # Evidence:
 # - tests/test_integration.py::test_preserves_callout_tasks_when_replacing_graph
-#   currently observes that the old regular task (“regular1”) is still present
-#   alongside the preserved callout (“callout1”) plus the new “received-*” node.
+#   currently observes that the old regular task ("regular1") is still present
+#   alongside the preserved callout ("callout1") plus the new "received-*" node.
 #
 # Known implications:
-# - In group chats, keeping the old plan can cause the agent to remain “captured”
+# - In group chats, keeping the old plan can cause the agent to remain "captured"
 #   by a previous epoch unless upstream throttles replies.
 # - In DMs, durable mini-plans (e.g., temporary block/unblock sequences) can be
 #   disrupted by replans. We may want targeted preservation there.
 #
 # Proposed semantics (to be decided and then encoded in tests and code):
-# - DMs: On replan, preserve callout tasks that aren’t done; mark others aborted/done.
+# - DMs: On replan, preserve callout tasks that aren't done; mark others aborted/done.
 #         For preserved callouts, prune depends_on to preserved-only tasks to avoid
 #         dangling dependencies. Optional: record `aborted_by: received-<id>` for
 #         dropped/aborted tasks instead of deleting them.
 # - Groups: On replan, hard reset (drop/abort everything) and keep only the new
-#           “received-*” node; optionally add a debounce/budget to avoid ping-pong.
+#           "received-*" node; optionally add a debounce/budget to avoid ping-pong.
 #
 # Action items (future):
 # - Decide and document the final policy (DM vs Group).

@@ -7,7 +7,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -26,6 +26,7 @@ from media.media_injector import (
 from media.media_source import get_default_media_source_chain
 from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
+from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from tick import register_task_handler
@@ -303,8 +304,6 @@ async def parse_llm_reply_from_markdown(
 
             delay_seconds = int(match.group(1))
             params["delay"] = delay_seconds
-            wait_until_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
-            params["until"] = wait_until_time.strftime(ISO_FORMAT)
 
         elif current_type == "block":
             pass  # No parameters needed
@@ -875,20 +874,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
 
     # Add a wait task to keep the graph alive if we fetched new resources
     if fetched_new_resources:
-        wait_id = f"wait-{uuid.uuid4().hex[:8]}"
-        wait_until = (
-            datetime.now(UTC) + timedelta(seconds=FETCHED_RESOURCE_LIFETIME_SECONDS)
-        ).strftime(ISO_FORMAT)
-
-        wait_task = TaskNode(
-            identifier=wait_id,
-            type="wait",
-            params={
-                "delay": FETCHED_RESOURCE_LIFETIME_SECONDS,
-                "until": wait_until,
-                "preserve": True,
-            },
-            depends_on=[],  # Independent - just keeps graph alive
+        wait_task = make_wait_task(
+            delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+            preserve=True,
         )
         graph.add_task(wait_task)
         logger.info(

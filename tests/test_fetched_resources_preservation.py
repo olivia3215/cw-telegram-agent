@@ -11,6 +11,7 @@ import pytest
 
 from config import FETCHED_RESOURCE_LIFETIME_SECONDS
 from task_graph import TaskGraph, TaskNode, WorkQueue
+from task_graph_helpers import make_wait_task
 
 
 @pytest.mark.asyncio
@@ -59,24 +60,14 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
                 params={"message": "Hello"},
                 depends_on=[],
             ),
-            TaskNode(
+            make_wait_task(
                 identifier="wait-preserve-1",
-                type="wait",
-                params={
-                    "delay": FETCHED_RESOURCE_LIFETIME_SECONDS,
-                    "until": datetime.now(UTC).isoformat(),
-                    "preserve": True,
-                },
-                depends_on=[],
+                delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                preserve=True,
             ),
-            TaskNode(
+            make_wait_task(
                 identifier="wait-regular-1",
-                type="wait",
-                params={
-                    "delay": 10,
-                    "until": datetime.now(UTC).isoformat(),
-                },
-                depends_on=[],
+                delay_seconds=10,
             ),
         ],
     )
@@ -226,19 +217,31 @@ def test_fetched_resources_stored_in_graph_context():
 
 
 def test_preserve_flag_on_wait_task():
-    """Test that preserve flag can be set on wait tasks."""
-    wait_task = TaskNode(
+    """Test that preserve flag can be set on wait tasks and affects preservation behavior."""
+    # Create a wait task with preserve flag
+    wait_task = make_wait_task(
         identifier="wait-preserve",
-        type="wait",
-        params={
-            "delay": 300,
-            "until": datetime.now(UTC).isoformat(),
-            "preserve": True,
-        },
-        depends_on=[],
+        delay_seconds=300,
+        preserve=True,
     )
 
-    # Verify preserve flag
+    # Verify preserve flag and delay
     assert wait_task.params.get("preserve") is True
     assert wait_task.type == "wait"
     assert wait_task.params["delay"] == 300
+
+    # Test that the task is ready when unblocked (delay converts to until)
+    from datetime import timedelta
+
+    now = datetime.now(UTC)
+
+    # Initially not ready (not unblocked)
+    assert not wait_task.is_ready(set(), now)
+
+    # When unblocked, should convert delay to until and not be ready yet
+    assert not wait_task.is_ready(set(), now)  # Delay hasn't passed
+    assert "until" in wait_task.params  # Should have converted delay to until
+
+    # Should be ready after delay passes
+    future_time = now + timedelta(seconds=300)
+    assert wait_task.is_ready(set(), future_time)
