@@ -3,40 +3,29 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
-import asyncio
-from datetime import datetime
-
 import pytest
 from fake_clock import FakeClock
-
-
-def monkeypatch_fake_clock(clock, monkeypatch, target_module):
-    """
-    Replaces asyncio.sleep and datetime.now in the given module using the FakeClock.
-    """
-    monkeypatch.setattr(asyncio, "sleep", clock.sleep)
-    monkeypatch.setattr(
-        target_module,
-        "datetime",
-        type(
-            "FakeDateTime",
-            (datetime,),
-            {"now": classmethod(lambda cls, tz=None: clock.now())},
-        ),
-    )
 
 
 @pytest.fixture
 def fake_clock(monkeypatch):
     """
-    Provides a FakeClock instance and automatically monkeypatches asyncio.sleep
-    and datetime in all relevant modules.
+    Provides a FakeClock instance and replaces the Clock singleton in all modules.
+
+    We need to patch the clock reference in each module that imports it,
+    not just the global reference, because modules hold their own references.
     """
-    import task_graph  # <-- Import the other module that uses time
-    import tick
+    from clock import clock
 
-    clock = FakeClock()
-    monkeypatch_fake_clock(clock, monkeypatch, tick)
-    monkeypatch_fake_clock(clock, monkeypatch, task_graph)
+    fake_clock_instance = FakeClock()
 
-    return clock
+    # Replace the global singleton instance and module references
+    # This is necessary because modules hold their own references to the clock object
+    modules_to_patch = ["clock", "tick", "agent", "task_graph"]
+    for module_name in modules_to_patch:
+        try:
+            monkeypatch.setattr(f"{module_name}.clock", fake_clock_instance)
+        except Exception:
+            pass  # Module may not be imported yet
+
+    return fake_clock_instance

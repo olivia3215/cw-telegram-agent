@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from telethon.tl.functions.account import GetNotifySettingsRequest
 from telethon.tl.functions.contacts import GetBlockedRequest
 
+from clock import clock
 from config import GOOGLE_GEMINI_API_KEY, STATE_DIRECTORY
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
@@ -48,7 +49,7 @@ class Agent:
         # Set timezone: use provided timezone, or default to server's local timezone
         if timezone is None:
             # Get server's local timezone
-            self.timezone = datetime.now().astimezone().tzinfo
+            self.timezone = clock.now().astimezone().tzinfo
             logger.debug(f"Agent {name}: Using server timezone {self.timezone}")
         elif isinstance(timezone, str):
             # Parse timezone string to ZoneInfo
@@ -59,7 +60,7 @@ class Agent:
                 logger.warning(
                     f"Agent {name}: Invalid timezone '{timezone}', falling back to server timezone: {e}"
                 )
-                self.timezone = datetime.now().astimezone().tzinfo
+                self.timezone = clock.now().astimezone().tzinfo
         else:
             # Assume it's already a timezone object
             self.timezone = timezone
@@ -117,20 +118,20 @@ class Agent:
 
     def get_current_time(self):
         """Get the current time in the agent's timezone."""
-        return datetime.now(self.timezone)
+        return clock.now(self.timezone)
 
     @property
     def client(self):
-        """Get the Telegram client, creating it on demand if needed."""
-        if self._client is None:
-            # Import here to avoid circular import
-            from telegram_util import get_telegram_client
-
-            self._client = get_telegram_client(self.name, self.phone)
+        """Get the Telegram client. Returns None if not authenticated."""
         return self._client
 
     async def get_client(self):
+        """Get the Telegram client, ensuring it's connected. Raises RuntimeError if not authenticated."""
         client = self.client
+        if client is None:
+            raise RuntimeError(
+                f"Agent '{self.name}' is not authenticated. No client available."
+            )
         if not client.is_connected():
             await client.connect()
         logger.info(f"Connected client for agent '{self.name}'")
@@ -257,7 +258,7 @@ class Agent:
         Checks if a peer is muted, using a 60-second cache.
         """
         assert isinstance(peer_id, int)
-        now = datetime.now(UTC)
+        now = clock.now(UTC)
         cached = self._mute_cache.get(peer_id)
         if cached and cached[1] > now:
             return cached[0]
@@ -292,7 +293,7 @@ class Agent:
 
         entity_id = normalize_peer_id(entity_id)
 
-        now = datetime.now(UTC)
+        now = clock.now(UTC)
         cached = self._entity_cache.get(entity_id)
         if cached and cached[1] > now:
             return cached[0]
@@ -312,7 +313,7 @@ class Agent:
         Checks if a user is in the agent's blocklist, using a short-lived cache
         to avoid excessive API calls.
         """
-        now = datetime.now()
+        now = clock.now()
         # Invalidate cache every 60 seconds
         if self._blocklist_cache is None or (
             self._blocklist_last_updated

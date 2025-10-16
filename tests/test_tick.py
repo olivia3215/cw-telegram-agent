@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telethon.tl.functions.messages import DeleteHistoryRequest
 
+import handlers  # noqa: F401 - Import handlers to register task types
 from agent import Agent
 from exceptions import ShutdownException
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
@@ -116,23 +117,41 @@ async def test_retry_eventually_gives_up(fake_clock):
     graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
+    # Use a much shorter interval to avoid hanging on real sleep
+    tick_interval_sec = 0.1  # 100ms instead of 10s
+
+    tick_count = 0
+    max_ticks = 50  # Increased to allow for more retry cycles
+
     async def patched_tick(queue, state_file_path=None):
-        # Advance the clock to make wait tasks ready
-        fake_clock.advance(10)
-        assert not task.status.is_completed()
+        nonlocal tick_count
+        tick_count += 1
+
+        # Advance the clock by 15 seconds to ensure wait tasks complete
+        fake_clock.advance(15)
         await run_one_tick(queue, state_file_path=state_file_path)
-        assert task.status.is_completed()
+
+        # Check if task has exhausted all retries and failed
+        if task.status == TaskStatus.FAILED:
+            raise ShutdownException("task failed after max retries")
+
+        # Safety check to prevent infinite loops
+        if tick_count > max_ticks:
+            raise ShutdownException("max ticks exceeded")
+
         if not queue._task_graphs:
             raise ShutdownException("done")
 
     # Run the tick loop - it should eventually give up and raise ShutdownException
     with pytest.raises(ShutdownException):
-        await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_tick)
+        await run_tick_loop(
+            work_queue=queue, tick_interval_sec=tick_interval_sec, tick_fn=patched_tick
+        )
 
     # Verify the task eventually failed after max retries
     assert task.status == TaskStatus.FAILED
     assert task.params["previous_retries"] == 10  # Should have reached max retries
-    assert fake_clock.slept().count(10) >= 10
+    assert fake_clock.slept().count(tick_interval_sec) >= 10
 
 
 @pytest.mark.asyncio

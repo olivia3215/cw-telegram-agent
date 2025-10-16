@@ -11,8 +11,17 @@ class FakeClock:
         self._now = start or datetime(2025, 1, 1, tzinfo=UTC)
         self._slept_intervals = []
 
-    def now(self) -> datetime:
-        return self._now
+    def now(self, tz=None) -> datetime:
+        if tz is None:
+            return self._now.replace(
+                tzinfo=None
+            )  # Return naive datetime for consistency with datetime.now()
+        return self._now.astimezone(tz)
+
+    def utcnow(self) -> datetime:
+        return self._now.replace(
+            tzinfo=None
+        )  # Return naive datetime for consistency with datetime.utcnow()
 
     async def sleep(self, seconds: float):
         self._slept_intervals.append(seconds)

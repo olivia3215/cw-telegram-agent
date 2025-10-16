@@ -19,6 +19,7 @@ from agent import (
     Agent,
     all_agents,
 )
+from clock import clock
 from exceptions import ShutdownException
 from message_logging import format_message_content_for_logging
 from register_agents import register_all_agents
@@ -88,7 +89,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await asyncio.sleep(1)  # Don't poll too fast
+        await clock.sleep(1)  # Don't poll too fast
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
@@ -189,12 +190,71 @@ async def ensure_sticker_cache(agent, client):
             )
 
 
+async def authenticate_agent(agent: Agent):
+    """
+    Authenticate an agent and set up their basic connection.
+    Returns True if successful, False if authentication failed.
+    """
+    agent_name = agent.name
+    client = get_telegram_client(agent.name, agent.phone)
+    agent._client = client
+
+    try:
+        # Start the client connection without using async with
+        await client.start()
+
+        # Check if the client is authenticated before proceeding
+        if not await client.is_user_authorized():
+            logger.error(
+                f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
+            )
+            logger.error(
+                f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
+            )
+            logger.error(f"[{agent_name}] Authentication failed.")
+            await client.disconnect()
+            return False
+
+        await ensure_sticker_cache(agent, client)
+        me = await client.get_me()
+        agent_id = me.id
+        agent.agent_id = agent_id
+        logger.info(f"[{agent_name}] Agent authenticated ({agent_id})")
+        return True
+
+    except Exception as e:
+        logger.exception(f"[{agent_name}] Authentication error: {e}")
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        return False
+
+
 async def run_telegram_loop(agent: Agent, work_queue):
     agent_name = agent.name
 
     while True:
-        client = get_telegram_client(agent.name, agent.phone)
-        agent._client = client
+        # Check if agent already has a connected client from initial authentication
+        if agent._client and not agent._client.is_connected():
+            # Client exists but is disconnected, need to reconnect
+            try:
+                await agent._client.disconnect()
+            except Exception:
+                pass
+            agent._client = None
+
+        if not agent._client:
+            # Need to authenticate - either first time or after disconnection
+            auth_success = await authenticate_agent(agent)
+            if not auth_success:
+                logger.error(f"[{agent_name}] Authentication failed, exiting.")
+                break
+
+        client = agent.client
+        if not client:
+            logger.error(f"[{agent_name}] No client available after authentication.")
+            break
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
@@ -216,25 +276,6 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         try:
             async with client:
-                # Check if the client is authenticated before proceeding
-                if not await client.is_user_authorized():
-                    logger.error(
-                        f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
-                    )
-                    logger.error(
-                        f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
-                    )
-                    logger.error(
-                        f"[{agent_name}] Exiting due to authentication failure."
-                    )
-                    break  # Exit the while loop instead of retrying
-
-                await ensure_sticker_cache(agent, client)
-                me = await client.get_me()
-                agent_id = me.id
-                agent.agent_id = agent_id
-                logger.info(f"[{agent_name}] Agent started ({agent_id})")
-
                 await scan_unread_messages(agent, work_queue)
                 await client.run_until_disconnected()
 
@@ -242,16 +283,16 @@ async def run_telegram_loop(agent: Agent, work_queue):
             logger.exception(
                 f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds..."
             )
-            await asyncio.sleep(10)
+            await clock.sleep(10)
 
         finally:
             # client has disconnected
-            agent.client = None
+            agent._client = None
 
 
 async def periodic_scan(work_queue, agents, interval_sec):
     """A background task that periodically scans for unread messages."""
-    await asyncio.sleep(interval_sec / 9)
+    await clock.sleep(interval_sec / 9)
     while True:
         logger.info("Scanning for changes...")
         for agent in agents:
@@ -262,7 +303,34 @@ async def periodic_scan(work_queue, agents, interval_sec):
                     logger.exception(
                         f"Error during periodic scan for agent {agent.name}: {e}"
                     )
-        await asyncio.sleep(interval_sec)
+        await clock.sleep(interval_sec)
+
+
+async def authenticate_all_agents(agents_list):
+    """Authenticate all agents before starting the tick loop."""
+    logger.info(f"Authenticating {len(agents_list)} agents...")
+
+    # Authenticate all agents concurrently
+    auth_tasks = [
+        asyncio.create_task(authenticate_agent(agent)) for agent in agents_list
+    ]
+
+    # Wait for all authentication attempts to complete
+    auth_results = await asyncio.gather(*auth_tasks, return_exceptions=True)
+
+    # Count successful authentications
+    successful = sum(1 for result in auth_results if result is True)
+    total = len(agents_list)
+
+    logger.info(f"Authentication complete: {successful}/{total} agents authenticated")
+
+    if successful == 0:
+        logger.error("No agents authenticated successfully!")
+        return False
+    elif successful < total:
+        logger.warning(f"Only {successful}/{total} agents authenticated successfully")
+
+    return True
 
 
 async def main():
@@ -270,6 +338,13 @@ async def main():
     work_queue = load_work_queue()
     agents_list = all_agents()
 
+    # Authenticate all agents before starting the tick loop
+    auth_success = await authenticate_all_agents(agents_list)
+    if not auth_success:
+        logger.error("Failed to authenticate any agents, exiting.")
+        return
+
+    # Now start all the main tasks
     tick_task = asyncio.create_task(
         run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
     )

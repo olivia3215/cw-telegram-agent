@@ -20,13 +20,15 @@ import json
 import logging
 import sys
 import traceback
-from datetime import UTC, datetime
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
+
+from clock import clock
 
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
@@ -856,7 +858,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "sticker_name": sticker_name,
                         "description": None,  # Leave empty, use AI refresh when needed
                         "status": "pending_description",
-                        "ts": datetime.now(UTC).isoformat(),
+                        "ts": clock.now(UTC).isoformat(),
                         "mime_type": detected_mime_type,  # Use detected MIME type, not Telegram's
                     }
 
@@ -881,7 +883,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
                         "description": None,
                         "status": "error",
                         "failure_reason": f"Download failed: {str(e)}",
-                        "ts": datetime.now(UTC).isoformat(),
+                        "ts": clock.now(UTC).isoformat(),
                         "mime_type": telegram_mime,
                     }
                     # Save error record using DirectoryMediaSource (no media file for errors)

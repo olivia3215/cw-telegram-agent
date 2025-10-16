@@ -17,6 +17,7 @@ from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
 from agent import get_agent_for_id
+from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
@@ -47,7 +48,7 @@ async def trigger_typing_indicators(work_queue: WorkQueue):
     """
     Check for pending wait tasks with typing=True and trigger typing indicators.
     """
-    datetime.now(UTC)
+    clock.now(UTC)
 
     for graph in work_queue._task_graphs:
         agent_id = graph.context.get("agent_id")
@@ -90,7 +91,7 @@ async def trigger_typing_indicators(work_queue: WorkQueue):
 
 
 async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
-    datetime.now(UTC)
+    clock.now(UTC)
 
     # Reset per-tick AI description budget at start of each tick
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
@@ -168,4 +169,4 @@ async def run_tick_loop(
             raise
         except Exception as e:
             logger.exception(f"Exception during tick: {e}")
-        await asyncio.sleep(tick_interval_sec)
+        await clock.sleep(tick_interval_sec)
