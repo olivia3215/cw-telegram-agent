@@ -122,16 +122,16 @@ class Agent:
 
     @property
     def client(self):
-        """Get the Telegram client, creating it on demand if needed."""
-        if self._client is None:
-            # Import here to avoid circular import
-            from telegram_util import get_telegram_client
-
-            self._client = get_telegram_client(self.name, self.phone)
+        """Get the Telegram client. Returns None if not authenticated."""
         return self._client
 
     async def get_client(self):
+        """Get the Telegram client, ensuring it's connected. Raises RuntimeError if not authenticated."""
         client = self.client
+        if client is None:
+            raise RuntimeError(
+                f"Agent '{self.name}' is not authenticated. No client available."
+            )
         if not client.is_connected():
             await client.connect()
         logger.info(f"Connected client for agent '{self.name}'")

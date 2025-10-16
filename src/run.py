@@ -236,15 +236,15 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
     while True:
         # Check if agent already has a connected client from initial authentication
-        if agent.client and not agent.client.is_connected():
+        if agent._client and not agent._client.is_connected():
             # Client exists but is disconnected, need to reconnect
             try:
-                await agent.client.disconnect()
+                await agent._client.disconnect()
             except Exception:
                 pass
             agent._client = None
 
-        if not agent.client:
+        if not agent._client:
             # Need to authenticate - either first time or after disconnection
             auth_success = await authenticate_agent(agent)
             if not auth_success:
