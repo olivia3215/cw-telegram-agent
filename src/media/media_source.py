@@ -15,13 +15,14 @@ import logging
 import time
 import unicodedata
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import UTC
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from telegram_download import download_media_bytes
 
@@ -295,7 +296,7 @@ class DirectoryMediaSource(MediaSource):
                 # Update the record with fallback description
                 record["description"] = description
                 record["status"] = MediaStatus.GENERATED.value
-                record["ts"] = datetime.now(UTC).isoformat()
+                record["ts"] = clock.now(UTC).isoformat()
 
                 # Update the cache with the new description
                 self._mem_cache[unique_id] = record.copy()
@@ -459,7 +460,7 @@ class BudgetExhaustedMediaSource(MediaSource):
                 "sticker_name": sticker_name,
                 "description": None,
                 "status": MediaStatus.BUDGET_EXHAUSTED.value,
-                "ts": datetime.now(UTC).isoformat(),
+                "ts": clock.now(UTC).isoformat(),
             }
 
 
@@ -483,7 +484,7 @@ def make_error_record(
         "description": None,
         "status": status_value,
         "failure_reason": failure_reason,
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": clock.now(UTC).isoformat(),
         **extra,
     }
     if retryable:
@@ -531,7 +532,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                 "sticker_name": sticker_name,
                 "description": description,
                 "status": MediaStatus.GENERATED.value,
-                "ts": datetime.now(UTC).isoformat(),
+                "ts": clock.now(UTC).isoformat(),
                 **metadata,
             }
 
@@ -573,7 +574,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     "sticker_name": sticker_name,
                     "description": description,
                     "status": MediaStatus.GENERATED.value,
-                    "ts": datetime.now(UTC).isoformat(),
+                    "ts": clock.now(UTC).isoformat(),
                     "mime_type": mime_type,
                     **metadata,
                 }
@@ -837,7 +838,7 @@ class AIGeneratingMediaSource(MediaSource):
                 "LLM returned empty or invalid description" if not desc else None
             ),
             "status": status.value,
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": clock.now(UTC).isoformat(),
             **metadata,
         }
 

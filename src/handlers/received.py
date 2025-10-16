@@ -7,12 +7,13 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 from pathlib import Path
 
 import httpx
 
 from agent import get_agent_for_id
+from clock import clock
 from config import (
     FETCHED_RESOURCE_LIFETIME_SECONDS,
     RETRIEVAL_MAX_ROUNDS,
@@ -854,7 +855,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     history_items = await _process_message_history(messages, agent, media_chain)
 
     # Run LLM with retrieval augmentation
-    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
+    now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
     tasks, fetched_new_resources = await _run_llm_with_retrieval(

@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+from clock import clock
+
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
@@ -211,7 +213,7 @@ class WorkQueue:
 
     def round_robin_one_task(self) -> TaskNode | None:
         with self._lock:
-            now = datetime.now(UTC)
+            now = clock.now(UTC)
             if not self._task_graphs:
                 return None
 

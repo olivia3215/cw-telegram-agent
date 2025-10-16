@@ -19,6 +19,7 @@ from agent import (
     Agent,
     all_agents,
 )
+from clock import clock
 from exceptions import ShutdownException
 from message_logging import format_message_content_for_logging
 from register_agents import register_all_agents
@@ -88,7 +89,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await asyncio.sleep(1)  # Don't poll too fast
+        await clock.sleep(1)  # Don't poll too fast
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
@@ -282,7 +283,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
             logger.exception(
                 f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds..."
             )
-            await asyncio.sleep(10)
+            await clock.sleep(10)
 
         finally:
             # client has disconnected
@@ -291,7 +292,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
 async def periodic_scan(work_queue, agents, interval_sec):
     """A background task that periodically scans for unread messages."""
-    await asyncio.sleep(interval_sec / 9)
+    await clock.sleep(interval_sec / 9)
     while True:
         logger.info("Scanning for changes...")
         for agent in agents:
@@ -302,7 +303,7 @@ async def periodic_scan(work_queue, agents, interval_sec):
                     logger.exception(
                         f"Error during periodic scan for agent {agent.name}: {e}"
                     )
-        await asyncio.sleep(interval_sec)
+        await clock.sleep(interval_sec)
 
 
 async def authenticate_all_agents(agents_list):
