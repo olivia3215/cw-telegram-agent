@@ -242,7 +242,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
                 await agent.client.disconnect()
             except Exception:
                 pass
-            agent.client = None
+            agent._client = None
 
         if not agent.client:
             # Need to authenticate - either first time or after disconnection
@@ -287,7 +287,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         finally:
             # client has disconnected
-            agent.client = None
+            agent._client = None
 
 
 async def periodic_scan(work_queue, agents, interval_sec):
