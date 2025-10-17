@@ -24,6 +24,9 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
+# Add current directory to path to import from the main codebase
+sys.path.insert(0, str(Path(__file__).parent))
+
 from flask import Flask, jsonify, render_template, request, send_file
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
@@ -43,9 +46,6 @@ from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
 from telegram_util import get_telegram_client
-
-# Add current directory to path to import from the main codebase
-sys.path.insert(0, str(Path(__file__).parent))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -303,35 +303,16 @@ def api_media_file(unique_id: str):
         # Find the media file
         media_file = find_media_file(media_dir, unique_id)
         if media_file:
-            # Set appropriate MIME type based on file extension
-            ext = media_file.suffix.lower()
-            if ext == ".tgs":
-                return send_file(media_file, mimetype="application/gzip")
-            elif ext == ".webp":
-                return send_file(media_file, mimetype="image/webp")
-            elif ext == ".png":
-                return send_file(media_file, mimetype="image/png")
-            elif ext in [".jpg", ".jpeg"]:
-                return send_file(media_file, mimetype="image/jpeg")
-            elif ext == ".gif":
-                return send_file(media_file, mimetype="image/gif")
-            elif ext == ".mp4":
-                return send_file(media_file, mimetype="video/mp4")
-            elif ext == ".webm":
-                return send_file(media_file, mimetype="video/webm")
-            elif ext == ".mov":
-                return send_file(media_file, mimetype="video/quicktime")
-            elif ext == ".avi":
-                return send_file(media_file, mimetype="video/x-msvideo")
-            elif ext == ".mp3":
-                return send_file(media_file, mimetype="audio/mpeg")
-            elif ext == ".m4a":
-                return send_file(media_file, mimetype="audio/mp4")
-            elif ext == ".wav":
-                return send_file(media_file, mimetype="audio/wav")
-            elif ext == ".ogg":
-                return send_file(media_file, mimetype="audio/ogg")
-            else:
+            # Use MIME sniffing to detect the correct MIME type
+            try:
+                with open(media_file, "rb") as f:
+                    file_bytes = f.read(1024)  # Read first 1KB for MIME detection
+                detected_mime_type = detect_mime_type_from_bytes(file_bytes)
+                return send_file(media_file, mimetype=detected_mime_type)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to detect MIME type for {media_file}, falling back to default: {e}"
+                )
                 return send_file(media_file)
 
         return jsonify({"error": "Media file not found"}), 404
@@ -418,12 +399,8 @@ def api_refresh_from_ai(unique_id: str):
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
 
-        # Create a fake client (not needed since we're using Path objects)
-        class FakeClient:
-            pass
-
-        FakeClient()
         # Pass the media file Path directly as the doc parameter
+        # download_media_bytes supports Path objects directly
         fake_doc = media_file
 
         # For refresh, bypass cache and force fresh AI generation
@@ -468,12 +445,12 @@ def api_refresh_from_ai(unique_id: str):
                     )
 
             # For media editor, we don't have a real Telegram document
-            # The AIGeneratingMediaSource will handle downloading from the Path object
+            # download_media_bytes supports Path objects directly
             record = loop.run_until_complete(
                 media_chain.get(
                     unique_id=unique_id,
                     agent=agent,
-                    doc=fake_doc,  # Path object - AIGeneratingMediaSource handles this
+                    doc=fake_doc,  # Path object - download_media_bytes handles this
                     kind=media_kind,
                     sticker_set_name=data.get("sticker_set_name"),
                     sticker_name=data.get("sticker_name"),
