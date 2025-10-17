@@ -974,6 +974,13 @@ class AIChainMediaSource(MediaSource):
 
                 # Download media if we have a doc and media file doesn't exist
                 # Always attempt download if we have doc, regardless of budget status
+                logger.info(
+                    f"AIChainMediaSource: checking download for {unique_id}: media_file_exists={media_file_exists}, doc={doc is not None}, agent={agent is not None}"
+                )
+                if doc is not None:
+                    logger.info(
+                        f"AIChainMediaSource: doc type for {unique_id}: {type(doc)}, has mime_type: {hasattr(doc, 'mime_type')}"
+                    )
                 if not media_file_exists and doc is not None and agent is not None:
                     try:
                         logger.debug(
