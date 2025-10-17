@@ -35,7 +35,9 @@ from agent import all_agents as get_all_agents
 from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from media.media_source import (
+    AIChainMediaSource,
     AIGeneratingMediaSource,
+    BudgetExhaustedMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
     UnsupportedFormatMediaSource,
@@ -403,14 +405,25 @@ def api_refresh_from_ai(unique_id: str):
         # download_media_bytes supports Path objects directly
         fake_doc = media_file
 
-        # For refresh, bypass cache and force fresh AI generation
-        # Create a chain with ONLY AIGeneratingMediaSource (no cache, no fallbacks)
+        # For refresh, use the full AI chain to ensure media files are downloaded
+        # Create a proper chain with AIChainMediaSource that handles downloads
         ai_cache_dir = media_dir
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Create the same chain structure as the main application
+        cache_source = DirectoryMediaSource(ai_cache_dir)
+        unsupported_source = UnsupportedFormatMediaSource()
+        budget_source = BudgetExhaustedMediaSource()
+        ai_source = AIGeneratingMediaSource(cache_directory=ai_cache_dir)
+
         media_chain = CompositeMediaSource(
             [
-                AIGeneratingMediaSource(cache_directory=ai_cache_dir),
+                AIChainMediaSource(
+                    cache_source=cache_source,
+                    unsupported_source=unsupported_source,
+                    budget_source=budget_source,
+                    ai_source=ai_source,
+                )
             ]
         )
 
@@ -468,7 +481,7 @@ def api_refresh_from_ai(unique_id: str):
             loop.close()
 
         if record:
-            # AIGeneratingMediaSource has already cached the result to disk
+            # AIChainMediaSource has already cached the result to disk
             new_description = record.get("description")
             new_status = record.get("status", "ok")
             logger.info(
