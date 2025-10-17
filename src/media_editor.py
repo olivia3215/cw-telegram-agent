@@ -55,6 +55,8 @@ logger = logging.getLogger(__name__)
 def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     """Find a media file for the given unique_id in the specified directory.
 
+    Looks for any file with the unique_id prefix that is not a .json file.
+
     Args:
         media_dir: Directory to search in
         unique_id: Unique identifier for the media file
@@ -62,25 +64,10 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     Returns:
         Path to the media file if found, None otherwise
     """
-    for ext in [
-        ".webp",
-        ".tgs",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".mp4",
-        ".webm",
-        ".mov",
-        ".avi",
-        ".mp3",
-        ".m4a",
-        ".wav",
-        ".ogg",
-    ]:
-        potential_file = media_dir / f"{unique_id}{ext}"
-        if potential_file.exists():
-            return potential_file
+    # Look for any file with the unique_id prefix that is not .json
+    for file_path in media_dir.glob(f"{unique_id}.*"):
+        if file_path.suffix.lower() != ".json":
+            return file_path
     return None
 
 
