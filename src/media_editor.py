@@ -477,11 +477,14 @@ def api_refresh_from_ai(unique_id: str):
         else:
             media_kind = data.get("kind", "sticker")
 
-        # Process using the media source chain to get fresh description
+        # Initialize the agent's client before using it
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
+            # Ensure the agent's client is connected
+            loop.run_until_complete(agent.get_client())
+
             record = loop.run_until_complete(
                 media_chain.get(
                     unique_id=unique_id,
