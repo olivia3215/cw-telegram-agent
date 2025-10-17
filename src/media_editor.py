@@ -133,9 +133,10 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     if agent.client is None:
         logger.info(f"Initializing client for agent '{agent.name}'")
         # Import telegram_util to initialize the client
-        from telegram_util import connect_agent_to_telegram
+        from telegram_util import get_telegram_client
 
-        connect_agent_to_telegram(agent)
+        client = get_telegram_client(agent.name, agent.phone)
+        agent._client = client
 
     return agent
 
