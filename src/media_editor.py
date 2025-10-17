@@ -52,6 +52,38 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
+    """Find a media file for the given unique_id in the specified directory.
+
+    Args:
+        media_dir: Directory to search in
+        unique_id: Unique identifier for the media file
+
+    Returns:
+        Path to the media file if found, None otherwise
+    """
+    for ext in [
+        ".webp",
+        ".tgs",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".mp4",
+        ".webm",
+        ".mov",
+        ".avi",
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".ogg",
+    ]:
+        potential_file = media_dir / f"{unique_id}{ext}"
+        if potential_file.exists():
+            return potential_file
+    return None
+
+
 app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
 
 # Global state
@@ -206,27 +238,8 @@ def api_media_list():
                     continue
 
                 # Look for associated media file
-                media_file = None
-                for ext in [
-                    ".webp",
-                    ".tgs",
-                    ".png",
-                    ".jpg",
-                    ".jpeg",
-                    ".gif",
-                    ".mp4",
-                    ".webm",
-                    ".mov",
-                    ".avi",
-                    ".mp3",
-                    ".m4a",
-                    ".wav",
-                    ".ogg",
-                ]:
-                    potential_file = media_dir / f"{unique_id}{ext}"
-                    if potential_file.exists():
-                        media_file = str(potential_file)
-                        break
+                media_file_path = find_media_file(media_dir, unique_id)
+                media_file = str(media_file_path) if media_file_path else None
 
                 # Group by sticker set for organization
                 kind = record.get("kind", "unknown")
@@ -300,54 +313,39 @@ def api_media_file(unique_id: str):
 
         media_dir = resolve_media_path(directory_path)
 
-        # Try different extensions with proper MIME types
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            media_file = media_dir / f"{unique_id}{ext}"
-            if media_file.exists():
-                # Set appropriate MIME type for TGS files
-                if ext == ".tgs":
-                    return send_file(media_file, mimetype="application/gzip")
-                elif ext == ".webp":
-                    return send_file(media_file, mimetype="image/webp")
-                elif ext == ".png":
-                    return send_file(media_file, mimetype="image/png")
-                elif ext in [".jpg", ".jpeg"]:
-                    return send_file(media_file, mimetype="image/jpeg")
-                elif ext == ".gif":
-                    return send_file(media_file, mimetype="image/gif")
-                elif ext == ".mp4":
-                    return send_file(media_file, mimetype="video/mp4")
-                elif ext == ".webm":
-                    return send_file(media_file, mimetype="video/webm")
-                elif ext == ".mov":
-                    return send_file(media_file, mimetype="video/quicktime")
-                elif ext == ".avi":
-                    return send_file(media_file, mimetype="video/x-msvideo")
-                elif ext == ".mp3":
-                    return send_file(media_file, mimetype="audio/mpeg")
-                elif ext == ".m4a":
-                    return send_file(media_file, mimetype="audio/mp4")
-                elif ext == ".wav":
-                    return send_file(media_file, mimetype="audio/wav")
-                elif ext == ".ogg":
-                    return send_file(media_file, mimetype="audio/ogg")
-                else:
-                    return send_file(media_file)
+        # Find the media file
+        media_file = find_media_file(media_dir, unique_id)
+        if media_file:
+            # Set appropriate MIME type based on file extension
+            ext = media_file.suffix.lower()
+            if ext == ".tgs":
+                return send_file(media_file, mimetype="application/gzip")
+            elif ext == ".webp":
+                return send_file(media_file, mimetype="image/webp")
+            elif ext == ".png":
+                return send_file(media_file, mimetype="image/png")
+            elif ext in [".jpg", ".jpeg"]:
+                return send_file(media_file, mimetype="image/jpeg")
+            elif ext == ".gif":
+                return send_file(media_file, mimetype="image/gif")
+            elif ext == ".mp4":
+                return send_file(media_file, mimetype="video/mp4")
+            elif ext == ".webm":
+                return send_file(media_file, mimetype="video/webm")
+            elif ext == ".mov":
+                return send_file(media_file, mimetype="video/quicktime")
+            elif ext == ".avi":
+                return send_file(media_file, mimetype="video/x-msvideo")
+            elif ext == ".mp3":
+                return send_file(media_file, mimetype="audio/mpeg")
+            elif ext == ".m4a":
+                return send_file(media_file, mimetype="audio/mp4")
+            elif ext == ".wav":
+                return send_file(media_file, mimetype="audio/wav")
+            elif ext == ".ogg":
+                return send_file(media_file, mimetype="audio/ogg")
+            else:
+                return send_file(media_file)
 
         return jsonify({"error": "Media file not found"}), 404
 
@@ -428,27 +426,7 @@ def api_refresh_from_ai(unique_id: str):
         # Create a minimal chain with just the AI generation source
 
         # Find the media file
-        media_file = None
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            potential_file = media_dir / f"{unique_id}{ext}"
-            if potential_file.exists():
-                media_file = potential_file
-                break
+        media_file = find_media_file(media_dir, unique_id)
 
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
@@ -574,26 +552,7 @@ def api_move_media(unique_id: str):
             media_data = json.load(f)
 
         # Find the media file (could be .webp, .tgs, etc.)
-        media_file_from = None
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".jpg",
-            ".png",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            potential_file = from_dir / f"{unique_id}{ext}"
-            if potential_file.exists():
-                media_file_from = potential_file
-                break
+        media_file_from = find_media_file(from_dir, unique_id)
 
         # Move JSON file
         json_file_to = to_dir / f"{unique_id}.json"
