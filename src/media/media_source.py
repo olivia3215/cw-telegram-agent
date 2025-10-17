@@ -921,14 +921,12 @@ class AIChainMediaSource(MediaSource):
         ):
             return cached_record
 
-        # 3. Chain through sources (skip download if we have cached doc)
+        # 3. Chain through sources
         record = None
-        doc_already_cached = cached_record is not None  # We have doc from cache
 
         for source in [self.unsupported_source, self.budget_source, self.ai_source]:
-            record = await source.get(
-                unique_id, agent, doc if not doc_already_cached else None, **metadata
-            )
+            # Always pass doc to sources - they can decide whether to use it
+            record = await source.get(unique_id, agent, doc, **metadata)
             if record:
                 break
 
@@ -975,6 +973,14 @@ class AIChainMediaSource(MediaSource):
                             break
 
                 # Download media if we have a doc and media file doesn't exist
+                # Always attempt download if we have doc, regardless of budget status
+                logger.info(
+                    f"AIChainMediaSource: checking download for {unique_id}: media_file_exists={media_file_exists}, doc={doc is not None}, agent={agent is not None}"
+                )
+                if doc is not None:
+                    logger.info(
+                        f"AIChainMediaSource: doc type for {unique_id}: {type(doc)}, has mime_type: {hasattr(doc, 'mime_type')}"
+                    )
                 if not media_file_exists and doc is not None and agent is not None:
                     try:
                         logger.debug(
@@ -986,6 +992,16 @@ class AIChainMediaSource(MediaSource):
                         mime_type = getattr(doc, "mime_type", None)
                         if mime_type:
                             file_extension = get_file_extension_for_mime_type(mime_type)
+                            if file_extension:
+                                file_extension = f".{file_extension}"
+                        else:
+                            # For Photo objects, detect MIME type from downloaded bytes
+                            detected_mime_type = detect_mime_type_from_bytes(
+                                media_bytes
+                            )
+                            file_extension = get_file_extension_for_mime_type(
+                                detected_mime_type
+                            )
                             if file_extension:
                                 file_extension = f".{file_extension}"
 

@@ -24,19 +24,20 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
+# Add current directory to path to import from the main codebase
+sys.path.insert(0, str(Path(__file__).parent))
+
 from flask import Flask, jsonify, render_template, request, send_file
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
-from clock import clock
-
-# Add current directory to path to import from the main codebase
-sys.path.insert(0, str(Path(__file__).parent))
-
 from agent import all_agents as get_all_agents
+from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from media.media_source import (
+    AIChainMediaSource,
     AIGeneratingMediaSource,
+    BudgetExhaustedMediaSource,
     CompositeMediaSource,
     DirectoryMediaSource,
     UnsupportedFormatMediaSource,
@@ -46,10 +47,30 @@ from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
+from telegram_util import get_telegram_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
+    """Find a media file for the given unique_id in the specified directory.
+
+    Looks for any file with the unique_id prefix that is not a .json file.
+
+    Args:
+        media_dir: Directory to search in
+        unique_id: Unique identifier for the media file
+
+    Returns:
+        Path to the media file if found, None otherwise
+    """
+    # Look for any file with the unique_id prefix that is not .json
+    for file_path in media_dir.glob(f"{unique_id}.*"):
+        if file_path.suffix.lower() != ".json":
+            return file_path
+    return None
 
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
@@ -129,6 +150,9 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     agent = agents[0]
     logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
 
+    # Note: Client initialization is handled in the AI refresh function
+    # where we have proper async context
+
     return agent
 
 
@@ -203,27 +227,8 @@ def api_media_list():
                     continue
 
                 # Look for associated media file
-                media_file = None
-                for ext in [
-                    ".webp",
-                    ".tgs",
-                    ".png",
-                    ".jpg",
-                    ".jpeg",
-                    ".gif",
-                    ".mp4",
-                    ".webm",
-                    ".mov",
-                    ".avi",
-                    ".mp3",
-                    ".m4a",
-                    ".wav",
-                    ".ogg",
-                ]:
-                    potential_file = media_dir / f"{unique_id}{ext}"
-                    if potential_file.exists():
-                        media_file = str(potential_file)
-                        break
+                media_file_path = find_media_file(media_dir, unique_id)
+                media_file = str(media_file_path) if media_file_path else None
 
                 # Group by sticker set for organization
                 kind = record.get("kind", "unknown")
@@ -297,54 +302,20 @@ def api_media_file(unique_id: str):
 
         media_dir = resolve_media_path(directory_path)
 
-        # Try different extensions with proper MIME types
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            media_file = media_dir / f"{unique_id}{ext}"
-            if media_file.exists():
-                # Set appropriate MIME type for TGS files
-                if ext == ".tgs":
-                    return send_file(media_file, mimetype="application/gzip")
-                elif ext == ".webp":
-                    return send_file(media_file, mimetype="image/webp")
-                elif ext == ".png":
-                    return send_file(media_file, mimetype="image/png")
-                elif ext in [".jpg", ".jpeg"]:
-                    return send_file(media_file, mimetype="image/jpeg")
-                elif ext == ".gif":
-                    return send_file(media_file, mimetype="image/gif")
-                elif ext == ".mp4":
-                    return send_file(media_file, mimetype="video/mp4")
-                elif ext == ".webm":
-                    return send_file(media_file, mimetype="video/webm")
-                elif ext == ".mov":
-                    return send_file(media_file, mimetype="video/quicktime")
-                elif ext == ".avi":
-                    return send_file(media_file, mimetype="video/x-msvideo")
-                elif ext == ".mp3":
-                    return send_file(media_file, mimetype="audio/mpeg")
-                elif ext == ".m4a":
-                    return send_file(media_file, mimetype="audio/mp4")
-                elif ext == ".wav":
-                    return send_file(media_file, mimetype="audio/wav")
-                elif ext == ".ogg":
-                    return send_file(media_file, mimetype="audio/ogg")
-                else:
-                    return send_file(media_file)
+        # Find the media file
+        media_file = find_media_file(media_dir, unique_id)
+        if media_file:
+            # Use MIME sniffing to detect the correct MIME type
+            try:
+                with open(media_file, "rb") as f:
+                    file_bytes = f.read(1024)  # Read first 1KB for MIME detection
+                detected_mime_type = detect_mime_type_from_bytes(file_bytes)
+                return send_file(media_file, mimetype=detected_mime_type)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to detect MIME type for {media_file}, falling back to default: {e}"
+                )
+                return send_file(media_file)
 
         return jsonify({"error": "Media file not found"}), 404
 
@@ -425,47 +396,34 @@ def api_refresh_from_ai(unique_id: str):
         # Create a minimal chain with just the AI generation source
 
         # Find the media file
-        media_file = None
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            potential_file = media_dir / f"{unique_id}{ext}"
-            if potential_file.exists():
-                media_file = potential_file
-                break
+        media_file = find_media_file(media_dir, unique_id)
 
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
 
-        # Create a fake client (not needed since we're using Path objects)
-        class FakeClient:
-            pass
-
-        FakeClient()
         # Pass the media file Path directly as the doc parameter
+        # download_media_bytes supports Path objects directly
         fake_doc = media_file
 
-        # For refresh, bypass cache and force fresh AI generation
-        # Create a chain with ONLY AIGeneratingMediaSource (no cache, no fallbacks)
+        # For refresh, use the full AI chain to ensure media files are downloaded
+        # Create a proper chain with AIChainMediaSource that handles downloads
         ai_cache_dir = media_dir
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Create the same chain structure as the main application
+        cache_source = DirectoryMediaSource(ai_cache_dir)
+        unsupported_source = UnsupportedFormatMediaSource()
+        budget_source = BudgetExhaustedMediaSource()
+        ai_source = AIGeneratingMediaSource(cache_directory=ai_cache_dir)
+
         media_chain = CompositeMediaSource(
             [
-                AIGeneratingMediaSource(cache_directory=ai_cache_dir),
+                AIChainMediaSource(
+                    cache_source=cache_source,
+                    unsupported_source=unsupported_source,
+                    budget_source=budget_source,
+                    ai_source=ai_source,
+                )
             ]
         )
 
@@ -477,16 +435,35 @@ def api_refresh_from_ai(unique_id: str):
         else:
             media_kind = data.get("kind", "sticker")
 
-        # Process using the media source chain to get fresh description
+        # Initialize the agent's client before using it
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
+
+            # Ensure the agent's client is connected
+            if agent.client is None:
+                # Initialize and start the client
+                client = get_telegram_client(agent.name, agent.phone)
+                agent._client = client
+
+                # Start the client if not already connected
+                if not client.is_connected():
+                    loop.run_until_complete(client.connect())
+
+                # Check if authenticated
+                if not loop.run_until_complete(client.is_user_authorized()):
+                    raise RuntimeError(
+                        f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent."
+                    )
+
+            # For media editor, we don't have a real Telegram document
+            # download_media_bytes supports Path objects directly
             record = loop.run_until_complete(
                 media_chain.get(
                     unique_id=unique_id,
                     agent=agent,
-                    doc=fake_doc,
+                    doc=fake_doc,  # Path object - download_media_bytes handles this
                     kind=media_kind,
                     sticker_set_name=data.get("sticker_set_name"),
                     sticker_name=data.get("sticker_name"),
@@ -504,7 +481,7 @@ def api_refresh_from_ai(unique_id: str):
             loop.close()
 
         if record:
-            # AIGeneratingMediaSource has already cached the result to disk
+            # AIChainMediaSource has already cached the result to disk
             new_description = record.get("description")
             new_status = record.get("status", "ok")
             logger.info(
@@ -552,26 +529,7 @@ def api_move_media(unique_id: str):
             media_data = json.load(f)
 
         # Find the media file (could be .webp, .tgs, etc.)
-        media_file_from = None
-        for ext in [
-            ".webp",
-            ".tgs",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mov",
-            ".avi",
-            ".jpg",
-            ".png",
-            ".mp3",
-            ".m4a",
-            ".wav",
-            ".ogg",
-        ]:
-            potential_file = from_dir / f"{unique_id}{ext}"
-            if potential_file.exists():
-                media_file_from = potential_file
-                break
+        media_file_from = find_media_file(from_dir, unique_id)
 
         # Move JSON file
         json_file_to = to_dir / f"{unique_id}.json"
