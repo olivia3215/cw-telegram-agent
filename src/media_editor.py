@@ -500,8 +500,7 @@ def api_refresh_from_ai(unique_id: str):
                         f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent."
                     )
 
-            # Ensure client is connected
-            loop.run_until_complete(agent.get_client())
+            # Client is already started and authenticated above
 
             record = loop.run_until_complete(
                 media_chain.get(
