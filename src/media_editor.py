@@ -129,14 +129,8 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     agent = agents[0]
     logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
 
-    # Initialize the agent's client if it's not already connected
-    if agent.client is None:
-        logger.info(f"Initializing client for agent '{agent.name}'")
-        # Import telegram_util to initialize the client
-        from telegram_util import get_telegram_client
-
-        client = get_telegram_client(agent.name, agent.phone)
-        agent._client = client
+    # Note: Client initialization is handled in the AI refresh function
+    # where we have proper async context
 
     return agent
 
@@ -492,6 +486,21 @@ def api_refresh_from_ai(unique_id: str):
 
         try:
             # Ensure the agent's client is connected
+            if agent.client is None:
+                # Initialize and start the client
+                from telegram_util import get_telegram_client
+
+                client = get_telegram_client(agent.name, agent.phone)
+                agent._client = client
+                loop.run_until_complete(client.start())
+
+                # Check if authenticated
+                if not loop.run_until_complete(client.is_user_authorized()):
+                    raise RuntimeError(
+                        f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent."
+                    )
+
+            # Ensure client is connected
             loop.run_until_complete(agent.get_client())
 
             record = loop.run_until_complete(
