@@ -921,14 +921,12 @@ class AIChainMediaSource(MediaSource):
         ):
             return cached_record
 
-        # 3. Chain through sources (skip download if we have cached doc)
+        # 3. Chain through sources
         record = None
-        doc_already_cached = cached_record is not None  # We have doc from cache
 
         for source in [self.unsupported_source, self.budget_source, self.ai_source]:
-            record = await source.get(
-                unique_id, agent, doc if not doc_already_cached else None, **metadata
-            )
+            # Always pass doc to sources - they can decide whether to use it
+            record = await source.get(unique_id, agent, doc, **metadata)
             if record:
                 break
 
@@ -975,6 +973,7 @@ class AIChainMediaSource(MediaSource):
                             break
 
                 # Download media if we have a doc and media file doesn't exist
+                # Always attempt download if we have doc, regardless of budget status
                 if not media_file_exists and doc is not None and agent is not None:
                     try:
                         logger.debug(
