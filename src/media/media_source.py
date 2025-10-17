@@ -994,6 +994,16 @@ class AIChainMediaSource(MediaSource):
                             file_extension = get_file_extension_for_mime_type(mime_type)
                             if file_extension:
                                 file_extension = f".{file_extension}"
+                        else:
+                            # For Photo objects, detect MIME type from downloaded bytes
+                            detected_mime_type = detect_mime_type_from_bytes(
+                                media_bytes
+                            )
+                            file_extension = get_file_extension_for_mime_type(
+                                detected_mime_type
+                            )
+                            if file_extension:
+                                file_extension = f".{file_extension}"
 
                         logger.debug(
                             f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
