@@ -485,73 +485,45 @@ def api_refresh_from_ai(unique_id: str):
         asyncio.set_event_loop(loop)
 
         try:
-            logger.info(
-                f"Step 1: Starting client initialization for agent {agent.name}"
-            )
 
             # Ensure the agent's client is connected
             if agent.client is None:
-                logger.info("Step 2: Agent has no client, initializing...")
                 # Initialize and start the client
                 from telegram_util import get_telegram_client
 
-                logger.info("Step 3: Creating Telegram client...")
                 client = get_telegram_client(agent.name, agent.phone)
                 agent._client = client
 
-                logger.info("Step 4: Checking if client is connected...")
                 # Start the client if not already connected
                 if not client.is_connected():
-                    logger.info("Step 5: Client not connected, connecting...")
                     loop.run_until_complete(client.connect())
-                    logger.info("Step 6: Client connected successfully")
-                else:
-                    logger.info("Step 5: Client already connected")
 
-                logger.info("Step 7: Checking authentication...")
                 # Check if authenticated
                 if not loop.run_until_complete(client.is_user_authorized()):
                     raise RuntimeError(
                         f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent."
                     )
-                logger.info("Step 8: Authentication check passed")
-            else:
-                logger.info("Step 2: Agent already has client")
-
-            # Client is already started and authenticated above
-            logger.info("Step 9: About to call media_chain.get...")
 
             # For media editor, we don't have a real Telegram document
             # The AIGeneratingMediaSource will handle downloading from the Path object
-            try:
-                logger.info(
-                    f"Step 10: Calling media_chain.get for {unique_id} with agent {agent.name}"
+            record = loop.run_until_complete(
+                media_chain.get(
+                    unique_id=unique_id,
+                    agent=agent,
+                    doc=fake_doc,  # Path object - AIGeneratingMediaSource handles this
+                    kind=media_kind,
+                    sticker_set_name=data.get("sticker_set_name"),
+                    sticker_name=data.get("sticker_name"),
+                    sender_id=None,
+                    sender_name=None,
+                    channel_id=None,
+                    channel_name=None,
+                    media_ts=None,
+                    duration=data.get(
+                        "duration"
+                    ),  # Include duration for video/animated stickers
                 )
-                record = loop.run_until_complete(
-                    media_chain.get(
-                        unique_id=unique_id,
-                        agent=agent,
-                        doc=fake_doc,  # Path object - AIGeneratingMediaSource handles this
-                        kind=media_kind,
-                        sticker_set_name=data.get("sticker_set_name"),
-                        sticker_name=data.get("sticker_name"),
-                        sender_id=None,
-                        sender_name=None,
-                        channel_id=None,
-                        channel_name=None,
-                        media_ts=None,
-                        duration=data.get(
-                            "duration"
-                        ),  # Include duration for video/animated stickers
-                    )
-                )
-                logger.info("Step 11: media_chain.get completed successfully")
-            except Exception as e:
-                logger.error(f"Error in media_chain.get: {e}")
-                import traceback
-
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-                raise
+            )
         finally:
             loop.close()
 
