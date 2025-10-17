@@ -28,12 +28,8 @@ from flask import Flask, jsonify, render_template, request, send_file
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
-from clock import clock
-
-# Add current directory to path to import from the main codebase
-sys.path.insert(0, str(Path(__file__).parent))
-
 from agent import all_agents as get_all_agents
+from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from media.media_source import (
     AIGeneratingMediaSource,
@@ -46,6 +42,10 @@ from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
+from telegram_util import get_telegram_client
+
+# Add current directory to path to import from the main codebase
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -489,8 +489,6 @@ def api_refresh_from_ai(unique_id: str):
             # Ensure the agent's client is connected
             if agent.client is None:
                 # Initialize and start the client
-                from telegram_util import get_telegram_client
-
                 client = get_telegram_client(agent.name, agent.phone)
                 agent._client = client
 
