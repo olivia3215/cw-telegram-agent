@@ -129,6 +129,14 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     agent = agents[0]
     logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
 
+    # Initialize the agent's client if it's not already connected
+    if agent.client is None:
+        logger.info(f"Initializing client for agent '{agent.name}'")
+        # Import telegram_util to initialize the client
+        from telegram_util import connect_agent_to_telegram
+
+        connect_agent_to_telegram(agent)
+
     return agent
 
 
