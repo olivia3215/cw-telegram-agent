@@ -51,25 +51,12 @@ This loads and combines prompts from:
 
 The prompts are combined in the order listed, with each prompt separated by double newlines.
 
-### Agent-Specific Role Prompts
+### Prompt Loading
 
-You can create agent-specific role prompts that override global ones by creating a `prompts/` subdirectory within an agent's directory:
+All role prompts are loaded from the global `prompts/` directory within each configuration directory. The system searches for prompts in this order:
 
-```
-samples/agents/Heidi/
-├── prompts/
-│   └── Student.md    # Agent-specific Student prompt
-└── Heidi.md
-```
-
-When an agent named "Heidi" loads the "Student" role prompt, it will use `samples/agents/Heidi/prompts/Student.md` instead of the global `samples/prompts/Student.md`.
-
-### Prompt Loading Priority
-
-The system searches for prompts in this order:
-
-1. **Agent-specific prompts** (highest priority): `samples/agents/{AgentName}/prompts/{PromptName}.md`
-2. **Global prompts** (fallback): `samples/prompts/{PromptName}.md`
+1. **First configuration directory**: `{config_dir}/prompts/{PromptName}.md`
+2. **Additional configuration directories**: If multiple config directories are specified (separated by colons), the system searches each in order
 
 ### System Prompt Structure
 
