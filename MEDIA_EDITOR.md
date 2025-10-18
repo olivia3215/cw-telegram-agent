@@ -92,15 +92,11 @@ The Media Editor interface consists of:
 
 The Media Editor can display several types of directories:
 
-1. **Agent Directories**: `{config_dir}/agents/{AgentName}/media/`
-   - Contains media specific to a particular agent
-   - Auto-created when first accessed
-
-2. **Global Directories**: `{config_dir}/media/`
+1. **Global Directories**: `{config_dir}/media/`
    - Shared media descriptions across all agents
-   - Higher priority than agent-specific descriptions
+   - Contains curated descriptions for all agents
 
-3. **AI Cache**: `state/media/`
+2. **AI Cache**: `state/media/`
    - Contains AI-generated descriptions and cached results
    - Used by the media pipeline for performance
 
@@ -229,13 +225,11 @@ state/
 
 When multiple directories contain the same media item:
 
-1. **Agent-specific** (`agents/{AgentName}/media/`) - highest priority
-2. **Global** (`{config_dir}/media/`) - medium priority
-3. **AI cache** (`state/media/`) - lowest priority (fallback)
+1. **Global** (`{config_dir}/media/`) - highest priority
+2. **AI cache** (`state/media/`) - lowest priority (fallback)
 
 ### Auto-Creation
 
-- **Agent directories**: Created automatically when first accessed
 - **Target directories**: Created when moving media items
 - **Media cache**: Created automatically by the AI pipeline
 

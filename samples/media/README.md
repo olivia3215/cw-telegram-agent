@@ -43,16 +43,15 @@ The curated descriptions directory is determined by the configuration system:
 
 ## Directory hierarchy
 
-The system checks these directories in order of precedence (all in config directories, NOT state):
+The system checks these directories in order of precedence:
 
 For each config directory in `CINDY_AGENT_CONFIG_PATH`:
-1. **Agent-specific curated**: `{config_dir}/agents/{AgentName}/media/` (if exists)
-2. **Global curated**: `{config_dir}/media/` (if exists)
+1. **Global curated**: `{config_dir}/media/` (if exists)
 
 Then:
-3. **AI cache** (state, not config): `state/media/` (cached AI-generated descriptions)
-4. **Budget management**: Returns fallback if budget exhausted
-5. **AI generation**: Always succeeds (generates new description or returns fallback)
+2. **AI cache** (state, not config): `state/media/` (cached AI-generated descriptions)
+3. **Budget management**: Returns fallback if budget exhausted
+4. **AI generation**: Always succeeds (generates new description or returns fallback)
 
 **Important**: Curated descriptions are configuration data and should NEVER be placed in the `state/` directory.
 The `state/` directory is only for runtime state like AI-generated cache files.
@@ -65,15 +64,11 @@ Here's a complete example showing how to organize curated media descriptions:
 samples/                                    # Config directory (or your custom config dir)
 ├── agents/
 │   ├── Wendy.md                           # Agent configuration file
-│   ├── Wendy/
-│   │   └── media/                         # Wendy-specific curated media
-│   │       ├── 123456789.json            # Curated description for this sticker
-│   │       └── 987654321.json
-│   ├── Heidi.md
-│   └── Heidi/
-│       └── media/                         # Heidi-specific curated media
-│           └── 444555666.json
+│   └── Heidi.md
 └── media/                                  # Global curated media (all agents)
+    ├── 123456789.json                     # Curated description for this sticker
+    ├── 987654321.json
+    ├── 444555666.json
     ├── 901422453274706125.json            # Example: MrRibbit 💻
     └── 901422453274706125.webp
 
@@ -86,17 +81,15 @@ state/                                      # State directory (runtime only)
 ### Directory purposes
 
 - **Global curated** (`samples/media/`): Descriptions shared by all agents
-- **Agent curated** (`samples/agents/Wendy/media/`): Descriptions specific to Wendy
 - **AI cache** (`state/media/`): AI-generated descriptions (not version-controlled)
 
 ### Precedence example
 
 If agent Wendy receives a sticker with unique_id `123456789`:
 
-1. Check `samples/agents/Wendy/media/123456789.json` (highest priority)
-2. Check `samples/media/123456789.json`
-3. Check `state/media/123456789.json` (AI cache)
-4. If not found and budget available: Generate with AI and cache to `state/media/123456789.json`
+1. Check `samples/media/123456789.json` (global curated)
+2. Check `state/media/123456789.json` (AI cache)
+3. If not found and budget available: Generate with AI and cache to `state/media/123456789.json`
 5. If budget exhausted: Return fallback without description
 
 ## Usage
