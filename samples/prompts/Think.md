@@ -87,6 +87,6 @@ The user never sees them. Use them freely to improve your responses.
 
 ## Note
 
-A `think` task should always end with a newline.
+A `think` task (like all tasks) should always end with a newline.
 
 If you want to send something after a `think` task, you need to begin a new task, for example by producing a new `send` section after the newline.

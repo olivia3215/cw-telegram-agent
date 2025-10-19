@@ -121,7 +121,10 @@ async def insert_received_task_for_conversation(
             # Preserve tasks marked with preserve:True (e.g., wait tasks keeping resources alive)
             preserve = old_task.params.get("preserve", False)
             if preserve and not old_task.status.is_completed():
-                last_task = old_task.identifier
+                # Only set last_task if it's not a wait task with preserve:true
+                # Wait tasks with preserve:true should run independently and not block other tasks
+                if not (old_task.type == "wait" and preserve):
+                    last_task = old_task.identifier
             else:
                 old_task.status = TaskStatus.CANCELLED
             # save all the old tasks, because even if they're done,
