@@ -776,6 +776,80 @@ async def _schedule_tasks(
         last_id = task.identifier
 
 
+async def _is_user_join_event(messages, agent, channel_id: int) -> bool:
+    """
+    Detect if this is a user join event (system message) vs a legitimate conversation.
+
+    User join events are specifically system messages that appear when someone
+    in your address book joins Telegram. They have these characteristics:
+    1. Messages are action/service messages (have action property)
+    2. The action is specifically a "user joined" type action
+    3. The conversation is a DM (not group)
+    4. The conversation has no previous messages from the agent
+
+    Args:
+        messages: List of Telegram messages
+        agent: Agent instance
+        channel_id: Channel/chat ID
+
+    Returns:
+        True if this appears to be a user join event, False otherwise
+    """
+    if not messages:
+        return False
+
+    # Get dialog info to check if this is a DM
+    try:
+        dialog = await agent.get_cached_entity(channel_id)
+        is_group = is_group_or_channel(dialog)
+
+        # User join events only happen in DMs, not groups
+        if is_group:
+            return False
+    except Exception:
+        # If we can't determine dialog type, assume it's not a user join event
+        return False
+
+    # Check if this is a conversation start (no previous messages from agent)
+    agent_id = agent.agent_id
+    if agent_id is not None:
+        for msg in messages:
+            if (
+                getattr(msg, "from_id", None)
+                and getattr(msg.from_id, "user_id", None) == agent_id
+            ):
+                # Agent has sent messages before, so this is a real conversation
+                return False
+
+    # Look for specific action messages that indicate user join events
+    for msg in messages:
+        # Check if it's an action message
+        if hasattr(msg, "action") and msg.action:
+            action = msg.action
+
+            # Check for specific user join actions
+            # These are the action types that indicate someone joined Telegram
+            if hasattr(action, "__class__"):
+                action_class_name = action.__class__.__name__
+
+                # Common user join action types in Telethon
+                if action_class_name in [
+                    "MessageActionContactSignUp",  # User joined Telegram
+                    "MessageActionUserJoined",  # User joined (alternative)
+                ]:
+                    return True
+
+                # Check for other join-related actions
+                if (
+                    "join" in action_class_name.lower()
+                    or "signup" in action_class_name.lower()
+                ):
+                    return True
+
+    # If no specific user join actions found, it's not a user join event
+    return False
+
+
 async def parse_llm_reply(
     text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
@@ -830,6 +904,19 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
     )
+
+    # We don't want to respond just because users in the address book join Telegram.
+    # Check if this is a user join event vs a legitimate conversation.
+    if not messages:
+        return
+
+    # Check if this is likely a user join event by examining message properties
+    is_user_join_event = await _is_user_join_event(messages, agent, channel_id)
+    if is_user_join_event:
+        logger.info(
+            f"[{agent_name}] Detected user join event for channel {channel_id}, skipping response"
+        )
+        return
 
     # Get conversation context
     is_callout = task.params.get("callout", False)
