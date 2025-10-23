@@ -390,7 +390,7 @@ class GeminiLLM(LLM):
             Description string
 
         Raises:
-            ValueError: If audio is too long (>5 minutes) or MIME type unsupported
+            ValueError: If audio is too long (>1 minute) or MIME type unsupported
             RuntimeError: For API failures
         """
         if not self.api_key:
@@ -399,7 +399,7 @@ class GeminiLLM(LLM):
         # Check audio duration - reject audio longer than 1 minute
         if duration is not None and duration > 60:
             raise ValueError(
-                f"Audio is too long to analyze (duration: {duration}s, max: 300s)"
+                f"Audio is too long to analyze (duration: {duration}s, max: 60s)"
             )
 
         # Use centralized MIME type detection if not provided
