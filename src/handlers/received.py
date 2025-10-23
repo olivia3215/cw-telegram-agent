@@ -750,11 +750,13 @@ async def _run_llm_with_retrieval(
             )
 
         # Check max rounds
-        if retrieval_round >= RETRIEVAL_MAX_ROUNDS:
+        if retrieval_round >= RETRIEVAL_MAX_ROUNDS and not suppress_retrieve:
             logger.info(
                 f"[{agent_name}] Reached max retrieval rounds ({RETRIEVAL_MAX_ROUNDS}) - suppressing Retrieve.md"
             )
             suppress_retrieve = True
+            final_system_prompt += "\n\n# Retrieval Suppressed"
+            final_system_prompt += "\n\nYou will not be able to retrieve any more URLs, so do not use the `retrieve` task.\n"
 
     # Store fetched resources in graph context
     if retrieved_contents:
