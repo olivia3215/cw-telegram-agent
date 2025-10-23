@@ -84,6 +84,11 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
         logger.info(
             f"[{agent_name}] Premium account required for sticker {sticker_name!r}, sending as text"
         )
-        await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
+        try:
+            await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
+        except Exception as e:
+            logger.exception(
+                f"[{agent_name}] Failed to send fallback text message: {e}"
+            )
     except Exception as e:
         logger.exception(f"[{agent_name}] Failed to send sticker: {e}")
