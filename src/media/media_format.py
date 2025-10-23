@@ -19,15 +19,21 @@ ANGLE_OPEN = "‹"
 ANGLE_CLOSE = "›"
 
 
-def format_media_description(description: str | None) -> str:
+def format_media_description(description: str | None, kind: str | None = None) -> str:
     """
     Returns a clause beginning with 'that ...'.
     If there's no usable description, return a generic fallback.
+    Uses appropriate verb based on media kind (audio uses 'sounds like', others use 'appears as').
     """
     s = (description or "").strip()
     if not s:
         return "that is not understood"
-    return f"that appears as {s}"
+
+    # Use appropriate verb based on media kind
+    if kind and kind.lower() == "audio":
+        return f"that sounds like {s}"
+    else:
+        return f"that appears as {s}"
 
 
 async def _extract_sticker_set_name(media_item, agent, resolve_sticker_set_name) -> str:
@@ -75,7 +81,7 @@ def _format_sticker_sentence_internal(
     """
     base = f"the sticker `{sticker_name}` from the sticker set `{sticker_set_name}`"
     s = (description or "").strip()
-    return f"⟦media⟧ {ANGLE_OPEN}{base} {format_media_description(s)}{ANGLE_CLOSE}"
+    return f"⟦media⟧ {ANGLE_OPEN}{base} {format_media_description(s, 'sticker')}{ANGLE_CLOSE}"
 
 
 async def format_sticker_sentence(
@@ -133,8 +139,8 @@ async def format_sticker_sentence(
 def format_media_sentence(kind: str, description: str | None) -> str:
     """
     Format a general media sentence with angle quotes:
-      ‹the <kind> that appears as <description>›
+      ‹the <kind> that appears as <description>› (or 'sounds like' for audio)
     Falls back to 'that is not understood' when description is missing.
     """
-    media_desc = format_media_description(description)
+    media_desc = format_media_description(description, kind)
     return f"⟦media⟧ {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"

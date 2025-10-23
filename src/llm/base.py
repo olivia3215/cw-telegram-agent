@@ -112,3 +112,45 @@ class LLM(ABC):
             timeout_s: Optional timeout in seconds for the request
         """
         ...
+
+    @abstractmethod
+    async def describe_video(
+        self,
+        video_bytes: bytes,
+        mime_type: str | None = None,
+        duration: int | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Return a rich, single-string description for the given video.
+        Uses the LLM to analyze the video and provide a detailed description.
+        Raises on failures so the scheduler's retry policy can handle it.
+
+        Args:
+            video_bytes: The video data as bytes
+            mime_type: Optional MIME type of the video
+            duration: Video duration in seconds (optional, used for validation)
+            timeout_s: Optional timeout in seconds for the request
+        """
+        ...
+
+    @abstractmethod
+    async def describe_audio(
+        self,
+        audio_bytes: bytes,
+        mime_type: str | None = None,
+        duration: int | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Return a rich, single-string description for the given audio.
+        Uses the LLM to analyze the audio and provide a detailed description.
+        Raises on failures so the scheduler's retry policy can handle it.
+
+        Args:
+            audio_bytes: The audio data as bytes
+            mime_type: Optional MIME type of the audio
+            duration: Audio duration in seconds (optional, used for validation)
+            timeout_s: Optional timeout in seconds for the request
+        """
+        ...

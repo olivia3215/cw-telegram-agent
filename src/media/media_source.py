@@ -595,7 +595,12 @@ class UnsupportedFormatMediaSource(MediaSource):
             llm = getattr(agent, "llm", None)
             if not llm:
                 return None
-            is_supported = llm.is_mime_type_supported_by_llm(mime_type)
+
+            # Check if MIME type is supported (images, videos, or audio)
+            is_supported = llm.is_mime_type_supported_by_llm(mime_type) or (
+                hasattr(llm, "is_audio_mime_type_supported")
+                and llm.is_audio_mime_type_supported(mime_type)
+            )
 
             if not is_supported:
                 # Return unsupported format record
@@ -763,6 +768,19 @@ class AIGeneratingMediaSource(MediaSource):
             if _needs_video_analysis(kind, detected_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
                 desc = await llm.describe_video(
+                    data,
+                    detected_mime_type,
+                    duration=duration,
+                    timeout_s=_DESCRIBE_TIMEOUT_SECS,
+                )
+            elif (
+                kind == "audio"
+                and hasattr(llm, "is_audio_mime_type_supported")
+                and llm.is_audio_mime_type_supported(detected_mime_type)
+            ):
+                # Audio files (including voice messages)
+                duration = metadata.get("duration")
+                desc = await llm.describe_audio(
                     data,
                     detected_mime_type,
                     duration=duration,

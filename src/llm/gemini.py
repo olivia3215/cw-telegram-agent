@@ -119,6 +119,14 @@ class GeminiLLM(LLM):
         "colors, actions, movement, and what the video shows. Output only the description."
     )
 
+    AUDIO_DESCRIPTION_PROMPT = (
+        "You are given an audio file. Describe what you hear in rich detail "
+        "so a reader can understand the audio content without hearing it. Include "
+        "a complete speech transcription, music, sounds, and any other audio elements. "
+        "Estimate the speaker's age, gender, and accent if they are human. "
+        "Output only the description."
+    )
+
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for media description.
@@ -145,6 +153,22 @@ class GeminiLLM(LLM):
             # Telegram animated stickers
             "application/x-tgsticker",
             "application/gzip",
+        }
+        return mime_type.lower() in supported_types
+
+    def is_audio_mime_type_supported(self, mime_type: str) -> bool:
+        """
+        Check if a MIME type is supported by the LLM for audio description.
+        Returns True for audio formats that Gemini can process.
+        """
+        supported_types = {
+            # Audio formats
+            "audio/ogg",  # Telegram voice messages
+            "audio/mpeg",  # MP3
+            "audio/wav",  # WAV
+            "audio/mp4",  # M4A
+            "audio/webm",  # WebM audio
+            "audio/flac",  # FLAC
         }
         return mime_type.lower() in supported_types
 
@@ -315,6 +339,106 @@ class GeminiLLM(LLM):
         }
 
         # Use provided timeout or default to 60 seconds (videos take longer)
+        timeout = timeout_s or 60.0
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    url, json=payload, headers={"Content-Type": "application/json"}
+                )
+                response.raise_for_status()
+                body = response.content
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"Gemini HTTP {e.response.status_code}: {e.response.text}"
+            ) from e
+        except Exception as e:
+            raise RuntimeError(f"Gemini request failed: {e}") from e
+
+        try:
+            obj = json.loads(body.decode("utf-8"))
+            # Typical path: candidates[0].content.parts[0].text
+            candidates = obj.get("candidates") or []
+            if not candidates:
+                raise RuntimeError(f"Gemini returned no candidates: {obj}")
+            parts = (candidates[0].get("content") or {}).get("parts") or []
+            if not parts or "text" not in parts[0]:
+                raise RuntimeError(f"Gemini returned no text parts: {obj}")
+            return parts[0]["text"].strip()
+        except Exception as e:
+            raise RuntimeError(f"Gemini parse error: {e}") from e
+
+    async def describe_audio(
+        self,
+        audio_bytes: bytes,
+        mime_type: str | None = None,
+        duration: int | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Return a rich, single-string description for the given audio.
+        Uses Gemini via REST with this instance's api key.
+        Raises on failures so the scheduler's retry policy can handle it.
+
+        Args:
+            audio_bytes: The audio file bytes
+            mime_type: MIME type of the audio (e.g., "audio/ogg", "audio/mpeg")
+            duration: Audio duration in seconds (optional, used for validation)
+            timeout_s: Request timeout in seconds
+
+        Returns:
+            Description string
+
+        Raises:
+            ValueError: If audio is too long (>1 minute) or MIME type unsupported
+            RuntimeError: For API failures
+        """
+        if not self.api_key:
+            raise ValueError("Missing Gemini API key")
+
+        # Check audio duration - reject audio longer than 1 minute
+        if duration is not None and duration > 60:
+            raise ValueError(
+                f"Audio is too long to analyze (duration: {duration}s, max: 60s)"
+            )
+
+        # Use centralized MIME type detection if not provided
+        if not mime_type:
+            mime_type = detect_mime_type_from_bytes(audio_bytes)
+
+        # Check if this MIME type is supported by the LLM
+        if not self.is_audio_mime_type_supported(mime_type):
+            raise ValueError(
+                f"MIME type {mime_type} is not supported by Gemini for audio description"
+            )
+
+        # Use gemini-2.0-flash for audio descriptions
+        model = "gemini-2.0-flash"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+
+        # Use cached REST API format safety settings
+        safety_settings_rest = self._safety_settings_rest_cache
+
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": self.AUDIO_DESCRIPTION_PROMPT},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64.b64encode(audio_bytes).decode("ascii"),
+                            }
+                        },
+                    ],
+                }
+            ],
+            "safety_settings": safety_settings_rest,
+        }
+
+        # Use provided timeout or default to 60 seconds (audio analysis takes longer)
         timeout = timeout_s or 60.0
 
         try:
