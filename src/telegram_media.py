@@ -20,6 +20,7 @@ def iter_media_parts(msg: Any) -> list[MediaItem]:
     _maybe_add_photo(msg, out)
     _maybe_add_sticker(msg, out)
     _maybe_add_gif_or_animation(msg, out)
+    _maybe_add_voice_message(msg, out)
     return out
 
 
@@ -222,7 +223,8 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         return
 
     # Check for audio files first (before video check to avoid misclassifying audio/mp4 as video)
-    if mime and mime.lower().startswith("audio/"):
+    # But skip if this is a voice message (handled by _maybe_add_voice_message)
+    if mime and mime.lower().startswith("audio/") and not hasattr(msg, "voice"):
         # Audio files - include duration
         out.append(
             MediaItem(
@@ -247,3 +249,32 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
             )
         )
         return
+
+
+def _maybe_add_voice_message(msg: Any, out: list[MediaItem]) -> None:
+    """
+    Extract voice messages from Telegram messages.
+    Voice messages are detected via msg.voice attribute.
+    Uses MediaKind.AUDIO but with voice-specific metadata.
+    """
+    voice = getattr(msg, "voice", None)
+    if not voice:
+        return
+
+    uid = get_unique_id(voice)
+    if not uid:
+        return
+
+    # Voice messages typically have audio/ogg MIME type
+    mime = getattr(voice, "mime_type", None) or getattr(voice, "mime", None)
+    duration = getattr(voice, "duration", None)
+
+    out.append(
+        MediaItem(
+            kind=MediaKind.AUDIO,  # Use existing AUDIO kind
+            unique_id=str(uid),
+            mime=mime,
+            file_ref=voice,  # This will be used to identify as voice message
+            duration=duration,
+        )
+    )

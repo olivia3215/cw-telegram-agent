@@ -80,3 +80,15 @@ class MediaItem:
     def is_audio(self) -> bool:
         """Check if this is an audio file."""
         return self.kind == MediaKind.AUDIO
+
+    def is_voice_message(self) -> bool:
+        """Check if this is a voice message (audio from msg.voice)."""
+        return (
+            self.kind == MediaKind.AUDIO
+            and hasattr(self.file_ref, "__class__")
+            and "Voice" in str(self.file_ref.__class__)
+        )
+
+    def needs_voice_analysis(self) -> bool:
+        """Check if this media should use voice message analysis."""
+        return self.is_voice_message()
