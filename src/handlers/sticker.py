@@ -77,7 +77,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
             )
         else:
             # Unknown: keep current behavior (plain text echo); diagnostics are in logs.
-            await client.send_message(channel_id, sticker_name)
+            await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
     except PremiumAccountRequiredError:
         # Premium stickers require a premium account to send
         # Send the sticker name as text instead (which shows as animated emoji)
