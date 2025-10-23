@@ -193,9 +193,41 @@ def is_retryable_llm_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in retryable_indicators)
 
 
+async def _is_sticker_sendable(agent, doc) -> bool:
+    """
+    Test if a sticker can be sent by checking for premium requirements.
+
+    According to Telegram API documentation, premium stickers are identified by
+    the presence of a videoSize of type=f in the sticker's main document.
+
+    Args:
+        agent: Agent instance
+        doc: Sticker document from Telegram API
+
+    Returns:
+        True if sticker can be sent, False if it requires premium
+    """
+    try:
+        # Check for premium indicator: videoSize with type=f
+        video_thumbs = getattr(doc, "video_thumbs", None)
+        if video_thumbs:
+            for video_size in video_thumbs:
+                video_type = getattr(video_size, "type", None)
+                if video_type == "f":
+                    return False
+
+        # No premium indicators found
+        return True
+
+    except Exception as e:
+        logger.exception(f"Error checking sticker sendability: {e}")
+        return True
+
+
 async def _build_sticker_list(agent, media_chain) -> str | None:
     """
     Build a formatted list of available stickers with descriptions.
+    Filters out premium stickers that the agent cannot send.
 
     Args:
         agent: Agent instance with configured stickers
@@ -208,6 +240,16 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
         return None
 
     lines: list[str] = []
+    filtered_count = 0
+
+    # Check if premium filtering is enabled (based on agent's premium status)
+    filter_premium = getattr(agent, "filter_premium_stickers", True)
+
+    if filter_premium:
+        logger.debug("Premium sticker filtering enabled for non-premium agent")
+    else:
+        logger.debug("Premium sticker filtering disabled for premium agent")
+
     try:
         for set_short, name in sorted(agent.stickers.keys()):
             try:
@@ -218,6 +260,13 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
                     # Get the document from the configured stickers
                     doc = agent.stickers.get((set_short, name))
                     if doc:
+                        # Check if sticker is sendable (not premium) if filtering is enabled
+                        if filter_premium and not await _is_sticker_sendable(
+                            agent, doc
+                        ):
+                            filtered_count += 1
+                            continue
+
                         # Get unique_id from document
                         _uid = get_unique_id(doc)
 
@@ -240,6 +289,10 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
                 lines.append(f"- {set_short} :: {name} - {desc}")
             else:
                 lines.append(f"- {set_short} :: {name}")
+
+        if filtered_count > 0:
+            logger.debug(f"Filtered out {filtered_count} premium stickers")
+
     except Exception as e:
         # If anything unexpected occurs, fall back to names-only list
         logger.warning(
