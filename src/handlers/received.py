@@ -493,6 +493,7 @@ async def _build_complete_system_prompt(
     # Add conversation start instruction if needed
     if is_conversation_start:
         conversation_start_instruction = (
+            "\n\n# Conversation Start"
             "\n\n***IMPORTANT***"
             + f"\n\nThis is the beginning of a conversation with {channel_name}."
             + " Respond with your first message or an adaptation of it if needed."
@@ -648,16 +649,6 @@ async def _run_llm_with_retrieval(
                     "ts_iso": None,
                 }
             )
-
-        # Conditionally include Retrieve.md
-        if not suppress_retrieve and "Retrieve" in agent.role_prompt_names:
-            try:
-                from prompt_loader import load_system_prompt
-
-                retrieve_prompt = load_system_prompt("Retrieve")
-                final_system_prompt += f"\n\n{retrieve_prompt}\n"
-            except Exception as e:
-                logger.debug(f"[{agent_name}] Could not load Retrieve.md prompt: {e}")
 
         # Combine retrieval items with regular history
         combined_history = list(retrieval_history_items) + [
