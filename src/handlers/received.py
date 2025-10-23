@@ -627,11 +627,9 @@ async def _run_llm_with_retrieval(
     tasks = []
     suppress_retrieve = False
     fetched_new_resources = False
+    final_system_prompt = system_prompt
 
     while True:
-        # Build final system prompt with retrieval content
-        final_system_prompt = system_prompt
-
         # Inject retrieved content as system messages (attributed to model/agent)
         retrieval_history_items = []
         for url, content in retrieved_contents:
