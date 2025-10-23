@@ -214,9 +214,6 @@ async def _is_sticker_sendable(agent, doc) -> bool:
             for video_size in video_thumbs:
                 video_type = getattr(video_size, "type", None)
                 if video_type == "f":
-                    logger.info(
-                        f"Found premium sticker indicator: videoSize type={video_type}"
-                    )
                     return False
 
         # No premium indicators found
@@ -249,13 +246,9 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     filter_premium = getattr(agent, "filter_premium_stickers", True)
 
     if filter_premium:
-        logger.info(
-            "Premium sticker filtering is enabled - agent does not have premium subscription"
-        )
+        logger.debug("Premium sticker filtering enabled for non-premium agent")
     else:
-        logger.info(
-            "Premium sticker filtering is disabled - agent has premium subscription"
-        )
+        logger.debug("Premium sticker filtering disabled for premium agent")
 
     try:
         for set_short, name in sorted(agent.stickers.keys()):
@@ -268,17 +261,11 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
                     doc = agent.stickers.get((set_short, name))
                     if doc:
                         # Check if sticker is sendable (not premium) if filtering is enabled
-                        if filter_premium:
-                            is_sendable = await _is_sticker_sendable(agent, doc)
-                            logger.info(
-                                f"Sticker {set_short}::{name} sendable: {is_sendable}"
-                            )
-                            if not is_sendable:
-                                filtered_count += 1
-                                logger.info(
-                                    f"Filtering premium sticker: {set_short}::{name}"
-                                )
-                                continue
+                        if filter_premium and not await _is_sticker_sendable(
+                            agent, doc
+                        ):
+                            filtered_count += 1
+                            continue
 
                         # Get unique_id from document
                         _uid = get_unique_id(doc)
@@ -304,9 +291,7 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
                 lines.append(f"- {set_short} :: {name}")
 
         if filtered_count > 0:
-            logger.info(
-                f"Filtered out {filtered_count} premium stickers from agent prompt"
-            )
+            logger.debug(f"Filtered out {filtered_count} premium stickers")
 
     except Exception as e:
         # If anything unexpected occurs, fall back to names-only list
