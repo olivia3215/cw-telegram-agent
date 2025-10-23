@@ -115,7 +115,7 @@ def test_format_media_sentence_not_understood(desc):
 
 def test_format_media_sentence_with_not_understood_text():
     out = format_media_sentence("audio", "not understood")
-    assert out == "⟦media⟧ ‹the audio that appears as not understood›"
+    assert out == "⟦media⟧ ‹the audio that sounds like not understood›"
 
 
 # Tests for the new async format_sticker_sentence function
