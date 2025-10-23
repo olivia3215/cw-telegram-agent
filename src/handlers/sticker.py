@@ -5,6 +5,7 @@
 
 import logging
 
+from telethon.errors.rpcerrorlist import PremiumAccountRequiredError
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
@@ -77,5 +78,12 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph):
         else:
             # Unknown: keep current behavior (plain text echo); diagnostics are in logs.
             await client.send_message(channel_id, sticker_name)
+    except PremiumAccountRequiredError:
+        # Premium stickers require a premium account to send
+        # Send the sticker name as text instead (which shows as animated emoji)
+        logger.info(
+            f"[{agent_name}] Premium account required for sticker {sticker_name!r}, sending as text"
+        )
+        await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
     except Exception as e:
         logger.exception(f"[{agent_name}] Failed to send sticker: {e}")
