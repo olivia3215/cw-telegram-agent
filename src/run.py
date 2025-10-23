@@ -219,7 +219,14 @@ async def authenticate_agent(agent: Agent):
         me = await client.get_me()
         agent_id = me.id
         agent.agent_id = agent_id
-        logger.info(f"[{agent_name}] Agent authenticated ({agent_id})")
+
+        # Check if agent has premium subscription
+        is_premium = getattr(me, "premium", False)
+        agent.filter_premium_stickers = not is_premium  # Filter if NOT premium
+
+        logger.info(
+            f"[{agent_name}] Agent authenticated ({agent_id}) - Premium: {is_premium}"
+        )
         return True
 
     except Exception as e:

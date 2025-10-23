@@ -245,15 +245,16 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     lines: list[str] = []
     filtered_count = 0
 
-    # Check if premium filtering is enabled (default: True)
+    # Check if premium filtering is enabled (based on agent's premium status)
     filter_premium = getattr(agent, "filter_premium_stickers", True)
 
     if filter_premium:
         logger.info(
-            "Premium sticker filtering is enabled, but premium status is not detectable from document attributes."
+            "Premium sticker filtering is enabled - agent does not have premium subscription"
         )
+    else:
         logger.info(
-            "Premium stickers will be handled at send time with fallback to text."
+            "Premium sticker filtering is disabled - agent has premium subscription"
         )
 
     try:
