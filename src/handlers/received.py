@@ -633,8 +633,8 @@ async def _process_message_history(
         for part in message_parts:
             if part.get("kind") == "text":
                 message_text += part.get("text", "")
-            elif hasattr(part, 'text'):
-                message_text += part.text
+            elif part.get("kind") == "media":
+                message_text += part.get("rendered_text", "")
         
         if message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")):
             logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text[:50]}...")
