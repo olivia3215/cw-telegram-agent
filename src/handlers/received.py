@@ -227,7 +227,7 @@ async def _format_message_reactions(agent, message) -> str | None:
                     emoji = "🎭"  # Fallback placeholder
                 
             if emoji:
-                reaction_parts.append(f'{user_name}({user_id})={emoji}')
+                reaction_parts.append(f'"{user_name}"({user_id})={emoji}')
                 
         return ', '.join(reaction_parts) if reaction_parts else None
         
