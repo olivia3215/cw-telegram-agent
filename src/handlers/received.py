@@ -30,10 +30,34 @@ from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
+from telepathic import is_telepath
 from tick import register_task_handler
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+async def _send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
+    """
+    Send a telepathic message to a channel immediately.
+    
+    Args:
+        agent: The agent instance
+        channel_id: The channel to send to
+        prefix: The prefix (e.g., "⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")
+        content: The message content
+    """
+    if not content.strip():
+        return
+        
+    message = f"{prefix}\n{content}"
+    try:
+        await agent.client.send_message(channel_id, message, parse_mode="Markdown")
+        logger.info(f"[{agent.name}] Sent telepathic message: {prefix}")
+    except Exception as e:
+        logger.error(f"[{agent.name}] Failed to send telepathic message: {e}")
+
+
 
 
 async def _fetch_url(url: str) -> tuple[str, str]:
@@ -375,6 +399,9 @@ async def parse_llm_reply_from_markdown(
         elif current_type == "remember":
             # Remember tasks are processed immediately, not added to task graph
             if agent and body:
+                # Send telepathic message if channel is telepathic
+                if is_telepath(channel_id):
+                    await _send_telepathic_message(agent, channel_id, "⟦remember⟧", body)
                 await _process_remember_task(agent, channel_id, body)
             return  # Don't add to task_nodes
 
@@ -383,6 +410,9 @@ async def parse_llm_reply_from_markdown(
             logger.debug(
                 f"[think] Discarding think task content (length: {len(body)} chars)"
             )
+            # Send telepathic message if channel is telepathic
+            if agent and body and is_telepath(channel_id):
+                await _send_telepathic_message(agent, channel_id, "⟦think⟧", body)
             return  # Don't add to task_nodes
 
         elif current_type == "retrieve":
@@ -396,6 +426,10 @@ async def parse_llm_reply_from_markdown(
             if not urls:
                 logger.warning("[retrieve] No valid URLs found in retrieve task body")
                 return  # Don't add to task_nodes
+
+            # Send telepathic message if channel is telepathic
+            if agent and body and is_telepath(channel_id):
+                await _send_telepathic_message(agent, channel_id, "⟦retrieve⟧", body)
 
             params["urls"] = urls
 
@@ -539,6 +573,19 @@ async def _process_message_history(
             m, agent=agent, media_chain=media_chain
         )
         if not message_parts:
+            continue
+
+        # Filter out telepathic messages from agent's view
+        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, or ⟦retrieve⟧)
+        message_text = ""
+        for part in message_parts:
+            if part.get("kind") == "text":
+                message_text += part.get("text", "")
+            elif hasattr(part, 'text'):
+                message_text += part.text
+        
+        if message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")):
+            logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text[:50]}...")
             continue
 
         # Get sender information
