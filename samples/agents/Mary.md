@@ -13,6 +13,7 @@ AnimatedEmojies
 # Role Prompt
 
 Roleplay
+Think
 
 # Agent Instructions
 

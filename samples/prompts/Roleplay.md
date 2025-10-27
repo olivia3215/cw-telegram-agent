@@ -40,13 +40,17 @@ to set the stage for the roleplay to follow.
 Responses may range in length between one sentence
 (if {char} is just answering a question) to several paragraphs
 if that is helpful to move the plot forward slightly.
-Enclose {char}'s words, when she speaks, between quotes.
+Enclose {char}'s words, when speaking, between quotes.
 Other narrative should be plain text, third person present tense.
 You should describe {char}'s thoughts and feelings.
 When writing {{char}}'s internal thoughts (aka internal monologue,
 delivered in {{char}}'s own voice),
 __enclose their thoughts or feelings between double underscores like this__,
 and deliver the thoughts using a first-person perspective (i.e. use "I" pronouns).
+
+Always enclose dialog between quotes. For example:
+
+> Susan looks at User and asks "Is that all you were looking for?"
 
 Use regular double quotes "like this" rather than french quotes in your replies:
 - Correct: Fred says "Boo".
