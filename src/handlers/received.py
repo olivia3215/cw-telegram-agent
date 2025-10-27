@@ -174,7 +174,7 @@ async def _format_message_reactions(agent, message) -> str | None:
         message: Telegram message object
         
     Returns:
-        Formatted reactions string like 'Wendy(1234)="❤️", Cindy(5678)="👍"' or None if no reactions
+        Formatted reactions string like '"Wendy"(1234)=❤️, "Cindy"(5678)=👍' or None if no reactions
     """
     try:
         reactions_obj = getattr(message, 'reactions', None)
