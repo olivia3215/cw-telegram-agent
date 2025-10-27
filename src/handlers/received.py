@@ -169,6 +169,73 @@ class ProcessedMessage:
     is_from_agent: bool
     reply_to_msg_id: str | None = None
     timestamp: str | None = None  # Agent-local timestamp string
+    reactions: str | None = None  # Formatted reactions string
+
+
+async def _format_message_reactions(agent, message) -> str | None:
+    """
+    Format reactions for a message.
+    
+    Args:
+        agent: The agent instance
+        message: Telegram message object
+        
+    Returns:
+        Formatted reactions string like 'Wendy(1234)="❤️", Cindy(5678)="👍"' or None if no reactions
+    """
+    try:
+        reactions_obj = getattr(message, 'reactions', None)
+        if not reactions_obj:
+            return None
+            
+        # Get recent reactions if available
+        recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
+        if not recent_reactions:
+            return None
+            
+        reaction_parts = []
+        for reaction in recent_reactions:
+            # Get user info
+            peer_id = getattr(reaction, 'peer_id', None)
+            if not peer_id:
+                continue
+                
+            # Get user ID from peer
+            if hasattr(peer_id, 'user_id'):
+                user_id = peer_id.user_id
+            elif hasattr(peer_id, 'channel_id'):
+                user_id = peer_id.channel_id
+            elif hasattr(peer_id, 'chat_id'):
+                user_id = peer_id.chat_id
+            else:
+                continue
+                
+            # Get user name
+            try:
+                user_name = await get_channel_name(agent, user_id)
+            except Exception:
+                user_name = f"User{user_id}"
+                
+            # Get reaction emoji
+            reaction_obj = getattr(reaction, 'reaction', None)
+            if not reaction_obj:
+                continue
+                
+            emoji = None
+            if hasattr(reaction_obj, 'emoticon'):
+                emoji = reaction_obj.emoticon
+            elif hasattr(reaction_obj, 'document_id'):
+                # Custom emoji - we'll use a placeholder for now
+                emoji = "🎭"  # Placeholder for custom emoji
+                
+            if emoji:
+                reaction_parts.append(f'"{user_name}"({user_id})="{emoji}"')
+                
+        return ', '.join(reaction_parts) if reaction_parts else None
+        
+    except Exception as e:
+        logger.debug(f"Error formatting reactions for message {getattr(message, 'id', 'unknown')}: {e}")
+        return None
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -567,6 +634,9 @@ async def _process_message_history(
             local_time = msg_date.astimezone(agent.timezone)
             timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
+        # Format reactions
+        reactions_str = await _format_message_reactions(agent, m)
+
         history_rendered_items.append(
             ProcessedMessage(
                 message_parts=message_parts,
@@ -576,6 +646,7 @@ async def _process_message_history(
                 is_from_agent=is_from_agent,
                 reply_to_msg_id=reply_to_msg_id,
                 timestamp=timestamp_str,
+                reactions=reactions_str,
             )
         )
 
@@ -658,6 +729,7 @@ async def _run_llm_with_retrieval(
                 "parts": item.message_parts,
                 "reply_to_msg_id": item.reply_to_msg_id,
                 "ts_iso": item.timestamp,
+                "reactions": item.reactions,
             }
             for item in history_items
         ]

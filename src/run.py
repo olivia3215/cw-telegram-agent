@@ -81,7 +81,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
             message_id=event.message.id,
             is_callout=is_callout,
         )
-        await client.send_read_acknowledge(dialog, clear_mentions=True)
+        await client.send_read_acknowledge(dialog, clear_mentions=True, clear_reactions=True)
 
 
 async def scan_unread_messages(agent: Agent, work_queue):
@@ -89,10 +89,24 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await clock.sleep(1)  # Don't poll too fast
+        await clock.sleep(0.1)  # Don't poll too fast
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
+        # Check if we can access unread_reactions_count
+        # Try different ways to access the unread_reactions_count
+        unread_reactions_count = 0
+        if hasattr(dialog, 'unread_reactions_count'):
+            unread_reactions_count = dialog.unread_reactions_count
+        elif hasattr(dialog, 'dialog') and hasattr(dialog.dialog, 'unread_reactions_count'):
+            unread_reactions_count = dialog.dialog.unread_reactions_count
+        elif hasattr(dialog, 'entity') and hasattr(dialog.entity, 'unread_reactions_count'):
+            unread_reactions_count = dialog.entity.unread_reactions_count
+        
+        has_unread_reactions = not muted and unread_reactions_count > 0
+        
+        # Debug: log dialog structure
+        logger.debug(f"[{agent_name}] Dialog type: {type(dialog)}, unread_reactions_count: {unread_reactions_count}")
 
         # If there are mentions, we must check if they are from a non-blocked user.
         is_callout = False
@@ -107,13 +121,37 @@ async def scan_unread_messages(agent: Agent, work_queue):
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
-        if is_callout or has_unread or is_marked_unread:
+        # Check if unread reactions are on the agent's last message
+        has_reactions_on_agent_message = False
+        if has_unread_reactions:
+            try:
+                # Get the last few messages to find the agent's last message
+                messages = await client.get_messages(dialog.id, limit=5)
+                agent_last_message = None
+                
+                for msg in messages:
+                    if bool(getattr(msg, "out", False)):
+                        agent_last_message = msg
+                        break
+                
+                # Check if the agent's last message has reactions
+                if agent_last_message:
+                    reactions_obj = getattr(agent_last_message, 'reactions', None)
+                    if reactions_obj:
+                        recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
+                        if recent_reactions and len(recent_reactions) > 0:
+                            has_reactions_on_agent_message = True
+                            logger.info(f"[{agent_name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
+            except Exception as e:
+                logger.debug(f"[{agent_name}] Error checking reactions on agent's last message in dialog {dialog.id}: {e}")
+
+        if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
                 f"[{agent_name}] Found unread content in [{dialog_name}] "
-                f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread})"
+                f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
             )
-            await client.send_read_acknowledge(dialog, clear_mentions=has_mentions)
+            await client.send_read_acknowledge(dialog, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
             await insert_received_task_for_conversation(
                 work_queue,
                 recipient_id=agent_id,
