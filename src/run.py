@@ -8,7 +8,7 @@ import logging
 import os
 
 from telethon import events
-from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest
 from telethon.tl.types import (
     InputStickerSetShortName,
     UpdateDialogFilter,
@@ -125,25 +125,26 @@ async def scan_unread_messages(agent: Agent, work_queue):
         has_reactions_on_agent_message = False
         if has_unread_reactions:
             try:
-                # Get the last few messages to find the agent's last message
-                messages = await client.get_messages(dialog.id, limit=5)
-                agent_last_message = None
+                # Get unread reactions for this dialog
+                unread_reactions_result = await client(GetUnreadReactionsRequest(
+                    peer=dialog.id,
+                    offset_id=0,
+                    add_offset=0,
+                    limit=100,
+                    max_id=0,
+                    min_id=0
+                ))
                 
-                for msg in messages:
-                    if bool(getattr(msg, "out", False)):
-                        agent_last_message = msg
-                        break
-                
-                # Check if the agent's last message has reactions
-                if agent_last_message:
-                    reactions_obj = getattr(agent_last_message, 'reactions', None)
-                    if reactions_obj:
-                        recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
-                        if recent_reactions and len(recent_reactions) > 0:
+                # Check if any unread reactions are on messages sent by the agent
+                if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
+                    for message in unread_reactions_result.messages:
+                        if bool(getattr(message, "out", False)):  # Message sent by agent
                             has_reactions_on_agent_message = True
-                            logger.info(f"[{agent_name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
+                            logger.info(f"[{agent_name}] Found unread reactions on agent's message {message.id} in dialog {dialog.id}")
+                            break
+                            
             except Exception as e:
-                logger.debug(f"[{agent_name}] Error checking reactions on agent's last message in dialog {dialog.id}: {e}")
+                logger.debug(f"[{agent_name}] Error checking unread reactions in dialog {dialog.id}: {e}")
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
