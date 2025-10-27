@@ -19,6 +19,7 @@ from config import (
     RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
+from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -150,15 +151,7 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         memory_file = Path(state_dir) / agent.name / "memory.md"
 
         # Get the conversation partner's name
-        try:
-            from telegram_util import get_channel_name
-
-            partner_name = await get_channel_name(agent, channel_id)
-        except Exception as e:
-            logger.warning(
-                f"[{agent.name}] Failed to get partner name for channel {channel_id}: {e}"
-            )
-            partner_name = "Unknown"
+        partner_name = await get_channel_name(agent, channel_id)
 
         # Format the memory entry with timestamp, partner name, and ID
         now = agent.get_current_time()
@@ -193,6 +186,65 @@ class ProcessedMessage:
     is_from_agent: bool
     reply_to_msg_id: str | None = None
     timestamp: str | None = None  # Agent-local timestamp string
+    reactions: str | None = None  # Formatted reactions string
+
+
+async def _format_message_reactions(agent, message) -> str | None:
+    """
+    Format reactions for a message.
+    
+    Args:
+        agent: The agent instance
+        message: Telegram message object
+        
+    Returns:
+        Formatted reactions string like '"Wendy"(1234)=❤️, "Cindy"(5678)=👍' or None if no reactions
+    """
+    try:
+        reactions_obj = getattr(message, 'reactions', None)
+        if not reactions_obj:
+            return None
+            
+        # Get recent reactions if available
+        recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
+        if not recent_reactions:
+            return None
+            
+        reaction_parts = []
+        for reaction in recent_reactions:
+            # Get user info
+            peer_id = getattr(reaction, 'peer_id', None)
+            if not peer_id:
+                continue
+                
+            # Get user ID from peer
+            user_id = extract_user_id_from_peer(peer_id)
+            if user_id is None:
+                continue
+                
+            # Get user name
+            user_name = await get_channel_name(agent, user_id)
+                
+            # Get reaction emoji
+            reaction_obj = getattr(reaction, 'reaction', None)
+            if not reaction_obj:
+                continue
+                
+            emoji = None
+            if hasattr(reaction_obj, 'emoticon'):
+                emoji = reaction_obj.emoticon
+            elif hasattr(reaction_obj, 'document_id'):
+                # Custom emoji - get the sticker name
+                emoji = await get_custom_emoji_name(agent, reaction_obj.document_id)
+                
+            if emoji:
+                reaction_parts.append(f'"{user_name}"({user_id})={emoji}')
+                
+        return ', '.join(reaction_parts) if reaction_parts else None
+        
+    except Exception as e:
+        logger.debug(f"Error formatting reactions for message {getattr(message, 'id', 'unknown')}: {e}")
+        return None
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -614,6 +666,9 @@ async def _process_message_history(
             local_time = msg_date.astimezone(agent.timezone)
             timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
+        # Format reactions
+        reactions_str = await _format_message_reactions(agent, m)
+
         history_rendered_items.append(
             ProcessedMessage(
                 message_parts=message_parts,
@@ -623,6 +678,7 @@ async def _process_message_history(
                 is_from_agent=is_from_agent,
                 reply_to_msg_id=reply_to_msg_id,
                 timestamp=timestamp_str,
+                reactions=reactions_str,
             )
         )
 
@@ -705,6 +761,7 @@ async def _run_llm_with_retrieval(
                 "parts": item.message_parts,
                 "reply_to_msg_id": item.reply_to_msg_id,
                 "ts_iso": item.timestamp,
+                "reactions": item.reactions,
             }
             for item in history_items
         ]

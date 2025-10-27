@@ -14,6 +14,7 @@ from telethon.tl.types import InputStickerSetID
 from llm.base import MsgPart
 from telegram_media import iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
+from id_utils import extract_user_id_from_peer
 
 # MediaCache removed - using MediaSource architecture instead
 from .media_format import (
@@ -120,11 +121,7 @@ async def _resolve_sender_and_channel(
     chan_id = getattr(msg, "chat_id", None)
     if not isinstance(chan_id, int):
         peer = getattr(msg, "peer_id", None)
-        for attr in ("channel_id", "chat_id", "user_id"):
-            v = getattr(peer, attr, None)
-            if isinstance(v, int):
-                chan_id = v
-                break
+        chan_id = extract_user_id_from_peer(peer)
     try:
         chan_name = (
             await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None

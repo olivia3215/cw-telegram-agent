@@ -633,6 +633,10 @@ class GeminiLLM(LLM):
         if header_bits:
             parts.append(self._mk_text_part(f"⟦metadata⟧ {' '.join(header_bits)}"))
 
+        # Add reactions metadata if present
+        if m.get("reactions"):
+            parts.append(self._mk_text_part(f"⟦reactions⟧ {m['reactions']}"))
+
         # 2) Original message content in original order
         raw_parts: list[MsgPart] | None = m.get("parts")
 
