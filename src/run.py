@@ -34,6 +34,56 @@ logger = logging.getLogger(__name__)
 STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.md")
 
 
+async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bool:
+    """
+    Check if the agent's last message in a dialog has unread reactions.
+    
+    Args:
+        agent: The agent instance
+        dialog: Telegram dialog object
+        
+    Returns:
+        True if the agent's last message has unread reactions, False otherwise
+    """
+    client = agent.client
+    agent_name = agent.name
+    
+    try:
+        # First, get the agent's last message
+        messages = await client.get_messages(dialog.id, limit=5)
+        agent_last_message = None
+        
+        for msg in messages:
+            if bool(getattr(msg, "out", False)):
+                agent_last_message = msg
+                break
+        
+        # If we found the agent's last message, check if it has unread reactions
+        if agent_last_message:
+            # Check if this specific message has unread reactions
+            unread_reactions_result = await client(GetUnreadReactionsRequest(
+                peer=dialog.id,
+                offset_id=agent_last_message.id,
+                add_offset=0,
+                limit=1,  # Only need to check this one message
+                max_id=agent_last_message.id,
+                min_id=agent_last_message.id
+            ))
+            
+            # If we got a result and it contains our message, it has unread reactions
+            if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
+                for message in unread_reactions_result.messages:
+                    if message.id == agent_last_message.id:
+                        logger.info(f"[{agent_name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
+                        return True
+        
+        return False
+        
+    except Exception as e:
+        logger.debug(f"[{agent_name}] Error checking unread reactions on agent's last message in dialog {dialog.id}: {e}")
+        return False
+
+
 def load_work_queue():
     try:
         return WorkQueue.load(STATE_PATH)
@@ -108,39 +158,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
         # Check if unread reactions are on the agent's last message
-        has_reactions_on_agent_message = False
-        try:
-            # First, get the agent's last message
-            messages = await client.get_messages(dialog.id, limit=5)
-            agent_last_message = None
-            
-            for msg in messages:
-                if bool(getattr(msg, "out", False)):
-                    agent_last_message = msg
-                    break
-            
-            # If we found the agent's last message, check if it has unread reactions
-            if agent_last_message:
-                # Check if this specific message has unread reactions
-                unread_reactions_result = await client(GetUnreadReactionsRequest(
-                    peer=dialog.id,
-                    offset_id=agent_last_message.id,
-                    add_offset=0,
-                    limit=1,  # Only need to check this one message
-                    max_id=agent_last_message.id,
-                    min_id=agent_last_message.id
-                ))
-                
-                # If we got a result and it contains our message, it has unread reactions
-                if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
-                    for message in unread_reactions_result.messages:
-                        if message.id == agent_last_message.id:
-                            has_reactions_on_agent_message = True
-                            logger.info(f"[{agent_name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
-                            break
-                        
-        except Exception as e:
-            logger.debug(f"[{agent_name}] Error checking unread reactions on agent's last message in dialog {dialog.id}: {e}")
+        has_reactions_on_agent_message = await has_unread_reactions_on_agent_last_message(agent, dialog)
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
