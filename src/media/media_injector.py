@@ -107,28 +107,20 @@ async def _resolve_sender_and_channel(
 ) -> tuple[int | None, str | None, int | None, str | None]:
     # sender
     sender_id = getattr(getattr(msg, "sender", None), "id", None)
-    try:
-        sender_name = (
-            await get_channel_name(agent, sender_id)
-            if isinstance(sender_id, int)
-            else None
-        )
-    except Exception as e:
-        logger.exception(f"Failed to get sender name: {e}")
-        sender_name = None
+    sender_name = (
+        await get_channel_name(agent, sender_id)
+        if isinstance(sender_id, int)
+        else None
+    )
 
     # channel/chat
     chan_id = getattr(msg, "chat_id", None)
     if not isinstance(chan_id, int):
         peer = getattr(msg, "peer_id", None)
         chan_id = extract_user_id_from_peer(peer)
-    try:
-        chan_name = (
-            await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None
-        )
-    except Exception as e:
-        logger.exception(f"Failed to get channel name: {e}")
-        chan_name = None
+    chan_name = (
+        await get_channel_name(agent, chan_id) if isinstance(chan_id, int) else None
+    )
 
     return sender_id, sender_name, chan_id, chan_name
 

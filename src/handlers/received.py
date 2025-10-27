@@ -19,7 +19,7 @@ from config import (
     RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
-from id_utils import extract_user_id_from_peer
+from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document
 from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -127,15 +127,7 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         memory_file = Path(state_dir) / agent.name / "memory.md"
 
         # Get the conversation partner's name
-        try:
-            from telegram_util import get_channel_name
-
-            partner_name = await get_channel_name(agent, channel_id)
-        except Exception as e:
-            logger.warning(
-                f"[{agent.name}] Failed to get partner name for channel {channel_id}: {e}"
-            )
-            partner_name = "Unknown"
+        partner_name = await get_channel_name(agent, channel_id)
 
         # Format the memory entry with timestamp, partner name, and ID
         now = agent.get_current_time()
@@ -207,10 +199,7 @@ async def _format_message_reactions(agent, message) -> str | None:
                 continue
                 
             # Get user name
-            try:
-                user_name = await get_channel_name(agent, user_id)
-            except Exception:
-                user_name = f"User{user_id}"
+            user_name = await get_channel_name(agent, user_id)
                 
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
@@ -221,8 +210,21 @@ async def _format_message_reactions(agent, message) -> str | None:
             if hasattr(reaction_obj, 'emoticon'):
                 emoji = reaction_obj.emoticon
             elif hasattr(reaction_obj, 'document_id'):
-                # Custom emoji - we'll use a placeholder for now
-                emoji = "🎭"  # Placeholder for custom emoji
+                # Custom emoji - try to get the sticker name
+                document_id = reaction_obj.document_id
+                try:
+                    # Try to get the document from the agent's client
+                    doc = await agent.client.get_documents(document_id)
+                    if doc and len(doc) > 0:
+                        sticker_name = extract_sticker_name_from_document(doc[0])
+                        if sticker_name:
+                            emoji = f"[{sticker_name}]"  # Use sticker name in brackets
+                        else:
+                            emoji = "🎭"  # Fallback placeholder
+                    else:
+                        emoji = "🎭"  # Fallback placeholder
+                except Exception:
+                    emoji = "🎭"  # Fallback placeholder
                 
             if emoji:
                 reaction_parts.append(f'"{user_name}"({user_id})="{emoji}"')

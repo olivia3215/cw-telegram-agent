@@ -22,6 +22,33 @@ def normalize_peer_id(value):
     raise ValueError(f"Unsupported peer id format: {value!r}")
 
 
+def extract_sticker_name_from_document(doc) -> str | None:
+    """
+    Extract sticker name from a Telegram document object.
+    
+    Args:
+        doc: Telegram document object with attributes
+        
+    Returns:
+        Sticker name (alt attribute) or None if not found
+    """
+    if not doc:
+        return None
+        
+    attrs = getattr(doc, "attributes", None)
+    if not isinstance(attrs, (list, tuple)):
+        return None
+        
+    # Look for alt attribute in document attributes
+    for attr in attrs:
+        if hasattr(attr, "alt"):
+            alt = getattr(attr, "alt", None)
+            if isinstance(alt, str) and alt.strip():
+                return alt.strip()
+                
+    return None
+
+
 def extract_user_id_from_peer(peer_id) -> int | None:
     """
     Extract user ID from a Telegram peer object.
