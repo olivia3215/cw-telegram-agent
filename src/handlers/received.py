@@ -19,6 +19,7 @@ from config import (
     RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
+from id_utils import extract_user_id_from_peer
 from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -201,13 +202,8 @@ async def _format_message_reactions(agent, message) -> str | None:
                 continue
                 
             # Get user ID from peer
-            if hasattr(peer_id, 'user_id'):
-                user_id = peer_id.user_id
-            elif hasattr(peer_id, 'channel_id'):
-                user_id = peer_id.channel_id
-            elif hasattr(peer_id, 'chat_id'):
-                user_id = peer_id.chat_id
-            else:
+            user_id = extract_user_id_from_peer(peer_id)
+            if user_id is None:
                 continue
                 
             # Get user name
