@@ -49,6 +49,30 @@ def extract_sticker_name_from_document(doc) -> str | None:
     return None
 
 
+async def get_custom_emoji_name(agent, document_id) -> str:
+    """
+    Get the name of a custom emoji from its document ID.
+    
+    Args:
+        agent: The agent instance with client access
+        document_id: Telegram document ID for the custom emoji
+        
+    Returns:
+        Custom emoji name in [name] format, or fallback placeholder
+    """
+    try:
+        # Try to get the document from the agent's client
+        doc = await agent.client.get_documents(document_id)
+        if doc and len(doc) > 0:
+            sticker_name = extract_sticker_name_from_document(doc[0])
+            if sticker_name:
+                return f"[{sticker_name}]"  # Use sticker name in brackets
+    except Exception:
+        pass  # Fall through to fallback
+    
+    return "🎭"  # Fallback placeholder
+
+
 def extract_user_id_from_peer(peer_id) -> int | None:
     """
     Extract user ID from a Telegram peer object.

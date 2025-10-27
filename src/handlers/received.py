@@ -19,7 +19,7 @@ from config import (
     RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
-from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document
+from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
 from media.media_injector import (
     format_message_for_prompt,
@@ -210,21 +210,8 @@ async def _format_message_reactions(agent, message) -> str | None:
             if hasattr(reaction_obj, 'emoticon'):
                 emoji = reaction_obj.emoticon
             elif hasattr(reaction_obj, 'document_id'):
-                # Custom emoji - try to get the sticker name
-                document_id = reaction_obj.document_id
-                try:
-                    # Try to get the document from the agent's client
-                    doc = await agent.client.get_documents(document_id)
-                    if doc and len(doc) > 0:
-                        sticker_name = extract_sticker_name_from_document(doc[0])
-                        if sticker_name:
-                            emoji = f"[{sticker_name}]"  # Use sticker name in brackets
-                        else:
-                            emoji = "🎭"  # Fallback placeholder
-                    else:
-                        emoji = "🎭"  # Fallback placeholder
-                except Exception:
-                    emoji = "🎭"  # Fallback placeholder
+                # Custom emoji - get the sticker name
+                emoji = await get_custom_emoji_name(agent, reaction_obj.document_id)
                 
             if emoji:
                 reaction_parts.append(f'"{user_name}"({user_id})={emoji}')
