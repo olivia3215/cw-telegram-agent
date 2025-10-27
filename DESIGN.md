@@ -64,12 +64,14 @@ This ensures that the agent's planned actions remain relevant to the current con
 
 - **Callout tasks**: Messages that explicitly mention the agent (e.g., `@agent_name` in groups)
 - **Regular tasks**: Messages that don't explicitly mention the agent
+- **Reaction tasks**: Unread reactions on the agent's last message
 
 **Current behavior:**
 - In **group chats**: Only callout tasks trigger replanning; background chatter is ignored
 - In **direct messages**: All messages trigger replanning (effectively treating all as callouts)
+- **Reactions**: Unread reactions on the agent's last message trigger replanning (both DMs and groups)
 
-**Rationale:** Callouts ensure the agent only responds when directly addressed, preventing it from being derailed by background conversation in groups.
+**Rationale:** Callouts ensure the agent only responds when directly addressed, preventing it from being derailed by background conversation in groups. Reactions provide a way for users to get the agent's attention without sending a new message.
 
 ### Task Dependencies and Failure Handling
 
