@@ -148,7 +148,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
         is_callout = False
         if has_mentions:
             async for message in client.iter_messages(
-                dialog.id, limit=dialog.unread_mentions_count
+                dialog.id, limit=5
             ):
                 if message.mentioned and not await agent.is_blocked(message.sender_id):
                     is_callout = True
