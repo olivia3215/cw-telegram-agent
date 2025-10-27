@@ -93,15 +93,12 @@ async def scan_unread_messages(agent: Agent, work_queue):
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
-        # Check if we can access unread_reactions_count
-        # Try different ways to access the unread_reactions_count
+        # Get unread_reactions_count from dialog, dialog.dialog, or dialog.entity
         unread_reactions_count = 0
-        if hasattr(dialog, 'unread_reactions_count'):
-            unread_reactions_count = dialog.unread_reactions_count
-        elif hasattr(dialog, 'dialog') and hasattr(dialog.dialog, 'unread_reactions_count'):
-            unread_reactions_count = dialog.dialog.unread_reactions_count
-        elif hasattr(dialog, 'entity') and hasattr(dialog.entity, 'unread_reactions_count'):
-            unread_reactions_count = dialog.entity.unread_reactions_count
+        for source in [dialog, getattr(dialog, 'dialog', None), getattr(dialog, 'entity', None)]:
+            if source and hasattr(source, 'unread_reactions_count'):
+                unread_reactions_count = source.unread_reactions_count
+                break
         
         has_unread_reactions = not muted and unread_reactions_count > 0
         
