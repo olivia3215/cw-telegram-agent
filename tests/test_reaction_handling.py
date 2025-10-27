@@ -57,7 +57,7 @@ def mock_unread_reactions_result(mock_message):
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dialog, mock_unread_reactions_result):
+async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dialog, mock_unread_reactions_result, mock_message):
     """Test that the code uses GetUnreadReactions API instead of recent_reactions."""
     from run import scan_unread_messages
     
@@ -66,6 +66,12 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
         yield mock_dialog
     
     mock_agent.client.iter_dialogs = mock_iter_dialogs
+    
+    # Mock get_messages to return the agent's last message
+    async def mock_get_messages(*args, **kwargs):
+        return [mock_message]  # Return the mock agent message
+    
+    mock_agent.client.get_messages = mock_get_messages
     
     # Mock the GetUnreadReactions call
     mock_agent.client.return_value = mock_unread_reactions_result
@@ -86,8 +92,8 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_only_triggers_for_agent_messages(mock_agent, mock_dialog):
-    """Test that reactions only trigger responses when they're on agent messages."""
+async def test_reaction_detection_only_triggers_for_agent_last_message(mock_agent, mock_dialog):
+    """Test that reactions only trigger responses when they're on the agent's last message."""
     from run import scan_unread_messages
     
     # Mock the iter_dialogs method to return our mock dialog
@@ -96,16 +102,25 @@ async def test_reaction_detection_only_triggers_for_agent_messages(mock_agent, m
     
     mock_agent.client.iter_dialogs = mock_iter_dialogs
     
-    # Create a message NOT sent by the agent
-    user_message = MagicMock(spec=Message)
-    user_message.id = 222
-    user_message.out = False  # Message NOT sent by agent
-    user_message.sender_id = None
-    user_message.mentioned = False
+    # Create the agent's last message
+    agent_last_message = MagicMock(spec=Message)
+    agent_last_message.id = 111
+    agent_last_message.out = True  # Message sent by agent
     
-    # Mock result with non-agent message
+    # Create a different agent message (not the last one)
+    other_agent_message = MagicMock(spec=Message)
+    other_agent_message.id = 222
+    other_agent_message.out = True  # Message sent by agent
+    
+    # Mock get_messages to return the agent's last message
+    async def mock_get_messages(*args, **kwargs):
+        return [agent_last_message, other_agent_message]
+    
+    mock_agent.client.get_messages = mock_get_messages
+    
+    # Mock unread reactions result with reactions on the OTHER agent message (not the last one)
     mock_result = MagicMock()
-    mock_result.messages = [user_message]
+    mock_result.messages = [other_agent_message]  # Reactions on non-last message
     mock_agent.client.return_value = mock_result
     
     work_queue = WorkQueue()
@@ -116,13 +131,13 @@ async def test_reaction_detection_only_triggers_for_agent_messages(mock_agent, m
         with patch('run.insert_received_task_for_conversation') as mock_insert:
             await scan_unread_messages(mock_agent, work_queue)
     
-    # Verify no task was inserted (no agent message with reactions)
+    # Verify no task was inserted (reactions not on agent's last message)
     mock_insert.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_triggers_for_agent_messages(mock_agent, mock_dialog, mock_message):
-    """Test that reactions on agent messages trigger responses."""
+async def test_reaction_detection_triggers_for_agent_last_message(mock_agent, mock_dialog, mock_message):
+    """Test that reactions on the agent's last message trigger responses."""
     from run import scan_unread_messages
     
     # Mock the iter_dialogs method to return our mock dialog
@@ -131,9 +146,15 @@ async def test_reaction_detection_triggers_for_agent_messages(mock_agent, mock_d
     
     mock_agent.client.iter_dialogs = mock_iter_dialogs
     
-    # Mock result with agent message
+    # Mock get_messages to return the agent's last message
+    async def mock_get_messages(*args, **kwargs):
+        return [mock_message]
+    
+    mock_agent.client.get_messages = mock_get_messages
+    
+    # Mock result with reactions on the agent's last message
     mock_result = MagicMock()
-    mock_result.messages = [mock_message]
+    mock_result.messages = [mock_message]  # Reactions on the last message
     mock_agent.client.return_value = mock_result
     
     work_queue = WorkQueue()
@@ -144,12 +165,12 @@ async def test_reaction_detection_triggers_for_agent_messages(mock_agent, mock_d
         with patch('run.insert_received_task_for_conversation') as mock_insert:
             await scan_unread_messages(mock_agent, work_queue)
     
-    # Verify task was inserted for agent message with reactions
+    # Verify task was inserted for agent's last message with reactions
     mock_insert.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock_dialog):
+async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock_dialog, mock_message):
     """Test that API errors in GetUnreadReactions are handled gracefully."""
     from run import scan_unread_messages
     
@@ -158,6 +179,12 @@ async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock
         yield mock_dialog
     
     mock_agent.client.iter_dialogs = mock_iter_dialogs
+    
+    # Mock get_messages to return the agent's last message
+    async def mock_get_messages(*args, **kwargs):
+        return [mock_message]  # Return the mock agent message
+    
+    mock_agent.client.get_messages = mock_get_messages
     
     # Mock GetUnreadReactions to raise an exception
     mock_agent.client.side_effect = Exception("API Error")
