@@ -35,7 +35,7 @@ Each task begins with a level 1 heading like `# «send»` or `# «sticker»`,
 followed by the content for that task.
 You may include as many tasks as you like, and they will be executed in order.
 
-Valid task types:
+Valid task types include:
 
 - `# «send»` — send a text message, typically one paragraph
 - `# «sticker»` — send a sticker by sticker set and sticker name
