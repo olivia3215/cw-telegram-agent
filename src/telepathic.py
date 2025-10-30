@@ -31,12 +31,12 @@ def _load_telepathic_channels() -> Set[int]:
     for config_dir in CONFIG_DIRECTORIES:
         config_path = Path(config_dir)
         if not config_path.exists() or not config_path.is_dir():
-            logger.warning(f"Config directory does not exist: {config_dir}")
+            logger.info(f"Config directory does not exist: {config_dir}")
             continue
             
         telepaths_file = config_path / "Telepaths.md"
         if not telepaths_file.exists():
-            logger.debug(f"No Telepaths.md file found in {config_dir}")
+            logger.info(f"No Telepaths.md file found in {config_dir}")
             continue
             
         try:
@@ -51,7 +51,7 @@ def _load_telepathic_channels() -> Set[int]:
                     try:
                         channel_id = int(number_str)
                         telepathic_channels.add(channel_id)
-                        logger.debug(f"Added telepathic channel: {channel_id}")
+                        logger.info(f"Added telepathic channel: {channel_id}")
                     except ValueError:
                         logger.warning(f"Invalid channel ID in Telepaths.md: {number_str}")
                         

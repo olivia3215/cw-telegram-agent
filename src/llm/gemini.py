@@ -51,7 +51,7 @@ class GeminiLLM(LLM):
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
             )
         self.client = genai.Client(api_key=self.api_key)
-        self.history_size = 500
+        self.history_size = 20
 
         # Configure safety settings to disable content filtering
         # Note: Only disable HARM_CATEGORY_SEXUALLY_EXPLICIT as other categories may cause issues

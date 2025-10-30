@@ -9,7 +9,6 @@ DungeonMaster
 # Role Prompt
 
 Adventure
-Think
 
 # Agent Instructions
 

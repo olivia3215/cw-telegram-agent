@@ -51,6 +51,7 @@ async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, co
     if not content.strip():
         return
         
+    logger.warning(f"DEBUG: [{agent.name}] _maybe_send_telepathic_message: channel_id={channel_id}, agent.agent_id={agent.agent_id}, is_telepath(channel_id)={is_telepath(channel_id)}, is_telepath(agent.agent_id)={is_telepath(agent.agent_id)}")
     _should_reveal_thoughts = is_telepath(channel_id) and not is_telepath(agent.agent_id)
     if not _should_reveal_thoughts:
         return
@@ -1024,7 +1025,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         system_prompt += (
             "\n\n# Cross-channel Trigger\n\n"
             "*** IMPORTANT ***\n\n"
-            f"You, {agent_name}, triggered action on this channel autonomously. Your intent was:\n\n"
+            f"You, {agent_name}, sent a secret message to yourself.\n\n"
+            "Produce and output a task graph that reacts to this.\n\n"
+            "Your message was:\n\n"
             f"{xsend_intent}\n"
         )
 
