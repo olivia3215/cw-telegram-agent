@@ -20,7 +20,7 @@ from tick import run_one_tick, run_tick_loop
 async def test_run_one_tick_marks_task_done(monkeypatch):
     from tick import _dispatch_table
 
-    async def fake_handle_send(task, graph):
+    async def fake_handle_send(task, graph, work_queue):
         pass
 
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
@@ -211,7 +211,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     from tick import _dispatch_table
 
     # Mock the handler so we can inspect the task's status during its run
-    async def fake_handle_send(task, graph):
+    async def fake_handle_send(task, graph, work_queue):
         # When the handler is called, the task should be 'active'
         assert task.status == TaskStatus.ACTIVE
         # Simulate work
