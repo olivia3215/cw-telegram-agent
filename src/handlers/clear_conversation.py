@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @register_task_handler("clear-conversation")
-async def handle_clear_conversation(task: TaskNode, graph: TaskGraph):
+async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @register_task_handler("send")
-async def handle_send(task: TaskNode, graph):
+async def handle_send(task: TaskNode, graph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)

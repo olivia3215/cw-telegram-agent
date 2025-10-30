@@ -40,7 +40,7 @@ async def _resolve_sticker_doc_in_set(client, set_short: str, sticker_name: str)
 
 
 @register_task_handler("sticker")
-async def handle_sticker(task: TaskNode, graph: TaskGraph):
+async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)

@@ -9,6 +9,7 @@ from . import (
     clear_conversation,  # noqa: F401
     received,  # noqa: F401
     send,  # noqa: F401
+    xsend,  # noqa: F401
     sticker,  # noqa: F401
     unblock,  # noqa: F401
     wait,  # noqa: F401

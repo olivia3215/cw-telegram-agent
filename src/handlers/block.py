@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @register_task_handler("block")
-async def handle_block(task: TaskNode, graph: TaskGraph):
+async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
