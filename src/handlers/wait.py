@@ -8,5 +8,5 @@ from tick import register_task_handler
 
 
 @register_task_handler("wait")
-async def handle_wait(task: TaskNode, graph):
+async def handle_wait(task: TaskNode, graph, work_queue=None):
     pass  # Already time-gated in is_ready()

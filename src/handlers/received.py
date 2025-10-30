@@ -969,7 +969,7 @@ async def parse_llm_reply(
 
 
 @register_task_handler("received")
-async def handle_received(task: TaskNode, graph: TaskGraph):
+async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     """
     Process an inbound 'received' event:
       1) Fetch recent messages and inject media descriptions

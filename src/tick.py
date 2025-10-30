@@ -131,14 +131,9 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         if not handler:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
 
-        # Handlers may optionally accept the work_queue as a third argument
         try:
-            if getattr(handler, "__code__", None) and handler.__code__.co_argcount >= 3:
-                await handler(task, graph, work_queue)
-            else:
-                await handler(task, graph)
+            await handler(task, graph, work_queue)
         except TypeError:
-            # Fallback to legacy 2-arg call if signature mismatch occurs
             await handler(task, graph)
         task.status = TaskStatus.DONE
 
