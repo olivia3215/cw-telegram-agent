@@ -22,6 +22,7 @@ Person
 Memory
 Think
 Retrieve
+XSend
 
 # Agent Instructions
 

@@ -1,7 +1,12 @@
-# XSend
+# Cross-Channel Communication Instructions
+
+You have the ability to send a message, called the _**intent**_ *to yourself* in another channel.
+
+## How to Use the XSend Task
 
 This task lets you trigger action in another channel, carrying a text describing your intent.
 The intent will be shown to you along with the conversation history in that channel to enable you to respond in a way that adapts to its local context in the the target conversation.
+Your __intent__ should carry enough information to tell yourself what you should be trying to accomplish there, so that your future self can construct an appropriate task graph
 
 ## Syntax
 
