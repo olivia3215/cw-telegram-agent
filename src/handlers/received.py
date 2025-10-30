@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
-async def _send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
+async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
     """
     Send a telepathic message to a channel immediately.
     
@@ -51,6 +51,10 @@ async def _send_telepathic_message(agent, channel_id: int, prefix: str, content:
     if not content.strip():
         return
         
+    _should_reveal_thoughts = is_telepath(channel_id) and not is_telepath(agent.agent_id)
+    if not _should_reveal_thoughts:
+        return
+
     message = f"{prefix}\n{content}"
     try:
         await agent.client.send_message(channel_id, message, parse_mode="Markdown")
@@ -452,8 +456,7 @@ async def parse_llm_reply_from_markdown(
             # Remember tasks are processed immediately, not added to task graph
             if agent and body:
                 # Send telepathic message if channel is telepathic
-                if is_telepath(channel_id):
-                    await _send_telepathic_message(agent, channel_id, "⟦remember⟧", body)
+                await _maybe_send_telepathic_message(agent, channel_id, "⟦remember⟧", body)
                 await _process_remember_task(agent, channel_id, body)
             return  # Don't add to task_nodes
 
@@ -463,8 +466,8 @@ async def parse_llm_reply_from_markdown(
                 f"[think] Discarding think task content (length: {len(body)} chars)"
             )
             # Send telepathic message if channel is telepathic
-            if agent and body and is_telepath(channel_id):
-                await _send_telepathic_message(agent, channel_id, "⟦think⟧", body)
+            if agent and body:
+                await _maybe_send_telepathic_message(agent, channel_id, "⟦think⟧", body)
             return  # Don't add to task_nodes
 
         elif current_type == "retrieve":
@@ -480,8 +483,8 @@ async def parse_llm_reply_from_markdown(
                 return  # Don't add to task_nodes
 
             # Send telepathic message if channel is telepathic
-            if agent and body and is_telepath(channel_id):
-                await _send_telepathic_message(agent, channel_id, "⟦retrieve⟧", body)
+            if agent and body:
+                await _maybe_send_telepathic_message(agent, channel_id, "⟦retrieve⟧", body)
 
             params["urls"] = urls
 
@@ -636,7 +639,7 @@ async def _process_message_history(
             elif part.get("kind") == "media":
                 message_text += part.get("rendered_text", "")
         
-        if message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")):
+        if not is_telepath(agent.agent_id) and message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")):
             logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text[:50]}...")
             continue
 

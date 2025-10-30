@@ -139,59 +139,73 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_send_telepathic_message_success(self):
         """Test successful sending of telepathic message."""
-        from handlers.received import _send_telepathic_message
+        from handlers.received import _maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
         
-        await _send_telepathic_message(mock_agent, 123456, "⟦think⟧", "I need to think about this")
-        
-        mock_agent.client.send_message.assert_called_once_with(
-            123456, "⟦think⟧\nI need to think about this", parse_mode="Markdown"
-        )
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
+            
+            await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "I need to think about this")
+            
+            mock_agent.client.send_message.assert_called_once_with(
+                123456, "⟦think⟧\nI need to think about this", parse_mode="Markdown"
+            )
 
     @pytest.mark.asyncio
     async def test_send_telepathic_message_empty_content(self):
         """Test that empty content is not sent."""
-        from handlers.received import _send_telepathic_message
+        from handlers.received import _maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.client = AsyncMock()
         
-        await _send_telepathic_message(mock_agent, 123456, "⟦think⟧", "")
+        await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "")
         
         mock_agent.client.send_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_send_telepathic_message_error_handling(self):
         """Test error handling when sending telepathic message fails."""
-        from handlers.received import _send_telepathic_message
+        from handlers.received import _maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
         mock_agent.client.send_message.side_effect = Exception("Send failed")
         
-        with patch('handlers.received.logger') as mock_logger:
-            await _send_telepathic_message(mock_agent, 123456, "⟦think⟧", "test")
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
             
-            mock_logger.error.assert_called_once()
+            with patch('handlers.received.logger') as mock_logger:
+                await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "test")
+                
+                mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_parse_llm_reply_think_telepathic(self):
-        """Test that think tasks send telepathic messages when channel is telepathic."""
+        """Test that think tasks send telepathic messages when channel is telepathic and agent is not."""
         from handlers.received import parse_llm_reply_from_markdown
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123  # Non-telepathic agent
         
         md_text = """# «think»
 
 I need to think about this problem carefully."""
         
-        with patch('handlers.received.is_telepath', return_value=True):
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 456
+            
             tasks = await parse_llm_reply_from_markdown(
                 md_text, agent_id=123, channel_id=456, agent=mock_agent
             )
@@ -206,18 +220,22 @@ I need to think about this problem carefully."""
 
     @pytest.mark.asyncio
     async def test_parse_llm_reply_remember_telepathic(self):
-        """Test that remember tasks send telepathic messages when channel is telepathic."""
+        """Test that remember tasks send telepathic messages when channel is telepathic and agent is not."""
         from handlers.received import parse_llm_reply_from_markdown
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123  # Non-telepathic agent
         
         md_text = """# «remember»
 
 User prefers short responses."""
         
-        with patch('handlers.received.is_telepath', return_value=True):
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 456
+            
             with patch('handlers.received._process_remember_task', new_callable=AsyncMock) as mock_process:
                 tasks = await parse_llm_reply_from_markdown(
                     md_text, agent_id=123, channel_id=456, agent=mock_agent
@@ -236,19 +254,23 @@ User prefers short responses."""
 
     @pytest.mark.asyncio
     async def test_parse_llm_reply_retrieve_telepathic(self):
-        """Test that retrieve tasks send telepathic messages when channel is telepathic."""
+        """Test that retrieve tasks send telepathic messages when channel is telepathic and agent is not."""
         from handlers.received import parse_llm_reply_from_markdown
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123  # Non-telepathic agent
         
         md_text = """# «retrieve»
 
 https://example.com/page1
 https://example.com/page2"""
         
-        with patch('handlers.received.is_telepath', return_value=True):
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 456
+            
             tasks = await parse_llm_reply_from_markdown(
                 md_text, agent_id=123, channel_id=456, agent=mock_agent
             )
@@ -271,6 +293,7 @@ https://example.com/page2"""
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123  # Non-telepathic agent
         
         md_text = """# «think»
 
@@ -285,6 +308,34 @@ I need to think about this."""
             assert len(tasks) == 0
             
             # Should not send telepathic message
+            mock_agent.client.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_parse_llm_reply_telepathic_agent_no_telepathic_message(self):
+        """Test that telepathic agents do not send telepathic messages even to telepathic channels."""
+        from handlers.received import parse_llm_reply_from_markdown
+        
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123  # Telepathic agent
+        
+        md_text = """# «think»
+
+I need to think about this."""
+        
+        with patch('handlers.received.is_telepath') as mock_is_telepath:
+            # Both channel and agent are telepathic
+            mock_is_telepath.side_effect = lambda x: x in [123, 456]
+            
+            tasks = await parse_llm_reply_from_markdown(
+                md_text, agent_id=123, channel_id=456, agent=mock_agent
+            )
+            
+            # Should not add think task to task list
+            assert len(tasks) == 0
+            
+            # Should not send telepathic message (agent is telepathic)
             mock_agent.client.send_message.assert_not_called()
 
 
