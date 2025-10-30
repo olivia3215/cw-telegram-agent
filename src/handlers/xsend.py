@@ -38,7 +38,7 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
     try:
         target_channel_id = normalize_peer_id(raw_target)
     except Exception:
-        logger.warning(f"[${agent_name}] xsend: invalid target_channel_id: {raw_target!r}")
+        logger.warning(f"[{agent_name}] xsend: invalid target_channel_id: {raw_target!r}")
         return
 
     # Block xsend to the same channel
