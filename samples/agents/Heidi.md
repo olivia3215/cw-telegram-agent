@@ -20,7 +20,6 @@ Chatbot
 Student
 Person
 Memory
-Think
 Retrieve
 XSend
 
