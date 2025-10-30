@@ -388,7 +388,7 @@ async def parse_llm_reply_from_markdown(
 ) -> list[TaskNode]:
     """
     Parse LLM markdown response into a list of TaskNode instances.
-    Recognized task types: send, sticker, wait, shutdown, remember, think, retrieve.
+    Recognized task types: send, sticker, wait, shutdown, remember, think, retrieve, xsend.
 
     Remember tasks are processed immediately and not added to the task graph.
     Think tasks are discarded and not added to the task graph - they exist only to allow the LLM to reason before producing output.
@@ -397,6 +397,7 @@ async def parse_llm_reply_from_markdown(
     task_nodes = []
     current_type = None
     current_reply_to = None
+    current_xsend_target = None
     buffer = []
 
     async def flush():
@@ -488,6 +489,16 @@ async def parse_llm_reply_from_markdown(
 
             params["urls"] = urls
 
+        elif current_type == "xsend":
+            # XSend: forward intent to another channel for this same agent
+            # Header carries the numeric target channel id
+            if current_xsend_target is None:
+                logger.warning("[xsend] Missing target channel id; dropping task")
+                return
+            params["target_channel_id"] = current_xsend_target
+            # Body is the intent (can be empty)
+            params["intent"] = body
+
         else:
             raise ValueError(f"Unknown task type: {current_type}")
 
@@ -503,7 +514,12 @@ async def parse_llm_reply_from_markdown(
             await flush()
             current_type = heading_match.group(1).strip().lower()
             reply_to_str = heading_match.group(2)
-            current_reply_to = int(reply_to_str) if reply_to_str else None
+            # For xsend, the numeric suffix is the target channel id
+            if current_type == "xsend":
+                current_xsend_target = int(reply_to_str) if reply_to_str else None
+                current_reply_to = None
+            else:
+                current_reply_to = int(reply_to_str) if reply_to_str else None
             buffer = []
         else:
             buffer.append(line)
@@ -1001,6 +1017,16 @@ async def handle_received(task: TaskNode, graph: TaskGraph):
     system_prompt = await _build_complete_system_prompt(
         agent, channel_id, messages, media_chain, is_group, channel_name, target_msg
     )
+
+    # If this received was triggered by xsend with a non-empty intent, append IMPORTANT block at the end
+    xsend_intent = (task.params.get("xsend_intent") or "").strip()
+    if xsend_intent:
+        system_prompt += (
+            "\n\n# Cross-channel Trigger\n\n"
+            "*** IMPORTANT ***\n\n"
+            f"You, {agent_name}, triggered action on this channel autonomously. Your intent was:\n\n"
+            f"{xsend_intent}\n"
+        )
 
     # Process message history
     history_items = await _process_message_history(messages, agent, media_chain)
