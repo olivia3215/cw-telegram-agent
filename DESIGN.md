@@ -195,23 +195,17 @@ Content-Type: application/pdf - not fetched (non-HTML content)
 - If all requested URLs already retrieved → suppress Retrieve.md and retry
 - Prevents infinite loops from repeated requests
 
-**Maximum Rounds:**
-- Default: 8 rounds (configurable via `RETRIEVAL_MAX_ROUNDS`)
-- After max rounds → suppress Retrieve.md
-- Ensures eventual termination even with persistent retrieve tasks
+**Retry Mechanism:**
+- After successfully fetching URLs, the task raises a retryable exception
+- Task graph retry mechanism handles retries (up to 10 retries, 10 second intervals)
+- Fetched resources are stored in graph context before retry
+- Ensures eventual termination via task graph max retries
 
 **Retrieve.md Suppression:**
 The `Retrieve.md` prompt is conditionally included:
-- Included: First N rounds, agent has "Retrieve" in role_prompt_names
-- Suppressed: After max rounds OR duplicate URL detection
+- Included: When agent has "Retrieve" in role_prompt_names
+- Suppressed: When duplicate URL detection occurs
 - Prevents infinite retrieval loops
-
-### Configuration
-
-**Environment Variable:**
-```bash
-export RETRIEVAL_MAX_ROUNDS=8  # Default: 8
-```
 
 **Agent Configuration:**
 Only agents with `Retrieve` in their role prompts can use retrieval:

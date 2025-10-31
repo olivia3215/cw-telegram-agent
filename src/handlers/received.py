@@ -16,7 +16,6 @@ from agent import get_agent_for_id
 from clock import clock
 from config import (
     FETCHED_RESOURCE_LIFETIME_SECONDS,
-    RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
@@ -269,6 +268,8 @@ def is_retryable_llm_error(error: Exception) -> bool:
         "timeout",  # Timeout errors
         "connection",  # Connection issues
         "temporary",  # Generic temporary error
+        "prohibited content",  # Content safety filter - treat as retryable
+        "retrieval",  # Retrieval augmentation - treat as retryable
     ]
 
     return any(indicator in error_str for indicator in retryable_indicators)
@@ -740,7 +741,6 @@ async def _run_llm_with_retrieval(
     existing_resources = graph.context.get("fetched_resources", {})
 
     # Retrieval augmentation loop
-    retrieval_round = 0
     retrieved_urls: set[str] = set(
         existing_resources.keys()
     )  # Start with existing URLs
@@ -833,9 +833,8 @@ async def _run_llm_with_retrieval(
             break
 
         # Process retrieve tasks
-        retrieval_round += 1
         logger.info(
-            f"[{agent_name}] Retrieval round {retrieval_round}: Found {len(retrieve_tasks)} retrieve task(s)"
+            f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)"
         )
 
         # Collect URLs to fetch (limit 3)
@@ -871,20 +870,21 @@ async def _run_llm_with_retrieval(
                 f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
             )
 
-        # Check max rounds
-        if retrieval_round >= RETRIEVAL_MAX_ROUNDS and not suppress_retrieve:
+        # Store fetched resources in graph context immediately so they're available on retry
+        if retrieved_contents:
+            graph.context["fetched_resources"] = dict(retrieved_contents)
             logger.info(
-                f"[{agent_name}] Reached max retrieval rounds ({RETRIEVAL_MAX_ROUNDS}) - suppressing Retrieve.md"
+                f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
             )
-            suppress_retrieve = True
-            final_system_prompt += "\n\n# Retrieval Suppressed"
-            final_system_prompt += "\n\nYou will not be able to retrieve any more URLs, so do not use the `retrieve` task.\n"
 
-    # Store fetched resources in graph context
-    if retrieved_contents:
-        graph.context["fetched_resources"] = dict(retrieved_contents)
+        # After successfully fetching URLs, raise a retryable exception to trigger
+        # the task graph retry mechanism. The retry will use the fetched resources
+        # already stored in graph.context.
         logger.info(
-            f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
+            f"[{agent_name}] Successfully fetched {len(urls_to_fetch)} URL(s), triggering retry to process with retrieved content"
+        )
+        raise Exception(
+            "Temporary error: retrieval - will retry with fetched content"
         )
 
     return tasks, fetched_new_resources

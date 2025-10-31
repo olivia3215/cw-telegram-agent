@@ -533,63 +533,62 @@ class GeminiLLM(LLM):
                 safety_settings=self.safety_settings,
             )
 
-            for _ in range(3):  # try three times.
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=contents_norm,
-                    config=config,
-                )
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
+                contents=contents_norm,
+                config=config,
+            )
 
-                # Optional comprehensive logging for debugging
-                if GEMINI_DEBUG_LOGGING:
-                    logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
-                    if response is not None:
-                        logger.info(f"Response object type: {type(response)}")
-                        if hasattr(response, "text") and isinstance(response.text, str):
-                            logger.info(f"Response text: {response.text}")
-                        if hasattr(response, "candidates") and response.candidates:
-                            logger.info(
-                                f"Number of candidates: {len(response.candidates)}"
-                            )
-                            for i, candidate in enumerate(response.candidates):
-                                logger.info(f"  Candidate {i+1}:")
-                                if hasattr(candidate, "finish_reason"):
-                                    logger.info(
-                                        f"    Finish reason: {candidate.finish_reason}"
-                                    )
-                                if hasattr(candidate, "safety_ratings"):
-                                    logger.info(
-                                        f"    Safety ratings: {candidate.safety_ratings}"
-                                    )
-                    logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
-
-                # Extract the first candidate's text safely
-                text = ""
+            # Optional comprehensive logging for debugging
+            if GEMINI_DEBUG_LOGGING:
+                logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
                 if response is not None:
+                    logger.info(f"Response object type: {type(response)}")
                     if hasattr(response, "text") and isinstance(response.text, str):
-                        text = response.text
-                    elif hasattr(response, "candidates") and response.candidates:
-                        cand = response.candidates[0]
-                        if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
-                            logger.warning(
-                                "Gemini returned prohibited content, trying again"
-                            )
-                            continue  # try again
-                        t = getattr(cand, "text", None)
-                        if isinstance(t, str):
-                            text = t or ""
-                        else:
-                            content = getattr(cand, "content", None)
-                            if content and getattr(content, "parts", None):
-                                first_part = content.parts[0]
-                                if (
-                                    isinstance(first_part, dict)
-                                    and "text" in first_part
-                                ):
-                                    text = str(first_part["text"] or "")
+                        logger.info(f"Response text: {response.text}")
+                    if hasattr(response, "candidates") and response.candidates:
+                        logger.info(
+                            f"Number of candidates: {len(response.candidates)}"
+                        )
+                        for i, candidate in enumerate(response.candidates):
+                            logger.info(f"  Candidate {i+1}:")
+                            if hasattr(candidate, "finish_reason"):
+                                logger.info(
+                                    f"    Finish reason: {candidate.finish_reason}"
+                                )
+                            if hasattr(candidate, "safety_ratings"):
+                                logger.info(
+                                    f"    Safety ratings: {candidate.safety_ratings}"
+                                )
+                logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
 
-                break
+            # Extract the first candidate's text safely
+            text = ""
+            if response is not None:
+                if hasattr(response, "text") and isinstance(response.text, str):
+                    text = response.text
+                elif hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                        logger.warning(
+                            "Gemini returned prohibited content - treating as retryable failure"
+                        )
+                        raise Exception(
+                            "Temporary error: prohibited content - will retry"
+                        )
+                    t = getattr(cand, "text", None)
+                    if isinstance(t, str):
+                        text = t or ""
+                    else:
+                        content = getattr(cand, "content", None)
+                        if content and getattr(content, "parts", None):
+                            first_part = content.parts[0]
+                            if (
+                                isinstance(first_part, dict)
+                                and "text" in first_part
+                            ):
+                                text = str(first_part["text"] or "")
 
             return text or ""
         except Exception as e:

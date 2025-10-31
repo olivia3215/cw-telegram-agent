@@ -95,9 +95,6 @@ Required for Telegram authentication. To obtain:
 # Number of new AI description attempts per tick (cache hits are free)
 export MEDIA_DESC_BUDGET_PER_TICK=8
 
-# Maximum number of consecutive retrieval rounds before suppressing further retrievals
-export RETRIEVAL_MAX_ROUNDS=8
-
 # Enable comprehensive LLM prompt/response logging for debugging
 export GEMINI_DEBUG_LOGGING=true
 ```
