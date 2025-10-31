@@ -16,7 +16,6 @@ from agent import get_agent_for_id
 from clock import clock
 from config import (
     FETCHED_RESOURCE_LIFETIME_SECONDS,
-    RETRIEVAL_MAX_ROUNDS,
     STATE_DIRECTORY,
 )
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
@@ -269,6 +268,8 @@ def is_retryable_llm_error(error: Exception) -> bool:
         "timeout",  # Timeout errors
         "connection",  # Connection issues
         "temporary",  # Generic temporary error
+        "prohibited content",  # Content safety filter - treat as retryable
+        "retrieval",  # Retrieval augmentation - treat as retryable
     ]
 
     return any(indicator in error_str for indicator in retryable_indicators)
@@ -739,103 +740,95 @@ async def _run_llm_with_retrieval(
     # Get existing fetched resources from graph context
     existing_resources = graph.context.get("fetched_resources", {})
 
-    # Retrieval augmentation loop
-    retrieval_round = 0
+    # Prepare retrieved content for injection into history
     retrieved_urls: set[str] = set(
         existing_resources.keys()
-    )  # Start with existing URLs
+    )  # Track which URLs we've already retrieved
     retrieved_contents: list[tuple[str, str]] = list(
         existing_resources.items()
-    )  # Start with existing content
-    tasks = []
-    suppress_retrieve = False
+    )  # Content to inject into history
     fetched_new_resources = False
-    final_system_prompt = system_prompt
 
-    while True:
-        # Inject retrieved content as system messages (attributed to model/agent)
-        retrieval_history_items = []
-        for url, content in retrieved_contents:
-            retrieval_history_items.append(
-                {
-                    "sender": "",
-                    "sender_id": "system",
-                    "msg_id": "",
-                    "is_agent": True,
-                    "parts": [
-                        MsgTextPart(kind="text", text=f"Retrieved from {url}:"),
-                        MsgTextPart(kind="text", text=content),
-                    ],
-                    "reply_to_msg_id": None,
-                    "ts_iso": None,
-                }
-            )
-
-        # Combine retrieval items with regular history
-        combined_history = list(retrieval_history_items) + [
+    # Inject retrieved content as system messages (attributed to model/agent)
+    retrieval_history_items = []
+    for url, content in retrieved_contents:
+        retrieval_history_items.append(
             {
-                "sender": item.sender_display,
-                "sender_id": item.sender_id,
-                "msg_id": item.message_id,
-                "is_agent": item.is_from_agent,
-                "parts": item.message_parts,
-                "reply_to_msg_id": item.reply_to_msg_id,
-                "ts_iso": item.timestamp,
-                "reactions": item.reactions,
+                "sender": "",
+                "sender_id": "system",
+                "msg_id": "",
+                "is_agent": True,
+                "parts": [
+                    MsgTextPart(kind="text", text=f"Retrieved from {url}:"),
+                    MsgTextPart(kind="text", text=content),
+                ],
+                "reply_to_msg_id": None,
+                "ts_iso": None,
             }
-            for item in history_items
-        ]
+        )
 
-        # Query LLM
-        try:
-            reply = await llm.query_structured(
-                system_prompt=final_system_prompt,
-                now_iso=now_iso,
-                chat_type=chat_type,
-                history=combined_history,
-                history_size=agent.llm.history_size,
-                timeout_s=None,
+    # Combine retrieval items with regular history
+    combined_history = list(retrieval_history_items) + [
+        {
+            "sender": item.sender_display,
+            "sender_id": item.sender_id,
+            "msg_id": item.message_id,
+            "is_agent": item.is_from_agent,
+            "parts": item.message_parts,
+            "reply_to_msg_id": item.reply_to_msg_id,
+            "ts_iso": item.timestamp,
+            "reactions": item.reactions,
+        }
+        for item in history_items
+    ]
+
+    # Query LLM
+    try:
+        reply = await llm.query_structured(
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            history=combined_history,
+            history_size=agent.llm.history_size,
+            timeout_s=None,
+        )
+    except Exception as e:
+        if is_retryable_llm_error(e):
+            logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
+            several = 15
+            wait_task = task.insert_delay(graph, several)
+            logger.info(
+                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
             )
-        except Exception as e:
-            if is_retryable_llm_error(e):
-                logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
-                several = 15
-                wait_task = task.insert_delay(graph, several)
-                logger.info(
-                    f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
-                )
-                raise
-            else:
-                logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-                return [], False
-
-        if reply == "":
-            logger.info(f"[{agent_name}] LLM decided not to reply")
+            raise
+        else:
+            logger.error(f"[{agent_name}] LLM permanent failure: {e}")
             return [], False
 
-        logger.debug(f"[{agent_name}] LLM reply: {reply}")
+    if reply == "":
+        logger.info(f"[{agent_name}] LLM decided not to reply")
+        return [], False
 
-        # Parse the tasks
-        try:
-            tasks = await parse_llm_reply(
-                reply, agent_id=agent_id, channel_id=channel_id, agent=agent
-            )
-        except ValueError as e:
-            logger.exception(
-                f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
-            )
-            return [], False
+    logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
-        # Check for retrieve tasks
-        retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
+    # Parse the tasks
+    try:
+        tasks = await parse_llm_reply(
+            reply, agent_id=agent_id, channel_id=channel_id, agent=agent
+        )
+    except ValueError as e:
+        logger.exception(
+            f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
+        )
+        return [], False
 
-        if not retrieve_tasks or suppress_retrieve:
-            break
+    # Check for retrieve tasks
+    retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
 
+    if retrieve_tasks:
         # Process retrieve tasks
-        retrieval_round += 1
         logger.info(
-            f"[{agent_name}] Retrieval round {retrieval_round}: Found {len(retrieve_tasks)} retrieve task(s)"
+            f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)"
         )
 
         # Collect URLs to fetch (limit 3)
@@ -850,13 +843,13 @@ async def _run_llm_with_retrieval(
             if len(urls_to_fetch) >= 3:
                 break
 
-        # Check for duplicate URLs
+        # Check for duplicate URLs - if all requested URLs are already retrieved,
+        # just return the tasks (retrieved content is already in history)
         if not urls_to_fetch:
             logger.info(
-                f"[{agent_name}] All requested URLs already retrieved - suppressing Retrieve.md and retrying"
+                f"[{agent_name}] All requested URLs already retrieved - content is already in history"
             )
-            suppress_retrieve = True
-            continue
+            return tasks, fetched_new_resources
 
         # Fetch URLs
         logger.info(
@@ -871,20 +864,34 @@ async def _run_llm_with_retrieval(
                 f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
             )
 
-        # Check max rounds
-        if retrieval_round >= RETRIEVAL_MAX_ROUNDS and not suppress_retrieve:
+        # Store fetched resources in graph context immediately so they're available on retry
+        if retrieved_contents:
+            graph.context["fetched_resources"] = dict(retrieved_contents)
             logger.info(
-                f"[{agent_name}] Reached max retrieval rounds ({RETRIEVAL_MAX_ROUNDS}) - suppressing Retrieve.md"
+                f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
             )
-            suppress_retrieve = True
-            final_system_prompt += "\n\n# Retrieval Suppressed"
-            final_system_prompt += "\n\nYou will not be able to retrieve any more URLs, so do not use the `retrieve` task.\n"
 
-    # Store fetched resources in graph context
-    if retrieved_contents:
-        graph.context["fetched_resources"] = dict(retrieved_contents)
+        # Add preserve wait task to keep graph alive with fetched resources
+        # This must be done before raising the exception, so the task is in the graph
+        # even when the exception propagates up
+        if fetched_new_resources:
+            wait_task = make_wait_task(
+                delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                preserve=True,
+            )
+            graph.add_task(wait_task)
+            logger.info(
+                f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
+            )
+
+        # After successfully fetching URLs, raise a retryable exception to trigger
+        # the task graph retry mechanism. The retry will use the fetched resources
+        # already stored in graph.context.
         logger.info(
-            f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
+            f"[{agent_name}] Successfully fetched {len(urls_to_fetch)} URL(s), triggering retry to process with retrieved content"
+        )
+        raise Exception(
+            "Temporary error: retrieval - will retry with fetched content"
         )
 
     return tasks, fetched_new_resources
@@ -1053,16 +1060,25 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Schedule output tasks
     await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent_name)
 
-    # Add a wait task to keep the graph alive if we fetched new resources
-    if fetched_new_resources:
-        wait_task = make_wait_task(
-            delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
-            preserve=True,
+    # Add a wait task to keep the graph alive if we have fetched resources
+    # Check both fetched_new_resources (for normal return) and graph context (for retry cases
+    # where resources exist but weren't just fetched in this call)
+    fetched_resources = graph.context.get("fetched_resources", {})
+    if fetched_new_resources or fetched_resources:
+        # Check if a preserve wait task already exists to avoid duplicates
+        has_preserve_task = any(
+            t.type == "wait" and t.params.get("preserve", False)
+            for t in graph.tasks
         )
-        graph.add_task(wait_task)
-        logger.info(
-            f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
-        )
+        if not has_preserve_task:
+            wait_task = make_wait_task(
+                delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                preserve=True,
+            )
+            graph.add_task(wait_task)
+            logger.info(
+                f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
+            )
 
     # Mark conversation as read
     await client.send_read_acknowledge(channel_id)

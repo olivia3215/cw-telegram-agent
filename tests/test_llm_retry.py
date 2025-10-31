@@ -52,3 +52,15 @@ def test_is_retryable_llm_error_case_insensitive():
 
     error = Exception("RATE LIMIT EXCEEDED")
     assert is_retryable_llm_error(error)
+
+
+def test_is_retryable_llm_error_prohibited_content():
+    """Test that prohibited content errors are recognized as retryable."""
+    error = Exception("Temporary error: prohibited content - will retry")
+    assert is_retryable_llm_error(error), "Prohibited content should be retryable"
+
+
+def test_is_retryable_llm_error_retrieval():
+    """Test that retrieval errors are recognized as retryable."""
+    error = Exception("Temporary error: retrieval - will retry with fetched content")
+    assert is_retryable_llm_error(error), "Retrieval errors should be retryable"
