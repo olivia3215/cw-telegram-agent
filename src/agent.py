@@ -137,12 +137,12 @@ class Agent:
         logger.info(f"Connected client for agent '{self.name}'")
         return client
 
-    def get_system_prompt(self, channel_id: int = None):
+    def get_system_prompt(self, agent_name, channel_name, specific_instructions):
         """
         Get the base system prompt for this agent (core prompt components only).
 
         This includes:
-        1. LLM-specific prompt (e.g., Gemini.md)
+        1. LLM-specific prompt (e.g., Gemini.md) — with {SPECIFIC_INSTRUCTIONS} substituted
         2. All role prompts (in order)
         3. Agent instructions
 
@@ -150,15 +150,19 @@ class Agent:
         positioned after stickers and before current time.
 
         Args:
-            channel_id: Optional conversation ID (not used in base prompt)
+            agent_name: The agent's display name used for template substitution.
+            channel_name: The human/user display name used for template substitution.
+            specific_instructions: Paragraph injected into the LLM prompt where
+                {SPECIFIC_INSTRUCTIONS} appears.
 
         Returns:
             Base system prompt string
         """
         prompt_parts = []
 
-        # Add LLM-specific prompt (not agent-specific)
+        # Add LLM-specific prompt
         llm_prompt = load_system_prompt(self.llm.prompt_name)
+        llm_prompt = llm_prompt.replace("{SPECIFIC_INSTRUCTIONS}", specific_instructions)
         prompt_parts.append(llm_prompt)
 
         # Add all role prompts in order
@@ -169,7 +173,16 @@ class Agent:
         # Add agent instructions
         prompt_parts.append(self.instructions)
 
-        return "\n\n".join(prompt_parts)
+        # Apply template substitution across the assembled prompt
+        final_prompt = "\n\n".join(prompt_parts)
+        final_prompt = final_prompt.replace("{{AGENT_NAME}}", agent_name)
+        final_prompt = final_prompt.replace("{{character}}", agent_name)
+        final_prompt = final_prompt.replace("{character}", agent_name)
+        final_prompt = final_prompt.replace("{{char}}", agent_name)
+        final_prompt = final_prompt.replace("{char}", agent_name)
+        final_prompt = final_prompt.replace("{{user}}", channel_name)
+        final_prompt = final_prompt.replace("{user}", channel_name)
+        return final_prompt
 
     def _load_memory_content(self, channel_id: int) -> str:
         """

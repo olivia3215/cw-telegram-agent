@@ -54,7 +54,11 @@ def test_agent_multiple_role_prompts():
             )
 
             # Get the system prompt
-            system_prompt = agent.get_system_prompt()
+            system_prompt = agent.get_system_prompt(
+                agent_name=agent.name,
+                channel_name="TestUser",
+                specific_instructions="Test specific instructions."
+            )
 
             # Verify that both role prompts are included
             assert "You are a helpful assistant." in system_prompt
@@ -115,7 +119,11 @@ def test_agent_single_role_prompt():
             )
 
             # Get the system prompt
-            system_prompt = agent.get_system_prompt()
+            system_prompt = agent.get_system_prompt(
+                agent_name=agent.name,
+                channel_name="TestUser",
+                specific_instructions="Test specific instructions."
+            )
 
             # Verify that the role prompt is included
             assert "You are a single role assistant." in system_prompt
@@ -148,7 +156,11 @@ def test_agent_no_role_prompts():
             )
 
             # Get the system prompt
-            system_prompt = agent.get_system_prompt()
+            system_prompt = agent.get_system_prompt(
+                agent_name=agent.name,
+                channel_name="TestUser",
+                specific_instructions="Test specific instructions."
+            )
 
             # Verify that only LLM prompt and instructions are included
             assert "You are a chatbot." in system_prompt  # LLM prompt

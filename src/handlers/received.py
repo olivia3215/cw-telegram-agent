@@ -557,16 +557,14 @@ async def _build_complete_system_prompt(
     agent_name = agent.name
 
     # Get base system prompt
-    system_prompt = agent.get_system_prompt(channel_id)
-
-    # Apply template substitution
-    system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
-    system_prompt = system_prompt.replace("{{character}}", agent.name)
-    system_prompt = system_prompt.replace("{character}", agent.name)
-    system_prompt = system_prompt.replace("{{char}}", agent.name)
-    system_prompt = system_prompt.replace("{char}", agent.name)
-    system_prompt = system_prompt.replace("{{user}}", channel_name)
-    system_prompt = system_prompt.replace("{user}", channel_name)
+    specific_instructions = (
+        "The context of the system prompt and the conversation will give you hints on how to respond.\n"
+        "Usually, you are responding to the contents of the conversation or the last message.\n"
+        "Under certain conditions, the prompt will give you other instructions,\n"
+        "for example to react to an \"secret message\" from yourself,\n"
+        "or to produce a given \"first message\", adapted if necessary to the conversation.\n"
+    )
+    system_prompt = agent.get_system_prompt(agent_name, channel_name, specific_instructions)
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
