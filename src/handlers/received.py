@@ -603,7 +603,7 @@ async def _specific_instructions(
             f"with message_id {target_msg.id} was newly received.\n"
             "React to it if appropriate.\n"
         )
-    else:
+    elif not xsend_intent:
         instructions += (
             "\n## Conversation Continuation\n\n"
             "You are looking at this conversation and might need to continue it.\n"
