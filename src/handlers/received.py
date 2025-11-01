@@ -974,6 +974,9 @@ async def _schedule_tasks(
     last_id = received_task.identifier
 
     for task in tasks:
+        # Skip retrieve tasks - they are handled in the retrieval loop and should not be scheduled
+        if task.type == "retrieve":
+            continue
         if is_callout:
             task.params["callout"] = True
 
