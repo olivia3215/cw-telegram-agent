@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
 
-import httpx
+import httpx  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from clock import clock

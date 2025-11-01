@@ -13,14 +13,3 @@ Do not use this in group chats or channels.
 ```markdown
 # «clear-conversation»
 ```
-
-## shutdown
-
-Used rarely to indicate that you intend to stop responding. This shuts down the world server.
-The world will start up again when attended to by an administrator.
-
-```markdown
-# «shutdown»
-
-The conversation has concluded.
-```
