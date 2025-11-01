@@ -609,6 +609,10 @@ class GeminiLLM(LLM):
                     logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
 
+            if text.startswith("⟦"):
+                # Reject response that starts with a metadata placeholder
+                raise Exception("Temporary error: response starts with a metadata placeholder - will retry")
+
             return text or ""
         except Exception as e:
             logger.error("SDK exception: %s", e)
