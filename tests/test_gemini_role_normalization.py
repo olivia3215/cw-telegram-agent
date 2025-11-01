@@ -133,5 +133,5 @@ async def test_empty_conversation_ends_with_user_role():
     # The content should be the special message
     parts = sent_contents[0]["parts"]
     assert len(parts) == 1
-    assert "⟦special⟧" in parts[0]["text"]
+    assert parts[0]["text"].startswith("⟦special⟧")
     assert "The last turn was an agent turn" in parts[0]["text"]
