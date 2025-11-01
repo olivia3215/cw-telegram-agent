@@ -139,7 +139,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
     agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await clock.sleep(0.1)  # Don't poll too fast
+        await clock.sleep(1)  # Don't poll too fast
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
