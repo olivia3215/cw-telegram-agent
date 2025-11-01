@@ -43,6 +43,21 @@ async def test_parse_xsend_empty_body():
 
 
 @pytest.mark.asyncio
+async def test_parse_xsend_negative_group_id():
+    """Test that negative channel IDs (groups) are parsed correctly."""
+    md = """# «xsend» -1002100080800
+
+This is a test message for a group.
+"""
+    tasks = await parse_llm_reply_from_markdown(md, agent_id=42, channel_id=111)
+    assert len(tasks) == 1
+    t = tasks[0]
+    assert t.type == "xsend"
+    assert t.params["target_channel_id"] == -1002100080800
+    assert "test message for a group" in t.params["intent"]
+
+
+@pytest.mark.asyncio
 async def test_helper_coalesce_sets_intent(monkeypatch):
     # Prepare an empty work queue
     work_queue = WorkQueue()

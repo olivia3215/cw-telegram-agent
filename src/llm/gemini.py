@@ -36,6 +36,43 @@ GEMINI_DEBUG_LOGGING: bool = os.environ.get("GEMINI_DEBUG_LOGGING", "").lower() 
 )
 
 
+def _format_string_for_logging(s: str) -> str:
+    """
+    Format a string for logging, preserving actual newlines and special characters
+    without backslash substitution. This makes multi-line strings readable in logs.
+    """
+    if not s:
+        return s
+    # Return as-is to preserve actual newlines; Python logging will handle them correctly
+    return s
+
+
+def _extract_response_text(response: Any) -> str:
+    """
+    Extract text from a Gemini response object, handling various response structures.
+    Returns empty string if no text can be extracted.
+    """
+    if response is None:
+        return ""
+    
+    if hasattr(response, "text") and isinstance(response.text, str):
+        return response.text
+    
+    if hasattr(response, "candidates") and response.candidates:
+        cand = response.candidates[0]
+        t = getattr(cand, "text", None)
+        if isinstance(t, str):
+            return t or ""
+        else:
+            content = getattr(cand, "content", None)
+            if content and getattr(content, "parts", None):
+                first_part = content.parts[0]
+                if isinstance(first_part, dict) and "text" in first_part:
+                    return str(first_part["text"] or "")
+    
+    return ""
+
+
 class GeminiLLM(LLM):
     prompt_name = "Gemini"
 
@@ -540,55 +577,37 @@ class GeminiLLM(LLM):
                 config=config,
             )
 
+            # Check for prohibited content before extraction
+            if (
+                response is not None
+                and hasattr(response, "candidates")
+                and response.candidates
+            ):
+                cand = response.candidates[0]
+                if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                    logger.warning(
+                        "Gemini returned prohibited content - treating as retryable failure"
+                    )
+                    raise Exception(
+                        "Temporary error: prohibited content - will retry"
+                    )
+            
+            # Extract the first candidate's text safely using the helper
+            text = _extract_response_text(response)
+
             # Optional comprehensive logging for debugging
             if GEMINI_DEBUG_LOGGING:
                 logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
                 if response is not None:
-                    logger.info(f"Response object type: {type(response)}")
-                    if hasattr(response, "text") and isinstance(response.text, str):
-                        logger.info(f"Response text: {response.text}")
-                    if hasattr(response, "candidates") and response.candidates:
-                        logger.info(
-                            f"Number of candidates: {len(response.candidates)}"
-                        )
-                        for i, candidate in enumerate(response.candidates):
-                            logger.info(f"  Candidate {i+1}:")
-                            if hasattr(candidate, "finish_reason"):
-                                logger.info(
-                                    f"    Finish reason: {candidate.finish_reason}"
-                                )
-                            if hasattr(candidate, "safety_ratings"):
-                                logger.info(
-                                    f"    Safety ratings: {candidate.safety_ratings}"
-                                )
+                    try:
+                        logger.info(f"Response JSON: {json.dumps(response, indent=2, default=str)}")
+                    except Exception as e:
+                        logger.info(f"Failed to serialize response to JSON: {e}")
+                        logger.info(f"Response object: {response}")
+                    # Log the response text without backslash substitution
+                    formatted_text = _format_string_for_logging(text)
+                    logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
-
-            # Extract the first candidate's text safely
-            text = ""
-            if response is not None:
-                if hasattr(response, "text") and isinstance(response.text, str):
-                    text = response.text
-                elif hasattr(response, "candidates") and response.candidates:
-                    cand = response.candidates[0]
-                    if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
-                        logger.warning(
-                            "Gemini returned prohibited content - treating as retryable failure"
-                        )
-                        raise Exception(
-                            "Temporary error: prohibited content - will retry"
-                        )
-                    t = getattr(cand, "text", None)
-                    if isinstance(t, str):
-                        text = t or ""
-                    else:
-                        content = getattr(cand, "content", None)
-                        if content and getattr(content, "parts", None):
-                            first_part = content.parts[0]
-                            if (
-                                isinstance(first_part, dict)
-                                and "text" in first_part
-                            ):
-                                text = str(first_part["text"] or "")
 
             return text or ""
         except Exception as e:
@@ -685,12 +704,9 @@ class GeminiLLM(LLM):
 
         # --- 2) Chronological history (bounded) ---
         contents = []
-        any_user_messages = False
-        any_agent_messages = False
+        last_message = None
         for m in history:
             is_agent = bool(m.get("is_agent"))
-            any_user_messages = any_user_messages or not is_agent
-            any_agent_messages = any_agent_messages or is_agent
             role = "assistant" if is_agent else "user"
             parts = self._normalize_parts_for_message(
                 m,
@@ -698,16 +714,14 @@ class GeminiLLM(LLM):
             )
             if parts:
                 contents.append({"role": role, "parts": parts})
+                last_message = m  # Track the last message that had parts
 
-        # Ensure we have at least one user turn for Gemini's requirements
-        if not any_user_messages:
-            if any_agent_messages:
-                special_user_message = "[special] The user has not responded yet."
-            else:
-                special_user_message = "[special] This is the beginning of a conversation. Please respond with your first message."
-            contents.append(
-                {"role": "user", "parts": [self._mk_text_part(special_user_message)]}
-            )
+        # Ensure the last message is a user turn to comply with Gemini's requirements
+        if last_message is None or bool(last_message.get("is_agent")):
+            contents.append({
+                "role": "user",
+                "parts": [self._mk_text_part("⟦special⟧ The last turn was an agent turn.")]
+                })
 
         return contents
 

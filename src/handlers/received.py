@@ -511,7 +511,7 @@ async def parse_llm_reply_from_markdown(
         )
 
     for line in md_text.splitlines():
-        heading_match = re.match(r"# «([^»]+)»(?:\s+(\d+))?", line)
+        heading_match = re.match(r"# «([^»]+)»(?:\s+(-?\d+))?", line)
         if heading_match:
             await flush()
             current_type = heading_match.group(1).strip().lower()
@@ -552,7 +552,6 @@ async def _specific_instructions(
     Returns:
         Complete specific instructions string for the system prompt
     """
-    agent_name = agent.name
     channel_name = await get_dialog_name(agent, channel_id)
     
     # Check if this is conversation start
@@ -568,47 +567,49 @@ async def _specific_instructions(
                 break
     
     instructions = (
-        "# Instructions\n\n"
-        "The context of the system prompt and the conversation will give you hints on how to respond.\n"
+        "Your response should take into account the following context(s):\n"
     )
-    
+
     if xsend_intent:
         instructions += (
-            "In this case, you sent yourself a secret message via cross-channel communication.\n"
-            "You should react to that intent as described below in the Cross-channel Trigger section.\n"
+            "\n## Cross-channel Trigger (`xsend`)\n\n"
+            "Begin your response with a `think` task, and react to the following intent.\n\n"
+            "```\n"
+            f"{xsend_intent}\n"
+            "```\n"
+        )
+    
+    if global_intent:
+        instructions += (
+            "\n## Global Intent/Planning (`intend`)\n\n"
+            "Begin your response with a `think` task, and react to the following intent.\n\n"
+            "```\n"
+            f"{global_intent}\n"
+            "```\n"
+        )
+    
+    if is_conversation_start:
+        instructions += (
+            "\n## Conversation Start\n\n"
+            f"This is the beginning of a conversation with {channel_name}.\n"
+            "React with your first message if appropriate.\n"
+        )
+
+    # Add target message instruction if provided
+    if target_msg is not None and getattr(target_msg, "id", ""):
+        instructions += (
+            "\n## Target Message\n\n"
+            "You are looking at this conversation because the messsage "
+            f"with message_id {target_msg.id} was newly received.\n"
+            "React to it if appropriate.\n"
         )
     else:
         instructions += (
-            "Usually, you are responding to the contents of the conversation or the last message.\n"
-            "Under certain conditions, the prompt will give you other instructions,\n"
-            "for example to react to an \"secret message\" from yourself,\n"
-            "or to produce a given \"first message\", adapted if necessary to the conversation.\n"
+            "\n## Conversation Continuation\n\n"
+            "You are looking at this conversation and might need to continue it.\n"
+            "React to it if appropriate.\n"
         )
-    
-    # Add conversation start instruction if needed
-    if is_conversation_start:
-        instructions += (
-            "\n\n## Conversation Start"
-            "\n\n***IMPORTANT***"
-            + f"\n\nThis is the beginning of a conversation with {channel_name}."
-            + " Respond with your first message or an adaptation of it if needed."
-        )
-    
-    # Add target message instruction if provided
-    if target_msg is not None and getattr(target_msg, "id", ""):
-        instructions += f"\n## Target Message\nConsider responding to message with message_id {getattr(target_msg, 'id', '')}.\n"
-    
-    # If this received was triggered by xsend with a non-empty intent, append IMPORTANT block
-    if xsend_intent:
-        instructions += (
-            "\n\n## Cross-channel Trigger\n\n"
-            "*** IMPORTANT ***\n\n"
-            f"You, {agent_name}, sent a secret message to yourself.\n\n"
-            "Produce and output a task graph that reacts to this.\n\n"
-            "Your message was:\n\n"
-            f"{xsend_intent}\n"
-        )
-    
+
     return instructions
 
 
@@ -771,7 +772,7 @@ async def _run_llm_with_retrieval(
     graph: TaskGraph,
 ) -> tuple[list[TaskNode], bool]:
     """
-    Run LLM query loop with retrieval augmentation support.
+    Run LLM query with retrieval augmentation support.
 
     Args:
         agent: The agent instance
