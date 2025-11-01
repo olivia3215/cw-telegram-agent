@@ -175,7 +175,8 @@ def test_agent_reply_to_msg_id_in_metadata():
     llm = GeminiLLM(api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
 
-    assert len(contents) == 4
+    # Should have 4 messages from history plus 1 appended user turn (since last is agent)
+    assert len(contents) == 5
 
     # User message should have full metadata (sender, sender_id, message_id)
     user_msg1_parts = contents[0]["parts"]
@@ -203,6 +204,10 @@ def test_agent_reply_to_msg_id_in_metadata():
     assert "sender_id=agent-1" in agent_msg2_parts[0]["text"]
     assert "message_id=a2" in agent_msg2_parts[0]["text"]
     assert "reply_to_msg_id" not in agent_msg2_parts[0]["text"]
+
+    # Last message is appended user turn (since last actual message was agent)
+    special_msg_parts = contents[4]["parts"]
+    assert special_msg_parts[0]["text"] == "⟦special⟧ The last turn was an agent turn."
 
 
 def test_timestamp_in_metadata():

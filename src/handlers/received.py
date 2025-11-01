@@ -511,7 +511,7 @@ async def parse_llm_reply_from_markdown(
         )
 
     for line in md_text.splitlines():
-        heading_match = re.match(r"# «([^»]+)»(?:\s+(\d+))?", line)
+        heading_match = re.match(r"# «([^»]+)»(?:\s+(-?\d+))?", line)
         if heading_match:
             await flush()
             current_type = heading_match.group(1).strip().lower()
@@ -530,6 +530,89 @@ async def parse_llm_reply_from_markdown(
     return task_nodes
 
 
+async def _specific_instructions(
+    agent,
+    channel_id: int,
+    messages,
+    target_msg,
+    global_intent: str | None,
+    xsend_intent: str | None,
+) -> str:
+    """
+    Compute the specific instructions for the system prompt based on context.
+
+    Args:
+        agent: The agent instance
+        channel_id: The conversation ID
+        messages: List of Telegram messages
+        target_msg: Optional target message to respond to
+        global_intent: Optional global intent (not implemented yet)
+        xsend_intent: Optional intent from a cross-channel send
+
+    Returns:
+        Complete specific instructions string for the system prompt
+    """
+    channel_name = await get_dialog_name(agent, channel_id)
+    
+    # Check if this is conversation start
+    is_conversation_start = True
+    agent_id = agent.agent_id
+    if agent_id is not None:
+        for m in messages:
+            if (
+                getattr(m, "from_id", None)
+                and getattr(m.from_id, "user_id", None) == agent_id
+            ):
+                is_conversation_start = False
+                break
+    
+    instructions = (
+        "Your response should take into account the following context(s):\n"
+    )
+
+    if xsend_intent:
+        instructions += (
+            "\n## Cross-channel Trigger (`xsend`)\n\n"
+            "Begin your response with a `think` task, and react to the following intent.\n\n"
+            "```\n"
+            f"{xsend_intent}\n"
+            "```\n"
+        )
+    
+    if global_intent:
+        instructions += (
+            "\n## Global Intent/Planning (`intend`)\n\n"
+            "Begin your response with a `think` task, and react to the following intent.\n\n"
+            "```\n"
+            f"{global_intent}\n"
+            "```\n"
+        )
+    
+    if is_conversation_start:
+        instructions += (
+            "\n## Conversation Start\n\n"
+            f"This is the beginning of a conversation with {channel_name}.\n"
+            "React with your first message if appropriate.\n"
+        )
+
+    # Add target message instruction if provided
+    if target_msg is not None and getattr(target_msg, "id", ""):
+        instructions += (
+            "\n## Target Message\n\n"
+            "You are looking at this conversation because the messsage "
+            f"with message_id {target_msg.id} was newly received.\n"
+            "React to it if appropriate.\n"
+        )
+    else:
+        instructions += (
+            "\n## Conversation Continuation\n\n"
+            "You are looking at this conversation and might need to continue it.\n"
+            "React to it if appropriate.\n"
+        )
+
+    return instructions
+
+
 async def _build_complete_system_prompt(
     agent,
     channel_id: int,
@@ -538,6 +621,7 @@ async def _build_complete_system_prompt(
     is_group: bool,
     channel_name: str,
     target_msg,
+    xsend_intent: str | None = None,
 ) -> str:
     """
     Build the complete system prompt with all sections.
@@ -550,23 +634,23 @@ async def _build_complete_system_prompt(
         is_group: Whether this is a group chat
         channel_name: Display name of the conversation partner
         target_msg: Optional target message to respond to
+        xsend_intent: Optional intent from a cross-channel send
 
     Returns:
         Complete system prompt string
     """
     agent_name = agent.name
 
-    # Get base system prompt
-    system_prompt = agent.get_system_prompt(channel_id)
-
-    # Apply template substitution
-    system_prompt = system_prompt.replace("{{AGENT_NAME}}", agent.name)
-    system_prompt = system_prompt.replace("{{character}}", agent.name)
-    system_prompt = system_prompt.replace("{character}", agent.name)
-    system_prompt = system_prompt.replace("{{char}}", agent.name)
-    system_prompt = system_prompt.replace("{char}", agent.name)
-    system_prompt = system_prompt.replace("{{user}}", channel_name)
-    system_prompt = system_prompt.replace("{user}", channel_name)
+    # Get base system prompt with context-appropriate instructions
+    specific_instructions = await _specific_instructions(
+        agent=agent,
+        channel_id=channel_id,
+        messages=messages,
+        target_msg=target_msg,
+        global_intent=None,  # TODO: implement global intent
+        xsend_intent=xsend_intent,
+    )
+    system_prompt = agent.get_system_prompt(agent_name, channel_name, specific_instructions)
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
@@ -584,42 +668,12 @@ async def _build_complete_system_prompt(
     else:
         logger.info(f"[{agent_name}] No memory content found for channel {channel_id}")
 
-    # Check if this is conversation start
-    is_conversation_start = True
-    # Use cached agent_id from agent object (set during initialization)
-    agent_id = agent.agent_id
-    if agent_id is not None:
-        for m in messages:
-            if (
-                getattr(m, "from_id", None)
-                and getattr(m.from_id, "user_id", None) == agent_id
-            ):
-                is_conversation_start = False
-                break
-
-    # Add conversation start instruction if needed
-    if is_conversation_start:
-        conversation_start_instruction = (
-            "\n\n# Conversation Start"
-            "\n\n***IMPORTANT***"
-            + f"\n\nThis is the beginning of a conversation with {channel_name}."
-            + " Respond with your first message or an adaptation of it if needed."
-        )
-        system_prompt = system_prompt + conversation_start_instruction
-        logger.info(
-            f"[{agent_name}] Detected conversation start with {channel_name} ({len(messages)} messages)"
-        )
-
     # Add current time and chat type
     now = agent.get_current_time()
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
-
-    # Add target message instruction if provided
-    if target_msg is not None and getattr(target_msg, "id", ""):
-        system_prompt += f"\n# Target Message\nConsider responding to message with message_id {getattr(target_msg, 'id', '')}.\n"
 
     return system_prompt
 
@@ -718,7 +772,7 @@ async def _run_llm_with_retrieval(
     graph: TaskGraph,
 ) -> tuple[list[TaskNode], bool]:
     """
-    Run LLM query loop with retrieval augmentation support.
+    Run LLM query with retrieval augmentation support.
 
     Args:
         agent: The agent instance
@@ -1021,22 +1075,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 target_msg = m
                 break
 
+    # Check for xsend_intent before building prompt so we can customize instructions
+    xsend_intent = (task.params.get("xsend_intent") or "").strip()
+    xsend_intent_param = xsend_intent if xsend_intent else None
+
     # Build complete system prompt
     system_prompt = await _build_complete_system_prompt(
-        agent, channel_id, messages, media_chain, is_group, channel_name, target_msg
+        agent, channel_id, messages, media_chain, is_group, channel_name, target_msg, xsend_intent_param
     )
-
-    # If this received was triggered by xsend with a non-empty intent, append IMPORTANT block at the end
-    xsend_intent = (task.params.get("xsend_intent") or "").strip()
-    if xsend_intent:
-        system_prompt += (
-            "\n\n# Cross-channel Trigger\n\n"
-            "*** IMPORTANT ***\n\n"
-            f"You, {agent_name}, sent a secret message to yourself.\n\n"
-            "Produce and output a task graph that reacts to this.\n\n"
-            "Your message was:\n\n"
-            f"{xsend_intent}\n"
-        )
 
     # Process message history
     history_items = await _process_message_history(messages, agent, media_chain)
