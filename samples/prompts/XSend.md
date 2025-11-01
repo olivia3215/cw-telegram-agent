@@ -49,3 +49,16 @@ say "Hello" to Bob (5678) for her, you can do it this way:
 
 Tell Bob that Alice says "Hello".
 ```
+
+## How to react in a DM to a user other than the current DM
+
+You can cause yourself to react in another channel to something you learned in this one.
+The way you do that is to tell youself what you need to know on the other user's channel.
+For example, if you are in a DM with Alice (1234) and she tells you something about Bob (5678),
+you can do it this way:
+
+```
+# «xsend» 5678
+
+Alice told me that Bob won a Nobel Prize today for his work on high temperature superconductivity! Congratulate him.
+```
