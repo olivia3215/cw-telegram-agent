@@ -202,6 +202,15 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         return
 
     if (mime and "gif" in mime.lower()) or is_animated:
+        # Check if we've already added a GIF with this unique_id (e.g., from msg.gif)
+        # to avoid duplicates when the same GIF is represented both as msg.gif and msg.document
+        for existing_item in out:
+            if (
+                existing_item.kind == MediaKind.GIF
+                and existing_item.unique_id == str(uid)
+            ):
+                # Already added, skip to avoid duplicate
+                return
         out.append(
             MediaItem(kind=MediaKind.GIF, unique_id=str(uid), mime=mime, file_ref=doc)
         )
