@@ -156,3 +156,31 @@ def test_animated_sticker_not_duplicated():
     assert parts[0].sticker_set_name == "Lamplover"
     assert parts[0].sticker_name == "😂"
     assert parts[0].mime == "application/gzip"
+
+
+def test_gif_not_duplicated_when_both_gif_and_document():
+    """
+    Test that GIFs are not duplicated when the same GIF is represented both as
+    msg.gif (Bot API) and msg.document (Telethon) with the same unique_id.
+
+    This was a bug where GIFs were added twice:
+    - Once by _maybe_add_gif_or_animation from msg.gif (Bot API path)
+    - Once by _maybe_add_gif_or_animation from msg.document (Telethon path)
+    """
+    # Create a GIF that appears both as msg.gif and msg.document (same unique_id)
+    gif_obj = Obj(file_unique_id="gif_duplicate_test", mime_type="image/gif")
+    attr_anim = Obj()
+    attr_anim.__class__.__name__ = "DocumentAttributeAnimated"
+    gif_doc = Obj(
+        file_unique_id="gif_duplicate_test",  # Same unique_id as gif_obj
+        mime_type="image/gif",
+        attributes=[attr_anim],
+    )
+    msg = make_msg(gif=gif_obj, document=gif_doc)
+    parts = iter_media_parts(msg)
+
+    # Should only have ONE GIF part, not two
+    assert len(parts) == 1
+    assert parts[0].kind == "gif"
+    assert parts[0].unique_id == "gif_duplicate_test"
+    assert parts[0].mime == "image/gif"

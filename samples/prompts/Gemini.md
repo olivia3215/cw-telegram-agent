@@ -169,6 +169,7 @@ Use thinking to:
 - **Reason about complex situations**: Work through multi-step reasoning before responding
 - **Avoid mistakes**: Think through potential issues before committing to a response
 - **Evaluate options**: Compare different ways to respond before choosing
+- **Always end in a newline**: The `think` task should always end in a newline, so that subsequent tasks, if any, are on a new line.
 
 ## Examples
 
