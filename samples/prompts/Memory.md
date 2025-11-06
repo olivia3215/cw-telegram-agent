@@ -15,13 +15,21 @@ Use memory to remember:
 
 ## How to Use Memory
 
-When you learn something important about someone, use the `remember` task to save it:
+When you learn something important about someone, use the `remember` task to save it. The content must be a JSON object:
 
 ```
 # «remember»
 
-User mentioned they have a younger sister named Sarah who is studying abroad.
+{
+  "content": "User mentioned they have a younger sister named Sarah who is studying abroad."
+}
 ```
+
+You may include additional fields in the JSON object if you wish. The system will automatically add:
+- `kind`: Always set to "memory"
+- `created`: Timestamp when the memory was created
+- `creation_channel`: Name of the conversation partner
+- `creation_channel_id`: Numeric ID of the conversation
 
 The memory will be automatically saved and included in future conversations with that person.
 
@@ -45,7 +53,47 @@ Your memories help you build deeper, more meaningful relationships with the peop
 ## Examples
 
 Good memory entries:
-- "User works as a software engineer at Google and enjoys hiking on weekends"
-- "User's birthday is March 15th and they love chocolate cake"
-- "User is learning Spanish and wants to visit Mexico next year"
-- "User has a golden retriever named Max who is 3 years old"
+
+```
+# «remember»
+
+{
+  "content": "User works as a software engineer at Google and enjoys hiking on weekends"
+}
+```
+
+```
+# «remember»
+
+{
+  "content": "User's birthday is March 15th and they love chocolate cake"
+}
+```
+
+```
+# «remember»
+
+{
+  "content": "User is learning Spanish and wants to visit Mexico next year"
+}
+```
+
+```
+# «remember»
+
+{
+  "content": "User has a golden retriever named Max who is 3 years old"
+}
+```
+
+You can also include additional fields if relevant:
+
+```
+# «remember»
+
+{
+  "content": "User prefers morning meetings",
+  "priority": "high",
+  "category": "preferences"
+}
+```

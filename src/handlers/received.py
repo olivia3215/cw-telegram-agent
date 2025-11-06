@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 import logging
 import re
 import uuid
@@ -145,38 +146,68 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
     Args:
         agent: The agent instance
         channel_id: The conversation ID (Telegram channel/user ID)
-        memory_content: The content to remember
+        memory_content: The JSON content to remember (should be a JSON object)
     """
     try:
         # Get state directory
         state_dir = STATE_DIRECTORY
 
-        # Memory file path: state/AgentName/memory.md (agent-specific global memory)
-        memory_file = Path(state_dir) / agent.name / "memory.md"
+        # Memory file path: state/AgentName/memory.json (agent-specific global memory)
+        memory_file = Path(state_dir) / agent.name / "memory.json"
+
+        # Parse the JSON memory content from LLM
+        try:
+            memory_obj = json.loads(memory_content.strip())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in remember task: {e}") from e
+
+        # Ensure it's a dictionary
+        if not isinstance(memory_obj, dict):
+            raise ValueError(f"Memory content must be a JSON object, got {type(memory_obj).__name__}")
 
         # Get the conversation partner's name
         partner_name = await get_channel_name(agent, channel_id)
 
-        # Format the memory entry with timestamp, partner name, and ID
+        # Set required fields
         now = agent.get_current_time()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-        memory_entry = f"\n## Memory from {timestamp} conversation with {partner_name} ({channel_id})\n\n{memory_content.strip()}\n"
+        
+        memory_obj["kind"] = "memory"
+        memory_obj["created"] = timestamp
+        memory_obj["creation_channel"] = partner_name
+        memory_obj["creation_channel_id"] = channel_id
 
         # Ensure parent directory exists
         memory_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Append to memory file
-        with open(memory_file, "a", encoding="utf-8") as f:
-            f.write(memory_entry)
+        # Read existing memories (or start with empty array)
+        memories = []
+        if memory_file.exists():
+            try:
+                with open(memory_file, "r", encoding="utf-8") as f:
+                    memories = json.load(f)
+                    if not isinstance(memories, list):
+                        raise ValueError(f"Memory file contains {type(memories).__name__}, expected list")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Corrupted memory file {memory_file}: {e}") from e
+
+        # Append new memory
+        memories.append(memory_obj)
+
+        # Write atomically: write to temp file, then rename
+        temp_file = memory_file.with_suffix(".json.tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(memories, f, indent=2, ensure_ascii=False)
+        temp_file.replace(memory_file)
 
         logger.info(
-            f"[{agent.name}] Added memory for conversation {channel_id}: {memory_content[:50]}..."
+            f"[{agent.name}] Added memory for conversation {channel_id}: {memory_obj.get('content', '')[:50]}..."
         )
 
     except Exception as e:
         logger.exception(f"[{agent.name}] Failed to process remember task: {e}")
-        # Don't raise - we don't want to block the conversation
+        # Raise the exception - corrupted JSON should fail the task
+        raise
 
 
 @dataclass
@@ -458,6 +489,20 @@ async def parse_llm_reply_from_markdown(
         elif current_type == "remember":
             # Remember tasks are processed immediately, not added to task graph
             if agent and body:
+                # Strip JSON code blocks if present
+                if body.startswith("```json\n"):
+                    body = body.removeprefix("```json\n")
+                    if body.endswith("```"):
+                        body = body.removesuffix("```")
+                    elif body.endswith("```\n"):
+                        body = body.removesuffix("```\n")
+                elif body.startswith("```\n"):
+                    body = body.removeprefix("```\n")
+                    if body.endswith("```"):
+                        body = body.removesuffix("```")
+                    elif body.endswith("```\n"):
+                        body = body.removesuffix("```\n")
+                
                 # Send telepathic message if channel is telepathic
                 await _maybe_send_telepathic_message(agent, channel_id, "⟦remember⟧", body)
                 await _process_remember_task(agent, channel_id, body)
