@@ -652,28 +652,28 @@ configdir/
 ├── agents/
 │   └── AgentName/
 │       └── memory/
-│           └── UserID.md        # Curated memories (manually created)
+│           └── UserID.json      # Curated memories (manually created)
 └── ...
 
 state/
 └── memory/
-    └── AgentName.md            # Global episodic memories (automatically created)
+    └── AgentName.json          # Global episodic memories (automatically created)
 ```
 
-- **Config memories** (`configdir/agents/AgentName/memory/UserID.md`): Manually curated memories that can be created and edited by hand
-- **State memories** (`state/AgentName/memory.md`): Global episodic memories automatically created from agent conversations
+- **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand
+- **State memories** (`state/AgentName/memory.json`): Global episodic memories automatically created from agent conversations
 
 **Global Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
-- Curated memories that are visible only when chatting with a given user are in the the manually created memory files `configdir/agents/AgentName/memory/UserID.md` where UserID is the unique ID assigned by Telegram to the conversation partner.
-- Memories produced by the agent are stored in `state/AgentName/memory.md` and are viible by the agent during all conversations.
+- Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner.
+- Memories produced by the agent are stored in `state/AgentName/memory.json` and are visible by the agent during all conversations.
 
 ### Remember Task Processing
 
 The `remember` task is processed immediately during LLM response parsing and does not go through the task graph:
 
 1. **Immediate processing**: `remember` tasks are handled in `parse_llm_reply_from_markdown()`
-2. **File writing**: Content is appended to the state memory file with timestamp
+2. **File writing**: Content is added to the JSON array in the state memory file with timestamp
 3. **No task graph**: These tasks are not added to the task graph, avoiding delays
 4. **Error handling**: File write failures are logged but don't block conversation
 
@@ -705,16 +705,38 @@ Memory content is integrated into the system prompt in a specific position withi
 
 ### Memory File Format
 
-Memory files use markdown format with timestamps:
+Memory files are JSON arrays. Each element is a JSON object with the schema:
 
-```markdown
-# Memory from 2025-01-26 14:30:15 UTC
+```
+{
+  "kind": "memory",
+  "created": "2025-01-26 14:30:15 UTC",
+  "content": "User mentioned they have a younger sister named Sarah who is studying abroad.",
+  "creation_channel": "Alice",
+  "creation_channel_id": 123456789,
+  ... additional optional fields preserved from the LLM ...
+}
+```
 
-User mentioned they have a younger sister named Sarah who is studying abroad.
+Example `memory.json` contents:
 
-# Memory from 2025-01-26 15:45:22 UTC
-
-User works as a software engineer and enjoys hiking on weekends.
+```json
+[
+  {
+    "kind": "memory",
+    "created": "2025-01-26 14:30:15 UTC",
+    "content": "User mentioned they have a younger sister named Sarah who is studying abroad.",
+    "creation_channel": "Alice",
+    "creation_channel_id": 123456789
+  },
+  {
+    "kind": "memory",
+    "created": "2025-01-26 15:45:22 UTC",
+    "content": "User works as a software engineer and enjoys hiking on weekends.",
+    "creation_channel": "Bob",
+    "creation_channel_id": 987654321
+  }
+]
 ```
 
 ### Config Directory Tracking
