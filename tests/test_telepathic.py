@@ -230,7 +230,7 @@ I need to think about this problem carefully."""
         
         md_text = """# «remember»
 
-User prefers short responses."""
+{"content": "User prefers short responses."}"""
         
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -246,7 +246,9 @@ User prefers short responses."""
                 
                 # Should send telepathic message
                 mock_agent.client.send_message.assert_called_once_with(
-                    456, "⟦remember⟧\nUser prefers short responses.", parse_mode="Markdown"
+                    456,
+                    "⟦remember⟧\n{\"content\": \"User prefers short responses.\"}",
+                    parse_mode="Markdown",
                 )
                 
                 # Should still process the remember task

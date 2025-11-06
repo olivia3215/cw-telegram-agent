@@ -245,16 +245,31 @@ Agents automatically remember important details about people they chat with usin
 
 You can manually create curated memories that are only remembered when the agent is in a direct chat with specific users by creating memory files in your agent's config directory. These memories are included along with automatically created ones and are perfect for important information you want to ensure the agent always remembers.
 
-**Location**: `configdir/agents/AgentName/memory/UserID.md`
+**Location**: `configdir/agents/AgentName/memory/UserID.json`
 
-**Example**: See `samples/agents/Heidi/memory/6754281260.md` for a sample curated memory file.
+**Example**: See `samples/agents/Heidi/memory/6754281260.json` for a sample curated memory file.
 
-**Format**: Simply write the information you want the agent to remember:
+**Format**: Provide a JSON array of memory objects. At minimum each object needs a `content` field; other properties are optional.
 
-```markdown
-User works as a software engineer at Google.
-They have a golden retriever named Max who is 3 years old.
-Their birthday is March 15th and they love chocolate cake.
+```json
+[
+  {
+    "kind": "memory",
+    "created": "2025-02-01",
+    "content": "User works as a software engineer at Google.",
+    "notes": "Mentioned during intro call"
+  },
+  {
+    "kind": "memory",
+    "created": "2025-02-14",
+    "content": "User has a golden retriever named Max who is 3 years old."
+  },
+  {
+    "kind": "memory",
+    "created": "2025-03-15",
+    "content": "User's birthday is March 15th and they love chocolate cake."
+  }
+]
 ```
 
 The agent will see these curated memories in addition to any automatically created global memories.

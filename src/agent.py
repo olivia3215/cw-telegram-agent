@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -196,7 +197,8 @@ class Agent:
             channel_id: The conversation ID (Telegram channel/user ID) - used for logging only
 
         Returns:
-            Combined memory content from config and state directories, or empty string if no memory exists
+            Combined memory content from config and state directories, formatted as JSON code blocks,
+            or empty string if no memory exists
         """
         try:
             memory_parts = []
@@ -204,12 +206,12 @@ class Agent:
             # Load config memory (curated memories for the current conversation)
             config_memory = self._load_config_memory(channel_id)
             if config_memory:
-                memory_parts.append("# Curated Memories\n\n" + config_memory)
+                memory_parts.append("# Curated Memories\n\n```json\n" + config_memory + "\n```")
 
             # Load state memory (agent-specific global episodic memories)
             state_memory = self._load_state_memory()
             if state_memory:
-                memory_parts.append("# Global Memories\n\n" + state_memory)
+                memory_parts.append("# Global Memories\n\n```json\n" + state_memory + "\n```")
 
             return "\n\n".join(memory_parts) if memory_parts else ""
 
@@ -220,7 +222,11 @@ class Agent:
             return ""
 
     def _load_config_memory(self, user_id: int) -> str:
-        """Load curated memory from config directory for a specific user."""
+        """Load curated memory from config directory for a specific user.
+        
+        Returns:
+            Pretty-printed JSON string of the memory array, or empty string if no memory exists.
+        """
         if not self.config_directory:
             return ""
 
@@ -230,10 +236,21 @@ class Agent:
                 / "agents"
                 / self.name
                 / "memory"
-                / f"{user_id}.md"
+                / f"{user_id}.json"
             )
             if memory_file.exists():
-                return memory_file.read_text(encoding="utf-8").strip()
+                with open(memory_file, "r", encoding="utf-8") as f:
+                    memories = json.load(f)
+                    if not isinstance(memories, list):
+                        logger.warning(
+                            f"[{self.name}] Config memory file {memory_file} contains {type(memories).__name__}, expected list"
+                        )
+                        return ""
+                    return json.dumps(memories, indent=2, ensure_ascii=False)
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"[{self.name}] Corrupted JSON in config memory file {memory_file}: {e}"
+            )
         except Exception as e:
             logger.warning(
                 f"[{self.name}] Failed to load config memory from {memory_file}: {e}"
@@ -242,12 +259,27 @@ class Agent:
         return ""
 
     def _load_state_memory(self) -> str:
-        """Load agent-specific global episodic memory from state directory."""
+        """Load agent-specific global episodic memory from state directory.
+        
+        Returns:
+            Pretty-printed JSON string of the memory array, or empty string if no memory exists.
+        """
         try:
             state_dir = STATE_DIRECTORY
-            memory_file = Path(state_dir) / self.name / "memory.md"
+            memory_file = Path(state_dir) / self.name / "memory.json"
             if memory_file.exists():
-                return memory_file.read_text(encoding="utf-8").strip()
+                with open(memory_file, "r", encoding="utf-8") as f:
+                    memories = json.load(f)
+                    if not isinstance(memories, list):
+                        logger.warning(
+                            f"[{self.name}] State memory file {memory_file} contains {type(memories).__name__}, expected list"
+                        )
+                        return ""
+                    return json.dumps(memories, indent=2, ensure_ascii=False)
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"[{self.name}] Corrupted JSON in state memory file {memory_file}: {e}"
+            )
         except Exception as e:
             logger.warning(
                 f"[{self.name}] Failed to load state memory from {memory_file}: {e}"
