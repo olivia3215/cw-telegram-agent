@@ -670,7 +670,7 @@ async def _describe_profile_photo(agent, entity, media_chain):
     Returns a string suitable for inclusion in the channel details section.
     """
     if not agent or not getattr(agent, "client", None):
-        return "Not available"
+        return None
 
     try:
         photos = await agent.client.get_profile_photos(entity, limit=1)
@@ -679,7 +679,7 @@ async def _describe_profile_photo(agent, entity, media_chain):
         return "Unable to retrieve profile photo (error)"
 
     if not photos:
-        return "No profile photo on record"
+        return None
 
     photo = photos[0]
     unique_id = get_unique_id(photo)
@@ -702,7 +702,7 @@ async def _describe_profile_photo(agent, entity, media_chain):
         except Exception as e:
             logger.debug(f"Media chain lookup failed for profile photo {unique_id}: {e}")
 
-    return format_media_sentence("profile photo", description)
+    return format_media_sentence("profile photo", description) if description else None
 
 
 def _format_username(entity):
@@ -716,16 +716,16 @@ def _format_username(entity):
             handle_value = getattr(handle, "username", None)
             if handle_value:
                 return f"@{handle_value}"
-    return "Not provided"
+    return None
 
 
 def _format_optional(value):
     if value is None:
-        return "Not provided"
+        return None
     if isinstance(value, str):
         stripped = value.strip()
         if not stripped:
-            return "Not provided"
+            return None
         # Collapse newlines to keep bullet formatting compact.
         return " ".join(stripped.split())
     return str(value)
@@ -733,20 +733,20 @@ def _format_optional(value):
 
 def _format_bool(value):
     if value is None:
-        return "Not provided"
+        return None
     return "Yes" if value else "No"
 
 
 def _format_birthday(birthday_obj):
     if birthday_obj is None:
-        return "Not provided"
+        return None
 
     day = getattr(birthday_obj, "day", None)
     month = getattr(birthday_obj, "month", None)
     year = getattr(birthday_obj, "year", None)
 
     if day is None or month is None:
-        return "Not provided"
+        return None
 
     if year:
         return f"{year:04d}-{month:02d}-{day:02d}"
@@ -768,9 +768,6 @@ def _append_detail(lines: list[str], label: str, value):
     if isinstance(value, str):
         stripped = value.strip()
         if not stripped:
-            return
-        normalized = stripped.lower()
-        if normalized in {"not provided", "not available"}:
             return
         display_value = stripped
     else:
