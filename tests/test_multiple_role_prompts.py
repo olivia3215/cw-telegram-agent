@@ -64,6 +64,7 @@ def test_agent_multiple_role_prompts():
             assert "You are a helpful assistant." in system_prompt
             assert "You are also a creative writer." in system_prompt
             assert "You are a chatbot." in system_prompt  # LLM prompt
+            assert "# Agent Instructions" in system_prompt
             assert "Follow these instructions." in system_prompt  # Agent instructions
 
             # Verify the order: LLM prompt, then role prompts, then instructions
@@ -128,6 +129,7 @@ def test_agent_single_role_prompt():
             # Verify that the role prompt is included
             assert "You are a single role assistant." in system_prompt
             assert "You are a chatbot." in system_prompt  # LLM prompt
+            assert "# Agent Instructions" in system_prompt
             assert "Follow these instructions." in system_prompt  # Agent instructions
 
 
@@ -164,6 +166,7 @@ def test_agent_no_role_prompts():
 
             # Verify that only LLM prompt and instructions are included
             assert "You are a chatbot." in system_prompt  # LLM prompt
+            assert "# Agent Instructions" in system_prompt
             assert "Follow these instructions." in system_prompt  # Agent instructions
 
             # Verify no role prompt content is present
