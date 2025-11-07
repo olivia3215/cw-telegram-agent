@@ -21,6 +21,7 @@ from config import (
 )
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
+from media.media_format import format_media_sentence
 from media.media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
@@ -33,6 +34,10 @@ from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from telepathic import is_telepath
 from tick import register_task_handler
+from telethon.tl.functions.channels import GetFullChannelRequest
+from telethon.tl.functions.messages import GetFullChatRequest
+from telethon.tl.functions.users import GetFullUserRequest
+from telethon.tl.types import Channel, Chat, User
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -658,6 +663,261 @@ async def _specific_instructions(
     return instructions
 
 
+async def _describe_profile_photo(agent, entity, media_chain):
+    """
+    Retrieve a formatted description for the first profile photo of an entity.
+
+    Returns a string suitable for inclusion in the channel details section.
+    """
+    if not agent or not getattr(agent, "client", None):
+        return "Not available"
+
+    try:
+        photos = await agent.client.get_profile_photos(entity, limit=1)
+    except Exception as e:
+        logger.debug(f"Failed to fetch profile photos for entity {getattr(entity, 'id', None)}: {e}")
+        return "Unable to retrieve profile photo (error)"
+
+    if not photos:
+        return "No profile photo on record"
+
+    photo = photos[0]
+    unique_id = get_unique_id(photo)
+    description = None
+
+    if unique_id and media_chain:
+        try:
+            record = await media_chain.get(
+                unique_id=unique_id,
+                agent=agent,
+                doc=photo,
+                kind="photo",
+                channel_id=getattr(entity, "id", None),
+                channel_name=getattr(entity, "title", None)
+                or getattr(entity, "first_name", None)
+                or getattr(entity, "username", None),
+            )
+            if isinstance(record, dict):
+                description = record.get("description")
+        except Exception as e:
+            logger.debug(f"Media chain lookup failed for profile photo {unique_id}: {e}")
+
+    return format_media_sentence("profile photo", description)
+
+
+def _format_username(entity):
+    username = getattr(entity, "username", None)
+    if username:
+        return f"@{username}"
+
+    usernames = getattr(entity, "usernames", None)
+    if usernames:
+        for handle in usernames:
+            handle_value = getattr(handle, "username", None)
+            if handle_value:
+                return f"@{handle_value}"
+    return "Not provided"
+
+
+def _format_optional(value):
+    if value is None:
+        return "Not provided"
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return "Not provided"
+        # Collapse newlines to keep bullet formatting compact.
+        return " ".join(stripped.split())
+    return str(value)
+
+
+def _format_bool(value):
+    if value is None:
+        return "Not provided"
+    return "Yes" if value else "No"
+
+
+def _format_birthday(birthday_obj):
+    if birthday_obj is None:
+        return "Not provided"
+
+    day = getattr(birthday_obj, "day", None)
+    month = getattr(birthday_obj, "month", None)
+    year = getattr(birthday_obj, "year", None)
+
+    if day is None or month is None:
+        return "Not provided"
+
+    if year:
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    return f"{month:02d}-{day:02d}"
+
+
+async def _build_user_channel_details(agent, dialog, media_chain, fallback_name):
+    full_user = None
+    try:
+        input_user = await agent.client.get_input_entity(dialog)
+        full_user = await agent.client(GetFullUserRequest(input_user))
+    except Exception as e:
+        logger.debug(f"Failed to fetch full user info for {dialog.id}: {e}")
+
+    first_name = getattr(dialog, "first_name", None)
+    last_name = getattr(dialog, "last_name", None)
+    full_name_parts = [part for part in [first_name, last_name] if part]
+    if full_name_parts:
+        full_name = " ".join(full_name_parts)
+    else:
+        full_name = fallback_name or _format_optional(getattr(dialog, "username", None))
+
+    profile_photo_desc = await _describe_profile_photo(agent, dialog, media_chain)
+    bio = getattr(full_user, "about", None) if full_user else None
+    birthday_obj = getattr(full_user, "birthday", None) if full_user else None
+    phone = getattr(dialog, "phone", None)
+
+    details = [
+        "- Type: Direct message",
+        f"- Full name: {_format_optional(full_name)}",
+        f"- Numeric ID: {dialog.id}",
+        f"- Username: {_format_username(dialog)}",
+        f"- First name: {_format_optional(first_name)}",
+        f"- Last name: {_format_optional(last_name)}",
+        f"- Profile photo: {profile_photo_desc}",
+        f"- Bio: {_format_optional(bio)}",
+        f"- Birthday: {_format_birthday(birthday_obj)}",
+        f"- Phone number: {_format_optional(phone)}",
+    ]
+    return details
+
+
+async def _build_group_channel_details(agent, dialog, media_chain, channel_id):
+    """
+    Build details for basic group chats (Chat entities).
+    """
+    full_chat = None
+    try:
+        full_chat_result = await agent.client(GetFullChatRequest(dialog.id))
+        full_chat = getattr(full_chat_result, "full_chat", None)
+    except Exception as e:
+        logger.debug(f"Failed to fetch full chat info for {dialog.id}: {e}")
+
+    about = getattr(full_chat, "about", None) if full_chat else None
+
+    participants_obj = getattr(full_chat, "participants", None) if full_chat else None
+    participant_count = (
+        getattr(participants_obj, "count", None)
+        if participants_obj
+        else None
+    )
+    if participant_count is None:
+        participant_count = getattr(dialog, "participants_count", None)
+
+    profile_photo_desc = await _describe_profile_photo(agent, dialog, media_chain)
+
+    details = [
+        "- Type: Group",
+        f"- Title: {_format_optional(getattr(dialog, 'title', None))}",
+        f"- Numeric ID: {dialog.id}",
+        f"- Username: {_format_username(dialog)}",
+        f"- Participant count: {_format_optional(participant_count)}",
+        f"- Profile photo: {profile_photo_desc}",
+        f"- Description: {_format_optional(about)}",
+    ]
+    return details
+
+
+async def _build_channel_entity_details(agent, dialog, media_chain):
+    """
+    Build details for channels and supergroups (Channel entities).
+    """
+    full_channel = None
+    try:
+        input_channel = await agent.client.get_input_entity(dialog)
+        full_result = await agent.client(GetFullChannelRequest(input_channel))
+        full_channel = getattr(full_result, "full_chat", None)
+    except Exception as e:
+        logger.debug(f"Failed to fetch full channel info for {dialog.id}: {e}")
+
+    about = getattr(full_channel, "about", None) if full_channel else None
+    participant_count = getattr(full_channel, "participants_count", None)
+    if participant_count is None:
+        participant_count = getattr(dialog, "participants_count", None)
+
+    admins_count = getattr(full_channel, "admins_count", None) if full_channel else None
+    slowmode_seconds = getattr(full_channel, "slowmode_seconds", None) if full_channel else None
+    linked_chat_id = getattr(full_channel, "linked_chat_id", None) if full_channel else None
+    can_view_participants = getattr(full_channel, "can_view_participants", None) if full_channel else None
+    forum_enabled = getattr(dialog, "forum", None)
+
+    if getattr(dialog, "megagroup", False):
+        channel_type = "Supergroup"
+    elif getattr(dialog, "broadcast", False):
+        channel_type = "Broadcast channel"
+    else:
+        channel_type = "Channel"
+
+    profile_photo_desc = await _describe_profile_photo(agent, dialog, media_chain)
+
+    details = [
+        f"- Type: {channel_type}",
+        f"- Title: {_format_optional(getattr(dialog, 'title', None))}",
+        f"- Numeric ID: {dialog.id}",
+        f"- Username: {_format_username(dialog)}",
+        f"- Participant count: {_format_optional(participant_count)}",
+        f"- Admin count: {_format_optional(admins_count)}",
+        f"- Slow mode seconds: {_format_optional(slowmode_seconds)}",
+        f"- Linked chat ID: {_format_optional(linked_chat_id)}",
+        f"- Can view participants: {_format_bool(can_view_participants)}",
+        f"- Forum enabled: {_format_bool(forum_enabled)}",
+        f"- Profile photo: {profile_photo_desc}",
+        f"- Description: {_format_optional(about)}",
+    ]
+    return details
+
+
+async def _build_channel_details_section(
+    agent,
+    channel_id,
+    dialog,
+    media_chain,
+    channel_name: str,
+) -> str:
+    """
+    Build a formatted channel details section for the system prompt.
+    """
+    if agent is None:
+        return ""
+
+    entity = dialog
+    if entity is None:
+        try:
+            entity = await agent.get_cached_entity(channel_id)
+        except Exception as e:
+            logger.debug(f"Failed to load entity for channel {channel_id}: {e}")
+            entity = None
+
+    if entity is None:
+        return ""
+
+    if isinstance(entity, User):
+        detail_lines = await _build_user_channel_details(agent, entity, media_chain, channel_name)
+    elif isinstance(entity, Chat):
+        detail_lines = await _build_group_channel_details(agent, entity, media_chain, channel_id)
+    elif isinstance(entity, Channel):
+        detail_lines = await _build_channel_entity_details(agent, entity, media_chain)
+    else:
+        profile_photo_desc = await _describe_profile_photo(agent, entity, media_chain)
+        detail_lines = [
+            "- Type: Unknown",
+            f"- Identifier: {getattr(entity, 'id', channel_id)}",
+            f"- Profile photo: {profile_photo_desc}",
+        ]
+
+    if not detail_lines:
+        return ""
+
+    return "\n".join(["# Channel Details", "", *detail_lines])
+
+
 async def _build_complete_system_prompt(
     agent,
     channel_id: int,
@@ -665,6 +925,7 @@ async def _build_complete_system_prompt(
     media_chain,
     is_group: bool,
     channel_name: str,
+    dialog,
     target_msg,
     xsend_intent: str | None = None,
 ) -> str:
@@ -719,6 +980,16 @@ async def _build_complete_system_prompt(
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
+
+    channel_details = await _build_channel_details_section(
+        agent=agent,
+        channel_id=channel_id,
+        dialog=dialog,
+        media_chain=media_chain,
+        channel_name=channel_name,
+    )
+    if channel_details:
+        system_prompt += f"\n\n{channel_details}\n"
 
     return system_prompt
 
@@ -1129,7 +1400,15 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     # Build complete system prompt
     system_prompt = await _build_complete_system_prompt(
-        agent, channel_id, messages, media_chain, is_group, channel_name, target_msg, xsend_intent_param
+        agent,
+        channel_id,
+        messages,
+        media_chain,
+        is_group,
+        channel_name,
+        dialog,
+        target_msg,
+        xsend_intent_param,
     )
 
     # Process message history
