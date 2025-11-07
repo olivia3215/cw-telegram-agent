@@ -172,7 +172,9 @@ class Agent:
             prompt_parts.append(role_prompt)
 
         # Add agent instructions
-        prompt_parts.append(self.instructions)
+        instructions = (self.instructions or "").strip()
+        if instructions:
+            prompt_parts.append(f"# Agent Instructions\n\n{instructions}")
 
         # Apply template substitution across the assembled prompt
         final_prompt = "\n\n".join(prompt_parts)
