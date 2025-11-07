@@ -34,10 +34,10 @@ from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from telepathic import is_telepath
 from tick import register_task_handler
-from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.functions.messages import GetFullChatRequest
-from telethon.tl.functions.users import GetFullUserRequest
-from telethon.tl.types import Channel, Chat, User
+from telethon.tl.functions.channels import GetFullChannelRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import Channel, Chat, User  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -753,6 +753,32 @@ def _format_birthday(birthday_obj):
     return f"{month:02d}-{day:02d}"
 
 
+def _append_detail(lines: list[str], label: str, value):
+    """
+    Append a formatted detail line if the value is meaningful.
+
+    Args:
+        lines: List accumulating detail strings.
+        label: Human readable label.
+        value: The value to display (str/int/bool/etc).
+    """
+    if value is None:
+        return
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return
+        normalized = stripped.lower()
+        if normalized in {"not provided", "not available"}:
+            return
+        display_value = stripped
+    else:
+        display_value = value
+
+    lines.append(f"- {label}: {display_value}")
+
+
 async def _build_user_channel_details(agent, dialog, media_chain, fallback_name):
     full_user = None
     try:
@@ -776,16 +802,17 @@ async def _build_user_channel_details(agent, dialog, media_chain, fallback_name)
 
     details = [
         "- Type: Direct message",
-        f"- Full name: {_format_optional(full_name)}",
         f"- Numeric ID: {dialog.id}",
-        f"- Username: {_format_username(dialog)}",
-        f"- First name: {_format_optional(first_name)}",
-        f"- Last name: {_format_optional(last_name)}",
-        f"- Profile photo: {profile_photo_desc}",
-        f"- Bio: {_format_optional(bio)}",
-        f"- Birthday: {_format_birthday(birthday_obj)}",
-        f"- Phone number: {_format_optional(phone)}",
     ]
+    _append_detail(details, "Full name", _format_optional(full_name))
+    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "First name", _format_optional(first_name))
+    _append_detail(details, "Last name", _format_optional(last_name))
+    if profile_photo_desc and profile_photo_desc.strip().startswith("⟦media⟧"):
+        details.append(f"- Profile photo: {profile_photo_desc}")
+    _append_detail(details, "Bio", _format_optional(bio))
+    _append_detail(details, "Birthday", _format_birthday(birthday_obj))
+    _append_detail(details, "Phone number", _format_optional(phone))
     return details
 
 
@@ -815,13 +842,14 @@ async def _build_group_channel_details(agent, dialog, media_chain, channel_id):
 
     details = [
         "- Type: Group",
-        f"- Title: {_format_optional(getattr(dialog, 'title', None))}",
         f"- Numeric ID: {dialog.id}",
-        f"- Username: {_format_username(dialog)}",
-        f"- Participant count: {_format_optional(participant_count)}",
-        f"- Profile photo: {profile_photo_desc}",
-        f"- Description: {_format_optional(about)}",
     ]
+    _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
+    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "Participant count", _format_optional(participant_count))
+    if profile_photo_desc and profile_photo_desc.strip().startswith("⟦media⟧"):
+        details.append(f"- Profile photo: {profile_photo_desc}")
+    _append_detail(details, "Description", _format_optional(about))
     return details
 
 
@@ -859,18 +887,19 @@ async def _build_channel_entity_details(agent, dialog, media_chain):
 
     details = [
         f"- Type: {channel_type}",
-        f"- Title: {_format_optional(getattr(dialog, 'title', None))}",
         f"- Numeric ID: {dialog.id}",
-        f"- Username: {_format_username(dialog)}",
-        f"- Participant count: {_format_optional(participant_count)}",
-        f"- Admin count: {_format_optional(admins_count)}",
-        f"- Slow mode seconds: {_format_optional(slowmode_seconds)}",
-        f"- Linked chat ID: {_format_optional(linked_chat_id)}",
-        f"- Can view participants: {_format_bool(can_view_participants)}",
-        f"- Forum enabled: {_format_bool(forum_enabled)}",
-        f"- Profile photo: {profile_photo_desc}",
-        f"- Description: {_format_optional(about)}",
     ]
+    _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
+    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "Participant count", _format_optional(participant_count))
+    _append_detail(details, "Admin count", _format_optional(admins_count))
+    _append_detail(details, "Slow mode seconds", _format_optional(slowmode_seconds))
+    _append_detail(details, "Linked chat ID", _format_optional(linked_chat_id))
+    _append_detail(details, "Can view participants", _format_bool(can_view_participants))
+    _append_detail(details, "Forum enabled", _format_bool(forum_enabled))
+    if profile_photo_desc and profile_photo_desc.strip().startswith("⟦media⟧"):
+        details.append(f"- Profile photo: {profile_photo_desc}")
+    _append_detail(details, "Description", _format_optional(about))
     return details
 
 

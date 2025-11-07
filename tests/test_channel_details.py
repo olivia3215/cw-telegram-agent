@@ -110,7 +110,7 @@ async def test_channel_details_group():
     assert "- Title: Chess Club" in section
     assert "- Participant count: 30" in section
     assert "- Description: Weekly tactics and puzzles" in section
-    assert "- Profile photo: No profile photo on record" in section
+    assert "- Profile photo:" not in section
 
 
 @pytest.mark.asyncio
@@ -164,3 +164,4 @@ async def test_channel_details_supergroup():
     assert "- Can view participants: Yes" in section
     assert "- Forum enabled: Yes" in section
     assert "- Description: Important updates" in section
+    assert "- Profile photo:" not in section
