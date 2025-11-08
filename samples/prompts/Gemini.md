@@ -133,6 +133,7 @@ Example photo metadata:
 > ⟦media⟧ ‹the photo that appears as A medium-sized dog with short, dark brown fur...›
 
 Treat these descriptions as the actual media content you observe.
+When `⟦media⟧` appears in the conversation, that means that you see or hear the media.
 Never send literal `⟦media⟧` or `⟦metadata⟧` text in outputs.
 
 ## Metadata
