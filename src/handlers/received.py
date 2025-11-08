@@ -1391,7 +1391,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     assert agent_id
     agent = get_agent_for_id(agent_id)
-    assert agent_id
+
+    # Skip processing if the agent is looking at its own scratchpad channel.
+    if str(channel_id) == str(getattr(agent, "agent_id", None)):
+        logger.info(
+            f"[{agent.name}] Ignoring received task for own channel {channel_id}"
+        )
+        return
+
     client = agent.client
     agent_name = agent.name
 
