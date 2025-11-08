@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -188,3 +189,36 @@ async def test_parse_only_think_tasks():
     tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     # All think tasks should be discarded
     assert len(tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_depends_on_translates_to_generated_ids(monkeypatch):
+    """Dependencies should point to generated identifiers, not source IDs."""
+    hex_values = iter(
+        [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ]
+    )
+
+    def fake_uuid4():
+        return SimpleNamespace(hex=next(hex_values))
+
+    monkeypatch.setattr("handlers.received.uuid.uuid4", fake_uuid4)
+
+    payload = _dump_tasks(
+        [
+            {"kind": "wait", "id": "task-alpha", "delay": 5},
+            {"kind": "send", "id": "task-beta", "text": "Hello", "depends_on": ["task-alpha"]},
+        ]
+    )
+
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
+
+    assert len(tasks) == 2
+
+    first, second = tasks
+
+    assert first.identifier == "wait-aaaaaaaa"
+    assert second.identifier == "send-bbbbbbbb"
+    assert second.depends_on == [first.identifier]

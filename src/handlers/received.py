@@ -54,7 +54,6 @@ async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, co
     if not content.strip():
         return
         
-    logger.warning(f"DEBUG: [{agent.name}] _maybe_send_telepathic_message: channel_id={channel_id}, agent.agent_id={agent.agent_id}, is_telepath(channel_id)={is_telepath(channel_id)}, is_telepath(agent.agent_id)={is_telepath(agent.agent_id)}")
     _should_reveal_thoughts = is_telepath(channel_id) and not is_telepath(agent.agent_id)
     if not _should_reveal_thoughts:
         return
@@ -831,6 +830,27 @@ async def parse_llm_reply_from_json(
             continue
 
         logger.warning(f"[parse] Unsupported task kind '{kind}', ignoring")
+
+    # Translate dependency identifiers from source IDs to generated identifiers
+    if source_id_to_generated:
+        for node in task_nodes:
+            if not node.depends_on:
+                continue
+
+            translated: list[str] = []
+            for dep in node.depends_on:
+                generated = source_id_to_generated.get(dep)
+                if generated is None:
+                    translated.append(dep)
+                    logger.debug(
+                        "Dependency %s for task %s does not match any known task IDs",
+                        dep,
+                        node.identifier,
+                    )
+                else:
+                    translated.append(generated)
+
+            node.depends_on = translated
 
     return task_nodes
 
