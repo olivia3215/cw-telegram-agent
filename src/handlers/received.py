@@ -614,9 +614,9 @@ async def _specific_instructions(
     channel_name = await get_dialog_name(agent, channel_id)
     
     # Check if this is conversation start
-    is_conversation_start = True
+    is_conversation_start = len(messages) < 5
     agent_id = agent.agent_id
-    if agent_id is not None:
+    if is_conversation_start and agent_id is not None:
         for m in messages:
             if (
                 getattr(m, "from_id", None)
