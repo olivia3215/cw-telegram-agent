@@ -495,6 +495,10 @@ def _normalize_list(value) -> list[str]:
     return [str(value)]
 
 
+class TransientLLMResponseError(Exception):
+    """Raised when the LLM response is malformed but should be retried."""
+
+
 async def parse_llm_reply_from_json(
     json_text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
@@ -514,10 +518,14 @@ async def parse_llm_reply_from_json(
     try:
         raw_tasks = json.loads(payload_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM response is not valid JSON: {exc}") from exc
+        raise TransientLLMResponseError(
+            f"LLM response is not valid JSON: {exc}"
+        ) from exc
 
     if not isinstance(raw_tasks, list):
-        raise ValueError("LLM response must be a JSON array of task objects")
+        raise TransientLLMResponseError(
+            "LLM response must be a JSON array of task objects"
+        )
 
     task_nodes: list[TaskNode] = []
     source_id_to_node: dict[str, TaskNode] = {}
@@ -870,7 +878,8 @@ async def _specific_instructions(
     if xsend_intent:
         instructions += (
             "\n## Cross-channel Trigger (`xsend`)\n\n"
-            "Begin your response with a `think` task, and react to the following intent.\n\n"
+            "Begin your response with a `think` task, and react to the following intent.\n"
+            "Keep in mind that it was sent by you as a message *to yourself*.\n\n"
             "```\n"
             f"{xsend_intent}\n"
             "```\n"
@@ -885,7 +894,7 @@ async def _specific_instructions(
             "```\n"
         )
     
-    if is_conversation_start:
+    if is_conversation_start and not xsend_intent:
         instructions += (
             "\n## Conversation Start\n\n"
             f"This is the beginning of a conversation with {channel_name}.\n"
@@ -1231,13 +1240,6 @@ async def _build_complete_system_prompt(
     )
     system_prompt = agent.get_system_prompt(agent_name, channel_name, specific_instructions)
 
-    channel_username = _format_username(dialog) if dialog is not None else None
-    if channel_username:
-        system_prompt += (
-            f"\n\n# Conversation Username\n\n"
-            f"The conversation username is {channel_username}.\n"
-        )
-
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
     if sticker_list:
@@ -1260,6 +1262,13 @@ async def _build_complete_system_prompt(
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
+
+    channel_username = _format_username(dialog) if dialog is not None else None
+    if channel_username:
+        system_prompt += (
+            f"\n\n# Conversation Username\n\n"
+            f"The conversation username is {channel_username}.\n"
+        )
 
     channel_details = await _build_channel_details_section(
         agent=agent,
@@ -1478,6 +1487,16 @@ async def _run_llm_with_retrieval(
         tasks = await parse_llm_reply(
             reply, agent_id=agent_id, channel_id=channel_id, agent=agent
         )
+    except TransientLLMResponseError as e:
+        logger.warning(
+            f"[{agent_name}] LLM produced malformed task response; scheduling retry: {e}"
+        )
+        retry_delay = 10
+        wait_task = task.insert_delay(graph, retry_delay)
+        logger.info(
+            f"[{agent_name}] Scheduled delayed retry after malformed response: wait task {wait_task.identifier}, received task {task.identifier}"
+        )
+        raise Exception("Temporary error: malformed LLM response - will retry") from e
     except ValueError as e:
         logger.exception(
             f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
