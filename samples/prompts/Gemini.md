@@ -81,6 +81,14 @@ and you cannot use two underscores to make text bold.
 
 Avoid this syntax outside code blocks if you don't intend to affect the format of the text.
 
+## Mentioning Users and Messages
+
+- Prefer to reference people or groups using their Telegram username if one is known, formatted as `@username`.
+- If no username exists for the target, use the link form `tg://user?id=NNNN`, where `NNNN` is the numeric Telegram user identifier.
+- When referring to a group or channel, you may link to it with `https://t.me/username`, using the group or channel username.
+- To reference a specific message in the current chat, use `https://t.me/username/msgid`, where `username` is the chat's username and `msgid` is the numeric message identifier.
+- If you are chatting with a user or group that does not have a username, reference a previous message by replying directly to it instead of constructing a link.
+
 ## sticker
 
 Use this if a sticker captures the essence of your reply. When you send a sticker, the body MUST be exactly two lines:

@@ -642,10 +642,13 @@ class GeminiLLM(LLM):
         header_bits: list[str] = []
         who = m.get("sender") or ""
         sid = m.get("sender_id") or ""
+        username = m.get("sender_username") or ""
         if who and sid:
             header_bits.append(f'sender="{who}" sender_id={sid}')
         elif who or sid:
             header_bits.append(f"sender_id={who or sid}")
+        if username:
+            header_bits.append(f"username={username}")
         if m.get("msg_id"):
             header_bits.append(f'message_id={m["msg_id"]}')
         if m.get("reply_to_msg_id"):

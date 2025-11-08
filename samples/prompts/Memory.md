@@ -30,6 +30,7 @@ You may include additional fields in the JSON object if you wish. The system wil
 - `created`: Timestamp when the memory was created
 - `creation_channel`: Name of the conversation partner
 - `creation_channel_id`: Numeric ID of the conversation
+- `creation_channel_username`: Username or nym for the conversation (e.g., @alice) when available
 
 The memory will be automatically saved and included in future conversations with that person.
 

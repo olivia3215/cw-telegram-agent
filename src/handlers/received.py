@@ -170,8 +170,14 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         if not isinstance(memory_obj, dict):
             raise ValueError(f"Memory content must be a JSON object, got {type(memory_obj).__name__}")
 
-        # Get the conversation partner's name
         partner_name = await get_channel_name(agent, channel_id)
+        partner_username = None
+        try:
+            entity = await agent.get_cached_entity(channel_id)
+        except Exception:
+            entity = None
+        if entity is not None:
+            partner_username = _format_username(entity)
 
         # Set required fields
         now = agent.get_current_time()
@@ -181,6 +187,8 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         memory_obj["created"] = timestamp
         memory_obj["creation_channel"] = partner_name
         memory_obj["creation_channel_id"] = channel_id
+        if partner_username:
+            memory_obj["creation_channel_username"] = partner_username
 
         # Ensure parent directory exists
         memory_file.parent.mkdir(parents=True, exist_ok=True)
@@ -222,6 +230,7 @@ class ProcessedMessage:
     message_parts: list[MsgPart]
     sender_display: str
     sender_id: str
+    sender_username: str | None
     message_id: str
     is_from_agent: bool
     reply_to_msg_id: str | None = None
@@ -984,6 +993,13 @@ async def _build_complete_system_prompt(
     )
     system_prompt = agent.get_system_prompt(agent_name, channel_name, specific_instructions)
 
+    channel_username = _format_username(dialog) if dialog is not None else None
+    if channel_username:
+        system_prompt += (
+            f"\n\n# Conversation Username\n\n"
+            f"The conversation username is {channel_username}.\n"
+        )
+
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
     if sticker_list:
@@ -1063,6 +1079,16 @@ async def _process_message_history(
         sender_display = (
             await get_channel_name(agent, sender_id_val) if sender_id_val else "unknown"
         )
+        sender_username = None
+        sender_entity = getattr(m, "sender", None)
+        if sender_entity is None and sender_id_val is not None:
+            try:
+                sender_entity = await agent.get_cached_entity(sender_id_val)
+            except Exception:
+                sender_entity = None
+        if sender_entity is not None:
+            sender_username = _format_username(sender_entity)
+ 
         message_id = str(getattr(m, "id", ""))
         is_from_agent = bool(getattr(m, "out", False))
 
@@ -1091,6 +1117,7 @@ async def _process_message_history(
                 message_parts=message_parts,
                 sender_display=sender_display,
                 sender_id=sender_id,
+                sender_username=sender_username,
                 message_id=message_id,
                 is_from_agent=is_from_agent,
                 reply_to_msg_id=reply_to_msg_id,
@@ -1168,6 +1195,7 @@ async def _run_llm_with_retrieval(
         {
             "sender": item.sender_display,
             "sender_id": item.sender_id,
+            **({"sender_username": item.sender_username} if item.sender_username else {}),
             "msg_id": item.message_id,
             "is_agent": item.is_from_agent,
             "parts": item.message_parts,
