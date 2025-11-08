@@ -57,6 +57,8 @@ say "Hello" to Bob (5678) for her, you can do it this way:
 ]
 ```
 
+If you are relaying a message like this, **the intent body must explicitly include the intended recipient's identity**. The recipient of the xsend (your future self) will not know to whom an intended action is to be applied unless that is explicitly stated in the intent. Don't assume that, just because it is received on Bob's channel, that you will know that the message is intended to be relayed to Bob.
+
 ## How to react in a DM to a user other than the current DM
 
 You can cause yourself to react in another channel to something you learned in this one.
