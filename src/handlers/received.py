@@ -5,7 +5,6 @@
 
 import json
 import logging
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC
@@ -27,7 +26,6 @@ from media.media_injector import (
     inject_media_descriptions,
 )
 from media.media_source import get_default_media_source_chain
-from sticker_trigger import parse_sticker_body
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
@@ -430,162 +428,402 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-async def parse_llm_reply_from_markdown(
-    md_text: str, *, agent_id, channel_id, agent=None
+def _strip_json_fence(text: str) -> str:
+    trimmed = text.strip()
+    if not trimmed.startswith("```"):
+        return trimmed
+
+    newline_index = trimmed.find("\n")
+    if newline_index == -1:
+        return trimmed
+
+    fence_lang = trimmed[3:newline_index].strip().lower()
+    if fence_lang not in {"", "json"}:
+        return trimmed
+
+    body = trimmed[newline_index + 1 :]
+    if body.endswith("```"):
+        body = body[:-3]
+    elif body.endswith("\n```"):
+        body = body[:-4]
+    return body.strip()
+
+
+_MISSING = object()
+
+
+def _get_field(data: dict, *candidates: str, default=_MISSING):
+    for key in candidates:
+        if key in data:
+            return data[key]
+    if default is _MISSING:
+        return None
+    return default
+
+
+def _coerce_to_str(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return str(value)
+
+
+def _coerce_to_int(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, str):
+        return [line.strip() for line in value.splitlines() if line.strip()]
+    return [str(value)]
+
+
+async def parse_llm_reply_from_json(
+    json_text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
     """
-    Parse LLM markdown response into a list of TaskNode instances.
-    Recognized task types: send, sticker, wait, shutdown, remember, think, retrieve, xsend.
+    Parse LLM JSON response into a list of TaskNode instances.
 
-    Remember tasks are processed immediately and not added to the task graph.
-    Think tasks are discarded and not added to the task graph - they exist only to allow the LLM to reason before producing output.
-    Retrieve tasks are used for retrieval augmentation and are handled specially in handle_received.
+    The response must be a JSON array where each element represents a task object.
+    Recognized task kinds: send, sticker, wait, shutdown, remember, think, retrieve,
+    xsend, block, unblock, clear-conversation.
     """
-    task_nodes = []
-    current_type = None
-    current_reply_to = None
-    current_xsend_target = None
-    buffer = []
 
-    async def flush():
-        if current_type is None:
+    if not json_text.strip():
+        return []
+
+    payload_text = _strip_json_fence(json_text)
+
+    try:
+        raw_tasks = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM response is not valid JSON: {exc}") from exc
+
+    if not isinstance(raw_tasks, list):
+        raise ValueError("LLM response must be a JSON array of task objects")
+
+    task_nodes: list[TaskNode] = []
+    source_id_to_node: dict[str, TaskNode] = {}
+    source_id_to_generated: dict[str, str] = {}
+
+    async def remove_existing_task(source_identifier: str):
+        existing = source_id_to_node.pop(source_identifier, None)
+        if not existing:
             return
+        task_nodes[:] = [
+            node for node in task_nodes if node.identifier != existing.identifier
+        ]
 
-        body = "\n".join(buffer).strip()
-        task_id = f"{current_type}-{uuid.uuid4().hex[:8]}"
-        params = {"agent_id": agent_id, "channel_id": channel_id}
+    for idx, raw_item in enumerate(raw_tasks):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"Task #{idx + 1} is not a JSON object")
 
-        if current_reply_to:
-            params["in_reply_to"] = current_reply_to
+        raw_kind = raw_item.get("kind")
+        if not raw_kind:
+            raise ValueError(f"Task #{idx + 1} missing 'kind'")
 
-        if body.startswith("```markdown\n"):
-            body = body.removeprefix("```markdown\n")
-            if body.endswith("```"):
-                body = body.removesuffix("```")
-            elif body.endswith("```\n"):
-                body = body.removesuffix("```\n")
+        kind = str(raw_kind).lower().strip()
+        if not kind:
+            raise ValueError(f"Task #{idx + 1} has empty 'kind'")
 
-        if current_type == "send":
-            params["message"] = body
+        source_identifier = _coerce_to_str(
+            _get_field(raw_item, "id", "task_id", "taskId", "identifier")
+        ).strip()
+        if not source_identifier:
+            source_identifier = f"{kind}-{uuid.uuid4().hex[:8]}"
 
-        elif current_type == "sticker":
-            parsed = parse_sticker_body(body)
-            if not parsed:
-                # Silent on Telegram; note in logs only
-                logger.info("[sticker] malformed or empty sticker body; dropping")
-                return
+        await remove_existing_task(source_identifier)
 
-            set_short, sticker_name = parsed
-            params["name"] = sticker_name
-            params["sticker_set"] = set_short
-
-        elif current_type == "wait":
-            match = re.search(r"delay:\s*(\d+)", body)
-            if not match:
-                raise ValueError("Wait task must contain 'delay: <seconds>'")
-
-            delay_seconds = int(match.group(1))
-            params["delay"] = delay_seconds
-
-        elif current_type == "block":
-            pass  # No parameters needed
-
-        elif current_type == "unblock":
-            pass  # No parameters needed
-
-        elif current_type == "shutdown":
-            if body:
-                params["reason"] = body
-
-        elif current_type == "clear-conversation":
-            pass  # No parameters needed
-
-        elif current_type == "remember":
-            # Remember tasks are processed immediately, not added to task graph
-            if agent and body:
-                # Strip JSON code blocks if present
-                if body.startswith("```json\n"):
-                    body = body.removeprefix("```json\n")
-                    if body.endswith("```"):
-                        body = body.removesuffix("```")
-                    elif body.endswith("```\n"):
-                        body = body.removesuffix("```\n")
-                elif body.startswith("```\n"):
-                    body = body.removeprefix("```\n")
-                    if body.endswith("```"):
-                        body = body.removesuffix("```")
-                    elif body.endswith("```\n"):
-                        body = body.removesuffix("```\n")
-                
-                # Send telepathic message if channel is telepathic
-                await _maybe_send_telepathic_message(agent, channel_id, "⟦remember⟧", body)
-                await _process_remember_task(agent, channel_id, body)
-            return  # Don't add to task_nodes
-
-        elif current_type == "think":
-            # Think tasks are discarded - they exist only to allow the LLM to reason before producing output
-            logger.debug(
-                f"[think] Discarding think task content (length: {len(body)} chars)"
-            )
-            # Send telepathic message if channel is telepathic
-            if agent and body:
-                await _maybe_send_telepathic_message(agent, channel_id, "⟦think⟧", body)
-            return  # Don't add to task_nodes
-
-        elif current_type == "retrieve":
-            # Parse URLs from retrieve task body (one URL per line)
-            urls = []
-            for line in body.strip().split("\n"):
-                line = line.strip()
-                if line and (line.startswith("http://") or line.startswith("https://")):
-                    urls.append(line)
-
-            if not urls:
-                logger.warning("[retrieve] No valid URLs found in retrieve task body")
-                return  # Don't add to task_nodes
-
-            # Send telepathic message if channel is telepathic
-            if agent and body:
-                await _maybe_send_telepathic_message(agent, channel_id, "⟦retrieve⟧", body)
-
-            params["urls"] = urls
-
-        elif current_type == "xsend":
-            # XSend: forward intent to another channel for this same agent
-            # Header carries the numeric target channel id
-            if current_xsend_target is None:
-                logger.warning("[xsend] Missing target channel id; dropping task")
-                return
-            params["target_channel_id"] = current_xsend_target
-            # Body is the intent (can be empty)
-            params["intent"] = body
-
-        else:
-            raise ValueError(f"Unknown task type: {current_type}")
-
-        task_nodes.append(
-            TaskNode(
-                identifier=task_id, type=current_type, params=params, depends_on=[]
-            )
+        generated_identifier = source_id_to_generated.setdefault(
+            source_identifier, f"{kind}-{uuid.uuid4().hex[:8]}"
         )
 
-    for line in md_text.splitlines():
-        heading_match = re.match(r"# «([^»]+)»(?:\s+(-?\d+))?", line)
-        if heading_match:
-            await flush()
-            current_type = heading_match.group(1).strip().lower()
-            reply_to_str = heading_match.group(2)
-            # For xsend, the numeric suffix is the target channel id
-            if current_type == "xsend":
-                current_xsend_target = int(reply_to_str) if reply_to_str else None
-                current_reply_to = None
-            else:
-                current_reply_to = int(reply_to_str) if reply_to_str else None
-            buffer = []
-        else:
-            buffer.append(line)
+        params: dict = {"agent_id": agent_id, "channel_id": channel_id}
 
-    await flush()
+        depends_on = _normalize_list(
+            _get_field(raw_item, "depends_on", "depends-on", "dependsOn")
+        )
+
+        if kind == "send":
+            message = _get_field(raw_item, "text", "message", "body", default="")
+            message_str = _coerce_to_str(message).strip()
+            if not message_str:
+                logger.info("[send] Dropping empty send task")
+                continue
+
+            reply_to = _get_field(raw_item, "reply_to", "reply-to", "replyTo")
+            reply_to_int = _coerce_to_int(reply_to)
+
+            params["message"] = message_str
+            if reply_to_int is not None:
+                params["in_reply_to"] = reply_to_int
+
+            allowed = {
+                "kind",
+                "id",
+                "text",
+                "message",
+                "body",
+                "reply_to",
+                "reply-to",
+                "replyTo",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type="send",
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        if kind == "sticker":
+            set_value = _get_field(
+                raw_item, "sticker_set", "sticker-set", "set", "pack"
+            )
+            name_value = _get_field(raw_item, "name", "sticker", "emoji")
+            if not set_value or not name_value:
+                logger.warning("[sticker] Missing sticker_set or name; dropping task")
+                continue
+
+            params["sticker_set"] = str(set_value)
+            params["name"] = str(name_value)
+
+            reply_to = _get_field(raw_item, "reply_to", "reply-to", "replyTo")
+            reply_to_int = _coerce_to_int(reply_to)
+            if reply_to_int is not None:
+                params["in_reply_to"] = reply_to_int
+
+            allowed = {
+                "kind",
+                "id",
+                "sticker_set",
+                "sticker-set",
+                "set",
+                "pack",
+                "name",
+                "sticker",
+                "emoji",
+                "reply_to",
+                "reply-to",
+                "replyTo",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type="sticker",
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        if kind == "wait":
+            delay_value = _get_field(raw_item, "delay", "seconds", "duration")
+            delay_int = _coerce_to_int(delay_value)
+            if delay_int is None or delay_int < 0:
+                raise ValueError("[wait] Task must include non-negative 'delay'")
+            params["delay"] = delay_int
+            preserve = _get_field(raw_item, "preserve")
+            if isinstance(preserve, bool):
+                params["preserve"] = preserve
+
+            allowed = {
+                "kind",
+                "id",
+                "delay",
+                "seconds",
+                "duration",
+                "preserve",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type="wait",
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        if kind in {"block", "unblock", "shutdown", "clear-conversation"}:
+            if kind == "shutdown":
+                reason = _get_field(raw_item, "reason", "text", "message")
+                if reason:
+                    params["reason"] = _coerce_to_str(reason)
+
+            allowed = {
+                "kind",
+                "id",
+                "reason",
+                "text",
+                "message",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type=kind,
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        if kind == "remember":
+            content = _get_field(
+                raw_item, "text", "content", "memory", "data", "body"
+            )
+            body = _coerce_to_str(content).strip()
+            if not body:
+                logger.info("[remember] Empty remember task discarded")
+                continue
+            if agent:
+                await _maybe_send_telepathic_message(
+                    agent, channel_id, "⟦remember⟧", body
+                )
+                await _process_remember_task(agent, channel_id, body)
+            continue
+
+        if kind == "think":
+            thought = _get_field(raw_item, "text", "content", "body", default="")
+            thought_str = _coerce_to_str(thought)
+            logger.debug(
+                f"[think] Discarding think task content (length: {len(thought_str)} chars)"
+            )
+            if agent and thought_str:
+                await _maybe_send_telepathic_message(
+                    agent, channel_id, "⟦think⟧", thought_str
+                )
+            continue
+
+        if kind == "retrieve":
+            urls_value = _get_field(
+                raw_item, "urls", "links", "text", "content", "body"
+            )
+            urls = []
+            for url in _normalize_list(urls_value):
+                if url.startswith("http://") or url.startswith("https://"):
+                    urls.append(url)
+            if not urls:
+                logger.warning("[retrieve] No valid URLs provided; dropping task")
+                continue
+            if agent and urls_value:
+                await _maybe_send_telepathic_message(
+                    agent, channel_id, "⟦retrieve⟧", "\n".join(urls)
+                )
+            params["urls"] = urls
+
+            allowed = {
+                "kind",
+                "id",
+                "urls",
+                "links",
+                "text",
+                "content",
+                "body",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type="retrieve",
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        if kind == "xsend":
+            target = _get_field(
+                raw_item,
+                "target_channel_id",
+                "target-channel-id",
+                "target",
+                "channel_id",
+                "channel-id",
+                "channelId",
+            )
+            target_int = _coerce_to_int(target)
+            if target_int is None:
+                logger.warning("[xsend] Missing target_channel_id; dropping task")
+                continue
+            params["target_channel_id"] = target_int
+            intent_value = _get_field(raw_item, "intent", "text", "body", "content")
+            params["intent"] = _coerce_to_str(intent_value)
+
+            allowed = {
+                "kind",
+                "id",
+                "intent",
+                "text",
+                "body",
+                "content",
+                "target_channel_id",
+                "target-channel-id",
+                "target",
+                "channel_id",
+                "channel-id",
+                "channelId",
+                "depends_on",
+                "depends-on",
+                "dependsOn",
+            }
+            extras = {k: v for k, v in raw_item.items() if k not in allowed}
+
+            node = TaskNode(
+                identifier=generated_identifier,
+                type="xsend",
+                params=params | ({"extras": extras} if extras else {}),
+                depends_on=depends_on,
+            )
+            task_nodes.append(node)
+            source_id_to_node[source_identifier] = node
+            continue
+
+        logger.warning(f"[parse] Unsupported task kind '{kind}', ignoring")
+
     return task_nodes
 
 
@@ -1381,16 +1619,7 @@ async def _schedule_tasks(
 async def parse_llm_reply(
     text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
-    # Gemini generates this, and prompting doesn't seem to discourage it.
-    if text.startswith("```markdown\n") and text.endswith("```"):
-        text = text.removeprefix("```markdown\n").removesuffix("```")
-    if text.startswith("```markdown\n") and text.endswith("```\n"):
-        text = text.removeprefix("```markdown\n").removesuffix("```\n")
-
-    # ChatGPT gets this right, and Gemini does after stripping the surrounding code block
-    if not text.startswith("# "):
-        text = "# «send»\n\n" + text
-    return await parse_llm_reply_from_markdown(
+    return await parse_llm_reply_from_json(
         text, agent_id=agent_id, channel_id=channel_id, agent=agent
     )
 

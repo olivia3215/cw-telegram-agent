@@ -15,22 +15,27 @@ Use memory to remember:
 
 ## How to Use Memory
 
-When you learn something important about someone, use the `remember` task to save it. The content must be a JSON object:
+When you learn something important about someone, emit a `remember` task in your
+JSON response. The task’s `content` (or `text`/`data`) should be a JSON object describing
+the memory:
 
+```json
+[
+  {
+    "kind": "remember",
+    "id": "remember-1",
+    "content": {
+      "content": "User mentioned they have a younger sister named Sarah who is studying abroad."
+    }
+  }
+]
 ```
-# «remember»
 
-{
-  "content": "User mentioned they have a younger sister named Sarah who is studying abroad."
-}
-```
-
-You may include additional fields in the JSON object if you wish. The system will automatically add:
-- `kind`: Always set to "memory"
-- `created`: Timestamp when the memory was created
-- `creation_channel`: Name of the conversation partner
-- `creation_channel_id`: Numeric ID of the conversation
-- `creation_channel_username`: Username or nym for the conversation (e.g., @alice) when available
+You may include additional fields inside the memory object if helpful. The system
+automatically augments the stored memory with metadata such as:
+- `kind` (always `"memory"`)
+- `created` timestamp
+- `creation_channel`, `creation_channel_id`, and `creation_channel_username`
 
 The memory will be automatically saved and included in future conversations with that person.
 
@@ -55,46 +60,61 @@ Your memories help you build deeper, more meaningful relationships with the peop
 
 Good memory entries:
 
-```
-# «remember»
-
-{
-  "content": "User works as a software engineer at Google and enjoys hiking on weekends"
-}
-```
-
-```
-# «remember»
-
-{
-  "content": "User's birthday is March 15th and they love chocolate cake"
-}
+```json
+[
+  {
+    "kind": "remember",
+    "content": {
+      "content": "User works as a software engineer at Google and enjoys hiking on weekends"
+    }
+  }
+]
 ```
 
+```json
+[
+  {
+    "kind": "remember",
+    "content": {
+      "content": "User's birthday is March 15th and they love chocolate cake"
+    }
+  }
+]
 ```
-# «remember»
 
-{
-  "content": "User is learning Spanish and wants to visit Mexico next year"
-}
+```json
+[
+  {
+    "kind": "remember",
+    "content": {
+      "content": "User is learning Spanish and wants to visit Mexico next year"
+    }
+  }
+]
 ```
 
-```
-# «remember»
-
-{
-  "content": "User has a golden retriever named Max who is 3 years old"
-}
+```json
+[
+  {
+    "kind": "remember",
+    "content": {
+      "content": "User has a golden retriever named Max who is 3 years old"
+    }
+  }
+]
 ```
 
 You can also include additional fields if relevant:
 
-```
-# «remember»
-
-{
-  "content": "User prefers morning meetings",
-  "priority": "high",
-  "category": "preferences"
-}
+```json
+[
+  {
+    "kind": "remember",
+    "content": {
+      "content": "User prefers morning meetings",
+      "priority": "high",
+      "category": "preferences"
+    }
+  }
+]
 ```

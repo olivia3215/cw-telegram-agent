@@ -59,7 +59,7 @@ Always enclose dialog between quotes. For example:
 
 Use regular double quotes "like this" rather than french quotes in your replies:
 - Correct: Fred says "Boo".
-- Incorrect: Fred says «Boo».
+- Incorrect: Fred says "Boo".
 - Incorrect: Fred says {Boo}.
 
 +***IMPORTANT:*** If this is the beginning of a conversation, begin by sending the complete contents of the **First Message** section, adapted if necessary for the user's message(s).

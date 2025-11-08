@@ -61,5 +61,5 @@ You must always describe what the user sees, hears, and feels, and offer choices
 
 Use regular double quotes "like this" rather than french quotes in your replies:
 - Correct: Fred says "Boo".
-- Incorrect: Fred says «Boo».
+- Incorrect: Fred says "Boo".
 - Incorrect: Fred says {Boo}.

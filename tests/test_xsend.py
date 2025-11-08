@@ -3,21 +3,29 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
+
 import pytest
 
-from handlers.received import parse_llm_reply_from_markdown
+from handlers.received import parse_llm_reply_from_json
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 
 
 @pytest.mark.asyncio
 async def test_parse_xsend_basic():
-    md = """# «xsend» 12345
+    payload = json.dumps(
+        [
+            {
+                "kind": "xsend",
+                "target_channel_id": 12345,
+                "intent": "Tell Michael that we now have the ability to chat on demand.",
+            }
+        ],
+        indent=2,
+    )
 
-I would like to tell Michael that we now have the ability to chat with each other on demand.
-"""
-
-    tasks = await parse_llm_reply_from_markdown(md, agent_id=42, channel_id=111)
+    tasks = await parse_llm_reply_from_json(payload, agent_id=42, channel_id=111)
 
     assert len(tasks) == 1
     t = tasks[0]
@@ -30,10 +38,13 @@ I would like to tell Michael that we now have the ability to chat with each othe
 
 @pytest.mark.asyncio
 async def test_parse_xsend_empty_body():
-    md = """# «xsend» 999
-
-"""
-    tasks = await parse_llm_reply_from_markdown(md, agent_id=1, channel_id=2)
+    payload = json.dumps(
+        [
+            {"kind": "xsend", "target_channel_id": 999},
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=1, channel_id=2)
     assert len(tasks) == 1
     t = tasks[0]
     assert t.type == "xsend"
@@ -45,11 +56,17 @@ async def test_parse_xsend_empty_body():
 @pytest.mark.asyncio
 async def test_parse_xsend_negative_group_id():
     """Test that negative channel IDs (groups) are parsed correctly."""
-    md = """# «xsend» -1002100080800
-
-This is a test message for a group.
-"""
-    tasks = await parse_llm_reply_from_markdown(md, agent_id=42, channel_id=111)
+    payload = json.dumps(
+        [
+            {
+                "kind": "xsend",
+                "target_channel_id": -1002100080800,
+                "intent": "This is a test message for a group.",
+            }
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=42, channel_id=111)
     assert len(tasks) == 1
     t = tasks[0]
     assert t.type == "xsend"

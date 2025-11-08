@@ -3,9 +3,11 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
-import pytest
+import json
 from pathlib import Path
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels
 
@@ -191,23 +193,24 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_think_telepathic(self):
         """Test that think tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_markdown
+        from handlers.received import parse_llm_reply_from_json
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 123  # Non-telepathic agent
         
-        md_text = """# «think»
-
-I need to think about this problem carefully."""
+        json_text = json.dumps(
+            [{"kind": "think", "text": "I need to think about this problem carefully."}],
+            indent=2,
+        )
         
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 456
             
-            tasks = await parse_llm_reply_from_markdown(
-                md_text, agent_id=123, channel_id=456, agent=mock_agent
+            tasks = await parse_llm_reply_from_json(
+                json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
             # Should not add think task to task list
@@ -221,24 +224,30 @@ I need to think about this problem carefully."""
     @pytest.mark.asyncio
     async def test_parse_llm_reply_remember_telepathic(self):
         """Test that remember tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_markdown
+        from handlers.received import parse_llm_reply_from_json
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 123  # Non-telepathic agent
         
-        md_text = """# «remember»
-
-{"content": "User prefers short responses."}"""
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "remember",
+                    "content": {"content": "User prefers short responses."},
+                }
+            ],
+            indent=2,
+        )
         
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 456
             
             with patch('handlers.received._process_remember_task', new_callable=AsyncMock) as mock_process:
-                tasks = await parse_llm_reply_from_markdown(
-                    md_text, agent_id=123, channel_id=456, agent=mock_agent
+                tasks = await parse_llm_reply_from_json(
+                    json_text, agent_id=123, channel_id=456, agent=mock_agent
                 )
                 
                 # Should not add remember task to task list
@@ -257,24 +266,32 @@ I need to think about this problem carefully."""
     @pytest.mark.asyncio
     async def test_parse_llm_reply_retrieve_telepathic(self):
         """Test that retrieve tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_markdown
+        from handlers.received import parse_llm_reply_from_json
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 123  # Non-telepathic agent
         
-        md_text = """# «retrieve»
-
-https://example.com/page1
-https://example.com/page2"""
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "retrieve",
+                    "urls": [
+                        "https://example.com/page1",
+                        "https://example.com/page2",
+                    ],
+                }
+            ],
+            indent=2,
+        )
         
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 456
             
-            tasks = await parse_llm_reply_from_markdown(
-                md_text, agent_id=123, channel_id=456, agent=mock_agent
+            tasks = await parse_llm_reply_from_json(
+                json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
             # Should add retrieve task to task list
@@ -290,20 +307,21 @@ https://example.com/page2"""
     @pytest.mark.asyncio
     async def test_parse_llm_reply_non_telepathic_channel(self):
         """Test that telepathic messages are not sent for non-telepathic channels."""
-        from handlers.received import parse_llm_reply_from_markdown
+        from handlers.received import parse_llm_reply_from_json
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 123  # Non-telepathic agent
         
-        md_text = """# «think»
-
-I need to think about this."""
+        json_text = json.dumps(
+            [{"kind": "think", "text": "I need to think about this."}],
+            indent=2,
+        )
         
         with patch('handlers.received.is_telepath', return_value=False):
-            tasks = await parse_llm_reply_from_markdown(
-                md_text, agent_id=123, channel_id=456, agent=mock_agent
+            tasks = await parse_llm_reply_from_json(
+                json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
             # Should not add think task to task list
@@ -315,23 +333,24 @@ I need to think about this."""
     @pytest.mark.asyncio
     async def test_parse_llm_reply_telepathic_agent_no_telepathic_message(self):
         """Test that telepathic agents do not send telepathic messages even to telepathic channels."""
-        from handlers.received import parse_llm_reply_from_markdown
+        from handlers.received import parse_llm_reply_from_json
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 123  # Telepathic agent
         
-        md_text = """# «think»
-
-I need to think about this."""
+        json_text = json.dumps(
+            [{"kind": "think", "text": "I need to think about this."}],
+            indent=2,
+        )
         
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Both channel and agent are telepathic
             mock_is_telepath.side_effect = lambda x: x in [123, 456]
             
-            tasks = await parse_llm_reply_from_markdown(
-                md_text, agent_id=123, channel_id=456, agent=mock_agent
+            tasks = await parse_llm_reply_from_json(
+                json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
             # Should not add think task to task list

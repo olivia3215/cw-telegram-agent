@@ -133,11 +133,16 @@ When an agent needs information from the web, it can use the `retrieve` task to 
 The `retrieve` task is processed specially during the LLM response loop:
 
 **Task Format:**
-```markdown
-# «retrieve»
-
-https://www.google.com/search?q=quantum+computing
-https://en.wikipedia.org/wiki/Quantum_computing
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://www.google.com/search?q=quantum+computing",
+      "https://en.wikipedia.org/wiki/Quantum_computing"
+    ]
+  }
+]
 ```
 
 **URL Limits:**
@@ -672,7 +677,7 @@ state/
 
 The `remember` task is processed immediately during LLM response parsing and does not go through the task graph:
 
-1. **Immediate processing**: `remember` tasks are handled in `parse_llm_reply_from_markdown()`
+1. **Immediate processing**: `remember` tasks are handled in `parse_llm_reply_from_json()`
 2. **File writing**: Content is added to the JSON array in the state memory file with timestamp
 3. **No task graph**: These tasks are not added to the task graph, avoiding delays
 4. **Error handling**: File write failures are logged but don't block conversation

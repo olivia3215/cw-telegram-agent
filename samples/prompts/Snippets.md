@@ -10,6 +10,10 @@ This allows the agent to begin fresh with a clean thread (for example, to set th
 
 Do not use this in group chats or channels.
 
-```markdown
-# «clear-conversation»
+```json
+[
+  {
+    "kind": "clear-conversation"
+  }
+]
 ```
