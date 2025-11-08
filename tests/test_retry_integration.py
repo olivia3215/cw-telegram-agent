@@ -9,6 +9,7 @@ Integration tests for retry behavior:
 - Retrieval exceptions preserve fetched resources and trigger retry
 """
 
+import json
 import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -72,11 +73,24 @@ class MockClientWithRetrieval:
             # First call returns retrieve task
             if self.client.call_count == 1:
                 return types.SimpleNamespace(
-                    text="# «retrieve»\n\nhttps://example.com/test"
+                    text=json.dumps(
+                        [
+                            {
+                                "kind": "retrieve",
+                                "urls": ["https://example.com/test"],
+                            }
+                        ],
+                        indent=2,
+                    )
                 )
 
             # Subsequent calls return send task (no more retrieve)
-            return types.SimpleNamespace(text="# «send»\n\nResponse with context")
+            return types.SimpleNamespace(
+                text=json.dumps(
+                    [{"kind": "send", "text": "Response with context"}],
+                    indent=2,
+                )
+            )
 
     @property
     def models(self):
@@ -307,7 +321,12 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
 
         def generate_content(self, model, contents, config=None, **kwargs):
             self.client.call_count += 1
-            return types.SimpleNamespace(text="# «send»\n\nResponse with context")
+            return types.SimpleNamespace(
+                text=json.dumps(
+                    [{"kind": "send", "text": "Response with context"}],
+                    indent=2,
+                )
+            )
 
     mock_llm_client.models = Models(mock_llm_client)
 
@@ -334,7 +353,10 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
 
     async def track_query(*args, **kwargs):
         query_calls.append({"args": args, "kwargs": kwargs})
-        return "# «send»\n\nResponse with context"
+        return json.dumps(
+            [{"kind": "send", "text": "Response with context"}],
+            indent=2,
+        )
 
     # Patch necessary functions
     monkeypatch.setattr("handlers.received.get_agent_for_id", lambda x: mock_agent)

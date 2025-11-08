@@ -3,15 +3,25 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
+
 import pytest
 
 from handlers.received import parse_llm_reply
 
 
+def _dump_tasks(payload):
+    return json.dumps(payload, indent=2)
+
+
 @pytest.mark.asyncio
-async def test_sticker_two_line_no_reply():
-    md = "# «sticker»\n\nWendyDancer\n😀\n"
-    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+async def test_sticker_basic_no_reply():
+    payload = _dump_tasks(
+        [
+            {"kind": "sticker", "sticker_set": "WendyDancer", "name": "😀"},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 1
     t = tasks[0]
@@ -22,9 +32,18 @@ async def test_sticker_two_line_no_reply():
 
 
 @pytest.mark.asyncio
-async def test_sticker_two_line_with_reply():
-    md = "# «sticker» 1234\n\nWendyDancer\n😘\n"
-    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+async def test_sticker_with_reply():
+    payload = _dump_tasks(
+        [
+            {
+                "kind": "sticker",
+                "sticker_set": "WendyDancer",
+                "name": "😘",
+                "reply_to": 1234,
+            },
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 1
     t = tasks[0]
@@ -35,13 +54,19 @@ async def test_sticker_two_line_with_reply():
 
 
 @pytest.mark.asyncio
-async def test_multiple_sticker_blocks_produce_multiple_tasks_and_sequence():
-    md = (
-        "# «sticker»\n\nWendyDancer\n😀\n\n"
-        "Some narrative text.\n\n"
-        "# «sticker» 42\n\nWendyDancer\n😘\n"
+async def test_multiple_sticker_tasks_sequence():
+    payload = _dump_tasks(
+        [
+            {"kind": "sticker", "sticker_set": "WendyDancer", "name": "😀"},
+            {
+                "kind": "sticker",
+                "sticker_set": "WendyDancer",
+                "name": "😘",
+                "reply_to": 42,
+            },
+        ]
     )
-    tasks = await parse_llm_reply(md, agent_id="agentX", channel_id="chan1")
+    tasks = await parse_llm_reply(payload, agent_id="agentX", channel_id="chan1")
 
     assert len(tasks) == 2
 

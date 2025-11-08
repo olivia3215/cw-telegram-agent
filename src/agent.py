@@ -428,7 +428,7 @@ class AgentRegistry:
             config_directory=config_directory,
             timezone=timezone,
         )
-        # logger.info(f"Added agent [{name}] with intructions: «{instructions}»")
+        # logger.info(f"Added agent [{name}] with instructions: {instructions!r}")
 
     def get_by_agent_id(self, agent_id):
         for agent in self.all_agents():

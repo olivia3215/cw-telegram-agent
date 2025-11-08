@@ -4,20 +4,25 @@ You have the ability to retrieve information from the internet by fetching web p
 
 ## How to Use the Retrieve Task
 
-Use the `«retrieve»` task to fetch web pages by their URL:
+Use the `retrieve` task object to fetch web pages by their URL:
 
-```
-# «retrieve»
-
-https://example.com/article
-https://en.wikipedia.org/wiki/Topic
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://example.com/article",
+      "https://en.wikipedia.org/wiki/Topic"
+    ]
+  }
+]
 ```
 
 ## Important Guidelines
 
-- **Limit**: You can retrieve up to **3 URLs** in a single retrieve task
-- **Format**: Each URL should be on its own line in the retrieve task body
-- **No Duplicates**: Don't request URLs you've already retrieved - check the system messages to see what's already been fetched
+- **Limit**: You can retrieve up to **3 URLs** in a single retrieve task.
+- **Format**: Supply `urls` as an array of strings, or put URLs (one per line) in `text`.
+- **No Duplicates**: Don't request URLs you've already retrieved—check system messages first.
 - **Be Strategic**: Think carefully about what information you need before retrieving
 
 ## Useful Search Resources
@@ -83,83 +88,125 @@ A common pattern is to:
 
 ### Example 1: Simple Search
 
-```
-# «think»
-
-The user asked about recent developments in quantum computing. I should search for current information.
-
-# «retrieve»
-
-https://html.duckduckgo.com/html/?q=quantum+computing+recent+developments+2025
+```json
+[
+  {
+    "kind": "think",
+    "text": "The user asked about recent developments in quantum computing. I should search for current information."
+  },
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://html.duckduckgo.com/html/?q=quantum+computing+recent+developments+2025"
+    ]
+  }
+]
 ```
 
 ### Example 2: Search Then Retrieve Specific Pages
 
 First retrieval (search):
-```
-# «retrieve»
 
-https://html.duckduckgo.com/html/?q=python+asyncio+tutorial
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://html.duckduckgo.com/html/?q=python+asyncio+tutorial"
+    ]
+  }
+]
 ```
 
 After seeing the search results, second retrieval:
-```
-# «think»
 
-I can see the search results now. There are some good tutorial links. Let me fetch the most relevant ones.
-
-# «retrieve»
-
-https://docs.python.org/3/library/asyncio.html
-https://realpython.com/async-io-python/
+```json
+[
+  {
+    "kind": "think",
+    "text": "I can see the search results now. There are some good tutorial links. Let me fetch the most relevant ones."
+  },
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://docs.python.org/3/library/asyncio.html",
+      "https://realpython.com/async-io-python/"
+    ]
+  }
+]
 ```
 
 ### Example 3: Wikipedia Lookup
 
-```
-# «retrieve»
-
-https://en.wikipedia.org/w/index.php?search=artificial+intelligence
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://en.wikipedia.org/w/index.php?search=artificial+intelligence"
+    ]
+  }
+]
 ```
 
 ### Example 4: Academic Research
 
-```
-# «retrieve»
-
-https://scholar.google.com/scholar?q=machine+learning+transformers
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://scholar.google.com/scholar?q=machine+learning+transformers"
+    ]
+  }
+]
 ```
 
 ### Example 5: Current News
 
-```
-# «think»
-
-The user asked what's happening in the world today. Let me get the latest news.
-
-# «retrieve»
-
-https://news.google.com/
+```json
+[
+  {
+    "kind": "think",
+    "text": "The user asked what's happening in the world today. Let me get the latest news."
+  },
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://news.google.com/"
+    ]
+  }
+]
 ```
 
 ### Example 6: News Search for Specific Topic
 
-```
-# «retrieve»
-
-https://news.google.com/search?q=artificial+intelligence+regulation
+```json
+[
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://news.google.com/search?q=artificial+intelligence+regulation"
+    ]
+  }
+]
 ```
 
 ### Example 7: Geographic News (User from India)
 
-```
-# «think»
-
-This user is from India and asked about recent developments. I should search for news relevant to their location.
-
-# «retrieve»
-
-https://news.google.com/search?q=India+technology+news
+```json
+[
+  {
+    "kind": "think",
+    "text": "This user is from India and asked about recent developments. I should search for news relevant to their location."
+  },
+  {
+    "kind": "retrieve",
+    "urls": [
+      "https://news.google.com/search?q=India+technology+news"
+    ]
+  }
+]
 ```
 
 ## When to Use Retrieval

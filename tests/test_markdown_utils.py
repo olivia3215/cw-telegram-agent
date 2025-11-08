@@ -3,6 +3,9 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
+from types import SimpleNamespace
+
 import pytest
 
 from handlers.received import parse_llm_reply
@@ -36,28 +39,22 @@ def test_flatten_unknown_type():
     assert flatten_node_text(node) == []
 
 
+def _dump_tasks(payload):
+    return json.dumps(payload, indent=2)
+
+
 @pytest.mark.asyncio
-async def test_parse_markdown_reply_all_task_types():
-    md = """# «send»
-
-I'll reply shortly.
-
-# «wait»
-
-delay: 10
-
-# «sticker»
-
-WendyDancer
-👍
-
-# «shutdown»
-
-Because I was asked to stop.
-
-# «clear-conversation»
-"""
-    tasks = await parse_llm_reply(md, agent_id="123", channel_id="456")
+async def test_parse_json_reply_all_task_types():
+    payload = _dump_tasks(
+        [
+            {"kind": "send", "text": "I'll reply shortly."},
+            {"kind": "wait", "delay": 10},
+            {"kind": "sticker", "sticker_set": "WendyDancer", "name": "👍"},
+            {"kind": "shutdown", "reason": "Because I was asked to stop."},
+            {"kind": "clear-conversation"},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="123", channel_id="456")
     assert len(tasks) == 5
 
     assert tasks[0].type == "send"
@@ -78,29 +75,31 @@ Because I was asked to stop.
 
 @pytest.mark.asyncio
 async def test_parse_clear_conversation_task():
-    md = """# «clear-conversation»"""
-    tasks = await parse_llm_reply(md, agent_id="123", channel_id="456")
+    payload = _dump_tasks([{"kind": "clear-conversation"}])
+    tasks = await parse_llm_reply(payload, agent_id="123", channel_id="456")
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
     assert tasks[0].params == {"agent_id": "123", "channel_id": "456"}
 
 
 @pytest.mark.asyncio
-async def test_parse_markdown_reply_with_reply_to():
+async def test_parse_json_reply_with_reply_to():
     """
     Tests that the parser correctly extracts the 'in_reply_to' message ID
-    from the task heading.
+    from the task payload.
     """
-    md = """# «send» 12345
-
-This is a reply.
-
-# «sticker» 54321
-
-WendyDancer
-👍
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="channel1")
+    payload = _dump_tasks(
+        [
+            {"kind": "send", "text": "This is a reply.", "reply_to": 12345},
+            {
+                "kind": "sticker",
+                "sticker_set": "WendyDancer",
+                "name": "👍",
+                "reply_to": 54321,
+            },
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="channel1")
     assert len(tasks) == 2
 
     # Check the 'send' task
@@ -115,12 +114,14 @@ WendyDancer
 
 
 @pytest.mark.asyncio
-async def test_parse_markdown_block_unblock_tasks():
-    md = """# «block»
-
-# «unblock»
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+async def test_parse_json_block_unblock_tasks():
+    payload = _dump_tasks(
+        [
+            {"kind": "block"},
+            {"kind": "unblock"},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     assert len(tasks) == 2
     assert tasks[0].type == "block"
     assert tasks[1].type == "unblock"
@@ -129,15 +130,13 @@ async def test_parse_markdown_block_unblock_tasks():
 @pytest.mark.asyncio
 async def test_parse_think_task_is_discarded():
     """Test that think tasks are discarded and not added to the task graph."""
-    md = """# «think»
-
-Let me reason about this... I should respond warmly.
-
-# «send»
-
-Hello there!
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    payload = _dump_tasks(
+        [
+            {"kind": "think", "text": "Let me reason about this..."},
+            {"kind": "send", "text": "Hello there!"},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     # Think task should be discarded, only send task should remain
     assert len(tasks) == 1
     assert tasks[0].type == "send"
@@ -147,19 +146,14 @@ Hello there!
 @pytest.mark.asyncio
 async def test_parse_multiple_think_tasks():
     """Test that multiple think tasks are all discarded."""
-    md = """# «think»
-
-First reasoning step...
-
-# «think»
-
-Second reasoning step...
-
-# «send»
-
-Final response!
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    payload = _dump_tasks(
+        [
+            {"kind": "think", "text": "First reasoning step..."},
+            {"kind": "think", "text": "Second reasoning step..."},
+            {"kind": "send", "text": "Final response!"},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     # Both think tasks should be discarded
     assert len(tasks) == 1
     assert tasks[0].type == "send"
@@ -168,24 +162,15 @@ Final response!
 @pytest.mark.asyncio
 async def test_parse_think_tasks_between_other_tasks():
     """Test that think tasks can appear between other tasks."""
-    md = """# «send»
-
-First message.
-
-# «think»
-
-Now I'll send a sticker to lighten the mood...
-
-# «sticker»
-
-WendyDancer
-👍
-
-# «think»
-
-That should work well.
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    payload = _dump_tasks(
+        [
+            {"kind": "send", "text": "First message."},
+            {"kind": "think", "text": "Maybe add a sticker."},
+            {"kind": "sticker", "sticker_set": "WendyDancer", "name": "👍"},
+            {"kind": "think", "text": "That should work well."},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     # Both think tasks should be discarded, leaving only send and sticker
     assert len(tasks) == 2
     assert tasks[0].type == "send"
@@ -195,14 +180,45 @@ That should work well.
 @pytest.mark.asyncio
 async def test_parse_only_think_tasks():
     """Test that if only think tasks are present, no tasks are returned."""
-    md = """# «think»
-
-Just thinking...
-
-# «think»
-
-More thinking...
-"""
-    tasks = await parse_llm_reply(md, agent_id="agent1", channel_id="user123")
+    payload = _dump_tasks(
+        [
+            {"kind": "think", "text": "Just thinking..."},
+            {"kind": "think", "text": "More thinking..."},
+        ]
+    )
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
     # All think tasks should be discarded
     assert len(tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_depends_on_translates_to_generated_ids(monkeypatch):
+    """Dependencies should point to generated identifiers, not source IDs."""
+    hex_values = iter(
+        [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ]
+    )
+
+    def fake_uuid4():
+        return SimpleNamespace(hex=next(hex_values))
+
+    monkeypatch.setattr("handlers.received.uuid.uuid4", fake_uuid4)
+
+    payload = _dump_tasks(
+        [
+            {"kind": "wait", "id": "task-alpha", "delay": 5},
+            {"kind": "send", "id": "task-beta", "text": "Hello", "depends_on": ["task-alpha"]},
+        ]
+    )
+
+    tasks = await parse_llm_reply(payload, agent_id="agent1", channel_id="user123")
+
+    assert len(tasks) == 2
+
+    first, second = tasks
+
+    assert first.identifier == "wait-aaaaaaaa"
+    assert second.identifier == "send-bbbbbbbb"
+    assert second.depends_on == [first.identifier]

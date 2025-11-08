@@ -3,21 +3,22 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from handlers.received import _fetch_url, parse_llm_reply_from_markdown
+from handlers.received import _fetch_url, parse_llm_reply_from_json
 
 
 @pytest.mark.asyncio
 async def test_parse_retrieve_task_single_url():
     """Test parsing a retrieve task with a single URL."""
-    markdown = """# «retrieve»
-
-https://example.com/page1
-"""
-    tasks = await parse_llm_reply_from_markdown(markdown, agent_id=123, channel_id=456)
+    payload = json.dumps(
+        [{"kind": "retrieve", "urls": ["https://example.com/page1"]}],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -27,13 +28,20 @@ https://example.com/page1
 @pytest.mark.asyncio
 async def test_parse_retrieve_task_multiple_urls():
     """Test parsing a retrieve task with multiple URLs."""
-    markdown = """# «retrieve»
-
-https://example.com/page1
-https://example.com/page2
-https://example.com/page3
-"""
-    tasks = await parse_llm_reply_from_markdown(markdown, agent_id=123, channel_id=456)
+    payload = json.dumps(
+        [
+            {
+                "kind": "retrieve",
+                "urls": [
+                    "https://example.com/page1",
+                    "https://example.com/page2",
+                    "https://example.com/page3",
+                ],
+            }
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -47,14 +55,16 @@ https://example.com/page3
 @pytest.mark.asyncio
 async def test_parse_retrieve_task_with_text():
     """Test parsing a retrieve task that includes non-URL text (should be ignored)."""
-    markdown = """# «retrieve»
-
-Here are some URLs:
-https://example.com/page1
-Some other text
-http://example.com/page2
-"""
-    tasks = await parse_llm_reply_from_markdown(markdown, agent_id=123, channel_id=456)
+    payload = json.dumps(
+        [
+            {
+                "kind": "retrieve",
+                "text": "Here are some URLs:\nhttps://example.com/page1\nSome other text\nhttp://example.com/page2\n",
+            }
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -68,11 +78,11 @@ http://example.com/page2
 @pytest.mark.asyncio
 async def test_parse_retrieve_task_empty():
     """Test that an empty retrieve task is not added to task list."""
-    markdown = """# «retrieve»
-
-No URLs here!
-"""
-    tasks = await parse_llm_reply_from_markdown(markdown, agent_id=123, channel_id=456)
+    payload = json.dumps(
+        [{"kind": "retrieve", "text": "No URLs here!"}],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
 
     # Empty retrieve task should be discarded
     assert len(tasks) == 0
@@ -81,19 +91,18 @@ No URLs here!
 @pytest.mark.asyncio
 async def test_parse_mixed_tasks_with_retrieve():
     """Test parsing a mix of retrieve and other task types."""
-    markdown = """# «think»
-
-I should search for information first.
-
-# «retrieve»
-
-https://www.google.com/search?q=test
-
-# «send»
-
-Let me look that up for you!
-"""
-    tasks = await parse_llm_reply_from_markdown(markdown, agent_id=123, channel_id=456)
+    payload = json.dumps(
+        [
+            {"kind": "think", "text": "I should search for information first."},
+            {
+                "kind": "retrieve",
+                "urls": ["https://www.google.com/search?q=test"],
+            },
+            {"kind": "send", "text": "Let me look that up for you!"},
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
 
     # Think task is discarded, so we should have retrieve and send
     assert len(tasks) == 2
