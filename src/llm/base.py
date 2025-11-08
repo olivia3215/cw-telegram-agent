@@ -45,6 +45,7 @@ class ChatMsg(TypedDict, total=False):
     Identity / trace:
       - sender:    display name
       - sender_id: stable unique sender id (e.g., Telegram user id)
+      - sender_username: username (e.g., @alice) if available
       - msg_id:    message id string (if available)
       - is_agent:  True if this message was sent by *our* agent persona
       - ts_iso:    optional ISO-8601 timestamp (trace only; not shown to model)
@@ -52,6 +53,7 @@ class ChatMsg(TypedDict, total=False):
 
     sender: str
     sender_id: str
+    sender_username: str
     parts: list[MsgPart]
     text: str
     is_agent: bool

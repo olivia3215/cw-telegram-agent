@@ -19,6 +19,7 @@ def _mk_user_msg(
     sender="Alice",
     sender_id="u123",
     msg_id="m1",
+    sender_username=None,
     parts=None,
     text=None,
     reply_to_msg_id=None,
@@ -29,6 +30,7 @@ def _mk_user_msg(
         "sender_id": sender_id,
         "msg_id": msg_id,
         "is_agent": False,
+        **({"sender_username": sender_username} if sender_username else {}),
         **({"parts": parts} if parts is not None else {}),
         **({"text": text} if text is not None else {}),
         **({"reply_to_msg_id": reply_to_msg_id} if reply_to_msg_id is not None else {}),
@@ -36,13 +38,20 @@ def _mk_user_msg(
     }
 
 
-def _mk_agent_msg(text="ok", msg_id="a1", reply_to_msg_id=None, ts_iso=None):
+def _mk_agent_msg(
+    text="ok",
+    msg_id="a1",
+    reply_to_msg_id=None,
+    ts_iso=None,
+    sender_username=None,
+):
     return {
         "sender": "Agent",
         "sender_id": "agent-1",
         "msg_id": msg_id,
         "is_agent": True,
         "parts": [{"kind": "text", "text": text}],
+        **({"sender_username": sender_username} if sender_username else {}),
         **({"reply_to_msg_id": reply_to_msg_id} if reply_to_msg_id is not None else {}),
         **({"ts_iso": ts_iso} if ts_iso is not None else {}),
     }
@@ -53,13 +62,15 @@ def test_history_roles_and_order_with_parts():
     history = [
         _mk_user_msg(
             msg_id="m1",
+            sender_username="@alice",
             parts=[{"kind": "text", "text": "hello there"}],
         ),
-        _mk_agent_msg(text="hi!"),
+        _mk_agent_msg(text="hi!", sender_username="@agent"),
         _mk_user_msg(
             sender="Bob",
             sender_id="u456",
             msg_id="m2",
+            sender_username="@bob",
             parts=[
                 {
                     "kind": "media",
@@ -87,14 +98,17 @@ def test_history_roles_and_order_with_parts():
     # Each non-agent message starts with a metadata header part
     assert u1["parts"][0]["text"].startswith('⟦metadata⟧ sender="Alice" sender_id=u123')
     assert "message_id=m1" in u1["parts"][0]["text"]
+    assert "username=@alice" in u1["parts"][0]["text"]
     assert u2["parts"][0]["text"].startswith('⟦metadata⟧ sender="Bob" sender_id=u456')
     assert "message_id=m2" in u2["parts"][0]["text"]
+    assert "username=@bob" in u2["parts"][0]["text"]
 
     # Message content preserves order and rendered media
     assert u1["parts"][1]["text"] == "hello there"
     # Agent message now has metadata header with message_id
     assert a1["parts"][0]["text"].startswith("⟦metadata⟧")
     assert "message_id=a1" in a1["parts"][0]["text"]
+    assert "username=@agent" in a1["parts"][0]["text"]
     assert a1["parts"][1]["text"] == "hi!"  # content part follows metadata
     assert "{sticker OliviaAI/🙏" in u2["parts"][1]["text"]
 
