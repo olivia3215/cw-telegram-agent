@@ -49,8 +49,6 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     client = agent.client
     sticker_name = task.params.get("name")
     reply_to_raw = task.params.get("reply_to")
-    if reply_to_raw is None:
-        reply_to_raw = task.params.get("in_reply_to")
     in_reply_to = coerce_to_int(reply_to_raw)
 
     # Require sticker set to be specified in task (no fallback)
