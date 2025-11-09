@@ -1419,11 +1419,11 @@ async def _run_llm_with_retrieval(
             raise
         else:
             logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-            return [], False
+            return []
 
     if reply == "":
         logger.info(f"[{agent_name}] LLM decided not to reply")
-        return [], False
+        return []
 
     logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
@@ -1446,7 +1446,7 @@ async def _run_llm_with_retrieval(
         logger.exception(
             f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
         )
-        return [], False
+        return []
 
     tasks = await _process_retrieve_tasks(
         tasks,
