@@ -6,6 +6,7 @@
 import logging
 
 from agent import get_agent_for_id
+from handlers.utils import coerce_to_int
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from tick import register_task_handler
@@ -15,12 +16,20 @@ logger = logging.getLogger(__name__)
 
 @register_task_handler("send")
 async def handle_send(task: TaskNode, graph, work_queue=None):
+    """
+    Deliver a send task using the canonical `text` field from the LLM response.
+    """
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
     agent_name = agent.name
     client = agent.client
-    message = task.params.get("message")
+
+    message = task.params.get("text")
+    if message is not None:
+        message = str(message).strip()
+        if not message:
+            message = None
 
     # Be resilient to empty message
     if not message:
@@ -39,15 +48,16 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
-    reply_to = task.params.get("in_reply_to")
+    reply_to_raw = task.params.get("reply_to")
+    reply_to_int = coerce_to_int(reply_to_raw)
     try:
-        if reply_to:
+        if reply_to_int:
             await client.send_message(
-                channel_id, message, reply_to=reply_to, parse_mode="Markdown"
+                channel_id, message, reply_to=reply_to_int, parse_mode="Markdown"
             )
         else:
             await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
         logger.exception(
-            f"[{agent_name}] Failed to send reply to message {reply_to}: {e}"
+            f"[{agent_name}] Failed to send reply to message {reply_to_int}: {e}"
         )

@@ -18,6 +18,7 @@ from config import (
     FETCHED_RESOURCE_LIFETIME_SECONDS,
     STATE_DIRECTORY,
 )
+from handlers.utils import coerce_to_int
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
 from media.media_format import format_media_sentence
@@ -44,21 +45,29 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
     """
     Send a telepathic message to a channel immediately.
-    
+
     Args:
-        agent: The agent instance
-        channel_id: The channel to send to
-        prefix: The prefix (e.g., "⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")
-        content: The message content
+        agent: The agent instance.
+        channel_id: The channel to send to.
+        prefix: The concept (e.g., "think", "remember", "retrieve").
+        content: The message body (without prefix markers).
     """
     if not content.strip():
         return
         
     _should_reveal_thoughts = is_telepath(channel_id) and not is_telepath(agent.agent_id)
     if not _should_reveal_thoughts:
+        if not is_telepath(channel_id):
+            logger.info(f"[{agent.name}] Skipping telepathic message: channel {channel_id} is not telepathic")
+        if is_telepath(agent.agent_id):
+            logger.info(f"[{agent.name}] Skipping telepathic message: agent {agent.agent_id} is telepathic")
         return
 
-    message = f"{prefix}\n{content}"
+    prefix_stripped = prefix.strip()
+    if prefix_stripped.startswith("⟦") and prefix_stripped.endswith("⟧"):
+        prefix_stripped = prefix_stripped[1:-1]
+
+    message = f"⟦{prefix_stripped}⟧\n{content}"
     try:
         await agent.client.send_message(channel_id, message, parse_mode="Markdown")
         logger.info(f"[{agent.name}] Sent telepathic message: {prefix}")
@@ -448,18 +457,6 @@ def _strip_json_fence(text: str) -> str:
     return body.strip()
 
 
-_MISSING = object()
-
-
-def _get_field(data: dict, *candidates: str, default=_MISSING):
-    for key in candidates:
-        if key in data:
-            return data[key]
-    if default is _MISSING:
-        return None
-    return default
-
-
 def _coerce_to_str(value) -> str:
     if value is None:
         return ""
@@ -469,19 +466,6 @@ def _coerce_to_str(value) -> str:
         return json.dumps(value, ensure_ascii=False)
     except Exception:
         return str(value)
-
-
-def _coerce_to_int(value):
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
-    try:
-        return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
 
 
 def _normalize_list(value) -> list[str]:
@@ -527,16 +511,6 @@ async def parse_llm_reply_from_json(
         )
 
     task_nodes: list[TaskNode] = []
-    source_id_to_node: dict[str, TaskNode] = {}
-    source_id_to_generated: dict[str, str] = {}
-
-    async def remove_existing_task(source_identifier: str):
-        existing = source_id_to_node.pop(source_identifier, None)
-        if not existing:
-            return
-        task_nodes[:] = [
-            node for node in task_nodes if node.identifier != existing.identifier
-        ]
 
     for idx, raw_item in enumerate(raw_tasks):
         if not isinstance(raw_item, dict):
@@ -550,309 +524,261 @@ async def parse_llm_reply_from_json(
         if not kind:
             raise ValueError(f"Task #{idx + 1} has empty 'kind'")
 
-        source_identifier = _coerce_to_str(
-            _get_field(raw_item, "id", "task_id", "taskId", "identifier")
-        ).strip()
+        raw_identifier = raw_item.get("id")
+        source_identifier = _coerce_to_str(raw_identifier).strip()
         if not source_identifier:
             source_identifier = f"{kind}-{uuid.uuid4().hex[:8]}"
 
-        await remove_existing_task(source_identifier)
+        raw_params = {
+            key: value
+            for key, value in raw_item.items()
+            if key not in {"kind", "id", "depends_on"}
+        }
 
-        generated_identifier = source_id_to_generated.setdefault(
-            source_identifier, f"{kind}-{uuid.uuid4().hex[:8]}"
+        depends_on = _normalize_list(raw_item.get("depends_on"))
+
+        node = TaskNode(
+            identifier=source_identifier,
+            type=kind,
+            params=raw_params,
+            depends_on=depends_on,
         )
-
-        params: dict = {"agent_id": agent_id, "channel_id": channel_id}
-
-        depends_on = _normalize_list(
-            _get_field(raw_item, "depends_on", "depends-on", "dependsOn")
-        )
-
-        if kind == "send":
-            message = _get_field(raw_item, "text", "message", "body", default="")
-            message_str = _coerce_to_str(message).strip()
-            if not message_str:
-                logger.info("[send] Dropping empty send task")
-                continue
-
-            reply_to = _get_field(raw_item, "reply_to", "reply-to", "replyTo")
-            reply_to_int = _coerce_to_int(reply_to)
-
-            params["message"] = message_str
-            if reply_to_int is not None:
-                params["in_reply_to"] = reply_to_int
-
-            allowed = {
-                "kind",
-                "id",
-                "text",
-                "message",
-                "body",
-                "reply_to",
-                "reply-to",
-                "replyTo",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type="send",
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        if kind == "sticker":
-            set_value = _get_field(
-                raw_item, "sticker_set", "sticker-set", "set", "pack"
-            )
-            name_value = _get_field(raw_item, "name", "sticker", "emoji")
-            if not set_value or not name_value:
-                logger.warning("[sticker] Missing sticker_set or name; dropping task")
-                continue
-
-            params["sticker_set"] = str(set_value)
-            params["name"] = str(name_value)
-
-            reply_to = _get_field(raw_item, "reply_to", "reply-to", "replyTo")
-            reply_to_int = _coerce_to_int(reply_to)
-            if reply_to_int is not None:
-                params["in_reply_to"] = reply_to_int
-
-            allowed = {
-                "kind",
-                "id",
-                "sticker_set",
-                "sticker-set",
-                "set",
-                "pack",
-                "name",
-                "sticker",
-                "emoji",
-                "reply_to",
-                "reply-to",
-                "replyTo",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type="sticker",
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        if kind == "wait":
-            delay_value = _get_field(raw_item, "delay", "seconds", "duration")
-            delay_int = _coerce_to_int(delay_value)
-            if delay_int is None or delay_int < 0:
-                raise ValueError("[wait] Task must include non-negative 'delay'")
-            params["delay"] = delay_int
-            preserve = _get_field(raw_item, "preserve")
-            if isinstance(preserve, bool):
-                params["preserve"] = preserve
-
-            allowed = {
-                "kind",
-                "id",
-                "delay",
-                "seconds",
-                "duration",
-                "preserve",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type="wait",
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        if kind in {"block", "unblock", "shutdown", "clear-conversation"}:
-            if kind == "shutdown":
-                reason = _get_field(raw_item, "reason", "text", "message")
-                if reason:
-                    params["reason"] = _coerce_to_str(reason)
-
-            allowed = {
-                "kind",
-                "id",
-                "reason",
-                "text",
-                "message",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type=kind,
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        if kind == "remember":
-            content = _get_field(
-                raw_item, "text", "content", "memory", "data", "body"
-            )
-            body = _coerce_to_str(content).strip()
-            if not body:
-                logger.info("[remember] Empty remember task discarded")
-                continue
-            if agent:
-                await _maybe_send_telepathic_message(
-                    agent, channel_id, "⟦remember⟧", body
-                )
-                await _process_remember_task(agent, channel_id, body)
-            continue
-
-        if kind == "think":
-            thought = _get_field(raw_item, "text", "content", "body", default="")
-            thought_str = _coerce_to_str(thought)
-            logger.debug(
-                f"[think] Discarding think task content (length: {len(thought_str)} chars)"
-            )
-            if agent and thought_str:
-                await _maybe_send_telepathic_message(
-                    agent, channel_id, "⟦think⟧", thought_str
-                )
-            continue
-
-        if kind == "retrieve":
-            urls_value = _get_field(
-                raw_item, "urls", "links", "text", "content", "body"
-            )
-            urls = []
-            for url in _normalize_list(urls_value):
-                if url.startswith("http://") or url.startswith("https://"):
-                    urls.append(url)
-            if not urls:
-                logger.warning("[retrieve] No valid URLs provided; dropping task")
-                continue
-            if agent and urls_value:
-                await _maybe_send_telepathic_message(
-                    agent, channel_id, "⟦retrieve⟧", "\n".join(urls)
-                )
-            params["urls"] = urls
-
-            allowed = {
-                "kind",
-                "id",
-                "urls",
-                "links",
-                "text",
-                "content",
-                "body",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type="retrieve",
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        if kind == "xsend":
-            target = _get_field(
-                raw_item,
-                "target_channel_id",
-                "target-channel-id",
-                "target",
-                "channel_id",
-                "channel-id",
-                "channelId",
-            )
-            target_int = _coerce_to_int(target)
-            if target_int is None:
-                logger.warning("[xsend] Missing target_channel_id; dropping task")
-                continue
-            params["target_channel_id"] = target_int
-            intent_value = _get_field(raw_item, "intent", "text", "body", "content")
-            params["intent"] = _coerce_to_str(intent_value)
-
-            allowed = {
-                "kind",
-                "id",
-                "intent",
-                "text",
-                "body",
-                "content",
-                "target_channel_id",
-                "target-channel-id",
-                "target",
-                "channel_id",
-                "channel-id",
-                "channelId",
-                "depends_on",
-                "depends-on",
-                "dependsOn",
-            }
-            extras = {k: v for k, v in raw_item.items() if k not in allowed}
-
-            node = TaskNode(
-                identifier=generated_identifier,
-                type="xsend",
-                params=params | ({"extras": extras} if extras else {}),
-                depends_on=depends_on,
-            )
-            task_nodes.append(node)
-            source_id_to_node[source_identifier] = node
-            continue
-
-        logger.warning(f"[parse] Unsupported task kind '{kind}', ignoring")
-
-    # Translate dependency identifiers from source IDs to generated identifiers
-    if source_id_to_generated:
-        for node in task_nodes:
-            if not node.depends_on:
-                continue
-
-            translated: list[str] = []
-            for dep in node.depends_on:
-                generated = source_id_to_generated.get(dep)
-                if generated is None:
-                    translated.append(dep)
-                    logger.debug(
-                        "Dependency %s for task %s does not match any known task IDs",
-                        dep,
-                        node.identifier,
-                    )
-                else:
-                    translated.append(generated)
-
-            node.depends_on = translated
+        task_nodes.append(node)
 
     return task_nodes
+
+
+def _dedupe_tasks_by_identifier(tasks: list[TaskNode]) -> list[TaskNode]:
+    if not tasks:
+        return tasks
+
+    last_for_identifier: dict[str, TaskNode] = {}
+    for task in tasks:
+        last_for_identifier[task.identifier] = task
+
+    deduped: list[TaskNode] = []
+    seen: set[str] = set()
+    for task in tasks:
+        if task.identifier in seen:
+            continue
+        if last_for_identifier.get(task.identifier) is not task:
+            continue
+        deduped.append(task)
+        seen.add(task.identifier)
+    return deduped
+
+
+def _assign_generated_identifiers(tasks: list[TaskNode]) -> list[TaskNode]:
+    if not tasks:
+        return tasks
+
+    source_to_generated: dict[str, str] = {}
+    original_ids: dict[int, str] = {}
+
+    for task in tasks:
+        source_identifier = task.identifier
+        if not source_identifier:
+            source_identifier = f"{task.type}-{uuid.uuid4().hex[:8]}"
+        original_ids[id(task)] = source_identifier
+        if source_identifier not in source_to_generated:
+            source_to_generated[source_identifier] = (
+                f"{task.type}-{uuid.uuid4().hex[:8]}"
+            )
+
+    for task in tasks:
+        source_identifier = original_ids[id(task)]
+        task.identifier = source_to_generated[source_identifier]
+
+    for task in tasks:
+        translated: list[str] = []
+        for dep in task.depends_on:
+            translated.append(source_to_generated.get(dep, dep))
+        task.depends_on = translated
+
+    return tasks
+
+
+async def _run_immediate_task(
+    task: TaskNode, *, agent, channel_id: int
+) -> bool:
+    """
+    Handle task types that should execute immediately and not be scheduled.
+
+    Returns:
+        True if the task was consumed (and should be dropped from the graph),
+        False otherwise.
+    """
+    if task.type == "remember":
+        content_value = task.params.get("content")
+        if content_value is None:
+            logger.warning("[remember] Missing 'content'; dropping task")
+            return True
+
+        body = _coerce_to_str(content_value).strip()
+        if not body:
+            logger.info("[remember] Empty remember task discarded")
+            return True
+        if agent:
+            await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
+            await _process_remember_task(agent, channel_id, body)
+        return True
+
+    if task.type == "think":
+        thought = task.params.get("text", "")
+        thought_str = _coerce_to_str(thought)
+        logger.debug(
+            f"[think] Discarding think task content (length: {len(thought_str)} chars)"
+        )
+        if agent and thought_str:
+            await _maybe_send_telepathic_message(
+                agent, channel_id, "think", thought_str
+            )
+        return True
+
+    return False
+
+
+async def _execute_immediate_tasks(
+    tasks: list[TaskNode], *, agent, channel_id: int
+) -> list[TaskNode]:
+    """
+    Filter out tasks that can be satisfied immediately (e.g. think / remember).
+    """
+    if not tasks:
+        return tasks
+
+    remaining: list[TaskNode] = []
+    for task in tasks:
+        handled = await _run_immediate_task(
+            task, agent=agent, channel_id=channel_id
+        )
+        if handled:
+            continue
+        remaining.append(task)
+    return remaining
+
+
+async def _process_retrieve_tasks(
+    tasks: list[TaskNode],
+    *,
+    agent,
+    agent_name: str,
+    channel_id: int,
+    graph: TaskGraph,
+    retrieved_urls: set[str],
+    retrieved_contents: list[tuple[str, str]],
+) -> list[TaskNode]:
+    """
+    Run the retrieval loop: fetch requested URLs and then trigger a retry.
+    """
+    normalized_tasks: list[TaskNode] = []
+    retrieve_tasks: list[TaskNode] = []
+
+    for task in tasks:
+        if task.type != "retrieve":
+            normalized_tasks.append(task)
+            continue
+
+        urls: list[str] = []
+        for url in _normalize_list(task.params.get("urls")):
+            if url.startswith("http://") or url.startswith("https://"):
+                urls.append(url)
+
+        if not urls:
+            for url in _normalize_list(task.params.get("text")):
+                if url.startswith("http://") or url.startswith("https://"):
+                    urls.append(url)
+
+        if not urls:
+            logger.warning("[retrieve] No valid URLs provided; dropping task")
+            continue
+
+        normalized_task = TaskNode(
+            identifier=task.identifier,
+            type=task.type,
+            params={**task.params, "urls": urls},
+            depends_on=list(task.depends_on),
+            status=task.status,
+        )
+
+        normalized_tasks.append(normalized_task)
+        retrieve_tasks.append(normalized_task)
+
+    if not retrieve_tasks:
+        return normalized_tasks
+
+    logger.info(f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)")
+
+    remaining = 3
+    urls_to_fetch: list[str] = []
+    task_to_fetch: dict[str, list[str]] = {}
+
+    for retrieve_task in retrieve_tasks:
+        if remaining <= 0:
+            break
+
+        new_urls = [
+            url
+            for url in retrieve_task.params.get("urls", [])
+            if url not in retrieved_urls
+        ]
+
+        if not new_urls:
+            continue
+
+        to_fetch = new_urls[:remaining]
+        task_to_fetch[retrieve_task.identifier] = to_fetch
+        urls_to_fetch.extend(to_fetch)
+        remaining -= len(to_fetch)
+
+    if not urls_to_fetch:
+        logger.info(
+            f"[{agent_name}] All requested URLs already retrieved - content is already in history"
+        )
+        return normalized_tasks
+
+    if agent:
+        for retrieve_task in retrieve_tasks:
+            new_urls = task_to_fetch.get(retrieve_task.identifier)
+            if not new_urls:
+                continue
+            await _maybe_send_telepathic_message(
+                agent, channel_id, "retrieve", "\n".join(new_urls)
+            )
+
+    logger.info(
+        f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
+    )
+    for url in urls_to_fetch:
+        fetched_url, content = await _fetch_url(url)
+        retrieved_urls.add(fetched_url)
+        retrieved_contents.append((fetched_url, content))
+        logger.info(
+            f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
+        )
+
+    if retrieved_contents:
+        graph.context["fetched_resources"] = dict(retrieved_contents)
+        logger.info(
+            f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
+        )
+
+    wait_task = make_wait_task(
+        delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+        preserve=True,
+    )
+    graph.add_task(wait_task)
+    logger.info(
+        f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
+    )
+
+    logger.info(
+        f"[{agent_name}] Successfully fetched {len(urls_to_fetch)} URL(s); triggering retry to process with retrieved content"
+    )
+
+    raise Exception(
+        "Temporary error: retrieval - will retry with fetched content"
+    )
 
 
 async def _specific_instructions(
@@ -1406,7 +1332,7 @@ async def _run_llm_with_retrieval(
     channel_id: int,
     task: TaskNode,
     graph: TaskGraph,
-) -> tuple[list[TaskNode], bool]:
+) -> list[TaskNode]:
     """
     Run LLM query with retrieval augmentation support.
 
@@ -1422,7 +1348,7 @@ async def _run_llm_with_retrieval(
         graph: Task graph for error handling
 
     Returns:
-        Tuple of (TaskNode list from LLM response, bool indicating if new resources were fetched)
+        List of TaskNode objects parsed from the LLM response.
     """
     agent_name = agent.name
     llm = agent.llm
@@ -1437,7 +1363,6 @@ async def _run_llm_with_retrieval(
     retrieved_contents: list[tuple[str, str]] = list(
         existing_resources.items()
     )  # Content to inject into history
-    fetched_new_resources = False
 
     # Inject retrieved content as system messages (attributed to model/agent)
     retrieval_history_items = []
@@ -1494,11 +1419,11 @@ async def _run_llm_with_retrieval(
             raise
         else:
             logger.error(f"[{agent_name}] LLM permanent failure: {e}")
-            return [], False
+            return []
 
     if reply == "":
         logger.info(f"[{agent_name}] LLM decided not to reply")
-        return [], False
+        return []
 
     logger.debug(f"[{agent_name}] LLM reply: {reply}")
 
@@ -1521,81 +1446,19 @@ async def _run_llm_with_retrieval(
         logger.exception(
             f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
         )
-        return [], False
+        return []
 
-    # Check for retrieve tasks
-    retrieve_tasks = [t for t in tasks if t.type == "retrieve"]
+    tasks = await _process_retrieve_tasks(
+        tasks,
+        agent=agent,
+        agent_name=agent_name,
+        channel_id=channel_id,
+        graph=graph,
+        retrieved_urls=retrieved_urls,
+        retrieved_contents=retrieved_contents,
+    )
 
-    if retrieve_tasks:
-        # Process retrieve tasks
-        logger.info(
-            f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)"
-        )
-
-        # Collect URLs to fetch (limit 3)
-        urls_to_fetch = []
-        for retrieve_task in retrieve_tasks:
-            task_urls = retrieve_task.params.get("urls", [])
-            for url in task_urls[:3]:
-                if url not in retrieved_urls:
-                    urls_to_fetch.append(url)
-                    if len(urls_to_fetch) >= 3:
-                        break
-            if len(urls_to_fetch) >= 3:
-                break
-
-        # Check for duplicate URLs - if all requested URLs are already retrieved,
-        # just return the tasks (retrieved content is already in history)
-        if not urls_to_fetch:
-            logger.info(
-                f"[{agent_name}] All requested URLs already retrieved - content is already in history"
-            )
-            return tasks, fetched_new_resources
-
-        # Fetch URLs
-        logger.info(
-            f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
-        )
-        for url in urls_to_fetch:
-            fetched_url, content = await _fetch_url(url)
-            retrieved_urls.add(fetched_url)
-            retrieved_contents.append((fetched_url, content))
-            fetched_new_resources = True
-            logger.info(
-                f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
-            )
-
-        # Store fetched resources in graph context immediately so they're available on retry
-        if retrieved_contents:
-            graph.context["fetched_resources"] = dict(retrieved_contents)
-            logger.info(
-                f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
-            )
-
-        # Add preserve wait task to keep graph alive with fetched resources
-        # This must be done before raising the exception, so the task is in the graph
-        # even when the exception propagates up
-        if fetched_new_resources:
-            wait_task = make_wait_task(
-                delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
-                preserve=True,
-            )
-            graph.add_task(wait_task)
-            logger.info(
-                f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
-            )
-
-        # After successfully fetching URLs, raise a retryable exception to trigger
-        # the task graph retry mechanism. The retry will use the fetched resources
-        # already stored in graph.context.
-        logger.info(
-            f"[{agent_name}] Successfully fetched {len(urls_to_fetch)} URL(s), triggering retry to process with retrieved content"
-        )
-        raise Exception(
-            "Temporary error: retrieval - will retry with fetched content"
-        )
-
-    return tasks, fetched_new_resources
+    return tasks
 
 
 async def _schedule_tasks(
@@ -1628,13 +1491,14 @@ async def _schedule_tasks(
             task.params["callout"] = True
 
         if task.type == "send" or task.type == "sticker":
-            if "in_reply_to" not in task.params and fallback_reply_to:
-                task.params["in_reply_to"] = fallback_reply_to
+            if "reply_to" not in task.params and fallback_reply_to:
+                task.params["reply_to"] = fallback_reply_to
                 fallback_reply_to = None
 
             # Calculate delay based on task type
             if task.type == "send":
-                message = task.params.get("message", "")
+                raw_text = task.params.get("text")
+                message = str(raw_text) if raw_text is not None else ""
                 delay_seconds = 2 + len(message) / 60
             else:  # sticker
                 delay_seconds = 4
@@ -1658,17 +1522,15 @@ async def _schedule_tasks(
 async def parse_llm_reply(
     text: str, *, agent_id, channel_id, agent=None
 ) -> list[TaskNode]:
-    return await parse_llm_reply_from_json(
+    tasks = await parse_llm_reply_from_json(
         text, agent_id=agent_id, channel_id=channel_id, agent=agent
     )
-
-    # # Dumb models might reply with just the reply text and not understand the task machinery.
-    # task_id = f"{'send'}-{uuid.uuid4().hex[:8]}"
-    # params = {"agent_id": agent_id, "channel_id": channel_id, "message": text}
-    # task_nodes = [
-    #     TaskNode(identifier=task_id, type="send", params=params, depends_on=[])
-    # ]
-    # return task_nodes
+    tasks = _dedupe_tasks_by_identifier(tasks)
+    tasks = await _execute_immediate_tasks(
+        tasks, agent=agent, channel_id=channel_id
+    )
+    tasks = _assign_generated_identifiers(tasks)
+    return tasks
 
 
 @register_task_handler("received")
@@ -1747,7 +1609,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
-    tasks, fetched_new_resources = await _run_llm_with_retrieval(
+    tasks = await _run_llm_with_retrieval(
         agent,
         system_prompt,
         history_items,
@@ -1763,10 +1625,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent_name)
 
     # Add a wait task to keep the graph alive if we have fetched resources
-    # Check both fetched_new_resources (for normal return) and graph context (for retry cases
-    # where resources exist but weren't just fetched in this call)
+    # Check the graph context, which persists fetched resources across retries
     fetched_resources = graph.context.get("fetched_resources", {})
-    if fetched_new_resources or fetched_resources:
+    if fetched_resources:
         # Check if a preserve wait task already exists to avoid duplicates
         has_preserve_task = any(
             t.type == "wait" and t.params.get("preserve", False)

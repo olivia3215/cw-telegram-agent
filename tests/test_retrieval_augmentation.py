@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from handlers.received import _fetch_url, parse_llm_reply_from_json
+from handlers import received as hr
+from handlers.received import _fetch_url, parse_llm_reply
+from task_graph import TaskGraph
 
 
 @pytest.mark.asyncio
@@ -18,7 +20,18 @@ async def test_parse_retrieve_task_single_url():
         [{"kind": "retrieve", "urls": ["https://example.com/page1"]}],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+
+    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    await hr._process_retrieve_tasks(
+        tasks,
+        agent=None,
+        agent_name="TestAgent",
+        channel_id=456,
+        graph=graph,
+        retrieved_urls={"https://example.com/page1"},
+        retrieved_contents=[],
+    )
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -41,7 +54,22 @@ async def test_parse_retrieve_task_multiple_urls():
         ],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+
+    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    tasks = await hr._process_retrieve_tasks(
+        tasks,
+        agent=None,
+        agent_name="TestAgent",
+        channel_id=456,
+        graph=graph,
+        retrieved_urls={
+            "https://example.com/page1",
+            "https://example.com/page2",
+            "https://example.com/page3",
+        },
+        retrieved_contents=[],
+    )
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -64,7 +92,18 @@ async def test_parse_retrieve_task_with_text():
         ],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+
+    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    tasks = await hr._process_retrieve_tasks(
+        tasks,
+        agent=None,
+        agent_name="TestAgent",
+        channel_id=456,
+        graph=graph,
+        retrieved_urls={"https://example.com/page1", "http://example.com/page2"},
+        retrieved_contents=[],
+    )
 
     assert len(tasks) == 1
     assert tasks[0].type == "retrieve"
@@ -82,10 +121,21 @@ async def test_parse_retrieve_task_empty():
         [{"kind": "retrieve", "text": "No URLs here!"}],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+
+    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    await hr._process_retrieve_tasks(
+        tasks,
+        agent=None,
+        agent_name="TestAgent",
+        channel_id=456,
+        graph=graph,
+        retrieved_urls=set(),
+        retrieved_contents=[],
+    )
 
     # Empty retrieve task should be discarded
-    assert len(tasks) == 0
+    assert len([t for t in graph.tasks if t.type == "retrieve"]) == 0
 
 
 @pytest.mark.asyncio
@@ -102,14 +152,28 @@ async def test_parse_mixed_tasks_with_retrieve():
         ],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=123, channel_id=456)
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+
+    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    await hr._process_retrieve_tasks(
+        tasks,
+        agent=None,
+        agent_name="TestAgent",
+        channel_id=456,
+        graph=graph,
+        retrieved_urls={"https://www.google.com/search?q=test"},
+        retrieved_contents=[],
+    )
 
     # Think task is discarded, so we should have retrieve and send
-    assert len(tasks) == 2
-    assert tasks[0].type == "retrieve"
-    assert tasks[0].params["urls"] == ["https://www.google.com/search?q=test"]
-    assert tasks[1].type == "send"
-    assert tasks[1].params["message"] == "Let me look that up for you!"
+    assert len([t for t in tasks if t.type != "think"]) == 2
+    retrieve_task = next(t for t in tasks if t.type == "retrieve")
+    send_task = next(t for t in tasks if t.type == "send")
+    assert retrieve_task.params["urls"] == ["https://www.google.com/search?q=test"]
+    assert send_task.params["text"] == "Let me look that up for you!"
+    assert "message" not in send_task.params
+    assert "agent_id" not in send_task.params
+    assert "channel_id" not in send_task.params
 
 
 @pytest.mark.asyncio

@@ -25,9 +25,7 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
-    task = TaskNode(
-        identifier="t1", type="send", params={"to": "test", "message": "hi"}
-    )
+    task = TaskNode(identifier="t1", type="send", params={"to": "test", "text": "hi"})
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
@@ -219,9 +217,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
 
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
-    task = TaskNode(
-        identifier="t1", type="send", params={"to": "test", "message": "hi"}
-    )
+    task = TaskNode(identifier="t1", type="send", params={"to": "test", "text": "hi"})
     graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 

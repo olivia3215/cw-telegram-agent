@@ -10,6 +10,7 @@ from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
 from agent import Agent, get_agent_for_id
+from handlers.utils import coerce_to_int
 from task_graph import TaskGraph, TaskNode
 from tick import register_task_handler
 
@@ -47,7 +48,8 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_name = agent.name
     client = agent.client
     sticker_name = task.params.get("name")
-    in_reply_to = task.params.get("in_reply_to")
+    reply_to_raw = task.params.get("reply_to")
+    in_reply_to = coerce_to_int(reply_to_raw)
 
     # Require sticker set to be specified in task (no fallback)
     set_short = task.params.get("sticker_set")

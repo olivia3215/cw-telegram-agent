@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels
+from task_graph import TaskGraph, TaskNode
 
 
 class TestTelepathicConfiguration:
@@ -193,7 +194,7 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_think_telepathic(self):
         """Test that think tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_json
+        from handlers.received import parse_llm_reply
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -209,7 +210,7 @@ class TestTelepathicMessageHandling:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 456
             
-            tasks = await parse_llm_reply_from_json(
+            tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
@@ -224,7 +225,7 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_remember_telepathic(self):
         """Test that remember tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_json
+        from handlers.received import parse_llm_reply
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -246,7 +247,7 @@ class TestTelepathicMessageHandling:
             mock_is_telepath.side_effect = lambda x: x == 456
             
             with patch('handlers.received._process_remember_task', new_callable=AsyncMock) as mock_process:
-                tasks = await parse_llm_reply_from_json(
+                tasks = await parse_llm_reply(
                     json_text, agent_id=123, channel_id=456, agent=mock_agent
                 )
                 
@@ -266,7 +267,7 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_retrieve_telepathic(self):
         """Test that retrieve tasks send telepathic messages when channel is telepathic and agent is not."""
-        from handlers.received import parse_llm_reply_from_json
+        from handlers.received import parse_llm_reply
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -290,24 +291,48 @@ class TestTelepathicMessageHandling:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 456
             
-            tasks = await parse_llm_reply_from_json(
+            tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
-            
+
             # Should add retrieve task to task list
             assert len(tasks) == 1
             assert tasks[0].type == "retrieve"
             assert tasks[0].params["urls"] == ["https://example.com/page1", "https://example.com/page2"]
-            
-            # Should send telepathic message
+
+            # Telepathic message should be sent when URLs are fetched
+            mock_agent.client.send_message.assert_not_called()
+
+            from handlers import received as hr
+
+            graph = TaskGraph(identifier="g1", context={}, tasks=[])
+
+            with patch("handlers.received._fetch_url", new=AsyncMock(return_value=("https://example.com/page1", "<html>1</html>"))):
+                with patch(
+                    "handlers.received.make_wait_task",
+                    return_value=TaskNode(identifier="wait-1", type="wait", params={}, depends_on=[]),
+                ):
+                    with pytest.raises(Exception):
+                        await hr._process_retrieve_tasks(
+                            tasks,
+                            agent=mock_agent,
+                            agent_name="TestAgent",
+                            channel_id=456,
+                            graph=graph,
+                            retrieved_urls=set(),
+                            retrieved_contents=[],
+                        )
+
             mock_agent.client.send_message.assert_called_once_with(
-                456, "⟦retrieve⟧\nhttps://example.com/page1\nhttps://example.com/page2", parse_mode="Markdown"
+                456,
+                "⟦retrieve⟧\nhttps://example.com/page1\nhttps://example.com/page2",
+                parse_mode="Markdown",
             )
 
     @pytest.mark.asyncio
     async def test_parse_llm_reply_non_telepathic_channel(self):
         """Test that telepathic messages are not sent for non-telepathic channels."""
-        from handlers.received import parse_llm_reply_from_json
+        from handlers.received import parse_llm_reply
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -320,7 +345,7 @@ class TestTelepathicMessageHandling:
         )
         
         with patch('handlers.received.is_telepath', return_value=False):
-            tasks = await parse_llm_reply_from_json(
+            tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
@@ -333,7 +358,7 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_telepathic_agent_no_telepathic_message(self):
         """Test that telepathic agents do not send telepathic messages even to telepathic channels."""
-        from handlers.received import parse_llm_reply_from_json
+        from handlers.received import parse_llm_reply
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -348,8 +373,8 @@ class TestTelepathicMessageHandling:
         with patch('handlers.received.is_telepath') as mock_is_telepath:
             # Both channel and agent are telepathic
             mock_is_telepath.side_effect = lambda x: x in [123, 456]
-            
-            tasks = await parse_llm_reply_from_json(
+
+            tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
             
