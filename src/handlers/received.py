@@ -195,11 +195,13 @@ async def _process_remember_task(agent, channel_id: int, task: TaskNode):
 
         # Read existing memories (or start with empty array)
         memories: list[dict] = []
+        existing_payload: dict | None = None
         if memory_file.exists():
             try:
                 with open(memory_file, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
                     if isinstance(loaded, dict):
+                        existing_payload = dict(loaded)
                         memories = loaded.get("memory", [])
                     elif isinstance(loaded, list):
                         memories = loaded
@@ -245,8 +247,10 @@ async def _process_remember_task(agent, channel_id: int, task: TaskNode):
 
         # Write atomically: write to temp file, then rename
         temp_file = memory_file.with_suffix(".json.tmp")
+        payload = existing_payload or {}
+        payload["memory"] = normalized_memories
         with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump({"memory": normalized_memories}, f, indent=2, ensure_ascii=False)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
         temp_file.replace(memory_file)
 
         if content_value is not None:
