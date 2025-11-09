@@ -50,7 +50,7 @@ async def test_sticker_with_reply():
     assert t.type == "sticker"
     assert t.params["name"] == "😘"
     assert t.params["sticker_set"] == "WendyDancer"
-    assert t.params["in_reply_to"] == 1234  # header-provided reply id
+    assert t.params["reply_to"] == 1234  # header-provided reply id
 
 
 @pytest.mark.asyncio
@@ -79,4 +79,4 @@ async def test_multiple_sticker_tasks_sequence():
     assert t1.type == "sticker"
     assert t1.params["name"] == "😘"
     assert t1.params["sticker_set"] == "WendyDancer"
-    assert t1.params["in_reply_to"] == 42
+    assert t1.params["reply_to"] == 42

@@ -58,7 +58,10 @@ async def test_parse_json_reply_all_task_types():
     assert len(tasks) == 5
 
     assert tasks[0].type == "send"
-    assert "I'll reply shortly." in tasks[0].params["message"]
+    assert tasks[0].params["text"] == "I'll reply shortly."
+    assert "message" not in tasks[0].params
+    assert "agent_id" not in tasks[0].params
+    assert "channel_id" not in tasks[0].params
 
     assert tasks[1].type == "wait"
     assert tasks[1].params["delay"] == 10
@@ -70,7 +73,7 @@ async def test_parse_json_reply_all_task_types():
     assert "Because I was asked to stop." in tasks[3].params["reason"]
 
     assert tasks[4].type == "clear-conversation"
-    assert tasks[4].params == {"agent_id": "123", "channel_id": "456"}
+    assert tasks[4].params == {}
 
 
 @pytest.mark.asyncio
@@ -79,7 +82,7 @@ async def test_parse_clear_conversation_task():
     tasks = await parse_llm_reply(payload, agent_id="123", channel_id="456")
     assert len(tasks) == 1
     assert tasks[0].type == "clear-conversation"
-    assert tasks[0].params == {"agent_id": "123", "channel_id": "456"}
+    assert tasks[0].params == {}
 
 
 @pytest.mark.asyncio
@@ -104,12 +107,16 @@ async def test_parse_json_reply_with_reply_to():
 
     # Check the 'send' task
     assert tasks[0].type == "send"
-    assert tasks[0].params.get("in_reply_to") == 12345
-    assert "This is a reply" in tasks[0].params["message"]
+    assert tasks[0].params.get("reply_to") == 12345
+    assert tasks[0].params["text"] == "This is a reply."
+    assert "message" not in tasks[0].params
+    assert "agent_id" not in tasks[0].params
+    assert "channel_id" not in tasks[0].params
 
     # Check the 'sticker' task
     assert tasks[1].type == "sticker"
-    assert tasks[1].params.get("in_reply_to") == 54321
+    assert tasks[1].params.get("reply_to") == 54321
+    assert "in_reply_to" not in tasks[1].params
     assert tasks[1].params["name"] == "👍"
 
 
@@ -140,7 +147,10 @@ async def test_parse_think_task_is_discarded():
     # Think task should be discarded, only send task should remain
     assert len(tasks) == 1
     assert tasks[0].type == "send"
-    assert "Hello there!" in tasks[0].params["message"]
+    assert tasks[0].params["text"] == "Hello there!"
+    assert "message" not in tasks[0].params
+    assert "agent_id" not in tasks[0].params
+    assert "channel_id" not in tasks[0].params
 
 
 @pytest.mark.asyncio
@@ -157,6 +167,10 @@ async def test_parse_multiple_think_tasks():
     # Both think tasks should be discarded
     assert len(tasks) == 1
     assert tasks[0].type == "send"
+    assert tasks[0].params["text"] == "Final response!"
+    assert "message" not in tasks[0].params
+    assert "agent_id" not in tasks[0].params
+    assert "channel_id" not in tasks[0].params
 
 
 @pytest.mark.asyncio
@@ -174,7 +188,11 @@ async def test_parse_think_tasks_between_other_tasks():
     # Both think tasks should be discarded, leaving only send and sticker
     assert len(tasks) == 2
     assert tasks[0].type == "send"
+    assert tasks[0].params["text"] == "First message."
     assert tasks[1].type == "sticker"
+    assert "message" not in tasks[0].params
+    assert "agent_id" not in tasks[0].params
+    assert "channel_id" not in tasks[0].params
 
 
 @pytest.mark.asyncio

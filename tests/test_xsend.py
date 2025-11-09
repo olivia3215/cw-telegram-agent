@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from handlers.received import parse_llm_reply_from_json
+from handlers.received import parse_llm_reply
 from task_graph import TaskGraph, TaskNode, WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 
@@ -25,13 +25,11 @@ async def test_parse_xsend_basic():
         indent=2,
     )
 
-    tasks = await parse_llm_reply_from_json(payload, agent_id=42, channel_id=111)
+    tasks = await parse_llm_reply(payload, agent_id=42, channel_id=111)
 
     assert len(tasks) == 1
     t = tasks[0]
     assert t.type == "xsend"
-    assert t.params["agent_id"] == 42
-    assert t.params["channel_id"] == 111
     assert t.params["target_channel_id"] == 12345
     assert "ability to chat" in t.params["intent"]
 
@@ -44,7 +42,7 @@ async def test_parse_xsend_empty_body():
         ],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=1, channel_id=2)
+    tasks = await parse_llm_reply(payload, agent_id=1, channel_id=2)
     assert len(tasks) == 1
     t = tasks[0]
     assert t.type == "xsend"
@@ -66,7 +64,7 @@ async def test_parse_xsend_negative_group_id():
         ],
         indent=2,
     )
-    tasks = await parse_llm_reply_from_json(payload, agent_id=42, channel_id=111)
+    tasks = await parse_llm_reply(payload, agent_id=42, channel_id=111)
     assert len(tasks) == 1
     t = tasks[0]
     assert t.type == "xsend"
