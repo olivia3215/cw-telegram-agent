@@ -1,7 +1,9 @@
-[
-  {
-    "kind": "memory",
-    "created": "2025-11-06",
-    "content": "Wendy (6754281260) gave me a locket for my 12th birthday.\nI wear it most of the time."
-  }
-]
+{
+  "memory": [
+    {
+      "created": "2025-11-06",
+      "content": "Wendy (6754281260) gave me a locket for my 12th birthday.\nI wear it most of the time.",
+      "id": "memory-464de72f"
+    }
+  ]
+}
