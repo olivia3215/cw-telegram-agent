@@ -55,10 +55,8 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
         reply_to_raw = task.params.get("in_reply_to")
     reply_to_int = coerce_to_int(reply_to_raw)
     if reply_to_int is not None:
-        task.params["reply_to"] = reply_to_int
         task.params["in_reply_to"] = reply_to_int
     else:
-        task.params.pop("reply_to", None)
         task.params.pop("in_reply_to", None)
 
     try:

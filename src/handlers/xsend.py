@@ -46,9 +46,6 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
     intent_raw = task.params.get("intent")
     intent = str(intent_raw).strip() if intent_raw is not None else ""
 
-    task.params["target_channel_id"] = target_channel_id
-    task.params["intent"] = intent
-
     # Block xsend to the same channel
     if target_channel_id == normalize_peer_id(current_channel_id):
         logger.info(f"[{agent_name}] xsend: target equals current channel; ignoring")
