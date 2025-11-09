@@ -57,9 +57,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     )
 
     # Build a graph context like runtime does
-    graph = TaskGraph(
-        identifier="g1", context={"agent_id": "agent-1", "channel_id": "chat-1"}
-    )
+    graph = TaskGraph(id="g1", context={"agent_id": "agent-1", "channel_id": "chat-1"})
 
     # Task explicitly specifies a non-canonical set
     task = TaskNode(

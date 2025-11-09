@@ -30,7 +30,7 @@ async def test_handle_received_skips_self_channel(monkeypatch):
     monkeypatch.setattr(hr, "get_agent_for_id", lambda agent_id: dummy_agent)
 
     graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": dummy_agent.agent_id,
             "channel_id": dummy_agent.agent_id,

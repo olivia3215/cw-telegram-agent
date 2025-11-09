@@ -127,7 +127,7 @@ class TaskNode:
 
         if retry_count >= max_retries:
             logger.error(
-                f"Task {self.id} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
+                f"Task {self.id} exceeded max retries ({max_retries}). Deleting graph {graph.id}."
             )
             self.status = TaskStatus.FAILED
             return False  # signal to delete graph
@@ -170,7 +170,7 @@ class TaskNode:
 
 @dataclass
 class TaskGraph:
-    identifier: str
+    id: str
     context: dict
     tasks: list[TaskNode] = field(default_factory=list)
 
@@ -229,7 +229,7 @@ class WorkQueue:
         return json.dumps(
             [
                 {
-                    "identifier": graph.identifier,
+                    "id": graph.id,
                     "context": graph.context,
                     "nodes": [task.__dict__ for task in graph.tasks],
                 }
@@ -295,7 +295,7 @@ class WorkQueue:
                 if status_value == TaskStatus.ACTIVE.value:
                     task_dict["status"] = TaskStatus.PENDING
                     logger.info(
-                        f"Reverted active task {task_dict.get('identifier') or task_dict.get('id')} to pending on load."
+                        f"Reverted active task {task_dict.get('id')} to pending on load."
                     )
                 elif isinstance(status_value, str):
                     try:
@@ -303,7 +303,7 @@ class WorkQueue:
                     except ValueError:
                         logger.warning(
                             f"Unknown task status '{status_value}' for task "
-                            f"{task_dict.get('identifier') or task_dict.get('id')}, defaulting to pending."
+                            f"{task_dict.get('id')}, defaulting to pending."
                         )
                         task_dict["status"] = TaskStatus.PENDING
                 elif isinstance(status_value, TaskStatus):
@@ -316,18 +316,15 @@ class WorkQueue:
                     except ValueError:
                         logger.warning(
                             f"Unknown task status '{status_value}' for task "
-                            f"{task_dict.get('identifier') or task_dict.get('id')}, defaulting to pending."
+                            f"{task_dict.get('id')}, defaulting to pending."
                         )
                         task_dict["status"] = TaskStatus.PENDING
-
-                if "identifier" in task_dict and "id" not in task_dict:
-                    task_dict["id"] = task_dict.pop("identifier")
 
                 tasks.append(TaskNode(**task_dict))
 
             graphs.append(
                 TaskGraph(
-                    identifier=graph_data["identifier"],
+                    id=graph_data["id"],
                     context=graph_data["context"],
                     tasks=tasks,
                 )

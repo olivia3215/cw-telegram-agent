@@ -110,7 +110,7 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
         depends_on=[],
     )
     graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": agent_id,
             "channel_id": channel_id,
@@ -195,7 +195,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
         depends_on=[],
     )
     graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": agent_id,
             "channel_id": channel_id,
@@ -294,7 +294,7 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
 
     # Pre-populate graph context with fetched resources (as would happen after first attempt)
     graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": agent_id,
             "channel_id": channel_id,

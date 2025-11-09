@@ -12,7 +12,7 @@ async def test_schedule_tasks_uses_text_for_typing_delay():
         params={},
         depends_on=[],
     )
-    graph = TaskGraph(identifier="graph-1", context={}, tasks=[received_task])
+    graph = TaskGraph(id="graph-1", context={}, tasks=[received_task])
 
     long_message = "hello world " * 20  # 240 characters
     send_task = TaskNode(
@@ -46,7 +46,7 @@ async def test_schedule_tasks_defaults_delay_when_text_missing():
         params={},
         depends_on=[],
     )
-    graph = TaskGraph(identifier="graph-2", context={}, tasks=[received_task])
+    graph = TaskGraph(id="graph-2", context={}, tasks=[received_task])
 
     send_task = TaskNode(
         id="send-2",

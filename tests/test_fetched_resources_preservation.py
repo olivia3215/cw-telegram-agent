@@ -42,7 +42,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     channel_id = 67890
 
     initial_graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": agent_id,
             "channel_id": channel_id,
@@ -86,7 +86,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     # Verify the new graph was created
     new_graph = work_queue.graph_for_conversation(agent_id, channel_id)
     assert new_graph is not None
-    assert new_graph.identifier != initial_graph.identifier
+    assert new_graph.id != initial_graph.id
 
     # Verify fetched resources were preserved
     assert "fetched_resources" in new_graph.context
@@ -147,7 +147,7 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
     channel_id = 67890
 
     initial_graph = TaskGraph(
-        identifier="graph-1",
+        id="graph-1",
         context={
             "agent_id": agent_id,
             "channel_id": channel_id,
@@ -188,7 +188,7 @@ def test_fetched_resources_stored_in_graph_context():
     """Test that fetched resources are stored in graph context correctly."""
     # Create a graph
     graph = TaskGraph(
-        identifier="test-graph",
+        id="test-graph",
         context={
             "agent_id": 123,
             "channel_id": 456,

@@ -314,7 +314,7 @@ class TestTelepathicMessageHandling:
 
             from handlers import received as hr
 
-            graph = TaskGraph(identifier="g1", context={}, tasks=[])
+            graph = TaskGraph(id="g1", context={}, tasks=[])
 
             with patch(
                 "handlers.received._fetch_url",

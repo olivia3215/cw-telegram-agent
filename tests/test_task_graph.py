@@ -38,7 +38,7 @@ def make_send_task(identifier: str, depends=None):
 
 
 def make_graph(identifier: str, nodes):
-    return TaskGraph(identifier=identifier, context={"peer_id": "user123"}, tasks=nodes)
+    return TaskGraph(id=identifier, context={"peer_id": "user123"}, tasks=nodes)
 
 
 def test_task_readiness():
@@ -90,12 +90,12 @@ def test_serialization_and_reload(tmp_path):
         raw = json.load(f)
 
     assert isinstance(raw, list)
-    assert raw[0]["identifier"] == "gX"
+    assert raw[0]["id"] == "gX"
     assert raw[0]["nodes"][0]["status"] == TaskStatus.PENDING.value
 
     reloaded = WorkQueue.load(str(file_path))
     assert len(reloaded._task_graphs) == 1
-    assert reloaded._task_graphs[0].identifier == "gX"
+    assert reloaded._task_graphs[0].id == "gX"
     assert reloaded._task_graphs[0].tasks[0].id == "wX"
     assert reloaded._task_graphs[0].tasks[0].type == "wait"
 
