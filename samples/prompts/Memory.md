@@ -16,7 +16,20 @@ Use memory to remember:
 ## How to Use Memory
 
 When you learn something important about someone, emit a `remember` task in your
-JSON response. The task itself describes the memory directly—no nested `content` object is needed:
+JSON response. The task itself describes the memory directly:
+
+```json
+[
+  {
+    "kind": "remember",
+    "id": "memory-1234abcd",
+    "content": "User mentioned they have a younger sister named Sarah who is studying abroad."
+  }
+]
+```
+
+The required fields are "kind" ("remember") and "content".
+You may include additional fields in the task if helpful (for example `category`, `tags`, or custom metadata).
 
 ```json
 [
@@ -30,9 +43,7 @@ JSON response. The task itself describes the memory directly—no nested `conten
 ]
 ```
 
-You may include additional fields in the task if helpful (for example `category`, `tags`, or custom metadata).
 The system automatically augments the stored memory with:
-- `id` (taken from your task’s `id`)
 - `created` (either the value you supplied—converted to the agent’s timezone—or the current time)
 - `creation_channel`, `creation_channel_id`, and `creation_channel_username`
 
