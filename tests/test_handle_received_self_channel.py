@@ -40,7 +40,7 @@ async def test_handle_received_skips_self_channel(monkeypatch):
         tasks=[],
     )
 
-    task = TaskNode(identifier="received-1", type="received")
+    task = TaskNode(id="received-1", type="received")
     graph.add_task(task)
 
     await hr.handle_received(task, graph)

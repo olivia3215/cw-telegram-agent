@@ -39,7 +39,7 @@ def make_wait_task(
         params["preserve"] = preserve
 
     return TaskNode(
-        identifier=identifier,
+        id=identifier,
         type="wait",
         params=params,
         depends_on=depends_on or [],
@@ -112,7 +112,7 @@ async def insert_received_task_for_conversation(
                 if xsend_intent is not None:
                     task.params["xsend_intent"] = xsend_intent
                 logger.info(
-                    f"[{recipient_id}] Skipping received task creation - active received task {task.identifier} already exists for conversation {channel_id}"
+                    f"[{recipient_id}] Skipping received task creation - active received task {task.id} already exists for conversation {channel_id}"
                 )
                 return
 
@@ -127,7 +127,7 @@ async def insert_received_task_for_conversation(
                 # Only set last_task if it's not a wait task with preserve:true
                 # Wait tasks with preserve:true should run independently and not block other tasks
                 if not (old_task.type == "wait" and preserve):
-                    last_task = old_task.identifier
+                    last_task = old_task.id
             else:
                 old_task.status = TaskStatus.CANCELLED
             # save all the old tasks, because even if they're done,
@@ -191,7 +191,7 @@ async def insert_received_task_for_conversation(
 
     task_id = f"received-{uuid.uuid4().hex[:8]}"
     received_task = TaskNode(
-        identifier=task_id,
+        id=task_id,
         type="received",
         params=task_params,
         depends_on=[last_task] if last_task else [],

@@ -20,7 +20,7 @@ def make_wait_task_legacy(identifier: str, delta_sec: int, preserve: bool = Fals
     if preserve:
         params["preserve"] = True
     return TaskNode(
-        identifier=identifier,
+        id=identifier,
         type="wait",
         params=params,
         depends_on=[],
@@ -29,7 +29,7 @@ def make_wait_task_legacy(identifier: str, delta_sec: int, preserve: bool = Fals
 
 def make_send_task(identifier: str, depends=None):
     return TaskNode(
-        identifier=identifier,
+        id=identifier,
         type="send",
         params={"to": "user123", "text": "Hello!"},
         depends_on=depends or [],
@@ -70,13 +70,13 @@ def test_round_robin_rotation():
     q = WorkQueue(_task_graphs=[g1, g2, g3])
 
     task1 = q.round_robin_one_task()
-    assert task1.identifier == "w1"
+    assert task1.id == "w1"
 
     task2 = q.round_robin_one_task()
-    assert task2.identifier == "w2"
+    assert task2.id == "w2"
 
     task3 = q.round_robin_one_task()
-    assert task3.identifier == "w1"  # wraps back to first ready
+    assert task3.id == "w1"  # wraps back to first ready
 
 
 def test_serialization_and_reload(tmp_path):
@@ -88,30 +88,30 @@ def test_serialization_and_reload(tmp_path):
     reloaded = WorkQueue.load(str(file_path))
     assert len(reloaded._task_graphs) == 1
     assert reloaded._task_graphs[0].identifier == "gX"
-    assert reloaded._task_graphs[0].tasks[0].identifier == "wX"
+    assert reloaded._task_graphs[0].tasks[0].id == "wX"
     assert reloaded._task_graphs[0].tasks[0].type == "wait"
 
 
 def test_invalid_wait_task_logs(caplog):
     caplog.set_level(logging.DEBUG)
 
-    missing_until = TaskNode(identifier="t1", type="wait", params={}, depends_on=[])
+    missing_until = TaskNode(id="t1", type="wait", params={}, depends_on=[])
     assert not missing_until.is_ready(set(), NOW)
     assert any(
         "missing both 'delay' and 'until'" in m for m in caplog.text.splitlines()
     )
 
     bad_format = TaskNode(
-        identifier="t2", type="wait", params={"until": "not-a-date"}, depends_on=[]
+        id="t2", type="wait", params={"until": "not-a-date"}, depends_on=[]
     )
     assert not bad_format.is_ready(set(), NOW)
     assert any("invalid 'until' format" in m for m in caplog.text.splitlines())
 
-    blocked = TaskNode(identifier="t3", type="send", depends_on=["x"])
+    blocked = TaskNode(id="t3", type="send", depends_on=["x"])
     assert not blocked.is_ready(set(), NOW)
     assert any("dependencies not met" in m for m in caplog.text.splitlines())
 
-    done = TaskNode(identifier="t4", type="send", depends_on=[], status=TaskStatus.DONE)
+    done = TaskNode(id="t4", type="send", depends_on=[], status=TaskStatus.DONE)
     assert not done.is_ready(set(), NOW)
     assert any("not pending" in m for m in caplog.text.splitlines())
 
@@ -170,13 +170,13 @@ def test_reloads_active_task_as_pending(tmp_path):
     # 4. Assert that the task's status is now 'pending'
     assert len(reloaded_queue._task_graphs) == 1
     reloaded_task = reloaded_queue._task_graphs[0].tasks[0]
-    assert reloaded_task.identifier == "t1"
+    assert reloaded_task.id == "t1"
     assert reloaded_task.status == TaskStatus.PENDING
 
 
 def test_cancelled_status():
     """Test that CANCELLED status works correctly with helper methods."""
-    task = TaskNode(identifier="cancel_test", type="test", params={})
+    task = TaskNode(id="cancel_test", type="test", params={})
 
     # Initially pending
     assert task.status == TaskStatus.PENDING
@@ -204,10 +204,10 @@ def test_cumulative_wait_delay():
 
     # Create wait tasks with delay (not until)
     wait1 = TaskNode(
-        identifier="wait1", type="wait", params={"delay": 300}, depends_on=["task_a"]
+        id="wait1", type="wait", params={"delay": 300}, depends_on=["task_a"]
     )  # 5 minutes
     wait2 = TaskNode(
-        identifier="wait2", type="wait", params={"delay": 300}, depends_on=["task_b"]
+        id="wait2", type="wait", params={"delay": 300}, depends_on=["task_b"]
     )  # 5 minutes
 
     make_graph("cumulative_test", [task_a, wait1, task_b, wait2, task_c])
@@ -284,7 +284,7 @@ def test_delay_to_until_conversion_bug():
     """
     # Create a wait task with only delay (no until initially)
     wait_task = TaskNode(
-        identifier="delay-wait",
+        id="delay-wait",
         type="wait",
         params={"delay": 5},  # 5 second delay
         depends_on=[],
@@ -334,7 +334,7 @@ def test_delay_conversion_bug_reproduction():
     """
     # Create a wait task with delay=0 (should be ready immediately)
     wait_task = TaskNode(
-        identifier="delay-wait",
+        id="delay-wait",
         type="wait",
         params={"delay": 0},  # 0 second delay - should be ready immediately
         depends_on=[],
@@ -359,12 +359,12 @@ def test_delay_conversion_with_dependencies():
     """Test that delay conversion works correctly when tasks have dependencies."""
     # Create a task that depends on another task
     first_task = TaskNode(
-        identifier="first", type="send", params={"text": "Hello"}, depends_on=[]
+        id="first", type="send", params={"text": "Hello"}, depends_on=[]
     )
 
     # Create a wait task that depends on the first task
     wait_task = TaskNode(
-        identifier="wait-after-first",
+        id="wait-after-first",
         type="wait",
         params={"delay": 3},  # 3 second delay
         depends_on=["first"],

@@ -30,6 +30,7 @@ from media.media_injector import (
 from media.media_source import get_default_media_source_chain
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import make_wait_task
+from utils.time_utils import memory_sort_key, normalize_created_string
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from telepathic import is_telepath
@@ -41,7 +42,6 @@ from telethon.tl.types import Channel, Chat, User  # pyright: ignore[reportMissi
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
-
 
 async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
     """
@@ -74,8 +74,6 @@ async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, co
         logger.info(f"[{agent.name}] Sent telepathic message: {prefix}")
     except Exception as e:
         logger.error(f"[{agent.name}] Failed to send telepathic message: {e}")
-
-
 
 
 async def _fetch_url(url: str) -> tuple[str, str]:
@@ -147,7 +145,7 @@ async def _fetch_url(url: str) -> tuple[str, str]:
         )
 
 
-async def _process_remember_task(agent, channel_id: int, memory_content: str):
+async def _process_remember_task(agent, channel_id: int, task: TaskNode):
     """
     Process a remember task by appending content to the agent's global memory file.
 
@@ -158,7 +156,7 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
     Args:
         agent: The agent instance
         channel_id: The conversation ID (Telegram channel/user ID)
-        memory_content: The JSON content to remember (should be a JSON object)
+        task: The remember task node
     """
     try:
         # Get state directory
@@ -167,15 +165,19 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         # Memory file path: state/AgentName/memory.json (agent-specific global memory)
         memory_file = Path(state_dir) / agent.name / "memory.json"
 
-        # Parse the JSON memory content from LLM
-        try:
-            memory_obj = json.loads(memory_content.strip())
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in remember task: {e}") from e
+        task_params = dict(task.params or {})
+        task_params.pop("kind", None)
 
-        # Ensure it's a dictionary
-        if not isinstance(memory_obj, dict):
-            raise ValueError(f"Memory content must be a JSON object, got {type(memory_obj).__name__}")
+        raw_content = task_params.pop("content", None)
+        content_value = None
+        if raw_content is not None:
+            stripped = _coerce_to_str(raw_content).strip()
+            if stripped:
+                content_value = stripped
+
+        raw_created = task_params.pop("created", None)
+
+        memory_id = task.id or f"memory-{uuid.uuid4().hex[:8]}"
 
         partner_name = await get_channel_name(agent, channel_id)
         partner_username = None
@@ -186,43 +188,79 @@ async def _process_remember_task(agent, channel_id: int, memory_content: str):
         if entity is not None:
             partner_username = _format_username(entity)
 
-        # Set required fields
-        now = agent.get_current_time()
-        timestamp = now.strftime("%Y-%m-%d %H:%M:%S %Z")
-        
-        memory_obj["kind"] = "memory"
-        memory_obj["created"] = timestamp
-        memory_obj["creation_channel"] = partner_name
-        memory_obj["creation_channel_id"] = channel_id
-        if partner_username:
-            memory_obj["creation_channel_username"] = partner_username
+        created_value = normalize_created_string(raw_created, agent)
 
         # Ensure parent directory exists
         memory_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Read existing memories (or start with empty array)
-        memories = []
+        memories: list[dict] = []
+        existing_payload: dict | None = None
         if memory_file.exists():
             try:
                 with open(memory_file, "r", encoding="utf-8") as f:
-                    memories = json.load(f)
-                    if not isinstance(memories, list):
-                        raise ValueError(f"Memory file contains {type(memories).__name__}, expected list")
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        existing_payload = dict(loaded)
+                        memories = loaded.get("memory", [])
+                    elif isinstance(loaded, list):
+                        memories = loaded
+                    else:
+                        raise ValueError(
+                            f"Memory file contains {type(loaded).__name__}, expected list or dict"
+                        )
             except json.JSONDecodeError as e:
                 raise ValueError(f"Corrupted memory file {memory_file}: {e}") from e
 
-        # Append new memory
-        memories.append(memory_obj)
+        normalized_memories: list[dict] = []
+        for memory in memories:
+            if isinstance(memory, dict):
+                memory = {k: v for k, v in memory.items() if k != "kind"}
+                if "id" not in memory:
+                    memory["id"] = f"memory-{uuid.uuid4().hex[:8]}"
+                normalized_memories.append(memory)
+
+        # Remove any existing memory with the same id
+        normalized_memories = [
+            memory for memory in normalized_memories if memory.get("id") != memory_id
+        ]
+
+        if content_value is not None:
+            new_memory: dict = {"id": memory_id}
+
+            for key, value in task_params.items():
+                if value is not None:
+                    new_memory[key] = value
+
+            new_memory["content"] = content_value
+            if created_value:
+                new_memory["created"] = created_value
+            new_memory["creation_channel"] = partner_name
+            new_memory["creation_channel_id"] = channel_id
+            if partner_username:
+                new_memory["creation_channel_username"] = partner_username
+
+            normalized_memories.append(new_memory)
+
+        # Sort memories by created date/time
+        normalized_memories.sort(key=lambda m: memory_sort_key(m, agent))
 
         # Write atomically: write to temp file, then rename
         temp_file = memory_file.with_suffix(".json.tmp")
+        payload = existing_payload or {}
+        payload["memory"] = normalized_memories
         with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(memories, f, indent=2, ensure_ascii=False)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
         temp_file.replace(memory_file)
 
-        logger.info(
-            f"[{agent.name}] Added memory for conversation {channel_id}: {memory_obj.get('content', '')[:50]}..."
-        )
+        if content_value is not None:
+            logger.info(
+                f"[{agent.name}] Added memory {memory_id} for conversation {channel_id}: {content_value[:50]}..."
+            )
+        else:
+            logger.info(
+                f"[{agent.name}] Removed memory {memory_id} for conversation {channel_id}"
+            )
 
     except Exception as e:
         logger.exception(f"[{agent.name}] Failed to process remember task: {e}")
@@ -539,7 +577,7 @@ async def parse_llm_reply_from_json(
         depends_on = _normalize_list(raw_item.get("depends_on"))
 
         node = TaskNode(
-            identifier=source_identifier,
+            id=source_identifier,
             type=kind,
             params=raw_params,
             depends_on=depends_on,
@@ -555,17 +593,17 @@ def _dedupe_tasks_by_identifier(tasks: list[TaskNode]) -> list[TaskNode]:
 
     last_for_identifier: dict[str, TaskNode] = {}
     for task in tasks:
-        last_for_identifier[task.identifier] = task
+        last_for_identifier[task.id] = task
 
     deduped: list[TaskNode] = []
     seen: set[str] = set()
     for task in tasks:
-        if task.identifier in seen:
+        if task.id in seen:
             continue
-        if last_for_identifier.get(task.identifier) is not task:
+        if last_for_identifier.get(task.id) is not task:
             continue
         deduped.append(task)
-        seen.add(task.identifier)
+        seen.add(task.id)
     return deduped
 
 
@@ -577,7 +615,7 @@ def _assign_generated_identifiers(tasks: list[TaskNode]) -> list[TaskNode]:
     original_ids: dict[int, str] = {}
 
     for task in tasks:
-        source_identifier = task.identifier
+        source_identifier = task.id
         if not source_identifier:
             source_identifier = f"{task.type}-{uuid.uuid4().hex[:8]}"
         original_ids[id(task)] = source_identifier
@@ -588,7 +626,7 @@ def _assign_generated_identifiers(tasks: list[TaskNode]) -> list[TaskNode]:
 
     for task in tasks:
         source_identifier = original_ids[id(task)]
-        task.identifier = source_to_generated[source_identifier]
+        task.id = source_to_generated[source_identifier]
 
     for task in tasks:
         translated: list[str] = []
@@ -612,19 +650,16 @@ def register_immediate_task_handler(task_type: str):
 
 @register_immediate_task_handler("remember")
 async def _handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -> bool:
-    content_value = task.params.get("content")
-    if content_value is None:
-        logger.warning("[remember] Missing 'content'; dropping task")
-        return True
+    if agent is None:
+        logger.warning("[remember] Missing agent context; deferring remember task")
+        return False
 
-    body = _coerce_to_str(content_value).strip()
-    if not body:
-        logger.info("[remember] Empty remember task discarded")
-        return True
+    telepathy_payload = {"id": task.id}
+    telepathy_payload.update(task.params or {})
 
-    if agent:
-        await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
-        await _process_remember_task(agent, channel_id, body)
+    body = json.dumps(telepathy_payload, ensure_ascii=False)
+    await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
+    await _process_remember_task(agent, channel_id, task)
     return True
 
 
@@ -713,7 +748,7 @@ async def _process_retrieve_tasks(
             continue
 
         normalized_task = TaskNode(
-            identifier=task.identifier,
+            id=task.id,
             type=task.type,
             params={**task.params, "urls": urls},
             depends_on=list(task.depends_on),
@@ -746,7 +781,7 @@ async def _process_retrieve_tasks(
             continue
 
         to_fetch = new_urls[:remaining]
-        task_to_fetch[retrieve_task.identifier] = to_fetch
+        task_to_fetch[retrieve_task.id] = to_fetch
         urls_to_fetch.extend(to_fetch)
         remaining -= len(to_fetch)
 
@@ -758,7 +793,7 @@ async def _process_retrieve_tasks(
 
     if agent:
         for retrieve_task in retrieve_tasks:
-            new_urls = task_to_fetch.get(retrieve_task.identifier)
+            new_urls = task_to_fetch.get(retrieve_task.id)
             if not new_urls:
                 continue
             await _maybe_send_telepathic_message(
@@ -1433,7 +1468,7 @@ async def _run_llm_with_retrieval(
             several = 15
             wait_task = task.insert_delay(graph, several)
             logger.info(
-                f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.identifier}, received task {task.identifier}"
+            f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
             )
             raise
         else:
@@ -1458,7 +1493,7 @@ async def _run_llm_with_retrieval(
         retry_delay = 10
         wait_task = task.insert_delay(graph, retry_delay)
         logger.info(
-            f"[{agent_name}] Scheduled delayed retry after malformed response: wait task {wait_task.identifier}, received task {task.identifier}"
+            f"[{agent_name}] Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
         )
         raise Exception("Temporary error: malformed LLM response - will retry") from e
     except ValueError as e:
@@ -1500,7 +1535,7 @@ async def _schedule_tasks(
         agent_name: Agent name for logging
     """
     fallback_reply_to = received_task.params.get("message_id") if is_group else None
-    last_id = received_task.identifier
+    last_id = received_task.id
 
     for task in tasks:
         # Skip retrieve tasks - they are handled in the retrieval loop and should not be scheduled
@@ -1526,7 +1561,7 @@ async def _schedule_tasks(
             wait_task = task.insert_delay(graph, delay_seconds)
             wait_task.depends_on.append(last_id)
             wait_task.params["typing"] = True
-            last_id = wait_task.identifier
+            last_id = wait_task.id
 
             logger.info(
                 f"[{agent_name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
@@ -1535,7 +1570,7 @@ async def _schedule_tasks(
             task.depends_on.append(last_id)
 
         graph.add_task(task)
-        last_id = task.identifier
+        last_id = task.id
 
 
 async def parse_llm_reply(

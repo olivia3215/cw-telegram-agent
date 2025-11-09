@@ -104,7 +104,7 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     agent_id = 123
     channel_id = 456
     task = TaskNode(
-        identifier="received-1",
+        id="received-1",
         type="received",
         params={"message_id": 789},
         depends_on=[],
@@ -176,7 +176,7 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     assert len(wait_tasks) >= 1  # At least one wait task created
     # The task should depend on at least one wait task
     assert len(task.depends_on) >= 1
-    assert any(dep in [w.identifier for w in wait_tasks] for dep in task.depends_on)
+    assert any(dep in [w.id for w in wait_tasks] for dep in task.depends_on)
 
     # Verify the exception was raised (call_count shows Gemini was called once)
     assert mock_llm_client.call_count == 1
@@ -189,7 +189,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     agent_id = 123
     channel_id = 456
     task = TaskNode(
-        identifier="received-1",
+        id="received-1",
         type="received",
         params={"message_id": 789},
         depends_on=[],
@@ -273,7 +273,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     assert len(wait_tasks) >= 1  # At least one wait task created
     # The task should depend on at least one wait task
     assert len(task.depends_on) >= 1
-    assert any(dep in [w.identifier for w in wait_tasks] for dep in task.depends_on)
+    assert any(dep in [w.id for w in wait_tasks] for dep in task.depends_on)
 
     # Verify Gemini was called once (to get the retrieve task)
     assert mock_llm_client.call_count == 1
@@ -286,7 +286,7 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     agent_id = 123
     channel_id = 456
     task = TaskNode(
-        identifier="received-1",
+        id="received-1",
         type="received",
         params={"message_id": 789},
         depends_on=[],

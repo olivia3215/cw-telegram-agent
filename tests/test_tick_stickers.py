@@ -63,7 +63,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
 
     # Task explicitly specifies a non-canonical set
     task = TaskNode(
-        identifier="t1",
+        id="t1",
         type="sticker",
         params={"name": "😉", "sticker_set": "CINDYAI"},
     )

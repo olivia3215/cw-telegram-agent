@@ -55,7 +55,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
         },
         tasks=[
             TaskNode(
-                identifier="send-1",
+                id="send-1",
                 type="send",
                 params={"text": "Hello"},
                 depends_on=[],
@@ -104,14 +104,12 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     assert preserve_wait_tasks[0].params["delay"] == FETCHED_RESOURCE_LIFETIME_SECONDS
 
     # Verify regular tasks were cancelled
-    regular_send_tasks = [t for t in new_graph.tasks if t.identifier == "send-1"]
+    regular_send_tasks = [t for t in new_graph.tasks if t.id == "send-1"]
     assert len(regular_send_tasks) == 1
     assert regular_send_tasks[0].status.value == "cancelled"
 
     # Verify regular wait task was cancelled
-    regular_wait_tasks = [
-        t for t in new_graph.tasks if t.identifier == "wait-regular-1"
-    ]
+    regular_wait_tasks = [t for t in new_graph.tasks if t.id == "wait-regular-1"]
     assert len(regular_wait_tasks) == 1
     assert regular_wait_tasks[0].status.value == "cancelled"
 
@@ -159,7 +157,7 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
         },
         tasks=[
             TaskNode(
-                identifier="send-1",
+                id="send-1",
                 type="send",
                 params={"text": "Hello"},
                 depends_on=[],

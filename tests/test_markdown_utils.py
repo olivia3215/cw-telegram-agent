@@ -237,6 +237,6 @@ async def test_depends_on_translates_to_generated_ids(monkeypatch):
 
     first, second = tasks
 
-    assert first.identifier == "wait-aaaaaaaa"
-    assert second.identifier == "send-bbbbbbbb"
-    assert second.depends_on == [first.identifier]
+    assert first.id == "wait-aaaaaaaa"
+    assert second.id == "send-bbbbbbbb"
+    assert second.depends_on == [first.id]

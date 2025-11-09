@@ -1,4 +1,5 @@
 import importlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -15,25 +16,30 @@ async def test_remember_task_dispatch(monkeypatch):
     async def fake_telepathy(agent, channel_id, prefix, content):
         calls["telepathy"] = (agent, channel_id, prefix, content)
 
-    async def fake_process(agent, channel_id, body):
-        calls["process"] = (agent, channel_id, body)
+    async def fake_process(agent, channel_id, remember_task):
+        calls["process"] = (agent, channel_id, remember_task)
 
     monkeypatch.setattr(hr, "_maybe_send_telepathic_message", fake_telepathy)
     monkeypatch.setattr(hr, "_process_remember_task", fake_process)
 
     task = TaskNode(
-        identifier="remember-1",
+        id="remember-1",
         type="remember",
-        params={"content": '{"foo": "bar"}'},
+        params={"content": "User prefers tea", "category": "preferences"},
     )
     agent = SimpleNamespace(name="Agent")
 
     handled = await hr._run_immediate_task(task, agent=agent, channel_id=123)
 
     assert handled is True
-    assert calls["process"][2] == '{"foo": "bar"}'
+    assert calls["process"][2] is task
     assert calls["telepathy"][2] == "remember"
-    assert calls["telepathy"][3] == '{"foo": "bar"}'
+    telepathy_payload = json.loads(calls["telepathy"][3])
+    assert telepathy_payload == {
+        "id": "remember-1",
+        "content": "User prefers tea",
+        "category": "preferences",
+    }
 
 
 @pytest.mark.asyncio
@@ -48,7 +54,7 @@ async def test_think_task_dispatch(monkeypatch):
     monkeypatch.setattr(hr, "_maybe_send_telepathic_message", fake_telepathy)
 
     task = TaskNode(
-        identifier="think-1",
+        id="think-1",
         type="think",
         params={"text": "reflect deeply"},
     )
@@ -64,7 +70,7 @@ async def test_think_task_dispatch(monkeypatch):
 async def test_unknown_task_bypasses_immediate_dispatch():
     hr = importlib.reload(importlib.import_module("handlers.received"))
 
-    task = TaskNode(identifier="send-1", type="send")
+    task = TaskNode(id="send-1", type="send")
 
     handled = await hr._run_immediate_task(task, agent=None, channel_id=1)
 
