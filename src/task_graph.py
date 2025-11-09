@@ -226,20 +226,16 @@ class WorkQueue:
             return None
 
     def _serialize(self) -> str:
-        md = "# Work Queue Snapshot\n\n"
+        graphs = []
         for graph in self._task_graphs:
-            md += f"## Task Graph: {graph.identifier}\n"
-            block = {
-                "identifier": graph.identifier,
-                "context": graph.context,
-                "nodes": [task.__dict__ for task in graph.tasks],
-            }
-            md += (
-                "```json\n"
-                + json.dumps(block, indent=2, cls=TaskStatusEncoder)
-                + "\n```\n\n"
+            graphs.append(
+                {
+                    "identifier": graph.identifier,
+                    "context": graph.context,
+                    "nodes": [task.__dict__.copy() for task in graph.tasks],
+                }
             )
-        return md
+        return json.dumps(graphs, indent=2, cls=TaskStatusEncoder)
 
     def add_graph(self, graph: TaskGraph):
         with self._lock:
@@ -256,8 +252,8 @@ class WorkQueue:
         """Saves the current state of the work queue to a file."""
         with self._lock:
             data = self._serialize()
-            backup = path + ".bak.md"
-            tmp = path + ".tmp.md"
+            backup = path + ".bak"
+            tmp = path + ".tmp"
             if os.path.exists(path):
                 shutil.copy2(path, backup)
             with open(tmp, "w") as f:
@@ -272,35 +268,82 @@ class WorkQueue:
         with open(path) as f:
             content = f.read()
 
-        graphs = []
-        blocks = content.split("```json")
-        for block in blocks[1:]:
-            json_part = block.split("```", 1)[0]
-            data = json.loads(json_part)
+        content = content.strip()
+        if not content:
+            return cls()
 
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            graphs_data = cls._parse_legacy_markdown(content)
+        else:
+            if isinstance(parsed, dict):
+                graphs_data = parsed.get("task_graphs", [])
+            elif isinstance(parsed, list):
+                graphs_data = parsed
+            else:
+                logger.warning(
+                    "Unexpected JSON structure in work queue file; defaulting to empty queue."
+                )
+                graphs_data = []
+
+        graphs = []
+        for graph_data in graphs_data or []:
             tasks = []
-            for t in data.get("nodes", []):
-                # On startup, tasks that were active become pending
-                if t.get("status") == TaskStatus.ACTIVE.value:
-                    t["status"] = TaskStatus.PENDING
+            for task_data in graph_data.get("nodes", []):
+                task_dict = dict(task_data)
+                status_value = task_dict.get("status")
+
+                if status_value == TaskStatus.ACTIVE.value:
+                    task_dict["status"] = TaskStatus.PENDING
                     logger.info(
-                        f"Reverted active task {t.get('identifier') or t.get('id')} to pending on load."
+                        f"Reverted active task {task_dict.get('identifier') or task_dict.get('id')} to pending on load."
                     )
-                elif isinstance(t.get("status"), str):
-                    # Convert string status to enum
-                    t["status"] = TaskStatus(t["status"])
-                if "identifier" in t and "id" not in t:
-                    t["id"] = t.pop("identifier")
-                tasks.append(TaskNode(**t))
+                elif isinstance(status_value, str):
+                    try:
+                        task_dict["status"] = TaskStatus(status_value)
+                    except ValueError:
+                        logger.warning(
+                            f"Unknown task status '{status_value}' for task "
+                            f"{task_dict.get('identifier') or task_dict.get('id')}, defaulting to pending."
+                        )
+                        task_dict["status"] = TaskStatus.PENDING
+                elif isinstance(status_value, TaskStatus):
+                    pass
+                elif status_value is None:
+                    task_dict["status"] = TaskStatus.PENDING
+                else:
+                    try:
+                        task_dict["status"] = TaskStatus(status_value)
+                    except ValueError:
+                        logger.warning(
+                            f"Unknown task status '{status_value}' for task "
+                            f"{task_dict.get('identifier') or task_dict.get('id')}, defaulting to pending."
+                        )
+                        task_dict["status"] = TaskStatus.PENDING
+
+                if "identifier" in task_dict and "id" not in task_dict:
+                    task_dict["id"] = task_dict.pop("identifier")
+
+                tasks.append(TaskNode(**task_dict))
 
             graphs.append(
                 TaskGraph(
-                    identifier=data["identifier"],
-                    context=data["context"],
+                    identifier=graph_data["identifier"],
+                    context=graph_data["context"],
                     tasks=tasks,
                 )
             )
         return cls(_task_graphs=graphs)
+
+    @staticmethod
+    def _parse_legacy_markdown(content: str) -> list[dict]:
+        graphs = []
+        blocks = content.split("```json")
+        for block in blocks[1:]:
+            json_part = block.split("```", 1)[0]
+            graphs.append(json.loads(json_part))
+        return graphs
 
     def graph_for_conversation(
         self, agent_id: int, channel_id: int
