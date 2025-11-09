@@ -168,6 +168,21 @@ class TaskNode:
         return wait_task
 
 
+def _normalize_task_status(value, task_identifier: str | None) -> TaskStatus:
+    """Return a valid `TaskStatus` for persisted data."""
+    if isinstance(value, TaskStatus):
+        return value
+
+    try:
+        return TaskStatus(value)
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Unknown task status '{value}' for task "
+            f"{task_identifier}, defaulting to pending."
+        )
+        return TaskStatus.PENDING
+
+
 @dataclass
 class TaskGraph:
     id: str
@@ -290,35 +305,20 @@ class WorkQueue:
             tasks = []
             for task_data in graph_data.get("nodes", []):
                 task_dict = dict(task_data)
+                task_identifier = task_dict.get("id")
                 status_value = task_dict.get("status")
 
                 if status_value == TaskStatus.ACTIVE.value:
                     task_dict["status"] = TaskStatus.PENDING
                     logger.info(
-                        f"Reverted active task {task_dict.get('id')} to pending on load."
+                        f"Reverted active task {task_identifier} to pending on load."
                     )
-                elif isinstance(status_value, str):
-                    try:
-                        task_dict["status"] = TaskStatus(status_value)
-                    except ValueError:
-                        logger.warning(
-                            f"Unknown task status '{status_value}' for task "
-                            f"{task_dict.get('id')}, defaulting to pending."
-                        )
-                        task_dict["status"] = TaskStatus.PENDING
-                elif isinstance(status_value, TaskStatus):
-                    pass
                 elif status_value is None:
                     task_dict["status"] = TaskStatus.PENDING
                 else:
-                    try:
-                        task_dict["status"] = TaskStatus(status_value)
-                    except ValueError:
-                        logger.warning(
-                            f"Unknown task status '{status_value}' for task "
-                            f"{task_dict.get('id')}, defaulting to pending."
-                        )
-                        task_dict["status"] = TaskStatus.PENDING
+                    task_dict["status"] = _normalize_task_status(
+                        status_value, task_identifier
+                    )
 
                 tasks.append(TaskNode(**task_dict))
 
