@@ -6,6 +6,7 @@
 import json
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
@@ -598,6 +599,47 @@ def _assign_generated_identifiers(tasks: list[TaskNode]) -> list[TaskNode]:
     return tasks
 
 
+IMMEDIATE_TASK_DISPATCH: dict[str, Callable[..., Awaitable[bool]]] = {}
+
+
+def register_immediate_task_handler(task_type: str):
+    def decorator(func: Callable[..., Awaitable[bool]]):
+        IMMEDIATE_TASK_DISPATCH[task_type] = func
+        return func
+
+    return decorator
+
+
+@register_immediate_task_handler("remember")
+async def _handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -> bool:
+    content_value = task.params.get("content")
+    if content_value is None:
+        logger.warning("[remember] Missing 'content'; dropping task")
+        return True
+
+    body = _coerce_to_str(content_value).strip()
+    if not body:
+        logger.info("[remember] Empty remember task discarded")
+        return True
+
+    if agent:
+        await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
+        await _process_remember_task(agent, channel_id, body)
+    return True
+
+
+@register_immediate_task_handler("think")
+async def _handle_immediate_think(task: TaskNode, *, agent, channel_id: int) -> bool:
+    thought = task.params.get("text", "")
+    thought_str = _coerce_to_str(thought)
+    logger.debug(
+        f"[think] Discarding think task content (length: {len(thought_str)} chars)"
+    )
+    if agent and thought_str:
+        await _maybe_send_telepathic_message(agent, channel_id, "think", thought_str)
+    return True
+
+
 async def _run_immediate_task(
     task: TaskNode, *, agent, channel_id: int
 ) -> bool:
@@ -608,34 +650,11 @@ async def _run_immediate_task(
         True if the task was consumed (and should be dropped from the graph),
         False otherwise.
     """
-    if task.type == "remember":
-        content_value = task.params.get("content")
-        if content_value is None:
-            logger.warning("[remember] Missing 'content'; dropping task")
-            return True
+    handler = IMMEDIATE_TASK_DISPATCH.get(task.type)
+    if not handler:
+        return False
 
-        body = _coerce_to_str(content_value).strip()
-        if not body:
-            logger.info("[remember] Empty remember task discarded")
-            return True
-        if agent:
-            await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
-            await _process_remember_task(agent, channel_id, body)
-        return True
-
-    if task.type == "think":
-        thought = task.params.get("text", "")
-        thought_str = _coerce_to_str(thought)
-        logger.debug(
-            f"[think] Discarding think task content (length: {len(thought_str)} chars)"
-        )
-        if agent and thought_str:
-            await _maybe_send_telepathic_message(
-                agent, channel_id, "think", thought_str
-            )
-        return True
-
-    return False
+    return await handler(task, agent=agent, channel_id=channel_id)
 
 
 async def _execute_immediate_tasks(
