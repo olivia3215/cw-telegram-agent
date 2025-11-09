@@ -226,16 +226,18 @@ class WorkQueue:
             return None
 
     def _serialize(self) -> str:
-        graphs = []
-        for graph in self._task_graphs:
-            graphs.append(
+        return json.dumps(
+            [
                 {
                     "identifier": graph.identifier,
                     "context": graph.context,
-                    "nodes": [task.__dict__.copy() for task in graph.tasks],
+                    "nodes": [task.__dict__ for task in graph.tasks],
                 }
-            )
-        return json.dumps(graphs, indent=2, cls=TaskStatusEncoder)
+                for graph in self._task_graphs
+            ],
+            indent=2,
+            cls=TaskStatusEncoder,
+        )
 
     def add_graph(self, graph: TaskGraph):
         with self._lock:
