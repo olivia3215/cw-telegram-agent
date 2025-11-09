@@ -272,20 +272,16 @@ class WorkQueue:
         if not content:
             return cls()
 
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            graphs_data = cls._parse_legacy_markdown(content)
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            graphs_data = parsed.get("task_graphs", [])
+        elif isinstance(parsed, list):
+            graphs_data = parsed
         else:
-            if isinstance(parsed, dict):
-                graphs_data = parsed.get("task_graphs", [])
-            elif isinstance(parsed, list):
-                graphs_data = parsed
-            else:
-                logger.warning(
-                    "Unexpected JSON structure in work queue file; defaulting to empty queue."
-                )
-                graphs_data = []
+            logger.warning(
+                "Unexpected JSON structure in work queue file; defaulting to empty queue."
+            )
+            graphs_data = []
 
         graphs = []
         for graph_data in graphs_data or []:
@@ -335,15 +331,6 @@ class WorkQueue:
                 )
             )
         return cls(_task_graphs=graphs)
-
-    @staticmethod
-    def _parse_legacy_markdown(content: str) -> list[dict]:
-        graphs = []
-        blocks = content.split("```json")
-        for block in blocks[1:]:
-            json_part = block.split("```", 1)[0]
-            graphs.append(json.loads(json_part))
-        return graphs
 
     def graph_for_conversation(
         self, agent_id: int, channel_id: int
