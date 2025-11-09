@@ -184,7 +184,7 @@ async def insert_received_task_for_conversation(
         )
 
     new_graph = TaskGraph(
-        identifier=graph_id,
+        id=graph_id,
         context=new_context,
         tasks=preserved_tasks,
     )

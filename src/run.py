@@ -31,7 +31,7 @@ from tick import run_tick_loop
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.md")
+STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.json")
 
 
 async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bool:

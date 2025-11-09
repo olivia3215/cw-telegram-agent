@@ -88,8 +88,8 @@ state/
 │   └── <unique_id>.<ext>    # Debug media files (.webp, .tgs, etc.)
 ├── <agent_name>/       # Agent session directories
 │   └── telegram.session
-├── work_queue.md       # Task queue state
-└── work_queue.md.bak.md
+├── work_queue.json     # Task queue state
+└── work_queue.json.bak
 ```
 
 **Important:** Agent names cannot be `media` as this conflicts with the reserved media directory.

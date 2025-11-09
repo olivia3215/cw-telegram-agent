@@ -22,7 +22,7 @@ async def test_parse_retrieve_task_single_url():
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
-    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    graph = TaskGraph(id="g", context={}, tasks=[])
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,
@@ -56,7 +56,7 @@ async def test_parse_retrieve_task_multiple_urls():
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
-    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    graph = TaskGraph(id="g", context={}, tasks=[])
     tasks = await hr._process_retrieve_tasks(
         tasks,
         agent=None,
@@ -94,7 +94,7 @@ async def test_parse_retrieve_task_with_text():
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
-    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    graph = TaskGraph(id="g", context={}, tasks=[])
     tasks = await hr._process_retrieve_tasks(
         tasks,
         agent=None,
@@ -123,7 +123,7 @@ async def test_parse_retrieve_task_empty():
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
-    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    graph = TaskGraph(id="g", context={}, tasks=[])
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,
@@ -154,7 +154,7 @@ async def test_parse_mixed_tasks_with_retrieve():
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
-    graph = TaskGraph(identifier="g", context={}, tasks=[])
+    graph = TaskGraph(id="g", context={}, tasks=[])
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,

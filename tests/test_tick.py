@@ -26,7 +26,7 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
-    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
@@ -38,7 +38,7 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_one_tick_retries_on_failure():
     task = TaskNode(id="bad", type="explode", params={})
-    graph = TaskGraph(identifier="g2", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g2", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     await run_one_tick(queue)
@@ -55,7 +55,7 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
     from tick import run_one_tick as real_run_one_tick
 
     task = TaskNode(id="shutdown", type="shutdown", params={})
-    graph = TaskGraph(identifier="g3", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g3", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     def mock_round_robin():
@@ -75,7 +75,7 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
 def test_failed_method_max_retries():
     """Test that the failed() method correctly handles max retries."""
     task = TaskNode(id="fail", type="test", params={})
-    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g4", context={"peer_id": "test"}, tasks=[task])
 
     # Test that the first few retries succeed
     for i in range(5):
@@ -96,7 +96,7 @@ def test_failed_method_max_retries():
 async def test_single_tick_with_invalid_task():
     """Test that a single tick with invalid task calls failed() method."""
     task = TaskNode(id="fail", type="invalid_task_type", params={})
-    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     # Run one tick - should call failed() method
@@ -112,7 +112,7 @@ async def test_retry_eventually_gives_up(fake_clock):
     """Test that the tick loop eventually gives up after max retries."""
     # Create a task with an invalid type that will cause an exception
     task = TaskNode(id="fail", type="invalid_task_type", params={})
-    graph = TaskGraph(identifier="g4", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g4", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     # Use a much shorter interval to avoid hanging on real sleep
@@ -157,7 +157,7 @@ async def test_execute_clear_conversation(monkeypatch):
     # Create the task and graph
     task = TaskNode(id="t1", type="clear-conversation", params={})
     graph = TaskGraph(
-        identifier="g1",
+        id="g1",
         context={
             "agent_id": "a1",
             "channel_id": "u123",
@@ -218,7 +218,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
-    graph = TaskGraph(identifier="g1", context={"peer_id": "test"}, tasks=[task])
+    graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
     queue = WorkQueue(_task_graphs=[graph])
 
     # The task should start as 'pending'

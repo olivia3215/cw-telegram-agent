@@ -143,7 +143,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
-        logger.info(f"[{agent_name}] Graph {graph.identifier} completed and removed.")
+        logger.info(f"[{agent_name}] Graph {graph.id} completed and removed.")
 
     if state_file_path:
         work_queue.save(state_file_path)

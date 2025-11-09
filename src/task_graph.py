@@ -127,7 +127,7 @@ class TaskNode:
 
         if retry_count >= max_retries:
             logger.error(
-                f"Task {self.id} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
+                f"Task {self.id} exceeded max retries ({max_retries}). Deleting graph {graph.id}."
             )
             self.status = TaskStatus.FAILED
             return False  # signal to delete graph
@@ -168,9 +168,24 @@ class TaskNode:
         return wait_task
 
 
+def _normalize_task_status(value, task_identifier: str | None) -> TaskStatus:
+    """Return a valid `TaskStatus` for persisted data."""
+    if isinstance(value, TaskStatus):
+        return value
+
+    try:
+        return TaskStatus(value)
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Unknown task status '{value}' for task "
+            f"{task_identifier}, defaulting to pending."
+        )
+        return TaskStatus.PENDING
+
+
 @dataclass
 class TaskGraph:
-    identifier: str
+    id: str
     context: dict
     tasks: list[TaskNode] = field(default_factory=list)
 
@@ -226,20 +241,18 @@ class WorkQueue:
             return None
 
     def _serialize(self) -> str:
-        md = "# Work Queue Snapshot\n\n"
-        for graph in self._task_graphs:
-            md += f"## Task Graph: {graph.identifier}\n"
-            block = {
-                "identifier": graph.identifier,
-                "context": graph.context,
-                "nodes": [task.__dict__ for task in graph.tasks],
-            }
-            md += (
-                "```json\n"
-                + json.dumps(block, indent=2, cls=TaskStatusEncoder)
-                + "\n```\n\n"
-            )
-        return md
+        return json.dumps(
+            [
+                {
+                    "id": graph.id,
+                    "context": graph.context,
+                    "nodes": [task.__dict__ for task in graph.tasks],
+                }
+                for graph in self._task_graphs
+            ],
+            indent=2,
+            cls=TaskStatusEncoder,
+        )
 
     def add_graph(self, graph: TaskGraph):
         with self._lock:
@@ -256,8 +269,8 @@ class WorkQueue:
         """Saves the current state of the work queue to a file."""
         with self._lock:
             data = self._serialize()
-            backup = path + ".bak.md"
-            tmp = path + ".tmp.md"
+            backup = path + ".bak"
+            tmp = path + ".tmp"
             if os.path.exists(path):
                 shutil.copy2(path, backup)
             with open(tmp, "w") as f:
@@ -272,31 +285,47 @@ class WorkQueue:
         with open(path) as f:
             content = f.read()
 
-        graphs = []
-        blocks = content.split("```json")
-        for block in blocks[1:]:
-            json_part = block.split("```", 1)[0]
-            data = json.loads(json_part)
+        content = content.strip()
+        if not content:
+            return cls()
 
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            graphs_data = parsed.get("task_graphs", [])
+        elif isinstance(parsed, list):
+            graphs_data = parsed
+        else:
+            logger.warning(
+                "Unexpected JSON structure in work queue file; defaulting to empty queue."
+            )
+            graphs_data = []
+
+        graphs = []
+        for graph_data in graphs_data or []:
             tasks = []
-            for t in data.get("nodes", []):
-                # On startup, tasks that were active become pending
-                if t.get("status") == TaskStatus.ACTIVE.value:
-                    t["status"] = TaskStatus.PENDING
+            for task_data in graph_data.get("nodes", []):
+                task_dict = dict(task_data)
+                task_identifier = task_dict.get("id")
+                status_value = task_dict.get("status")
+
+                if status_value == TaskStatus.ACTIVE.value:
+                    task_dict["status"] = TaskStatus.PENDING
                     logger.info(
-                        f"Reverted active task {t.get('identifier') or t.get('id')} to pending on load."
+                        f"Reverted active task {task_identifier} to pending on load."
                     )
-                elif isinstance(t.get("status"), str):
-                    # Convert string status to enum
-                    t["status"] = TaskStatus(t["status"])
-                if "identifier" in t and "id" not in t:
-                    t["id"] = t.pop("identifier")
-                tasks.append(TaskNode(**t))
+                elif status_value is None:
+                    task_dict["status"] = TaskStatus.PENDING
+                else:
+                    task_dict["status"] = _normalize_task_status(
+                        status_value, task_identifier
+                    )
+
+                tasks.append(TaskNode(**task_dict))
 
             graphs.append(
                 TaskGraph(
-                    identifier=data["identifier"],
-                    context=data["context"],
+                    id=graph_data["id"],
+                    context=graph_data["context"],
                     tasks=tasks,
                 )
             )

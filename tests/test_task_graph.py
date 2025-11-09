@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta, timezone
 
@@ -37,7 +38,7 @@ def make_send_task(identifier: str, depends=None):
 
 
 def make_graph(identifier: str, nodes):
-    return TaskGraph(identifier=identifier, context={"peer_id": "user123"}, tasks=nodes)
+    return TaskGraph(id=identifier, context={"peer_id": "user123"}, tasks=nodes)
 
 
 def test_task_readiness():
@@ -82,12 +83,19 @@ def test_round_robin_rotation():
 def test_serialization_and_reload(tmp_path):
     g = make_graph("gX", [make_wait_task_legacy("wX", -10)])
     queue = WorkQueue(_task_graphs=[g])
-    file_path = tmp_path / "queue.md"
+    file_path = tmp_path / "queue.json"
     queue.save(str(file_path))
+
+    with open(file_path) as f:
+        raw = json.load(f)
+
+    assert isinstance(raw, list)
+    assert raw[0]["id"] == "gX"
+    assert raw[0]["nodes"][0]["status"] == TaskStatus.PENDING.value
 
     reloaded = WorkQueue.load(str(file_path))
     assert len(reloaded._task_graphs) == 1
-    assert reloaded._task_graphs[0].identifier == "gX"
+    assert reloaded._task_graphs[0].id == "gX"
     assert reloaded._task_graphs[0].tasks[0].id == "wX"
     assert reloaded._task_graphs[0].tasks[0].type == "wait"
 
@@ -161,7 +169,7 @@ def test_reloads_active_task_as_pending(tmp_path):
     queue = WorkQueue()
     queue._task_graphs = [graph]
 
-    file_path = tmp_path / "queue_with_active.md"
+    file_path = tmp_path / "queue_with_active.json"
     queue.save(str(file_path))
 
     # 3. Load the queue from the file

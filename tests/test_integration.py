@@ -32,7 +32,7 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     )
 
     old_graph = TaskGraph(
-        identifier="old_graph",
+        id="old_graph",
         context={"agent_id": agent_id, "channel_id": channel_id},
         tasks=[callout_task, regular_task],
     )
@@ -92,7 +92,7 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
     )
 
     old_graph = TaskGraph(
-        identifier="old_graph",
+        id="old_graph",
         context={"agent_id": agent_id, "channel_id": channel_id},
         tasks=[wait_task],
     )
@@ -163,7 +163,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     )
 
     old_graph = TaskGraph(
-        identifier="old_graph",
+        id="old_graph",
         context={"agent_id": agent_id, "channel_id": channel_id},
         tasks=[preserved_send_task],
     )
