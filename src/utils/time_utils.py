@@ -1,0 +1,157 @@
+"""Utilities for working with time zones and timestamp normalization."""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, date as dt_date, time as dt_time
+from zoneinfo import ZoneInfo
+
+from clock import clock
+
+TZ_ABBREVIATIONS: dict[str, str] = {
+    "UTC": "UTC",
+    "GMT": "UTC",
+    "PST": "America/Los_Angeles",
+    "PDT": "America/Los_Angeles",
+    "MST": "America/Denver",
+    "MDT": "America/Denver",
+    "CST": "America/Chicago",
+    "CDT": "America/Chicago",
+    "EST": "America/New_York",
+    "EDT": "America/New_York",
+}
+
+logger = logging.getLogger(__name__)
+
+
+def _coerce_to_str(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return str(value)
+
+
+def get_agent_timezone(agent):
+    """Return the agent's timezone, defaulting to the server timezone when absent."""
+    tz = getattr(agent, "timezone", None)
+    if isinstance(tz, ZoneInfo):
+        return tz
+    if isinstance(tz, str):
+        try:
+            return ZoneInfo(tz)
+        except Exception:
+            pass
+    if tz is not None and hasattr(tz, "tzname"):
+        return tz
+    current = clock.now().astimezone()
+    return current.tzinfo or ZoneInfo("UTC")
+
+
+def resolve_timezone(abbrev: str) -> ZoneInfo | None:
+    tz_name = TZ_ABBREVIATIONS.get(abbrev.upper())
+    if not tz_name:
+        return None
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return None
+
+
+def parse_datetime_with_optional_tz(value: str, default_tz: ZoneInfo) -> datetime | None:
+    """Parse ISO-style or abbreviated timestamps, applying a fallback timezone as needed."""
+    text = value.strip()
+    if not text:
+        return None
+
+    iso_candidate = text.replace("Z", "+00:00")
+    for candidate in (iso_candidate, iso_candidate.replace(" ", "T", 1)):
+        try:
+            dt = datetime.fromisoformat(candidate)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=default_tz)
+            return dt
+        except ValueError:
+            continue
+
+    parts = text.rsplit(" ", 1)
+    if len(parts) == 2 and parts[1].isalpha():
+        tzinfo = resolve_timezone(parts[1])
+        if tzinfo:
+            base = parts[0]
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    dt_naive = datetime.strptime(base, fmt)
+                    return dt_naive.replace(tzinfo=tzinfo)
+                except ValueError:
+                    continue
+    return None
+
+
+def normalize_created_string(raw_value, agent) -> str:
+    """Normalize a created timestamp into the agent's timezone-friendly string."""
+    agent_tz = get_agent_timezone(agent)
+
+    if raw_value is None:
+        current = agent.get_current_time()
+        return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    text = _coerce_to_str(raw_value).strip()
+    if not text:
+        current = agent.get_current_time()
+        return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+        return text
+    except ValueError:
+        pass
+
+    parsed = parse_datetime_with_optional_tz(text, agent_tz)
+    if not parsed:
+        logger.debug("Unable to parse created timestamp '%s'; using current time", text)
+        parsed = agent.get_current_time()
+    localized = parsed.astimezone(agent_tz)
+    return localized.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def memory_sort_key(memory: dict, agent) -> tuple:
+    """Return a tuple usable for sorting memories chronologically in the agent's timezone."""
+    agent_tz = get_agent_timezone(agent)
+    created = memory.get("created")
+    if not created:
+        return (dt_date.min, 1, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))
+
+    text = _coerce_to_str(created).strip()
+    try:
+        date_only = datetime.strptime(text, "%Y-%m-%d")
+        return (date_only.date(), 0, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))
+    except ValueError:
+        pass
+
+    parsed = parse_datetime_with_optional_tz(text, agent_tz)
+    if not parsed:
+        return (dt_date.min, 1, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))
+
+    localized = parsed.astimezone(agent_tz)
+    return (
+        localized.date(),
+        1,
+        localized.timetz(),
+        memory.get("id", ""),
+    )
+
+
+__all__ = [
+    "TZ_ABBREVIATIONS",
+    "get_agent_timezone",
+    "normalize_created_string",
+    "parse_datetime_with_optional_tz",
+    "resolve_timezone",
+    "memory_sort_key",
+]
+

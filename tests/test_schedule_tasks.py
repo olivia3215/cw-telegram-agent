@@ -7,7 +7,7 @@ from task_graph import TaskGraph, TaskNode
 @pytest.mark.asyncio
 async def test_schedule_tasks_uses_text_for_typing_delay():
     received_task = TaskNode(
-        identifier="received-1",
+        id="received-1",
         type="received",
         params={},
         depends_on=[],
@@ -16,7 +16,7 @@ async def test_schedule_tasks_uses_text_for_typing_delay():
 
     long_message = "hello world " * 20  # 240 characters
     send_task = TaskNode(
-        identifier="send-1",
+        id="send-1",
         type="send",
         params={"text": long_message},
         depends_on=[],
@@ -35,13 +35,13 @@ async def test_schedule_tasks_uses_text_for_typing_delay():
     assert len(wait_tasks) == 1
     wait_task = wait_tasks[0]
     assert wait_task.params["delay"] > 2
-    assert send_task.depends_on == [wait_task.identifier]
+    assert send_task.depends_on == [wait_task.id]
 
 
 @pytest.mark.asyncio
 async def test_schedule_tasks_defaults_delay_when_text_missing():
     received_task = TaskNode(
-        identifier="received-2",
+        id="received-2",
         type="received",
         params={},
         depends_on=[],
@@ -49,7 +49,7 @@ async def test_schedule_tasks_defaults_delay_when_text_missing():
     graph = TaskGraph(identifier="graph-2", context={}, tasks=[received_task])
 
     send_task = TaskNode(
-        identifier="send-2",
+        id="send-2",
         type="send",
         params={},
         depends_on=[],

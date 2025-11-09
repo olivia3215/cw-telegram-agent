@@ -23,12 +23,12 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
 
     # 1. Create an initial graph with one regular task and one callout task
     callout_task = TaskNode(
-        identifier="callout1",
+        id="callout1",
         type="send",
         params={"callout": True, "text": "Important!"},
     )
     regular_task = TaskNode(
-        identifier="regular1", type="send", params={"text": "Not important"}
+        id="regular1", type="send", params={"text": "Not important"}
     )
 
     old_graph = TaskGraph(
@@ -66,7 +66,7 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     new_graph = work_queue._task_graphs[0]
 
     # The new graph should contain the preserved callout task
-    node_ids = {task.identifier for task in new_graph.tasks}
+    node_ids = {task.id for task in new_graph.tasks}
     assert "callout1" in node_ids
 
     # The new graph should contain the old regular task
@@ -126,7 +126,7 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
     new_graph = work_queue._task_graphs[0]
 
     # The wait task should still be preserved
-    node_ids = {task.identifier for task in new_graph.tasks}
+    node_ids = {task.id for task in new_graph.tasks}
     assert "wait-preserve-test" in node_ids
 
     # Find the received task
@@ -157,7 +157,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
 
     # 1. Create an initial graph with a non-wait task that has preserve:true
     preserved_send_task = TaskNode(
-        identifier="send-preserve-test",
+        id="send-preserve-test",
         type="send",
         params={"preserve": True, "text": "Important preserved message!"},
     )
@@ -197,7 +197,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     new_graph = work_queue._task_graphs[0]
 
     # The preserved send task should still be preserved
-    node_ids = {task.identifier for task in new_graph.tasks}
+    node_ids = {task.id for task in new_graph.tasks}
     assert "send-preserve-test" in node_ids
 
     # Find the received task

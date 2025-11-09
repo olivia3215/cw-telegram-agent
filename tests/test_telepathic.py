@@ -236,7 +236,9 @@ class TestTelepathicMessageHandling:
             [
                 {
                     "kind": "remember",
-                    "content": {"content": "User prefers short responses."},
+                    "id": "remember-short-responses",
+                    "content": "User prefers short responses.",
+                    "category": "preferences",
                 }
             ],
             indent=2,
@@ -255,11 +257,18 @@ class TestTelepathicMessageHandling:
                 assert len(tasks) == 0
                 
                 # Should send telepathic message
-                mock_agent.client.send_message.assert_called_once_with(
-                    456,
-                    "⟦remember⟧\n{\"content\": \"User prefers short responses.\"}",
-                    parse_mode="Markdown",
-                )
+                mock_agent.client.send_message.assert_called_once()
+                send_args, send_kwargs = mock_agent.client.send_message.call_args
+                assert send_args[0] == 456
+                assert send_kwargs["parse_mode"] == "Markdown"
+                prefix, _, body = send_args[1].partition("\n")
+                assert prefix == "⟦remember⟧"
+                payload = json.loads(body)
+                assert payload == {
+                    "id": "remember-short-responses",
+                    "content": "User prefers short responses.",
+                    "category": "preferences",
+                }
                 
                 # Should still process the remember task
                 mock_process.assert_called_once()
@@ -307,10 +316,13 @@ class TestTelepathicMessageHandling:
 
             graph = TaskGraph(identifier="g1", context={}, tasks=[])
 
-            with patch("handlers.received._fetch_url", new=AsyncMock(return_value=("https://example.com/page1", "<html>1</html>"))):
+            with patch(
+                "handlers.received._fetch_url",
+                new=AsyncMock(return_value=("https://example.com/page1", "<html>1</html>")),
+            ):
                 with patch(
                     "handlers.received.make_wait_task",
-                    return_value=TaskNode(identifier="wait-1", type="wait", params={}, depends_on=[]),
+                    return_value=TaskNode(id="wait-1", type="wait", params={}, depends_on=[]),
                 ):
                     with pytest.raises(Exception):
                         await hr._process_retrieve_tasks(

@@ -107,7 +107,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
 
     graph = work_queue.graph_containing(task)
     if not graph:
-        logger.warning(f"Task {task.identifier} found but no matching graph.")
+        logger.warning(f"Task {task.id} found but no matching graph.")
         return
 
     agent_id = graph.context.get("agent_id")
@@ -120,13 +120,13 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         except Exception as e:
             logger.exception(f"run_one_tick: could not resolve agent {agent_id}: {e}")
 
-    logger.info(f"[{agent_name}] Running task {task.identifier} of type {task.type}")
+    logger.info(f"[{agent_name}] Running task {task.id} of type {task.type}")
 
     try:
         task.status = TaskStatus.ACTIVE
         if state_file_path:
             work_queue.save(state_file_path)
-        logger.info(f"[{agent_name}] Task {task.identifier} is now active.")
+        logger.info(f"[{agent_name}] Task {task.id} is now active.")
         handler = _dispatch_table.get(task.type)
         if not handler:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
@@ -138,9 +138,7 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         if isinstance(e, PeerIdInvalidError):
             agent.clear_entity_cache()
         else:
-            logger.exception(
-                f"[{agent_name}] Task {task.identifier} raised exception: {e}"
-            )
+            logger.exception(f"[{agent_name}] Task {task.id} raised exception: {e}")
         task.failed(graph)
 
     if is_graph_complete(graph):

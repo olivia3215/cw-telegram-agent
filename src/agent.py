@@ -242,10 +242,19 @@ class Agent:
             )
             if memory_file.exists():
                 with open(memory_file, "r", encoding="utf-8") as f:
-                    memories = json.load(f)
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        memories = loaded.get("memory", [])
+                    elif isinstance(loaded, list):
+                        memories = loaded
+                    else:
+                        logger.warning(
+                            f"[{self.name}] Config memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
+                        )
+                        return ""
                     if not isinstance(memories, list):
                         logger.warning(
-                            f"[{self.name}] Config memory file {memory_file} contains {type(memories).__name__}, expected list"
+                            f"[{self.name}] Config memory file {memory_file} contains invalid 'memory' structure"
                         )
                         return ""
                     return json.dumps(memories, indent=2, ensure_ascii=False)
@@ -271,10 +280,19 @@ class Agent:
             memory_file = Path(state_dir) / self.name / "memory.json"
             if memory_file.exists():
                 with open(memory_file, "r", encoding="utf-8") as f:
-                    memories = json.load(f)
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        memories = loaded.get("memory", [])
+                    elif isinstance(loaded, list):
+                        memories = loaded
+                    else:
+                        logger.warning(
+                            f"[{self.name}] State memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
+                        )
+                        return ""
                     if not isinstance(memories, list):
                         logger.warning(
-                            f"[{self.name}] State memory file {memory_file} contains {type(memories).__name__}, expected list"
+                            f"[{self.name}] State memory file {memory_file} contains invalid 'memory' structure"
                         )
                         return ""
                     return json.dumps(memories, indent=2, ensure_ascii=False)

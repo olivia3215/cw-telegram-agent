@@ -51,7 +51,7 @@ class TaskStatus(Enum):
 
 @dataclass
 class TaskNode:
-    identifier: str
+    id: str
     type: str
     params: dict = field(default_factory=dict)
     depends_on: list[str] = field(default_factory=list)
@@ -59,13 +59,11 @@ class TaskNode:
 
     def is_unblocked(self, completed_ids: set) -> bool:
         if self.status != TaskStatus.PENDING:
-            logger.debug(
-                f"Task {self.identifier} is not pending (status: {self.status})."
-            )
+            logger.debug(f"Task {self.id} is not pending (status: {self.status}).")
             return False
         if not all(dep in completed_ids for dep in self.depends_on):
             logger.debug(
-                f"Task {self.identifier} dependencies not met: {self.depends_on} vs {completed_ids}."
+                f"Task {self.id} dependencies not met: {self.depends_on} vs {completed_ids}."
             )
             return False
         return True
@@ -86,7 +84,7 @@ class TaskNode:
                     until = wait_until_time.strftime(ISO_FORMAT)
                     self.params["until"] = until
                     logger.debug(
-                        f"Task {self.identifier} converted delay {delay}s to until {until}"
+                        f"Task {self.id} converted delay {delay}s to until {until}"
                     )
                 else:
                     # Already converted, use the existing until time
@@ -96,7 +94,7 @@ class TaskNode:
                 pass
             else:
                 logger.warning(
-                    f"Task {self.identifier} of type 'wait' missing both 'delay' and 'until' parameters."
+                    f"Task {self.id} of type 'wait' missing both 'delay' and 'until' parameters."
                 )
                 return False
 
@@ -108,12 +106,12 @@ class TaskNode:
                 wait_time = datetime.strptime(until, ISO_FORMAT)
                 if now < wait_time:
                     logger.debug(
-                        f"Task {self.identifier} wait time not reached: now={now.isoformat()}, until={until}."
+                        f"Task {self.id} wait time not reached: now={now.isoformat()}, until={until}."
                     )
                     return False
             except ValueError:
                 logger.warning(
-                    f"Task {self.identifier} has invalid 'until' format: {until}."
+                    f"Task {self.id} has invalid 'until' format: {until}."
                 )
                 return False
         return True
@@ -129,7 +127,7 @@ class TaskNode:
 
         if retry_count >= max_retries:
             logger.error(
-                f"Task {self.identifier} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
+                f"Task {self.id} exceeded max retries ({max_retries}). Deleting graph {graph.identifier}."
             )
             self.status = TaskStatus.FAILED
             return False  # signal to delete graph
@@ -137,7 +135,7 @@ class TaskNode:
         self.insert_delay(graph, retry_interval_sec)
 
         logger.warning(
-            f"Task {self.identifier} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries})."
+            f"Task {self.id} failed. Retrying in {retry_interval_sec}s (retry {retry_count}/{max_retries})."
         )
         self.status = TaskStatus.PENDING
         return True
@@ -165,7 +163,7 @@ class TaskNode:
         wait_task = make_wait_task(delay_seconds=delay_seconds)
 
         graph.add_task(wait_task)
-        self.depends_on.append(wait_task.identifier)
+        self.depends_on.append(wait_task.id)
 
         return wait_task
 
@@ -178,7 +176,7 @@ class TaskGraph:
 
     def completed_ids(self):
         return {
-            task.identifier for task in self.tasks if task.status == TaskStatus.DONE
+            task.id for task in self.tasks if task.status == TaskStatus.DONE
         }
 
     def pending_tasks(self, now: datetime):
@@ -187,7 +185,7 @@ class TaskGraph:
 
     def get_node(self, node_id: str) -> TaskNode | None:
         for task in self.tasks:
-            if task.identifier == node_id:
+            if task.id == node_id:
                 return task
         return None
 
@@ -286,11 +284,13 @@ class WorkQueue:
                 if t.get("status") == TaskStatus.ACTIVE.value:
                     t["status"] = TaskStatus.PENDING
                     logger.info(
-                        f"Reverted active task {t['identifier']} to pending on load."
+                        f"Reverted active task {t.get('identifier') or t.get('id')} to pending on load."
                     )
                 elif isinstance(t.get("status"), str):
                     # Convert string status to enum
                     t["status"] = TaskStatus(t["status"])
+                if "identifier" in t and "id" not in t:
+                    t["id"] = t.pop("identifier")
                 tasks.append(TaskNode(**t))
 
             graphs.append(
