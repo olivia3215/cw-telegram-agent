@@ -52,12 +52,6 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     if reply_to_raw is None:
         reply_to_raw = task.params.get("in_reply_to")
     in_reply_to = coerce_to_int(reply_to_raw)
-    if in_reply_to is not None:
-        task.params["reply_to"] = in_reply_to
-        task.params["in_reply_to"] = in_reply_to
-    else:
-        task.params.pop("reply_to", None)
-        task.params.pop("in_reply_to", None)
 
     # Require sticker set to be specified in task (no fallback)
     set_short = task.params.get("sticker_set")

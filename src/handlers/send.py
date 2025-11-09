@@ -28,9 +28,7 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     message = task.params.get("text")
     if message is not None:
         message = str(message).strip()
-        if message:
-            task.params["message"] = message
-        else:
+        if not message:
             message = None
 
     # Be resilient to empty message
@@ -54,11 +52,6 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     if reply_to_raw is None:
         reply_to_raw = task.params.get("in_reply_to")
     reply_to_int = coerce_to_int(reply_to_raw)
-    if reply_to_int is not None:
-        task.params["in_reply_to"] = reply_to_int
-    else:
-        task.params.pop("in_reply_to", None)
-
     try:
         if reply_to_int:
             await client.send_message(
