@@ -650,15 +650,16 @@ def register_immediate_task_handler(task_type: str):
 
 @register_immediate_task_handler("remember")
 async def _handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -> bool:
+    if agent is None:
+        logger.warning("[remember] Missing agent context; deferring remember task")
+        return False
+
     telepathy_payload = {"id": task.id}
     telepathy_payload.update(task.params or {})
 
-    if agent:
-        body = json.dumps(telepathy_payload, ensure_ascii=False)
-        await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
-        await _process_remember_task(agent, channel_id, task)
-    else:
-        await _process_remember_task(agent, channel_id, task)
+    body = json.dumps(telepathy_payload, ensure_ascii=False)
+    await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
+    await _process_remember_task(agent, channel_id, task)
     return True
 
 
