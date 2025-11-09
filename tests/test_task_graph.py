@@ -31,7 +31,7 @@ def make_send_task(identifier: str, depends=None):
     return TaskNode(
         identifier=identifier,
         type="send",
-        params={"to": "user123", "message": "Hello!"},
+        params={"to": "user123", "text": "Hello!"},
         depends_on=depends or [],
     )
 
@@ -359,7 +359,7 @@ def test_delay_conversion_with_dependencies():
     """Test that delay conversion works correctly when tasks have dependencies."""
     # Create a task that depends on another task
     first_task = TaskNode(
-        identifier="first", type="send", params={"message": "Hello"}, depends_on=[]
+        identifier="first", type="send", params={"text": "Hello"}, depends_on=[]
     )
 
     # Create a wait task that depends on the first task

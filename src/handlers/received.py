@@ -1497,7 +1497,8 @@ async def _schedule_tasks(
 
             # Calculate delay based on task type
             if task.type == "send":
-                message = task.params.get("message", "")
+                raw_text = task.params.get("text")
+                message = str(raw_text) if raw_text is not None else ""
                 delay_seconds = 2 + len(message) / 60
             else:  # sticker
                 delay_seconds = 4

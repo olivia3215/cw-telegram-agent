@@ -25,10 +25,10 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     callout_task = TaskNode(
         identifier="callout1",
         type="send",
-        params={"callout": True, "message": "Important!"},
+        params={"callout": True, "text": "Important!"},
     )
     regular_task = TaskNode(
-        identifier="regular1", type="send", params={"message": "Not important"}
+        identifier="regular1", type="send", params={"text": "Not important"}
     )
 
     old_graph = TaskGraph(
@@ -159,7 +159,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     preserved_send_task = TaskNode(
         identifier="send-preserve-test",
         type="send",
-        params={"preserve": True, "message": "Important preserved message!"},
+        params={"preserve": True, "text": "Important preserved message!"},
     )
 
     old_graph = TaskGraph(

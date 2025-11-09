@@ -57,7 +57,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
             TaskNode(
                 identifier="send-1",
                 type="send",
-                params={"message": "Hello"},
+                params={"text": "Hello"},
                 depends_on=[],
             ),
             make_wait_task(
@@ -161,7 +161,7 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
             TaskNode(
                 identifier="send-1",
                 type="send",
-                params={"message": "Hello"},
+                params={"text": "Hello"},
                 depends_on=[],
             ),
         ],
