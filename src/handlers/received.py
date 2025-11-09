@@ -1491,8 +1491,8 @@ async def _schedule_tasks(
             task.params["callout"] = True
 
         if task.type == "send" or task.type == "sticker":
-            if "in_reply_to" not in task.params and fallback_reply_to:
-                task.params["in_reply_to"] = fallback_reply_to
+            if "reply_to" not in task.params and fallback_reply_to:
+                task.params["reply_to"] = fallback_reply_to
                 fallback_reply_to = None
 
             # Calculate delay based on task type
