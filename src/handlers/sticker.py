@@ -10,9 +10,9 @@ from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
 from agent import Agent, get_agent_for_id
-from handlers.utils import coerce_to_int
+from utils import coerce_to_int
 from task_graph import TaskGraph, TaskNode
-from tick import register_task_handler
+from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)
 
