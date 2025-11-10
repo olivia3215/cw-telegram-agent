@@ -142,18 +142,18 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_send_telepathic_message_success(self):
         """Test successful sending of telepathic message."""
-        from handlers.received import _maybe_send_telepathic_message
+        from handlers.telepathic import maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
         mock_agent.client = AsyncMock()
         mock_agent.agent_id = 789  # Non-telepathic agent
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 123456
             
-            await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "I need to think about this")
+            await maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "I need to think about this")
             
             mock_agent.client.send_message.assert_called_once_with(
                 123456, "⟦think⟧\nI need to think about this", parse_mode="Markdown"
@@ -162,19 +162,19 @@ class TestTelepathicMessageHandling:
     @pytest.mark.asyncio
     async def test_send_telepathic_message_empty_content(self):
         """Test that empty content is not sent."""
-        from handlers.received import _maybe_send_telepathic_message
+        from handlers.telepathic import maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.client = AsyncMock()
         
-        await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "")
+        await maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "")
         
         mock_agent.client.send_message.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_send_telepathic_message_error_handling(self):
         """Test error handling when sending telepathic message fails."""
-        from handlers.received import _maybe_send_telepathic_message
+        from handlers.telepathic import maybe_send_telepathic_message
         
         mock_agent = Mock()
         mock_agent.name = "TestAgent"
@@ -182,12 +182,12 @@ class TestTelepathicMessageHandling:
         mock_agent.agent_id = 789  # Non-telepathic agent
         mock_agent.client.send_message.side_effect = Exception("Send failed")
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
             # Channel is telepathic, agent is not telepathic
             mock_is_telepath.side_effect = lambda x: x == 123456
             
-            with patch('handlers.received.logger') as mock_logger:
-                await _maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "test")
+            with patch('handlers.telepathic.logger') as mock_logger:
+                await maybe_send_telepathic_message(mock_agent, 123456, "⟦think⟧", "test")
                 
                 mock_logger.error.assert_called_once()
 
@@ -206,9 +206,11 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+            'handlers.telepathic.is_telepath'
+        ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
-            mock_is_telepath.side_effect = lambda x: x == 456
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
             
             tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
@@ -244,11 +246,13 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+            'handlers.telepathic.is_telepath'
+        ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
-            mock_is_telepath.side_effect = lambda x: x == 456
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
             
-            with patch('handlers.received._process_remember_task', new_callable=AsyncMock) as mock_process:
+            with patch('handlers.remember._process_remember_task', new_callable=AsyncMock) as mock_process:
                 tasks = await parse_llm_reply(
                     json_text, agent_id=123, channel_id=456, agent=mock_agent
                 )
@@ -296,9 +300,11 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+            'handlers.telepathic.is_telepath'
+        ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
-            mock_is_telepath.side_effect = lambda x: x == 456
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
             
             tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
@@ -356,7 +362,9 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath', return_value=False):
+        with patch('handlers.received.is_telepath', return_value=False), patch(
+            'handlers.telepathic.is_telepath', return_value=False
+        ):
             tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent
             )
@@ -382,9 +390,11 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath:
+        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+            'handlers.telepathic.is_telepath'
+        ) as mock_telepath:
             # Both channel and agent are telepathic
-            mock_is_telepath.side_effect = lambda x: x in [123, 456]
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x in [123, 456]
 
             tasks = await parse_llm_reply(
                 json_text, agent_id=123, channel_id=456, agent=mock_agent

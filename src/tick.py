@@ -21,23 +21,12 @@ from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
+from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
 
 # per-tick AI description budget (default 8; env override)
-
-# Dispatch table for task type handlers
-_dispatch_table = {}
-
-
-# decorator for task handlers
-def register_task_handler(task_type):
-    def decorator(func):
-        _dispatch_table[task_type] = func
-        return func
-
-    return decorator
 
 
 def is_graph_complete(graph) -> bool:
@@ -127,11 +116,9 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         if state_file_path:
             work_queue.save(state_file_path)
         logger.info(f"[{agent_name}] Task {task.id} is now active.")
-        handler = _dispatch_table.get(task.type)
-        if not handler:
+        handled = await dispatch_task(task.type, task, graph, work_queue)
+        if not handled:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
-
-        await handler(task, graph, work_queue)
         task.status = TaskStatus.DONE
 
     except Exception as e:

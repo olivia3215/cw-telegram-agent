@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, date as dt_date, time as dt_time
 from zoneinfo import ZoneInfo
 
 from clock import clock
+from utils import coerce_to_str
 
 TZ_ABBREVIATIONS: dict[str, str] = {
     "UTC": "UTC",
@@ -23,17 +23,6 @@ TZ_ABBREVIATIONS: dict[str, str] = {
 }
 
 logger = logging.getLogger(__name__)
-
-
-def _coerce_to_str(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, ensure_ascii=False)
-    except Exception:
-        return str(value)
 
 
 def get_agent_timezone(agent):
@@ -100,7 +89,7 @@ def normalize_created_string(raw_value, agent) -> str:
         current = agent.get_current_time()
         return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
 
-    text = _coerce_to_str(raw_value).strip()
+    text = coerce_to_str(raw_value).strip()
     if not text:
         current = agent.get_current_time()
         return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -126,7 +115,7 @@ def memory_sort_key(memory: dict, agent) -> tuple:
     if not created:
         return (dt_date.min, 1, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))
 
-    text = _coerce_to_str(created).strip()
+    text = coerce_to_str(created).strip()
     try:
         date_only = datetime.strptime(text, "%Y-%m-%d")
         return (date_only.date(), 0, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))
@@ -154,4 +143,3 @@ __all__ = [
     "resolve_timezone",
     "memory_sort_key",
 ]
-

@@ -10,7 +10,7 @@ from telethon.tl.functions.contacts import BlockRequest
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode
 from telegram_util import get_channel_name, is_group_or_channel
-from tick import register_task_handler
+from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)
 

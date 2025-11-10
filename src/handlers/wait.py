@@ -4,7 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 from task_graph import TaskNode
-from tick import register_task_handler
+from handlers.registry import register_task_handler
 
 
 @register_task_handler("wait")

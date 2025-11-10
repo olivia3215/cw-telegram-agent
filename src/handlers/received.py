@@ -6,20 +6,17 @@
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC
-from pathlib import Path
 
 import httpx  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from clock import clock
-from config import (
-    FETCHED_RESOURCE_LIFETIME_SECONDS,
-    STATE_DIRECTORY,
-)
-from handlers.utils import coerce_to_int
+from config import FETCHED_RESOURCE_LIFETIME_SECONDS
+import handlers.telepathic as telepathic
+from handlers.registry import dispatch_immediate_task, register_task_handler
+from utils import coerce_to_int, coerce_to_str, format_username
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
 from media.media_format import format_media_sentence
@@ -30,11 +27,9 @@ from media.media_injector import (
 from media.media_source import get_default_media_source_chain
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import make_wait_task
-from utils.time_utils import memory_sort_key, normalize_created_string
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
 from telepathic import is_telepath
-from tick import register_task_handler
 from telethon.tl.functions.channels import GetFullChannelRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
@@ -42,39 +37,6 @@ from telethon.tl.types import Channel, Chat, User  # pyright: ignore[reportMissi
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
-
-async def _maybe_send_telepathic_message(agent, channel_id: int, prefix: str, content: str):
-    """
-    Send a telepathic message to a channel immediately.
-
-    Args:
-        agent: The agent instance.
-        channel_id: The channel to send to.
-        prefix: The concept (e.g., "think", "remember", "retrieve").
-        content: The message body (without prefix markers).
-    """
-    if not content.strip():
-        return
-        
-    _should_reveal_thoughts = is_telepath(channel_id) and not is_telepath(agent.agent_id)
-    if not _should_reveal_thoughts:
-        if not is_telepath(channel_id):
-            logger.info(f"[{agent.name}] Skipping telepathic message: channel {channel_id} is not telepathic")
-        if is_telepath(agent.agent_id):
-            logger.info(f"[{agent.name}] Skipping telepathic message: agent {agent.agent_id} is telepathic")
-        return
-
-    prefix_stripped = prefix.strip()
-    if prefix_stripped.startswith("⟦") and prefix_stripped.endswith("⟧"):
-        prefix_stripped = prefix_stripped[1:-1]
-
-    message = f"⟦{prefix_stripped}⟧\n{content}"
-    try:
-        await agent.client.send_message(channel_id, message, parse_mode="Markdown")
-        logger.info(f"[{agent.name}] Sent telepathic message: {prefix}")
-    except Exception as e:
-        logger.error(f"[{agent.name}] Failed to send telepathic message: {e}")
-
 
 async def _fetch_url(url: str) -> tuple[str, str]:
     """
@@ -143,129 +105,6 @@ async def _fetch_url(url: str) -> tuple[str, str]:
             url,
             f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
         )
-
-
-async def _process_remember_task(agent, channel_id: int, task: TaskNode):
-    """
-    Process a remember task by appending content to the agent's global memory file.
-
-    All memories produced by an agent go into a single agent-specific global memory file,
-    regardless of which user the memory is about. This enables the agent to have a
-    comprehensive memory of all interactions across all conversations.
-
-    Args:
-        agent: The agent instance
-        channel_id: The conversation ID (Telegram channel/user ID)
-        task: The remember task node
-    """
-    try:
-        # Get state directory
-        state_dir = STATE_DIRECTORY
-
-        # Memory file path: state/AgentName/memory.json (agent-specific global memory)
-        memory_file = Path(state_dir) / agent.name / "memory.json"
-
-        task_params = dict(task.params or {})
-        task_params.pop("kind", None)
-
-        raw_content = task_params.pop("content", None)
-        content_value = None
-        if raw_content is not None:
-            stripped = _coerce_to_str(raw_content).strip()
-            if stripped:
-                content_value = stripped
-
-        raw_created = task_params.pop("created", None)
-
-        memory_id = task.id or f"memory-{uuid.uuid4().hex[:8]}"
-
-        partner_name = await get_channel_name(agent, channel_id)
-        partner_username = None
-        try:
-            entity = await agent.get_cached_entity(channel_id)
-        except Exception:
-            entity = None
-        if entity is not None:
-            partner_username = _format_username(entity)
-
-        created_value = normalize_created_string(raw_created, agent)
-
-        # Ensure parent directory exists
-        memory_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Read existing memories (or start with empty array)
-        memories: list[dict] = []
-        existing_payload: dict | None = None
-        if memory_file.exists():
-            try:
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        existing_payload = dict(loaded)
-                        memories = loaded.get("memory", [])
-                    elif isinstance(loaded, list):
-                        memories = loaded
-                    else:
-                        raise ValueError(
-                            f"Memory file contains {type(loaded).__name__}, expected list or dict"
-                        )
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Corrupted memory file {memory_file}: {e}") from e
-
-        normalized_memories: list[dict] = []
-        for memory in memories:
-            if isinstance(memory, dict):
-                memory = {k: v for k, v in memory.items() if k != "kind"}
-                if "id" not in memory:
-                    memory["id"] = f"memory-{uuid.uuid4().hex[:8]}"
-                normalized_memories.append(memory)
-
-        # Remove any existing memory with the same id
-        normalized_memories = [
-            memory for memory in normalized_memories if memory.get("id") != memory_id
-        ]
-
-        if content_value is not None:
-            new_memory: dict = {"id": memory_id}
-
-            for key, value in task_params.items():
-                if value is not None:
-                    new_memory[key] = value
-
-            new_memory["content"] = content_value
-            if created_value:
-                new_memory["created"] = created_value
-            new_memory["creation_channel"] = partner_name
-            new_memory["creation_channel_id"] = channel_id
-            if partner_username:
-                new_memory["creation_channel_username"] = partner_username
-
-            normalized_memories.append(new_memory)
-
-        # Sort memories by created date/time
-        normalized_memories.sort(key=lambda m: memory_sort_key(m, agent))
-
-        # Write atomically: write to temp file, then rename
-        temp_file = memory_file.with_suffix(".json.tmp")
-        payload = existing_payload or {}
-        payload["memory"] = normalized_memories
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        temp_file.replace(memory_file)
-
-        if content_value is not None:
-            logger.info(
-                f"[{agent.name}] Added memory {memory_id} for conversation {channel_id}: {content_value[:50]}..."
-            )
-        else:
-            logger.info(
-                f"[{agent.name}] Removed memory {memory_id} for conversation {channel_id}"
-            )
-
-    except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to process remember task: {e}")
-        # Raise the exception - corrupted JSON should fail the task
-        raise
 
 
 @dataclass
@@ -496,17 +335,6 @@ def _strip_json_fence(text: str) -> str:
     return body.strip()
 
 
-def _coerce_to_str(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, ensure_ascii=False)
-    except Exception:
-        return str(value)
-
-
 def _normalize_list(value) -> list[str]:
     if value is None:
         return []
@@ -564,7 +392,7 @@ async def parse_llm_reply_from_json(
             raise ValueError(f"Task #{idx + 1} has empty 'kind'")
 
         raw_identifier = raw_item.get("id")
-        source_identifier = _coerce_to_str(raw_identifier).strip()
+        source_identifier = coerce_to_str(raw_identifier).strip()
         if not source_identifier:
             source_identifier = f"{kind}-{uuid.uuid4().hex[:8]}"
 
@@ -637,61 +465,6 @@ def _assign_generated_identifiers(tasks: list[TaskNode]) -> list[TaskNode]:
     return tasks
 
 
-IMMEDIATE_TASK_DISPATCH: dict[str, Callable[..., Awaitable[bool]]] = {}
-
-
-def register_immediate_task_handler(task_type: str):
-    def decorator(func: Callable[..., Awaitable[bool]]):
-        IMMEDIATE_TASK_DISPATCH[task_type] = func
-        return func
-
-    return decorator
-
-
-@register_immediate_task_handler("remember")
-async def _handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -> bool:
-    if agent is None:
-        logger.warning("[remember] Missing agent context; deferring remember task")
-        return False
-
-    telepathy_payload = {"id": task.id}
-    telepathy_payload.update(task.params or {})
-
-    body = json.dumps(telepathy_payload, ensure_ascii=False)
-    await _maybe_send_telepathic_message(agent, channel_id, "remember", body)
-    await _process_remember_task(agent, channel_id, task)
-    return True
-
-
-@register_immediate_task_handler("think")
-async def _handle_immediate_think(task: TaskNode, *, agent, channel_id: int) -> bool:
-    thought = task.params.get("text", "")
-    thought_str = _coerce_to_str(thought)
-    logger.debug(
-        f"[think] Discarding think task content (length: {len(thought_str)} chars)"
-    )
-    if agent and thought_str:
-        await _maybe_send_telepathic_message(agent, channel_id, "think", thought_str)
-    return True
-
-
-async def _run_immediate_task(
-    task: TaskNode, *, agent, channel_id: int
-) -> bool:
-    """
-    Handle task types that should execute immediately and not be scheduled.
-
-    Returns:
-        True if the task was consumed (and should be dropped from the graph),
-        False otherwise.
-    """
-    handler = IMMEDIATE_TASK_DISPATCH.get(task.type)
-    if not handler:
-        return False
-
-    return await handler(task, agent=agent, channel_id=channel_id)
-
-
 async def _execute_immediate_tasks(
     tasks: list[TaskNode], *, agent, channel_id: int
 ) -> list[TaskNode]:
@@ -703,9 +476,7 @@ async def _execute_immediate_tasks(
 
     remaining: list[TaskNode] = []
     for task in tasks:
-        handled = await _run_immediate_task(
-            task, agent=agent, channel_id=channel_id
-        )
+        handled = await dispatch_immediate_task(task, agent=agent, channel_id=channel_id)
         if handled:
             continue
         remaining.append(task)
@@ -796,7 +567,7 @@ async def _process_retrieve_tasks(
             new_urls = task_to_fetch.get(retrieve_task.id)
             if not new_urls:
                 continue
-            await _maybe_send_telepathic_message(
+            await telepathic.maybe_send_telepathic_message(
                 agent, channel_id, "retrieve", "\n".join(new_urls)
             )
 
@@ -961,20 +732,6 @@ async def _describe_profile_photo(agent, entity, media_chain):
     return format_media_sentence("profile photo", description) if description else None
 
 
-def _format_username(entity):
-    username = getattr(entity, "username", None)
-    if username:
-        return f"@{username}"
-
-    usernames = getattr(entity, "usernames", None)
-    if usernames:
-        for handle in usernames:
-            handle_value = getattr(handle, "username", None)
-            if handle_value:
-                return f"@{handle_value}"
-    return None
-
-
 def _format_optional(value):
     if value is None:
         return None
@@ -1058,7 +815,7 @@ async def _build_user_channel_details(agent, dialog, media_chain, fallback_name)
         f"- Numeric ID: {dialog.id}",
     ]
     _append_detail(details, "Full name", _format_optional(full_name))
-    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "Username", format_username(dialog))
     _append_detail(details, "First name", _format_optional(first_name))
     _append_detail(details, "Last name", _format_optional(last_name))
     if profile_photo_desc and profile_photo_desc.strip().startswith("⟦media⟧"):
@@ -1098,7 +855,7 @@ async def _build_group_channel_details(agent, dialog, media_chain, channel_id):
         f"- Numeric ID: {dialog.id}",
     ]
     _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
-    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "Username", format_username(dialog))
     _append_detail(details, "Participant count", _format_optional(participant_count))
     if profile_photo_desc and profile_photo_desc.strip().startswith("⟦media⟧"):
         details.append(f"- Profile photo: {profile_photo_desc}")
@@ -1143,7 +900,7 @@ async def _build_channel_entity_details(agent, dialog, media_chain):
         f"- Numeric ID: {dialog.id}",
     ]
     _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
-    _append_detail(details, "Username", _format_username(dialog))
+    _append_detail(details, "Username", format_username(dialog))
     _append_detail(details, "Participant count", _format_optional(participant_count))
     _append_detail(details, "Admin count", _format_optional(admins_count))
     _append_detail(details, "Slow mode seconds", _format_optional(slowmode_seconds))
@@ -1263,7 +1020,7 @@ async def _build_complete_system_prompt(
         f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
 
-    channel_username = _format_username(dialog) if dialog is not None else None
+    channel_username = format_username(dialog) if dialog is not None else None
     if channel_username:
         system_prompt += (
             f"\n\n# Conversation Username\n\n"
@@ -1334,7 +1091,7 @@ async def _process_message_history(
             except Exception:
                 sender_entity = None
         if sender_entity is not None:
-            sender_username = _format_username(sender_entity)
+            sender_username = format_username(sender_entity)
  
         message_id = str(getattr(m, "id", ""))
         is_from_agent = bool(getattr(m, "out", False))

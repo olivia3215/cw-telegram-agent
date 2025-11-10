@@ -9,7 +9,7 @@ from agent import get_agent_for_id
 from id_utils import normalize_peer_id
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import insert_received_task_for_conversation
-from tick import register_task_handler
+from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)
 
