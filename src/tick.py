@@ -21,20 +21,13 @@ from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
-from handlers.registry import (
-    dispatch_task,
-    get_task_dispatch_table,
-    register_task_handler as _register_task_handler,
-)
+from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
 
 # per-tick AI description budget (default 8; env override)
 
-# Backwards compatibility for existing imports/tests
-_dispatch_table = get_task_dispatch_table()
-register_task_handler = _register_task_handler
 
 def is_graph_complete(graph) -> bool:
     return all(n.status.is_completed() for n in graph.tasks)

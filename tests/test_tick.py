@@ -14,16 +14,17 @@ from agent import Agent
 from exceptions import ShutdownException
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from tick import run_one_tick, run_tick_loop
+from handlers.registry import get_task_dispatch_table
 
 
 @pytest.mark.asyncio
 async def test_run_one_tick_marks_task_done(monkeypatch):
-    from tick import _dispatch_table
+    dispatch_table = get_task_dispatch_table()
 
     async def fake_handle_send(task, graph, work_queue):
         pass
 
-    monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
+    monkeypatch.setitem(dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
     graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
@@ -206,7 +207,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     """
     Tests that a task transitions from pending -> active -> done.
     """
-    from tick import _dispatch_table
+    dispatch_table = get_task_dispatch_table()
 
     # Mock the handler so we can inspect the task's status during its run
     async def fake_handle_send(task, graph, work_queue):
@@ -215,7 +216,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
         # Simulate work
         await asyncio.sleep(0)
 
-    monkeypatch.setitem(_dispatch_table, "send", fake_handle_send)
+    monkeypatch.setitem(dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
     graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
