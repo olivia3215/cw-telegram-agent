@@ -17,8 +17,12 @@ def normalize_peer_id(value):
         s = value.strip()
         if s.startswith("u"):
             s = s[1:]
+            if s.startswith("-"):
+                raise ValueError(f"Unsupported peer id format: {value!r}")
         if s.isdigit():
             return int(s)
+        if s.startswith("-") and s[1:].isdigit():
+            return -int(s[1:])
     raise ValueError(f"Unsupported peer id format: {value!r}")
 
 
