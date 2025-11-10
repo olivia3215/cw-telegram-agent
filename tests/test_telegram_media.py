@@ -71,6 +71,20 @@ def test_detect_sticker_botapi():
     assert m.file_ref is st
 
 
+def test_detect_audio_botapi():
+    # Bot API-style: msg.audio with MIME type and duration
+    audio = Obj(file_unique_id="aud_u1", mime_type="audio/mpeg", duration=215)
+    msg = make_msg(audio=audio)
+    parts = iter_media_parts(msg)
+    assert len(parts) == 1
+    m = parts[0]
+    assert m.kind == "audio"
+    assert m.unique_id == "aud_u1"
+    assert m.mime == "audio/mpeg"
+    assert m.duration == 215
+    assert m.file_ref is audio
+
+
 def test_detect_gif_and_animation():
     # GIF via document mime or animated attribute
     attr_anim = Obj()  # class name checked only; we can spoof via __class__.__name__
@@ -127,6 +141,23 @@ def test_detect_video_and_animated_sticker():
     parts_video_attr = iter_media_parts(msg_video_attr)
     assert len(parts_video_attr) == 1 and parts_video_attr[0].kind == "video"
     assert parts_video_attr[0].mime == "video/quicktime"
+
+
+def test_audio_not_duplicated_between_document_and_audio_field():
+    attr_audio = Obj()
+    attr_audio.__class__.__name__ = "DocumentAttributeAudio"
+    doc = Obj(
+        file_unique_id="aud_dup",
+        mime_type="audio/mpeg",
+        attributes=[attr_audio],
+    )
+    audio = Obj(file_unique_id="aud_dup", mime_type="audio/mpeg", duration=180)
+    msg = make_msg(document=doc, audio=audio)
+    parts = iter_media_parts(msg)
+    assert len(parts) == 1
+    m = parts[0]
+    assert m.kind == "audio"
+    assert m.unique_id == "aud_dup"
 
 
 def test_animated_sticker_not_duplicated():

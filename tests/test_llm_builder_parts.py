@@ -134,6 +134,35 @@ def test_placeholder_emitted_when_media_has_no_rendering():
     assert parts[2]["text"].startswith("⟦music present")
 
 
+def test_audio_media_part_with_reactions_and_text():
+    history = [
+        _mk_user_msg(
+            sender="VK Music Bot",
+            sender_id="b001",
+            msg_id="aud1",
+            sender_username="@vkmusic_bot",
+            parts=[
+                {"kind": "text", "text": "__audio/mp3, 130.2 kbps__"},
+                {
+                    "kind": "media",
+                    "media_kind": "audio",
+                    "rendered_text": "⟦media⟧ ‹the audio that appears as Cheri Cheri Lady›",
+                    "unique_id": "aud-001",
+                },
+            ],
+        ),
+    ]
+    history[0]["reactions"] = '"alice"(123)=❤'
+
+    llm = GeminiLLM(api_key="test_key")
+    contents = llm._build_gemini_contents(history=history)
+    assert len(contents) == 1
+    parts = contents[0]["parts"]
+    assert parts[0]["text"].startswith("⟦metadata⟧")
+    assert parts[1]["text"] == '⟦reactions⟧ "alice"(123)=❤'
+    assert parts[2]["text"] == "__audio/mp3, 130.2 kbps__"
+    assert parts[3]["text"].startswith("⟦media⟧ ‹the audio")
+
 def test_reply_to_msg_id_in_metadata():
     """Test that reply_to_msg_id appears in metadata when a message is a reply."""
     history = [
