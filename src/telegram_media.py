@@ -19,6 +19,7 @@ def iter_media_parts(msg: Any) -> list[MediaItem]:
     out: list[MediaItem] = []
     _maybe_add_photo(msg, out)
     _maybe_add_sticker(msg, out)
+    _maybe_add_audio(msg, out)
     _maybe_add_gif_or_animation(msg, out)
     _maybe_add_voice_message(msg, out)
     return out
@@ -132,6 +133,37 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
         )
 
 
+def _maybe_add_audio(msg: Any, out: list[MediaItem]) -> None:
+    """
+    Extract audio files provided via Bot API-style msg.audio attribute.
+    """
+    audio = getattr(msg, "audio", None)
+    if not audio:
+        return
+
+    uid = get_unique_id(audio)
+    if not uid:
+        return
+
+    uid_str = str(uid)
+    for existing in out:
+        if existing.kind == MediaKind.AUDIO and existing.unique_id == uid_str:
+            return
+
+    mime = getattr(audio, "mime_type", None) or getattr(audio, "mime", None)
+    duration = getattr(audio, "duration", None)
+
+    out.append(
+        MediaItem(
+            kind=MediaKind.AUDIO,
+            unique_id=uid_str,
+            mime=mime,
+            file_ref=audio,
+            duration=duration,
+        )
+    )
+
+
 def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     """
     Heuristics:
@@ -234,6 +266,12 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     # Check for audio files first (before video check to avoid misclassifying audio/mp4 as video)
     # But skip if this is a voice message (handled by _maybe_add_voice_message)
     if mime and mime.lower().startswith("audio/") and not hasattr(msg, "voice"):
+        for existing_item in out:
+            if (
+                existing_item.kind == MediaKind.AUDIO
+                and existing_item.unique_id == str(uid)
+            ):
+                return
         # Audio files - include duration
         out.append(
             MediaItem(

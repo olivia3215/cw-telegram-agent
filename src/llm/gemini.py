@@ -433,10 +433,12 @@ class GeminiLLM(LLM):
         if not self.api_key:
             raise ValueError("Missing Gemini API key")
 
-        # Check audio duration - reject audio longer than 1 minute
-        if duration is not None and duration > 60:
+        # Check audio duration - reject audio longer than 5 minutes.
+        # As of 2025-11-09, Gemini bills audio description at ~$0.001344 per minute,
+        # so extending the ceiling to 5 minutes keeps the cost at ~$0.00672.
+        if duration is not None and duration > 300:
             raise ValueError(
-                f"Audio is too long to analyze (duration: {duration}s, max: 60s)"
+                f"Audio is too long to analyze (duration: {duration}s, max: 300s)"
             )
 
         # Use centralized MIME type detection if not provided
