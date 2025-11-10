@@ -310,8 +310,11 @@ async def format_message_for_prompt(
             except Exception:
                 meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None
+            failure_reason = meta.get("failure_reason") if isinstance(meta, dict) else None
             media_sentence = format_media_sentence(
-                it.kind.value if hasattr(it.kind, "value") else str(it.kind), desc_text
+                it.kind.value if hasattr(it.kind, "value") else str(it.kind),
+                desc_text,
+                failure_reason=failure_reason,
             )
             parts.append(
                 {

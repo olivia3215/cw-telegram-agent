@@ -11,6 +11,7 @@ from media.mime_utils import (
     is_audio_mime_type,
     is_image_mime_type,
     is_video_mime_type,
+    normalize_mime_type,
 )
 
 
@@ -37,6 +38,11 @@ def test_get_file_extension_for_video_types():
     assert get_file_extension_for_mime_type("video/webm") == "webm"
     assert get_file_extension_for_mime_type("video/quicktime") == "mov"
     assert get_file_extension_for_mime_type("video/x-msvideo") == "avi"
+
+
+def test_get_file_extension_for_audio_aliases():
+    assert get_file_extension_for_mime_type("audio/mp3") == "mp3"
+    assert get_file_extension_for_mime_type("audio/x-mp3") == "mp3"
 
 
 def test_get_file_extension_for_sticker_types():
@@ -70,5 +76,13 @@ def test_is_audio_mime_type():
     assert is_audio_mime_type("audio/ogg") is True
     assert is_audio_mime_type("audio/flac") is True
     assert is_audio_mime_type("AUDIO/WAV") is True  # Case insensitive
+    assert is_audio_mime_type("audio/mp3") is True
+    assert is_audio_mime_type("audio/x-mp3") is True
     assert is_audio_mime_type("video/mp4") is False
     assert is_audio_mime_type("image/jpeg") is False
+
+
+def test_normalize_mime_type_aliases():
+    assert normalize_mime_type("audio/mp3") == "audio/mpeg"
+    assert normalize_mime_type("audio/X-MPEG") == "audio/mpeg"
+    assert normalize_mime_type("audio/x-wav") == "audio/wav"

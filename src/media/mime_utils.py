@@ -8,6 +8,31 @@ MIME type detection and file extension utilities.
 """
 
 
+_MIME_ALIASES: dict[str, str] = {
+    # Common audio aliases
+    "audio/mp3": "audio/mpeg",
+    "audio/mpeg3": "audio/mpeg",
+    "audio/x-mp3": "audio/mpeg",
+    "audio/x-mpeg": "audio/mpeg",
+    "audio/x-mpeg-3": "audio/mpeg",
+    "audio/x-mpeg3": "audio/mpeg",
+    "audio/x-wav": "audio/wav",
+    "audio/x-flac": "audio/flac",
+    "audio/x-ogg": "audio/ogg",
+    "audio/x-m4a": "audio/mp4",
+}
+
+
+def normalize_mime_type(mime_type: str | None) -> str | None:
+    """
+    Normalize a MIME type to a canonical lowercase form, applying alias mappings.
+    """
+    if not mime_type:
+        return mime_type
+    lower = mime_type.lower()
+    return _MIME_ALIASES.get(lower, lower)
+
+
 def detect_mime_type_from_bytes(data: bytes) -> str:
     """
     Detect MIME type from file bytes.
@@ -67,6 +92,8 @@ def get_file_extension_for_mime_type(mime_type: str) -> str:
     if not mime_type:
         return "bin"
 
+    canonical = normalize_mime_type(mime_type)
+
     mime_to_ext = {
         "image/jpeg": "jpg",
         "image/jpg": "jpg",
@@ -87,34 +114,37 @@ def get_file_extension_for_mime_type(mime_type: str) -> str:
         "application/zip": "zip",
         "application/octet-stream": "bin",
     }
-    return mime_to_ext.get(mime_type.lower(), "bin")
+    return mime_to_ext.get(canonical or "", "bin")
 
 
 def is_image_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents an image format.
     """
+    mime_type = normalize_mime_type(mime_type)
     if not mime_type:
         return False
-    return mime_type.lower().startswith("image/")
+    return mime_type.startswith("image/")
 
 
 def is_audio_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents an audio format.
     """
+    mime_type = normalize_mime_type(mime_type)
     if not mime_type:
         return False
-    return mime_type.lower().startswith("audio/")
+    return mime_type.startswith("audio/")
 
 
 def is_video_mime_type(mime_type: str) -> bool:
     """
     Check if a MIME type represents a video format.
     """
+    mime_type = normalize_mime_type(mime_type)
     if not mime_type:
         return False
-    return mime_type.lower().startswith("video/")
+    return mime_type.startswith("video/")
 
 
 def is_tgs_mime_type(mime_type: str) -> bool:
@@ -124,6 +154,7 @@ def is_tgs_mime_type(mime_type: str) -> bool:
     TGS files are gzip-compressed Lottie animations used by Telegram.
     They can have either 'application/gzip' or 'application/x-tgsticker' MIME type.
     """
+    mime_type = normalize_mime_type(mime_type)
     if not mime_type:
         return False
-    return mime_type.lower() in ("application/gzip", "application/x-tgsticker")
+    return mime_type in ("application/gzip", "application/x-tgsticker")

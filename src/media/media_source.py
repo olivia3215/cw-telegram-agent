@@ -34,6 +34,7 @@ from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
     is_tgs_mime_type,
+    normalize_mime_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -519,6 +520,13 @@ class UnsupportedFormatMediaSource(MediaSource):
         Special handling for videos - check duration limit.
         """
 
+        # Normalize MIME type metadata before applying other checks
+        meta_mime = metadata.get("mime_type")
+        if meta_mime:
+            normalized_meta_mime = normalize_mime_type(meta_mime)
+            if normalized_meta_mime and normalized_meta_mime != meta_mime:
+                metadata["mime_type"] = normalized_meta_mime
+
         # Special handling for AnimatedEmojies - use sticker name as description
         if sticker_set_name == "AnimatedEmojies" and sticker_name:
             description = fallback_sticker_description(sticker_name, animated=True)
@@ -559,7 +567,7 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         # Special handling for TGS animated stickers - provide fallback description
         if kind == "sticker" and doc is not None:
-            mime_type = getattr(doc, "mime_type", None)
+            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
             if mime_type and is_tgs_mime_type(mime_type):
                 # Create a fallback description for TGS files
                 description = fallback_sticker_description(sticker_name)
@@ -586,7 +594,7 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         try:
             # Check MIME type from doc object directly
-            mime_type = getattr(doc, "mime_type", None)
+            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
 
             if not mime_type:
                 return None
@@ -699,7 +707,9 @@ class AIGeneratingMediaSource(MediaSource):
 
         # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
         # Detect MIME type before LLM call so it's available in exception handlers
-        detected_mime_type = detect_mime_type_from_bytes(data)
+        detected_mime_type = normalize_mime_type(detect_mime_type_from_bytes(data))
+        if detected_mime_type:
+            metadata["mime_type"] = detected_mime_type
 
         # For TGS files (animated stickers), convert to video first
         video_file_path = None
@@ -733,7 +743,7 @@ class AIGeneratingMediaSource(MediaSource):
                     data = f.read()
 
                 # Update MIME type to video/mp4
-                detected_mime_type = "video/mp4"
+                detected_mime_type = normalize_mime_type("video/mp4")
                 is_converted_tgs = True
 
                 logger.info(

@@ -136,11 +136,29 @@ async def format_sticker_sentence(
     )
 
 
-def format_media_sentence(kind: str, description: str | None) -> str:
+def format_media_sentence(
+    kind: str,
+    description: str | None,
+    *,
+    failure_reason: str | None = None,
+) -> str:
     """
     Format a general media sentence with angle quotes:
       ‹the <kind> that appears as <description>› (or 'sounds like' for audio)
     Falls back to 'that is not understood' when description is missing.
     """
-    media_desc = format_media_description(description, kind)
+    s = (description or "").strip()
+    if s:
+        media_desc = format_media_description(s, kind)
+        return f"⟦media⟧ {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"
+
+    if failure_reason:
+        reason = failure_reason.strip()
+        if reason:
+            return (
+                f"⟦media⟧ {ANGLE_OPEN}the {kind} could not be analyzed "
+                f"({reason}){ANGLE_CLOSE}"
+            )
+
+    media_desc = format_media_description(None, kind)
     return f"⟦media⟧ {ANGLE_OPEN}the {kind} {media_desc}{ANGLE_CLOSE}"

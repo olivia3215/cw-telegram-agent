@@ -21,7 +21,11 @@ from google.genai.types import (
 )
 
 from config import GOOGLE_GEMINI_API_KEY
-from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
+from media.mime_utils import (
+    detect_mime_type_from_bytes,
+    is_tgs_mime_type,
+    normalize_mime_type,
+)
 
 from .base import LLM, ChatMsg, MsgPart
 
@@ -169,6 +173,10 @@ class GeminiLLM(LLM):
         Check if a MIME type is supported by the LLM for media description.
         Returns True for static image formats and video formats that Gemini can process.
         """
+        mime_type = normalize_mime_type(mime_type)
+        if not mime_type:
+            return False
+
         supported_types = {
             # Images
             "image/jpeg",
@@ -191,13 +199,17 @@ class GeminiLLM(LLM):
             "application/x-tgsticker",
             "application/gzip",
         }
-        return mime_type.lower() in supported_types
+        return mime_type in supported_types
 
     def is_audio_mime_type_supported(self, mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for audio description.
         Returns True for audio formats that Gemini can process.
         """
+        mime_type = normalize_mime_type(mime_type)
+        if not mime_type:
+            return False
+
         supported_types = {
             # Audio formats
             "audio/ogg",  # Telegram voice messages
@@ -207,7 +219,7 @@ class GeminiLLM(LLM):
             "audio/webm",  # WebM audio
             "audio/flac",  # FLAC
         }
-        return mime_type.lower() in supported_types
+        return mime_type in supported_types
 
     async def describe_image(
         self,
@@ -226,6 +238,8 @@ class GeminiLLM(LLM):
         # Use centralized MIME type detection if not provided
         if not mime_type:
             mime_type = detect_mime_type_from_bytes(image_bytes)
+
+        mime_type = normalize_mime_type(mime_type)
 
         # Special handling for TGS files (gzip-compressed Lottie animations)
         # Gemini doesn't support application/gzip for image/video analysis
@@ -334,6 +348,8 @@ class GeminiLLM(LLM):
         # Use centralized MIME type detection if not provided
         if not mime_type:
             mime_type = detect_mime_type_from_bytes(video_bytes)
+
+        mime_type = normalize_mime_type(mime_type)
 
         # Special handling for TGS files (gzip-compressed Lottie animations)
         # Gemini doesn't support application/gzip for video analysis
@@ -444,6 +460,8 @@ class GeminiLLM(LLM):
         # Use centralized MIME type detection if not provided
         if not mime_type:
             mime_type = detect_mime_type_from_bytes(audio_bytes)
+
+        mime_type = normalize_mime_type(mime_type)
 
         # Check if this MIME type is supported by the LLM
         if not self.is_audio_mime_type_supported(mime_type):

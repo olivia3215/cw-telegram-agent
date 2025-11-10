@@ -157,6 +157,13 @@ def test_gemini_is_mime_type_supported_video_formats():
     # Should not support unsupported formats
     assert not llm.is_mime_type_supported_by_llm("audio/mp3")
     assert not llm.is_mime_type_supported_by_llm("application/pdf")
+def test_gemini_audio_mime_aliases_supported():
+    """Audio MIME aliases such as audio/mp3 should resolve to supported types."""
+    llm = GeminiLLM(api_key="test_key")
+    assert llm.is_audio_mime_type_supported("audio/mp3")
+    assert llm.is_audio_mime_type_supported("audio/x-mp3")
+    assert llm.is_audio_mime_type_supported("AUDIO/X-MPEG-3")
+
 
 
 @pytest.mark.asyncio
@@ -293,7 +300,7 @@ async def test_gemini_describe_video_unsupported_mime():
         await llm.describe_video(b"fake_audio", mime_type="audio/mp3", duration=5)
 
     assert "not supported" in str(exc_info.value).lower()
-    assert "audio/mp3" in str(exc_info.value)
+    assert "audio/mpeg" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

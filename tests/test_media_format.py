@@ -118,6 +118,15 @@ def test_format_media_sentence_with_not_understood_text():
     assert out == "⟦media⟧ ‹the audio that sounds like not understood›"
 
 
+def test_format_media_sentence_with_failure_reason():
+    reason = "Audio is too long to analyze (duration: 305s, max: 300s)"
+    out = format_media_sentence("audio", None, failure_reason=reason)
+    assert (
+        out
+        == "⟦media⟧ ‹the audio could not be analyzed (Audio is too long to analyze (duration: 305s, max: 300s))›"
+    )
+
+
 # Tests for the new async format_sticker_sentence function
 @pytest.mark.asyncio
 async def test_format_sticker_sentence_with_existing_attributes():

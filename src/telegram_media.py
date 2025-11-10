@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from media.media_types import MediaItem, MediaKind
+from media.mime_utils import normalize_mime_type
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,9 @@ def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:
     uid = get_unique_id(photo)
     if not uid:
         return
-    mime = getattr(photo, "mime_type", None) or getattr(photo, "mime", None)
+    mime = normalize_mime_type(
+        getattr(photo, "mime_type", None) or getattr(photo, "mime", None)
+    )
     out.append(
         MediaItem(
             kind=MediaKind.PHOTO,
@@ -87,7 +90,9 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     title = getattr(ss, "title", None)
 
                     sticker_set_name = short_name or ss_name or title
-                    mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+                    mime = normalize_mime_type(
+                        getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+                    )
                     out.append(
                         MediaItem(
                             kind=MediaKind.STICKER,
@@ -120,7 +125,9 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
             or getattr(st, "alt", None)
             or getattr(st, "file_name", None)
         )
-        mime = getattr(st, "mime_type", None) or getattr(st, "mime", None)
+        mime = normalize_mime_type(
+            getattr(st, "mime_type", None) or getattr(st, "mime", None)
+        )
         out.append(
             MediaItem(
                 kind=MediaKind.STICKER,
@@ -150,7 +157,9 @@ def _maybe_add_audio(msg: Any, out: list[MediaItem]) -> None:
         if existing.kind == MediaKind.AUDIO and existing.unique_id == uid_str:
             return
 
-    mime = getattr(audio, "mime_type", None) or getattr(audio, "mime", None)
+    mime = normalize_mime_type(
+        getattr(audio, "mime_type", None) or getattr(audio, "mime", None)
+    )
     duration = getattr(audio, "duration", None)
 
     out.append(
@@ -177,7 +186,9 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     if anim:
         uid = get_unique_id(anim)
         if uid:
-            mime = getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
+            mime = normalize_mime_type(
+                getattr(anim, "mime_type", None) or getattr(anim, "mime", None)
+            )
             duration = getattr(anim, "duration", None)
             out.append(
                 MediaItem(
@@ -192,7 +203,9 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     if gif:
         uid = get_unique_id(gif)
         if uid:
-            mime = getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
+            mime = normalize_mime_type(
+                getattr(gif, "mime_type", None) or getattr(gif, "mime", None)
+            )
             out.append(
                 MediaItem(
                     kind=MediaKind.GIF, unique_id=str(uid), mime=mime, file_ref=gif
@@ -204,7 +217,9 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     if not doc:
         return
 
-    mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+    mime = normalize_mime_type(
+        getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+    )
     attrs = getattr(doc, "attributes", None)
 
     # Check if this document is a sticker (already handled by _maybe_add_sticker)
@@ -313,7 +328,9 @@ def _maybe_add_voice_message(msg: Any, out: list[MediaItem]) -> None:
         return
 
     # Voice messages typically have audio/ogg MIME type
-    mime = getattr(voice, "mime_type", None) or getattr(voice, "mime", None)
+    mime = normalize_mime_type(
+        getattr(voice, "mime_type", None) or getattr(voice, "mime", None)
+    )
     duration = getattr(voice, "duration", None)
 
     out.append(
