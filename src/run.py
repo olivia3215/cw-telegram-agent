@@ -456,6 +456,12 @@ async def main():
                 )
                 return
 
+            if not admin_server:
+                logger.error(
+                    "Agent loop disabled but admin console failed to start; exiting."
+                )
+                return
+
             logger.info(
                 "Agent loop disabled via CINDY_AGENT_LOOP_ENABLED; admin console running only."
             )
