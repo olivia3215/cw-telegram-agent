@@ -6,7 +6,7 @@
 import logging
 import os
 
-from telethon import TelegramClient
+from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
 
 from agent import Agent
 from config import STATE_DIRECTORY, TELEGRAM_API_HASH, TELEGRAM_API_ID, PUPPET_MASTER_PHONE

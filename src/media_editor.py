@@ -31,10 +31,10 @@ from typing import Any, Optional
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Blueprint, Flask, jsonify, render_template, request, send_file, session
-from telethon import TelegramClient
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputStickerSetShortName
+from flask import Blueprint, Flask, jsonify, render_template, request, send_file, session  # pyright: ignore[reportMissingImports]
+from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetStickerSetRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import InputStickerSetShortName  # pyright: ignore[reportMissingImports]
 
 from agent import all_agents as get_all_agents
 from clock import clock
