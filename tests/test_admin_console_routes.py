@@ -67,8 +67,10 @@ def test_delete_media_removes_cache_and_files(tmp_path):
     assert not (tmp_path / f"{unique_id}.dat").exists()
 
 
-def test_import_sticker_set_requires_agent_loop(tmp_path):
+def test_import_sticker_set_requires_puppet_master(monkeypatch, tmp_path):
     reset_media_source_registry()
+    dummy_manager = type("DummyManager", (), {"is_configured": False})()
+    monkeypatch.setattr("media_editor.get_puppet_master_manager", lambda: dummy_manager)
     client = _make_client()
     response = client.post(
         "/admin/api/import-sticker-set",
