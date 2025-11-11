@@ -33,6 +33,19 @@ GOOGLE_GEMINI_API_KEY: str | None = os.environ.get("GOOGLE_GEMINI_API_KEY")
 TELEGRAM_API_ID: str | None = os.environ.get("TELEGRAM_API_ID")
 TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
 
+def _get_optional_str(env_name: str) -> str | None:
+    """Return stripped environment variable value or None if unset/empty."""
+    value = os.environ.get(env_name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+# Puppet master configuration
+PUPPET_MASTER_PHONE: str | None = _get_optional_str("CINDY_PUPPET_MASTER_PHONE")
+ADMIN_CONSOLE_SECRET_KEY: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_SECRET_KEY")
+
 
 # Media description budget per tick
 def _parse_media_budget() -> int:

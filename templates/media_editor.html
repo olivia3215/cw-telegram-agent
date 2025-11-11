@@ -20,6 +20,96 @@
             width: 100%;
             box-sizing: border-box;
         }
+        body.auth-locked {
+            overflow: hidden;
+        }
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(44, 62, 80, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 1000;
+        }
+        .auth-overlay.hidden {
+            display: none;
+        }
+        .auth-card {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 32px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .auth-card h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .auth-card p {
+            font-size: 14px;
+            color: #4a5765;
+            margin-bottom: 16px;
+        }
+        .auth-actions {
+            margin: 16px 0 8px 0;
+        }
+        .auth-actions button {
+            padding: 10px 18px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #007bff;
+            color: #ffffff;
+        }
+        .auth-actions button:disabled {
+            background: #9bb8e4;
+            cursor: not-allowed;
+        }
+        .auth-code-entry {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .auth-code-entry input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccd2da;
+            border-radius: 4px;
+            text-align: center;
+            letter-spacing: 4px;
+        }
+        .auth-code-entry button {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #28a745;
+            color: #ffffff;
+        }
+        .auth-code-entry button:disabled {
+            background: #8dd3a4;
+            cursor: not-allowed;
+        }
+        .auth-message {
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .auth-message.error {
+            color: #c0392b;
+        }
+        .auth-message.info {
+            color: #2c3e50;
+        }
+        .auth-message.hidden {
+            display: none;
+        }
         .header {
             background: #2c3e50;
             color: white;
@@ -223,6 +313,21 @@
     </style>
 </head>
 <body>
+    <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true">
+        <div class="auth-card">
+            <h2>Verify Access</h2>
+            <p>Request a login code sent to the puppet master Telegram account to enable the admin console.</p>
+            <div id="auth-error" class="auth-message error hidden" role="alert"></div>
+            <div id="auth-status" class="auth-message info hidden"></div>
+            <div class="auth-actions">
+                <button id="request-code-btn">Send verification code</button>
+            </div>
+            <div class="auth-code-entry">
+                <input id="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Six digit code">
+                <button id="verify-code-btn">Verify</button>
+            </div>
+        </div>
+    </div>
     <div class="header">
         <h1>Admin Console</h1>
     </div>
@@ -308,48 +413,291 @@
         let itemsPerPage = 10;
         let allMediaFiles = []; // Store all media files for pagination
         const API_BASE = '/admin/api';
+        let appInitialized = false;
+        let requestCooldownTimer = null;
+        const DEFAULT_COOLDOWN_SECONDS = 30;
 
-        const tabButtons = document.querySelectorAll('.tab-button');
-        const tabPanels = document.querySelectorAll('.tab-panel');
+        const authOverlay = document.getElementById('auth-overlay');
+        const authStatusEl = document.getElementById('auth-status');
+        const authErrorEl = document.getElementById('auth-error');
+        const requestCodeBtn = document.getElementById('request-code-btn');
+        const verifyCodeBtn = document.getElementById('verify-code-btn');
+        const otpInput = document.getElementById('otp-input');
+        const initialRequestButtonLabel = requestCodeBtn ? requestCodeBtn.textContent : 'Send verification code';
 
-        tabButtons.forEach((button) => {
-            button.addEventListener('click', () => {
-                const target = button.dataset.tab;
-                tabButtons.forEach((btn) =>
-                    btn.classList.toggle('active', btn === button)
-                );
-                tabPanels.forEach((panel) =>
-                    panel.classList.toggle(
-                        'active',
-                        panel.dataset.tabPanel === target
-                    )
-                );
-            });
+        requestCodeBtn?.addEventListener('click', requestVerificationCode);
+        verifyCodeBtn?.addEventListener('click', verifyVerificationCode);
+        otpInput?.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                verifyVerificationCode();
+            }
         });
 
-        // Load directories on page load
-        fetch(`${API_BASE}/directories`)
-            .then(response => response.json())
-            .then(directories => {
-                const select = document.getElementById('directory-select');
-                directories.forEach(dir => {
-                    const option = document.createElement('option');
-                    option.value = dir.path;
-                    option.textContent = dir.name;
-                    select.appendChild(option);
+        checkAuthStatus();
+
+        function initializeApp() {
+            if (appInitialized) {
+                return;
+            }
+            appInitialized = true;
+            hideAuthOverlay();
+
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+
+            tabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const target = button.dataset.tab;
+                    tabButtons.forEach((btn) =>
+                        btn.classList.toggle('active', btn === button)
+                    );
+                    tabPanels.forEach((panel) =>
+                        panel.classList.toggle(
+                            'active',
+                            panel.dataset.tabPanel === target
+                        )
+                    );
                 });
             });
 
-        // Handle directory selection
-        document.getElementById('directory-select').addEventListener('change', function(e) {
-            currentDirectory = e.target.value;
-            if (currentDirectory) {
-                loadMediaFiles(currentDirectory);
-            } else {
-                document.getElementById('media-container').innerHTML =
-                    '<div class="loading">Select a directory to view media files</div>';
+            const directorySelect = document.getElementById('directory-select');
+            if (directorySelect) {
+                directorySelect.addEventListener('change', (event) => {
+                    currentDirectory = event.target.value;
+                    if (currentDirectory) {
+                        loadMediaFiles(currentDirectory);
+                    } else {
+                        document.getElementById('media-container').innerHTML =
+                            '<div class="loading">Select a directory to view media files</div>';
+                    }
+                });
+
+                fetchDirectories(directorySelect);
             }
-        });
+        }
+
+        function fetchDirectories(selectElement) {
+            fetchWithAuth(`${API_BASE}/directories`)
+                .then((response) => response.json())
+                .then((directories) => {
+                    directories.forEach((dir) => {
+                        const option = document.createElement('option');
+                        option.value = dir.path;
+                        option.textContent = dir.name;
+                        selectElement.appendChild(option);
+                    });
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Failed to load directories', error);
+                });
+        }
+
+        function fetchWithAuth(url, options = {}) {
+            const finalOptions = Object.assign({ credentials: 'same-origin' }, options);
+            return fetch(url, finalOptions).then((response) => {
+                if (response.status === 401) {
+                    handleUnauthorized();
+                }
+                return response;
+            });
+        }
+
+        function handleUnauthorized(message) {
+            showAuthOverlay(message || 'Session expired. Please verify again.');
+            throw new Error('unauthorized');
+        }
+
+        function showAuthOverlay(message) {
+            clearRequestCooldown();
+            if (typeof message === 'string') {
+                showAuthStatus(message);
+            } else {
+                showAuthStatus('');
+            }
+            showAuthError('');
+            authOverlay?.classList.remove('hidden');
+            document.body.classList.add('auth-locked');
+            if (otpInput) {
+                otpInput.value = '';
+                window.setTimeout(() => otpInput.focus(), 0);
+            }
+        }
+
+        function hideAuthOverlay() {
+            authOverlay?.classList.add('hidden');
+            document.body.classList.remove('auth-locked');
+            showAuthStatus('');
+            showAuthError('');
+            clearRequestCooldown();
+        }
+
+        function showAuthStatus(message) {
+            if (!authStatusEl) {
+                return;
+            }
+            authStatusEl.textContent = message || '';
+            authStatusEl.classList.toggle('hidden', !message);
+        }
+
+        function showAuthError(message) {
+            if (!authErrorEl) {
+                return;
+            }
+            authErrorEl.textContent = message || '';
+            authErrorEl.classList.toggle('hidden', !message);
+        }
+
+        function clearRequestCooldown() {
+            if (requestCooldownTimer) {
+                clearInterval(requestCooldownTimer);
+                requestCooldownTimer = null;
+            }
+            if (requestCodeBtn) {
+                requestCodeBtn.disabled = false;
+                requestCodeBtn.textContent = initialRequestButtonLabel;
+            }
+        }
+
+        function setRequestCooldown(seconds) {
+            if (!requestCodeBtn) {
+                return;
+            }
+            clearRequestCooldown();
+            let remaining = Math.max(Math.floor(seconds), 0);
+            if (remaining <= 0) {
+                return;
+            }
+            requestCodeBtn.disabled = true;
+            requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+            requestCooldownTimer = window.setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearRequestCooldown();
+                    showAuthStatus('You can request a new code if needed.');
+                } else {
+                    requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+                }
+            }, 1000);
+        }
+
+        async function requestVerificationCode() {
+            if (!requestCodeBtn) {
+                return;
+            }
+            showAuthError('');
+            showAuthStatus('Sending verification code...');
+            requestCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/request-code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    const expiresIn = typeof result.expires_in === 'number' ? result.expires_in : 0;
+                    const expireMinutes = Math.max(Math.round(expiresIn / 60) || 1, 1);
+                    showAuthStatus(`Verification code sent. It expires in ${expireMinutes} minute${expireMinutes === 1 ? '' : 's'}.`);
+                    const cooldown = typeof result.cooldown === 'number' ? result.cooldown : DEFAULT_COOLDOWN_SECONDS;
+                    setRequestCooldown(cooldown);
+                    return;
+                }
+                if (response.status === 429 && result.retry_after) {
+                    showAuthError(result.error || 'Please wait before requesting a new code.');
+                    setRequestCooldown(result.retry_after);
+                    return;
+                }
+                showAuthError(result.error || 'Failed to send verification code.');
+                showAuthStatus('');
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Failed to send verification code: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                if (!requestCooldownTimer && requestCodeBtn) {
+                    requestCodeBtn.disabled = false;
+                    requestCodeBtn.textContent = initialRequestButtonLabel;
+                }
+            }
+        }
+
+        async function verifyVerificationCode() {
+            if (!verifyCodeBtn) {
+                return;
+            }
+            const code = (otpInput?.value || '').trim();
+            if (!/^\d{6}$/.test(code)) {
+                showAuthError('Enter the six digit verification code.');
+                return;
+            }
+
+            showAuthError('');
+            showAuthStatus('Verifying code...');
+            verifyCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code }),
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    showAuthStatus('Verification successful.');
+                    clearRequestCooldown();
+                    if (otpInput) {
+                        otpInput.value = '';
+                    }
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                if (result.already_verified) {
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                showAuthError(result.error || 'Verification failed.');
+                if (typeof result.remaining_attempts === 'number') {
+                    showAuthStatus(`Attempts remaining: ${result.remaining_attempts}`);
+                } else {
+                    showAuthStatus('');
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Verification failed: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                verifyCodeBtn.disabled = false;
+            }
+        }
+
+        function checkAuthStatus() {
+            fetchWithAuth(`${API_BASE}/auth/status`)
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.verified) {
+                        initializeApp();
+                    } else {
+                        showAuthOverlay('Request a verification code to continue.');
+                    }
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    showAuthError('Unable to reach the server. Try again in a moment.');
+                    showAuthOverlay();
+                });
+        }
 
         function loadMediaFiles(directoryPath, preservePage = false) {
             document.getElementById('media-container').innerHTML =
@@ -358,7 +706,7 @@
             const savedPage = currentPage; // Save current page
 
             const encodedPath = encodeURIComponent(directoryPath);
-            fetch(`${API_BASE}/media?directory=${encodedPath}`)
+            fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -387,6 +735,9 @@
                     displayCurrentPage();
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     document.getElementById('media-container').innerHTML =
                         `<div class="error">Error loading media files: ${error}</div>`;
                 });
@@ -594,7 +945,7 @@
 
                 try {
                     // Fetch the TGS file
-                    const response = await fetch(mediaUrl);
+                    const response = await fetchWithAuth(mediaUrl);
                     if (!response.ok) {
                         throw new Error(`Failed to fetch TGS file: ${response.status}`);
                     }
@@ -670,6 +1021,9 @@
                     });
 
                 } catch (error) {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     console.error(`Failed to load TGS animation for ${uniqueId}:`, error);
                     container.innerHTML = `
                         <div style="text-align: center; color: #dc3545;">
@@ -787,7 +1141,7 @@
             savingStates[uniqueId] = true;
             updateSaveStatus(uniqueId, 'saving');
 
-            fetch(`${API_BASE}/media/${uniqueId}/description?directory=${encodedDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/description?directory=${encodedDir}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -815,6 +1169,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 updateSaveStatus(uniqueId, 'error');
             })
             .finally(() => {
@@ -833,7 +1190,7 @@
             button.textContent = 'Generating...';
             button.style.background = '#007bff';
 
-            fetch(`${API_BASE}/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -862,6 +1219,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 alert('Error refreshing from AI: ' + error);
             })
             .finally(() => {
@@ -877,7 +1237,7 @@
             const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
 
             // Fetch available directories
-            fetch(`${API_BASE}/directories`)
+            fetchWithAuth(`${API_BASE}/directories`)
                 .then(response => response.json())
                 .then(directories => {
                     moveDropdowns.forEach(dropdown => {
@@ -898,6 +1258,9 @@
                     });
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     console.error('Error loading directories for move dropdowns:', error);
                 });
         }
@@ -917,7 +1280,7 @@
             select.disabled = true;
             select.style.background = '#f8f9fa';
 
-            fetch(`${API_BASE}/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -936,6 +1299,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 alert('Error moving media: ' + error);
                 select.disabled = false;
                 select.style.background = 'white';
@@ -955,7 +1321,7 @@
                 button.textContent = 'Deleting...';
                 button.style.background = '#6c757d';
 
-                fetch(`${API_BASE}/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                fetchWithAuth(`${API_BASE}/media/${uniqueId}/delete?directory=${encodedDir}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -974,6 +1340,9 @@
                     }
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     alert('Error deleting media: ' + error);
                     button.disabled = false;
                     button.textContent = 'Delete';
@@ -998,7 +1367,7 @@
 
             statusDiv.innerHTML = '<div>Importing sticker set...</div>';
 
-            fetch(`${API_BASE}/import-sticker-set`, {
+            fetchWithAuth(`${API_BASE}/import-sticker-set`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1019,6 +1388,10 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
+                    return;
+                }
                 statusDiv.innerHTML = `<div class="error">Error: ${error}</div>`;
             });
         }

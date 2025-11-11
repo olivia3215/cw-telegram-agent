@@ -23,10 +23,13 @@ from clock import clock
 from exceptions import ShutdownException
 from message_logging import format_message_content_for_logging
 from register_agents import register_all_agents
-from admin_console.loop import set_agent_loop
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from admin_console.app import start_admin_console
+from admin_console.puppet_master import (
+    PuppetMasterUnavailable,
+    get_puppet_master_manager,
+)
 from telegram_util import get_channel_name, get_telegram_client
 from tick import run_tick_loop
 
@@ -408,7 +411,6 @@ async def authenticate_all_agents(agents_list):
 
 
 async def main():
-    set_agent_loop(asyncio.get_running_loop())
     admin_enabled = _env_flag("CINDY_ADMIN_CONSOLE_ENABLED", True)
     agent_loop_enabled = _env_flag("CINDY_AGENT_LOOP_ENABLED", True)
     admin_host = os.getenv("CINDY_ADMIN_CONSOLE_HOST", "0.0.0.0")
@@ -425,13 +427,27 @@ async def main():
 
     register_all_agents()
     work_queue = load_work_queue()
-    agents_list = all_agents()
+    agents_list = list(all_agents())
 
     admin_server = None
+    puppet_master_manager = get_puppet_master_manager()
 
     try:
         if admin_enabled:
-            admin_server = start_admin_console(admin_host, admin_port)
+            if not puppet_master_manager.is_configured:
+                logger.info(
+                    "Admin console is disabled because CINDY_PUPPET_MASTER_PHONE is not set."
+                )
+            else:
+                try:
+                    puppet_master_manager.ensure_ready(agents_list)
+                except PuppetMasterUnavailable as exc:
+                    logger.error(
+                        "Admin console disabled because puppet master is unavailable: %s",
+                        exc,
+                    )
+                else:
+                    admin_server = start_admin_console(admin_host, admin_port)
 
         if not agent_loop_enabled:
             if not admin_enabled:
@@ -456,6 +472,15 @@ async def main():
             logger.error("Failed to authenticate any agents, exiting.")
             return
 
+        if admin_enabled and puppet_master_manager.is_configured:
+            try:
+                puppet_master_manager.ensure_ready(agents_list)
+            except PuppetMasterUnavailable as exc:
+                logger.error(
+                    "Puppet master availability check failed after agent authentication: %s",
+                    exc,
+                )
+                return
         # Now start all the main tasks
         tick_task = asyncio.create_task(
             run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
@@ -488,6 +513,7 @@ async def main():
     finally:
         if admin_server:
             admin_server.shutdown()
+        puppet_master_manager.shutdown()
 
 
 if __name__ == "__main__":

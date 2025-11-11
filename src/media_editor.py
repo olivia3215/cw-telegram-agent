@@ -15,25 +15,35 @@ Usage:
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
+import secrets
 import sys
+import threading
 import traceback
-from datetime import UTC
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Blueprint, Flask, jsonify, render_template, request, send_file
-from admin_console.loop import run_on_agent_loop
+from flask import Blueprint, Flask, jsonify, render_template, request, send_file, session
+from telethon import TelegramClient
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
 from agent import all_agents as get_all_agents
 from clock import clock
-from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
+from config import ADMIN_CONSOLE_SECRET_KEY, CONFIG_DIRECTORIES, STATE_DIRECTORY
+from admin_console.puppet_master import (
+    PuppetMasterNotConfigured,
+    PuppetMasterUnavailable,
+    get_puppet_master_manager,
+)
 from media.media_source import (
     AIChainMediaSource,
     AIGeneratingMediaSource,
@@ -95,6 +105,149 @@ bp = Blueprint(
     template_folder=str(Path(__file__).parent.parent / "templates"),
 )
 
+
+# --------------------------------------------------------------------------- #
+# Authentication / OTP helpers
+# --------------------------------------------------------------------------- #
+
+
+class ChallengeError(Exception):
+    """Base class for OTP challenge errors."""
+
+
+class ChallengeTooFrequent(ChallengeError):
+    def __init__(self, retry_after: int):
+        super().__init__(
+            f"Please wait {retry_after} seconds before requesting a new code."
+        )
+        self.retry_after = retry_after
+
+
+class ChallengeNotFound(ChallengeError):
+    """Raised when no challenge is active."""
+
+
+class ChallengeExpired(ChallengeError):
+    """Raised when the challenge has expired."""
+
+
+class ChallengeInvalid(ChallengeError):
+    def __init__(self, remaining_attempts: int):
+        super().__init__("The code you entered is incorrect.")
+        self.remaining_attempts = remaining_attempts
+
+
+class ChallengeAttemptsExceeded(ChallengeError):
+    """Raised when too many invalid attempts were made."""
+
+
+@dataclass
+class OTPChallenge:
+    code_hash: str
+    expires_at: datetime
+    attempts: int = 0
+
+
+class OTPChallengeManager:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: int = 300,
+        min_interval_seconds: int = 30,
+        max_attempts: int = 5,
+    ) -> None:
+        self.ttl_seconds = ttl_seconds
+        self.min_interval_seconds = min_interval_seconds
+        self.max_attempts = max_attempts
+        self._lock = threading.Lock()
+        self._challenge: Optional[OTPChallenge] = None
+        self._last_issued_at: Optional[datetime] = None
+
+    def issue(self) -> tuple[str, datetime]:
+        """Generate and store a new challenge code."""
+        now = clock.now(UTC)
+
+        with self._lock:
+            if self._last_issued_at:
+                delta = (now - self._last_issued_at).total_seconds()
+                if delta < self.min_interval_seconds:
+                    retry_after = int(self.min_interval_seconds - delta)
+                    raise ChallengeTooFrequent(max(retry_after, 1))
+
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+            expires_at = now + timedelta(seconds=self.ttl_seconds)
+
+            self._challenge = OTPChallenge(code_hash=code_hash, expires_at=expires_at)
+            self._last_issued_at = now
+
+            return code, expires_at
+
+    def verify(self, code: str) -> None:
+        now = clock.now(UTC)
+        hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+        with self._lock:
+            if not self._challenge:
+                raise ChallengeNotFound("No verification code has been requested.")
+
+            if now > self._challenge.expires_at:
+                self._challenge = None
+                raise ChallengeExpired("The verification code has expired.")
+
+            if self._challenge.attempts >= self.max_attempts:
+                self._challenge = None
+                raise ChallengeAttemptsExceeded(
+                    "Too many invalid attempts. Request a new code."
+                )
+
+            self._challenge.attempts += 1
+
+            if hashed != self._challenge.code_hash:
+                remaining = max(self.max_attempts - self._challenge.attempts, 0)
+                if remaining == 0:
+                    self._challenge = None
+                    raise ChallengeAttemptsExceeded(
+                        "Too many invalid attempts. Request a new code."
+                    )
+                raise ChallengeInvalid(remaining_attempts=remaining)
+
+            # Successful verification clears the challenge
+            self._challenge = None
+
+
+challenge_manager = OTPChallengeManager()
+
+SESSION_VERIFIED_KEY = "admin_console_verified"
+
+# Set of endpoint names that remain accessible without verification
+UNPROTECTED_ENDPOINTS = {
+    "admin_console.index",
+    "admin_console.favicon",
+    "admin_console.static",
+    "admin_console.api_auth_request_code",
+    "admin_console.api_auth_verify",
+    "admin_console.api_auth_status",
+}
+
+
+@bp.before_request
+def require_admin_verification():
+    """Ensure the session has passed OTP verification for protected routes."""
+    if request.method == "OPTIONS":
+        return None
+
+    endpoint = request.endpoint
+    if endpoint is None:
+        return None
+    if endpoint in UNPROTECTED_ENDPOINTS:
+        return None
+    if session.get(SESSION_VERIFIED_KEY):
+        return None
+
+    return jsonify({"error": "Admin console verification required"}), 401
+
+
 # Global state
 _available_directories: list[dict[str, str]] = []
 _current_directory: Path | None = None
@@ -111,6 +264,111 @@ def resolve_media_path(directory_path: str) -> Path:
     resolved_path = project_root / directory_path
     # Ensure absolute path
     return resolved_path.resolve()
+
+
+@bp.route("/api/auth/status", methods=["GET"])
+def api_auth_status():
+    """Return current authentication status for the session."""
+    return jsonify(
+        {
+            "verified": bool(session.get(SESSION_VERIFIED_KEY)),
+        }
+    )
+
+
+@bp.route("/api/auth/request-code", methods=["POST"])
+def api_auth_request_code():
+    """Issue a new OTP code and send it to the puppet master."""
+    manager = get_puppet_master_manager()
+    if not manager.is_configured:
+        return (
+            jsonify(
+                {
+                    "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                }
+            ),
+            503,
+        )
+
+    try:
+        code, expires_at = challenge_manager.issue()
+    except ChallengeTooFrequent as exc:
+        return jsonify({"error": str(exc), "retry_after": exc.retry_after}), 429
+    except ChallengeError as exc:  # pragma: no cover - defensive
+        return jsonify({"error": str(exc)}), 400
+
+    ttl_seconds = max(int((expires_at - clock.now(UTC)).total_seconds()), 0)
+    expire_minutes = max(ttl_seconds // 60, 1)
+    message = (
+        "Admin console login\n\n"
+        f"Your verification code is: {code}\n"
+        f"This code expires in {expire_minutes} minute{'s' if expire_minutes != 1 else ''}."
+    )
+
+    try:
+        manager.send_message("me", message)
+    except PuppetMasterNotConfigured:
+        return (
+            jsonify(
+                {
+                    "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                }
+            ),
+            503,
+        )
+    except PuppetMasterUnavailable as exc:
+        logger.error("Failed to send OTP via puppet master: %s", exc)
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:  # pragma: no cover - unexpected
+        logger.exception("Unexpected error sending OTP: %s", exc)
+        return jsonify({"error": "Failed to send verification code"}), 500
+
+    return (
+        jsonify(
+            {
+                "success": True,
+                "expires_in": ttl_seconds,
+                "cooldown": challenge_manager.min_interval_seconds,
+            }
+        ),
+        200,
+    )
+
+
+@bp.route("/api/auth/verify", methods=["POST"])
+def api_auth_verify():
+    """Verify a submitted OTP code."""
+    if session.get(SESSION_VERIFIED_KEY):
+        return jsonify({"success": True, "already_verified": True})
+
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("code", "")).strip()
+
+    if not code:
+        return jsonify({"error": "Verification code is required."}), 400
+
+    try:
+        challenge_manager.verify(code)
+    except ChallengeNotFound:
+        return (
+            jsonify({"error": "No verification code has been requested yet."}),
+            400,
+        )
+    except ChallengeExpired:
+        return jsonify({"error": "The verification code has expired."}), 400
+    except ChallengeInvalid as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "remaining_attempts": exc.remaining_attempts,
+            }
+        ), 400
+    except ChallengeAttemptsExceeded as exc:
+        return jsonify({"error": str(exc)}), 429
+
+    session[SESSION_VERIFIED_KEY] = True
+    session.modified = True
+    return jsonify({"success": True})
 
 
 def scan_media_directories() -> list[dict[str, str]]:
@@ -628,27 +886,43 @@ def api_import_sticker_set():
                 400,
             )
 
-        logger.info("Flask route: Scheduling import on agent loop")
-        import_coro = _import_sticker_set_async(
-            sticker_set_name, target_directory
-        )
-        try:
-            result = run_on_agent_loop(
-                import_coro,
-                timeout=300,
-            )
-        except RuntimeError as exc:
-            import_coro.close()
-            logger.error(
-                "Agent loop not available for sticker import: %s", exc, exc_info=True
-            )
+        manager = get_puppet_master_manager()
+        if not manager.is_configured:
             return (
                 jsonify(
                     {
-                        "error": "Agent loop is not running; cannot import sticker set."
+                        "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
                     }
                 ),
                 503,
+            )
+
+        def _coro(client: TelegramClient):
+            return _import_sticker_set_async(client, sticker_set_name, target_directory)
+
+        try:
+            result = manager.run(_coro, timeout=300)
+        except PuppetMasterNotConfigured:
+            return (
+                jsonify(
+                    {
+                        "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                    }
+                ),
+                503,
+            )
+        except PuppetMasterUnavailable as exc:
+            logger.error("Puppet master unavailable during sticker import: %s", exc)
+            return jsonify({"error": str(exc)}), 503
+        except FuturesTimeoutError:
+            logger.error("Sticker import timed out after 300 seconds.")
+            return (
+                jsonify(
+                    {
+                        "error": "Sticker import timed out after 300 seconds. Please try again."
+                    }
+                ),
+                504,
             )
 
         logger.info("Flask route: async import completed successfully")
@@ -661,29 +935,26 @@ def api_import_sticker_set():
         return jsonify({"error": str(e)}), 500
 
 
-async def _import_sticker_set_async(sticker_set_name: str, target_directory: str):
+async def _import_sticker_set_async(
+    client: TelegramClient, sticker_set_name: str, target_directory: str
+):
     """Async implementation of sticker set import."""
     logger.info(f"Starting sticker import for set: {sticker_set_name}")
     logger.info(f"Target directory: {target_directory}")
-    try:
-        agent = get_agent_for_directory(target_directory)
-        client = await agent.get_client()
 
+    try:
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
-            logger.error(f"Agent '{agent.name}' is not authenticated to Telegram.")
+            logger.error("Puppet master is not authenticated to Telegram.")
             return {
                 "success": False,
-                "error": f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent.",
+                "error": "Puppet master is not authenticated to Telegram. Run './telegram_login.sh --puppet-master' to log in.",
             }
-
-        logger.info(f"Got authenticated agent: {agent.name}")
-
     except Exception as e:
-        logger.error(f"Failed to get agent or connect client: {e}")
+        logger.error(f"Failed to connect puppet master client: {e}")
         return {
             "success": False,
-            "error": f"Failed to get agent or connect client: {e}",
+            "error": f"Failed to connect puppet master client: {e}",
         }
 
     target_dir = Path(target_directory)
@@ -704,7 +975,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             logger.info(
                 f"Attempting to get sticker set with short name: '{sticker_set_name}'"
             )
-            result = await agent.client(
+            result = await client(
                 GetStickerSetRequest(
                     stickerset=InputStickerSetShortName(short_name=sticker_set_name),
                     hash=0,
@@ -723,7 +994,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             if sticker_set_name != sticker_set_name.lower():
                 logger.info(f"Trying lowercase version: '{sticker_set_name.lower()}'")
                 try:
-                    result = await agent.client(
+                    result = await client(
                         GetStickerSetRequest(
                             stickerset=InputStickerSetShortName(
                                 short_name=sticker_set_name.lower()
@@ -793,7 +1064,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                 # Download the media file
                 try:
-                    media_bytes = await download_media_bytes(agent.client, doc)
+                    media_bytes = await download_media_bytes(client, doc)
 
                     # Determine file extension
                     mime_type = getattr(doc, "mime_type", None)
@@ -873,6 +1144,13 @@ def create_admin_app() -> Flask:
     app = Flask(
         __name__, template_folder=str(Path(__file__).parent.parent / "templates")
     )
+    if ADMIN_CONSOLE_SECRET_KEY:
+        app.secret_key = ADMIN_CONSOLE_SECRET_KEY
+    else:
+        app.secret_key = secrets.token_hex(32)
+        logger.warning(
+            "CINDY_ADMIN_CONSOLE_SECRET_KEY is not set; using a transient secret key."
+        )
     app.register_blueprint(bp, url_prefix="/admin")
     return app
 

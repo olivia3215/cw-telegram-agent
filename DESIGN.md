@@ -779,3 +779,28 @@ The Memory role prompt teaches agents what to remember and what to avoid:
 - **Selective memory**: Agents are instructed to be selective about what they remember to respect privacy
 - **Manual curation**: Config memories allow manual review and editing of important information
 - **Global persistence**: Memories persist across all conversations with the same user, enabling better relationship building
+
+## Admin Console & Puppet Master
+
+The admin console now runs exclusively through a dedicated “puppet master” Telegram account rather than borrowing an agent identity. This delivers a few guarantees:
+
+- Console access only exists when `CINDY_PUPPET_MASTER_PHONE` is configured and the account is logged in locally. If the puppet master is missing, we skip starting the HTTP server entirely so the rest of the system keeps running.
+- The puppet master account must be distinct from every agent (different phone number and Telegram user ID). We verify this both before launching the console and again after agents authenticate.
+- Long-running console actions (for example sticker-set imports) execute on the puppet master’s Telethon client. We removed the cross-thread “run this on the agent loop” helper, so agent event loops are no longer shared with the Flask thread.
+
+### Login and configuration flow
+
+1. Export `CINDY_PUPPET_MASTER_PHONE` with the puppet master’s Telegram number.
+2. Run `./telegram_login.sh` – the script logs the puppet master first (if configured) and then iterates through the agents.
+3. Optionally set `CINDY_ADMIN_CONSOLE_SECRET_KEY` so Flask keeps session cookies across restarts; otherwise a random key is generated at launch.
+
+The puppet master session is stored at `state/PuppetMaster/telegram.session`. We call `client.get_me()` at runtime to discover the Telegram user ID, which avoids manual synchronization between phone number and ID.
+
+### OTP / verification model
+
+- The first time a browser session hits `/admin`, the UI prompts for a six-digit verification code.
+- The user clicks “Send verification code”; the server generates an OTP, sends it to the puppet master via `client.send_message("me", ...)`, and returns the TTL to the browser.
+- OTPs are hashed in memory, expire after five minutes, and throttle reissue requests (default 30 seconds).
+- Verification state is stored in the Flask session (`SESSION_VERIFIED_KEY`). Clearing cookies or restarting the server without the same secret key forces re-verification.
+
+Once verified, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer without introducing additional privileged accounts.

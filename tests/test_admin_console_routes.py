@@ -10,7 +10,10 @@ from media.media_sources import (
 def _make_client():
     app = create_admin_app()
     app.testing = True
-    return app.test_client()
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["admin_console_verified"] = True
+    return client
 
 
 def test_update_description_uses_shared_cache(tmp_path):

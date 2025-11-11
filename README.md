@@ -230,18 +230,31 @@ The Admin Console serves administrative tooling (currently the Media Editor tab,
 | --- | --- | --- |
 | `CINDY_ADMIN_CONSOLE_ENABLED` | `true` | Enable/disable the console server |
 | `CINDY_AGENT_LOOP_ENABLED` | `true` | Enable/disable the agent loop (set `false` to run console-only) |
+| `CINDY_PUPPET_MASTER_PHONE` | _(unset)_ | Phone number for the dedicated puppet master account. Required to enable the console. |
+| `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
 | `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface for the console |
 | `CINDY_ADMIN_CONSOLE_PORT` | `5001` | Port for the console |
 
 **Quick start**
-```bash
-export CINDY_ADMIN_CONSOLE_ENABLED=true
-export CINDY_AGENT_LOOP_ENABLED=true
+1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):
+   ```bash
+   export CINDY_PUPPET_MASTER_PHONE="+15551234567"        # dedicated Telegram account
+   # Generate once: python -c 'import secrets; print(secrets.token_urlsafe(32))'
+   export CINDY_ADMIN_CONSOLE_SECRET_KEY="copy-the-generated-value-here"
+   export CINDY_ADMIN_CONSOLE_ENABLED=true
+   export CINDY_AGENT_LOOP_ENABLED=true
+   ```
+2. Log in to Telegram for the puppet master and each agent:
+   ```bash
+   ./telegram_login.sh          # logs the puppet master first (if phone set), then all agents
+   ```
+3. Start the service and open the console:
+   ```bash
+   ./run.sh
+   open http://localhost:5001/admin
+   ```
 
-./run.sh
-# Open the console in your browser
-open http://localhost:5001/admin
-```
+On first visit to the console you’ll be prompted to send a six-digit verification code. Click “Send verification code” to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
 The Media Editor tab continues to provide:
 
