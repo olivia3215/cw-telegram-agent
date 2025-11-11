@@ -7,7 +7,6 @@ import argparse
 import asyncio
 import getpass
 import logging
-
 from telethon.errors import SessionPasswordNeededError
 
 from agent import all_agents
@@ -19,36 +18,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def login_agent(agent) -> None:
-    client = get_telegram_client(agent.name, agent.phone)
+async def _ensure_logged_in(client, phone: str, agent_name: str) -> None:
     await client.connect()
-
     if await client.is_user_authorized():
-        logger.info(f"[{agent.name}] Already logged in.")
-        await client.disconnect()
+        logger.info(f"[{agent_name}] Already logged in.")
         return
 
-    logger.info(f"[{agent.name}] Sending code to {agent.phone}...")
-    await client.send_code_request(agent.phone)
-    code = input(f"Enter the code you received for {agent.name}: ")
+    logger.info(f"[{agent_name}] Sending code to %s...", phone)
+
+    await client.send_code_request(phone)
+    code_prompt = (
+        f"Enter the code you received for {agent_name}: "
+    )
+    code = input(code_prompt)
 
     try:
-        await client.sign_in(agent.phone, code)
+        await client.sign_in(phone, code)
     except SessionPasswordNeededError:
         password = getpass.getpass("Enter your 2FA password: ")
         await client.sign_in(password=password)
-    except Exception as e:
-        logger.error(f"[{agent.name}] Login failed: {e}")
-        await client.disconnect()
-        return
+    except Exception as exc:
+        logger.error(f"[{agent_name}] Login failed: %s", exc)
+        raise
 
     me = await client.get_me()
     if me:
         logger.info(
-            f"[{agent.name}] Logged in as: {me.username or me.first_name} ({me.id})"
+            f"[{agent_name}] Logged in as: {me.username or me.first_name} ({me.id})"
         )
 
-    await client.disconnect()
+
+async def login_agent(agent) -> None:
+    client = get_telegram_client(agent.name, agent.phone)
+
+    try:
+        await _ensure_logged_in(client, agent.phone, agent.name)
+    except Exception:
+        return
+    finally:
+        await client.disconnect()
 
 
 async def login_puppet_master() -> int:
@@ -59,42 +67,14 @@ async def login_puppet_master() -> int:
         return 0
 
     client = get_puppet_master_client()
-    await client.connect()
-
-    if await client.is_user_authorized():
-        me = await client.get_me()
-        logger.info(
-            "Puppet master already logged in as %s (%s)",
-            me.username or me.first_name,
-            me.id,
-        )
-        await client.disconnect()
-        return 0
-
-    logger.info("Sending login code to puppet master phone %s...", PUPPET_MASTER_PHONE)
-    await client.send_code_request(PUPPET_MASTER_PHONE)
-    code = input("Enter the code you received for the puppet master: ")
 
     try:
-        await client.sign_in(PUPPET_MASTER_PHONE, code)
-    except SessionPasswordNeededError:
-        password = getpass.getpass("Enter your 2FA password: ")
-        await client.sign_in(password=password)
-    except Exception as e:
-        logger.error("Puppet master login failed: %s", e)
-        await client.disconnect()
+        await _ensure_logged_in(client, PUPPET_MASTER_PHONE, "Puppet master")
+        return 0
+    except Exception:
         return 1
-
-    me = await client.get_me()
-    if me:
-        logger.info(
-            "Puppet master logged in as: %s (%s)",
-            me.username or me.first_name,
-            me.id,
-        )
-
-    await client.disconnect()
-    return 0
+    finally:
+        await client.disconnect()
 
 
 async def login_agents() -> int:

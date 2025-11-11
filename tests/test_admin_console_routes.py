@@ -1,6 +1,9 @@
 import json
 
+import pytest
+
 from admin_console.app import create_admin_app
+from media_editor import ChallengeNotFound, get_challenge_manager
 from media.media_sources import (
     get_directory_media_source,
     reset_media_source_registry,
@@ -75,4 +78,19 @@ def test_import_sticker_set_requires_agent_loop(tmp_path):
         },
     )
     assert response.status_code == 503
+
+
+def test_challenge_manager_isolated_per_app_instance():
+    app_a = create_admin_app()
+    app_b = create_admin_app()
+
+    with app_a.app_context():
+        manager_a = get_challenge_manager()
+        code, _ = manager_a.issue()
+
+    with app_b.app_context():
+        manager_b = get_challenge_manager()
+        assert manager_b is not manager_a
+        with pytest.raises(ChallengeNotFound):
+            manager_b.verify(code)
 

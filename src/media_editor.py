@@ -31,7 +31,7 @@ from typing import Any, Optional
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Blueprint, Flask, jsonify, render_template, request, send_file, session  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, Flask, current_app, jsonify, render_template, request, send_file, session  # pyright: ignore[reportMissingImports]
 from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetStickerSetRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import InputStickerSetShortName  # pyright: ignore[reportMissingImports]
@@ -216,7 +216,19 @@ class OTPChallengeManager:
             self._challenge = None
 
 
-challenge_manager = OTPChallengeManager()
+def get_challenge_manager() -> OTPChallengeManager:
+    """
+    Return the OTPChallengeManager scoped to the current Flask application.
+
+    Each app instance receives its own manager so OTP state is not shared across
+    test clients or reloaded servers.
+    """
+    manager = current_app.extensions.get("otp_challenge_manager")  # type: ignore[union-attr]
+    if manager is None:
+        manager = OTPChallengeManager()
+        current_app.extensions["otp_challenge_manager"] = manager  # type: ignore[assignment]
+    return manager
+
 
 SESSION_VERIFIED_KEY = "admin_console_verified"
 
@@ -279,8 +291,8 @@ def api_auth_status():
 @bp.route("/api/auth/request-code", methods=["POST"])
 def api_auth_request_code():
     """Issue a new OTP code and send it to the puppet master."""
-    manager = get_puppet_master_manager()
-    if not manager.is_configured:
+    puppet_manager = get_puppet_master_manager()
+    if not puppet_manager.is_configured:
         return (
             jsonify(
                 {
@@ -289,6 +301,8 @@ def api_auth_request_code():
             ),
             503,
         )
+
+    challenge_manager = get_challenge_manager()
 
     try:
         code, expires_at = challenge_manager.issue()
@@ -306,7 +320,7 @@ def api_auth_request_code():
     )
 
     try:
-        manager.send_message("me", message)
+        puppet_manager.send_message("me", message)
     except PuppetMasterNotConfigured:
         return (
             jsonify(
@@ -346,6 +360,8 @@ def api_auth_verify():
 
     if not code:
         return jsonify({"error": "Verification code is required."}), 400
+
+    challenge_manager = get_challenge_manager()
 
     try:
         challenge_manager.verify(code)
@@ -1151,6 +1167,11 @@ def create_admin_app() -> Flask:
         logger.warning(
             "CINDY_ADMIN_CONSOLE_SECRET_KEY is not set; using a transient secret key."
         )
+
+    # Ensure each app instance has its own OTP challenge manager.
+    if "otp_challenge_manager" not in app.extensions:
+        app.extensions["otp_challenge_manager"] = OTPChallengeManager()
+
     app.register_blueprint(bp, url_prefix="/admin")
     return app
 
