@@ -345,11 +345,12 @@ class DirectoryMediaSource(MediaSource):
     ) -> None:
         """Store metadata record and optionally media file to disk."""
         with self._lock:
+            record_copy = record.copy()
             self.directory.mkdir(parents=True, exist_ok=True)
             if media_bytes and file_extension:
-                record["media_file"] = f"{unique_id}{file_extension}"
+                record_copy["media_file"] = f"{unique_id}{file_extension}"
             # Always store the JSON metadata
-            self._write_to_disk(unique_id, record)
+            self._write_to_disk(unique_id, record_copy)
 
             # Optionally store media file if provided
             if media_bytes and file_extension:
@@ -403,16 +404,16 @@ class DirectoryMediaSource(MediaSource):
 
             media_file_name = record.get("media_file") if record else None
 
-        if media_file_name:
-            media_path = self.directory / media_file_name
-            if media_path.exists():
-                media_path.unlink()
-        else:
-            for ext in MEDIA_FILE_EXTENSIONS:
-                media_path = self.directory / f"{unique_id}{ext}"
+            if media_file_name:
+                media_path = self.directory / media_file_name
                 if media_path.exists():
                     media_path.unlink()
-                    break
+            else:
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    media_path = self.directory / f"{unique_id}{ext}"
+                    if media_path.exists():
+                        media_path.unlink()
+                        break
 
     def move_record_to(
         self, unique_id: str, target_source: "DirectoryMediaSource"

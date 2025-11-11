@@ -21,6 +21,17 @@ def test_put_updates_disk_and_cache(tmp_path):
     assert cached["description"] == "hello"
 
 
+def test_put_does_not_mutate_input_record(tmp_path):
+    reset_media_source_registry()
+    source = get_directory_media_source(tmp_path)
+    unique_id = "immutability"
+    original = {"unique_id": unique_id, "description": "keep-me"}
+
+    source.put(unique_id, original)
+
+    assert original == {"unique_id": unique_id, "description": "keep-me"}
+
+
 def test_move_record_between_sources(tmp_path):
     reset_media_source_registry()
     origin = tmp_path / "origin"
