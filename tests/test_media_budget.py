@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -170,6 +171,43 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
     assert result["description"] == "cached desc"
     assert result["status"] == MediaStatus.GENERATED.value
     assert get_remaining_description_budget() == 1  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_ai_chain_respects_skip_fallback(tmp_path):
+    """
+    AIChainMediaSource should honor skip_fallback metadata when reading from cache.
+    """
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "skip-fallback"
+    record = {
+        "unique_id": unique_id,
+        "kind": "sticker",
+        "description": None,
+        "mime_type": "application/x-tgsticker",
+        "status": MediaStatus.GENERATED.value,
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    cache_source = DirectoryMediaSource(cache_dir)
+    ai_chain = AIChainMediaSource(
+        cache_source=cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=NothingMediaSource(),
+        ai_source=NothingMediaSource(),
+    )
+
+    result = await ai_chain.get(
+        unique_id,
+        kind="sticker",
+        skip_fallback=True,
+    )
+
+    assert result["description"] is None
+    assert result["status"] == MediaStatus.GENERATED.value
 
 
 @pytest.mark.asyncio

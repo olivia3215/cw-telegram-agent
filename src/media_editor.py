@@ -15,34 +15,45 @@ Usage:
 
 import argparse
 import asyncio
-import concurrent.futures
+import hashlib
 import json
 import logging
+import secrets
 import sys
+import threading
 import traceback
-from datetime import UTC
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Flask, jsonify, render_template, request, send_file
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputStickerSetShortName
+from flask import Blueprint, Flask, current_app, jsonify, render_template, request, send_file, session  # pyright: ignore[reportMissingImports]
+from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetStickerSetRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import InputStickerSetShortName  # pyright: ignore[reportMissingImports]
 
 from agent import all_agents as get_all_agents
 from clock import clock
-from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
+from config import ADMIN_CONSOLE_SECRET_KEY, CONFIG_DIRECTORIES, STATE_DIRECTORY
+from admin_console.puppet_master import (
+    PuppetMasterNotConfigured,
+    PuppetMasterUnavailable,
+    get_puppet_master_manager,
+)
 from media.media_source import (
     AIChainMediaSource,
     AIGeneratingMediaSource,
     BudgetExhaustedMediaSource,
     CompositeMediaSource,
-    DirectoryMediaSource,
+    MediaStatus,
     UnsupportedFormatMediaSource,
     get_emoji_unicode_name,
 )
+from media.media_sources import get_directory_media_source
 from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
@@ -66,14 +77,188 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     Returns:
         Path to the media file if found, None otherwise
     """
-    # Look for any file with the unique_id prefix that is not .json
-    for file_path in media_dir.glob(f"{unique_id}.*"):
-        if file_path.suffix.lower() != ".json":
-            return file_path
+    search_dirs: list[Path] = [media_dir]
+
+    # Fallback to AI cache directory if media not present in curated directory
+    if STATE_DIRECTORY:
+        fallback_dir = Path(STATE_DIRECTORY) / "media"
+        if fallback_dir != media_dir:
+            search_dirs.append(fallback_dir)
+
+    for directory in search_dirs:
+        for file_path in directory.glob(f"{unique_id}.*"):
+            if file_path.suffix.lower() != ".json":
+                if directory != media_dir:
+                    logger.debug(
+                        "find_media_file: using fallback media directory %s for %s",
+                        directory,
+                        unique_id,
+                    )
+                return file_path
+
     return None
 
 
-app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
+bp = Blueprint(
+    "admin_console",
+    __name__,
+    template_folder=str(Path(__file__).parent.parent / "templates"),
+)
+
+
+# --------------------------------------------------------------------------- #
+# Authentication / OTP helpers
+# --------------------------------------------------------------------------- #
+
+
+class ChallengeError(Exception):
+    """Base class for OTP challenge errors."""
+
+
+class ChallengeTooFrequent(ChallengeError):
+    def __init__(self, retry_after: int):
+        super().__init__(
+            f"Please wait {retry_after} seconds before requesting a new code."
+        )
+        self.retry_after = retry_after
+
+
+class ChallengeNotFound(ChallengeError):
+    """Raised when no challenge is active."""
+
+
+class ChallengeExpired(ChallengeError):
+    """Raised when the challenge has expired."""
+
+
+class ChallengeInvalid(ChallengeError):
+    def __init__(self, remaining_attempts: int):
+        super().__init__("The code you entered is incorrect.")
+        self.remaining_attempts = remaining_attempts
+
+
+class ChallengeAttemptsExceeded(ChallengeError):
+    """Raised when too many invalid attempts were made."""
+
+
+@dataclass
+class OTPChallenge:
+    code_hash: str
+    expires_at: datetime
+    attempts: int = 0
+
+
+class OTPChallengeManager:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: int = 300,
+        min_interval_seconds: int = 30,
+        max_attempts: int = 5,
+    ) -> None:
+        self.ttl_seconds = ttl_seconds
+        self.min_interval_seconds = min_interval_seconds
+        self.max_attempts = max_attempts
+        self._lock = threading.Lock()
+        self._challenge: Optional[OTPChallenge] = None
+        self._last_issued_at: Optional[datetime] = None
+
+    def issue(self) -> tuple[str, datetime]:
+        """Generate and store a new challenge code."""
+        now = clock.now(UTC)
+
+        with self._lock:
+            if self._last_issued_at:
+                delta = (now - self._last_issued_at).total_seconds()
+                if delta < self.min_interval_seconds:
+                    retry_after = int(self.min_interval_seconds - delta)
+                    raise ChallengeTooFrequent(max(retry_after, 1))
+
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+            expires_at = now + timedelta(seconds=self.ttl_seconds)
+
+            self._challenge = OTPChallenge(code_hash=code_hash, expires_at=expires_at)
+            self._last_issued_at = now
+
+            return code, expires_at
+
+    def verify(self, code: str) -> None:
+        now = clock.now(UTC)
+        hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+        with self._lock:
+            if not self._challenge:
+                raise ChallengeNotFound("No verification code has been requested.")
+
+            if now > self._challenge.expires_at:
+                self._challenge = None
+                raise ChallengeExpired("The verification code has expired.")
+
+            if self._challenge.attempts >= self.max_attempts:
+                self._challenge = None
+                raise ChallengeAttemptsExceeded(
+                    "Too many invalid attempts. Request a new code."
+                )
+
+            self._challenge.attempts += 1
+
+            if hashed != self._challenge.code_hash:
+                remaining = max(self.max_attempts - self._challenge.attempts, 0)
+                if remaining == 0:
+                    self._challenge = None
+                    raise ChallengeAttemptsExceeded(
+                        "Too many invalid attempts. Request a new code."
+                    )
+                raise ChallengeInvalid(remaining_attempts=remaining)
+
+            # Successful verification clears the challenge
+            self._challenge = None
+
+
+def get_challenge_manager() -> OTPChallengeManager:
+    """
+    Return the OTPChallengeManager scoped to the current Flask application.
+
+    Each app instance receives its own manager so OTP state is not shared across
+    test clients or reloaded servers.
+    """
+    manager = current_app.extensions.get("otp_challenge_manager")  # type: ignore[union-attr]
+    if manager is None:
+        manager = OTPChallengeManager()
+        current_app.extensions["otp_challenge_manager"] = manager  # type: ignore[assignment]
+    return manager
+
+
+SESSION_VERIFIED_KEY = "admin_console_verified"
+
+# Set of endpoint names that remain accessible without verification
+UNPROTECTED_ENDPOINTS = {
+    "admin_console.index",
+    "admin_console.favicon",
+    "admin_console.static",
+    "admin_console.api_auth_request_code",
+    "admin_console.api_auth_verify",
+    "admin_console.api_auth_status",
+}
+
+
+@bp.before_request
+def require_admin_verification():
+    """Ensure the session has passed OTP verification for protected routes."""
+    if request.method == "OPTIONS":
+        return None
+
+    endpoint = request.endpoint
+    if endpoint is None:
+        return None
+    if endpoint in UNPROTECTED_ENDPOINTS:
+        return None
+    if session.get(SESSION_VERIFIED_KEY):
+        return None
+
+    return jsonify({"error": "Admin console verification required"}), 401
+
 
 # Global state
 _available_directories: list[dict[str, str]] = []
@@ -91,6 +276,115 @@ def resolve_media_path(directory_path: str) -> Path:
     resolved_path = project_root / directory_path
     # Ensure absolute path
     return resolved_path.resolve()
+
+
+@bp.route("/api/auth/status", methods=["GET"])
+def api_auth_status():
+    """Return current authentication status for the session."""
+    return jsonify(
+        {
+            "verified": bool(session.get(SESSION_VERIFIED_KEY)),
+        }
+    )
+
+
+@bp.route("/api/auth/request-code", methods=["POST"])
+def api_auth_request_code():
+    """Issue a new OTP code and send it to the puppet master."""
+    puppet_manager = get_puppet_master_manager()
+    if not puppet_manager.is_configured:
+        return (
+            jsonify(
+                {
+                    "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                }
+            ),
+            503,
+        )
+
+    challenge_manager = get_challenge_manager()
+
+    try:
+        code, expires_at = challenge_manager.issue()
+    except ChallengeTooFrequent as exc:
+        return jsonify({"error": str(exc), "retry_after": exc.retry_after}), 429
+    except ChallengeError as exc:  # pragma: no cover - defensive
+        return jsonify({"error": str(exc)}), 400
+
+    ttl_seconds = max(int((expires_at - clock.now(UTC)).total_seconds()), 0)
+    expire_minutes = max(ttl_seconds // 60, 1)
+    message = (
+        "Admin console login\n\n"
+        f"Your verification code is: {code}\n"
+        f"This code expires in {expire_minutes} minute{'s' if expire_minutes != 1 else ''}."
+    )
+
+    try:
+        puppet_manager.send_message("me", message)
+    except PuppetMasterNotConfigured:
+        return (
+            jsonify(
+                {
+                    "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                }
+            ),
+            503,
+        )
+    except PuppetMasterUnavailable as exc:
+        logger.error("Failed to send OTP via puppet master: %s", exc)
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:  # pragma: no cover - unexpected
+        logger.exception("Unexpected error sending OTP: %s", exc)
+        return jsonify({"error": "Failed to send verification code"}), 500
+
+    return (
+        jsonify(
+            {
+                "success": True,
+                "expires_in": ttl_seconds,
+                "cooldown": challenge_manager.min_interval_seconds,
+            }
+        ),
+        200,
+    )
+
+
+@bp.route("/api/auth/verify", methods=["POST"])
+def api_auth_verify():
+    """Verify a submitted OTP code."""
+    if session.get(SESSION_VERIFIED_KEY):
+        return jsonify({"success": True, "already_verified": True})
+
+    payload = request.get_json(silent=True) or {}
+    code = str(payload.get("code", "")).strip()
+
+    if not code:
+        return jsonify({"error": "Verification code is required."}), 400
+
+    challenge_manager = get_challenge_manager()
+
+    try:
+        challenge_manager.verify(code)
+    except ChallengeNotFound:
+        return (
+            jsonify({"error": "No verification code has been requested yet."}),
+            400,
+        )
+    except ChallengeExpired:
+        return jsonify({"error": "The verification code has expired."}), 400
+    except ChallengeInvalid as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+                "remaining_attempts": exc.remaining_attempts,
+            }
+        ), 400
+    except ChallengeAttemptsExceeded as exc:
+        return jsonify({"error": str(exc)}), 429
+
+    session[SESSION_VERIFIED_KEY] = True
+    session.modified = True
+    return jsonify({"success": True})
 
 
 def scan_media_directories() -> list[dict[str, str]]:
@@ -156,13 +450,13 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     return agent
 
 
-@app.route("/")
+@bp.route("/")
 def index():
     """Main page with directory selection and media browser."""
-    return render_template("media_editor.html", directories=_available_directories)
+    return render_template("admin_console.html", directories=_available_directories)
 
 
-@app.route("/favicon.ico")
+@bp.route("/favicon.ico")
 def favicon():
     """Serve the favicon."""
     favicon_path = Path(__file__).parent.parent / "favicon.ico"
@@ -171,7 +465,7 @@ def favicon():
     return send_file(favicon_path, mimetype="image/x-icon")
 
 
-@app.route("/api/directories")
+@bp.route("/api/directories")
 def api_directories():
     """Get list of available media directories."""
     # Rescan directories to get current state
@@ -180,7 +474,7 @@ def api_directories():
     return jsonify(_available_directories)
 
 
-@app.route("/api/media")
+@bp.route("/api/media")
 def api_media_list():
     """Get list of media files in a directory."""
     try:
@@ -195,7 +489,7 @@ def api_media_list():
         # Use MediaSource API to read media descriptions
         # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
         # but without AIGeneratingMediaSource (no AI generation in listing)
-        cache_source = DirectoryMediaSource(media_dir)
+        cache_source = get_directory_media_source(media_dir)
         unsupported_source = UnsupportedFormatMediaSource()
 
         media_chain = CompositeMediaSource(
@@ -292,7 +586,7 @@ def api_media_list():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>")
+@bp.route("/api/media/<unique_id>")
 def api_media_file(unique_id: str):
     """Serve a media file."""
     try:
@@ -324,7 +618,7 @@ def api_media_file(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/description", methods=["PUT"])
+@bp.route("/api/media/<unique_id>/description", methods=["PUT"])
 def api_update_description(unique_id: str):
     """Update a media description."""
     try:
@@ -333,27 +627,22 @@ def api_update_description(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        source = get_directory_media_source(media_dir)
+        record = source.get_cached_record(unique_id)
 
-        if not json_file.exists():
+        if not record:
             return jsonify({"error": "Media record not found"}), 404
-
-        # Load existing data
-        with open(json_file, encoding="utf-8") as f:
-            data = json.load(f)
 
         # Update description
         new_description = request.json.get("description", "").strip()
-        data["description"] = new_description if new_description else None
+        record["description"] = new_description if new_description else None
 
         # Clear error fields if description is provided
         if new_description:
-            data.pop("failure_reason", None)
-            data["status"] = "curated"  # Mark as curated when user edits description
+            record.pop("failure_reason", None)
+            record["status"] = "curated"  # Mark as curated when user edits description
 
-        # Save back
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        source.put(unique_id, record)
 
         return jsonify({"success": True})
 
@@ -362,7 +651,7 @@ def api_update_description(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/refresh-ai", methods=["POST"])
+@bp.route("/api/media/<unique_id>/refresh-ai", methods=["POST"])
 def api_refresh_from_ai(unique_id: str):
     """Refresh description using AI pipeline."""
     try:
@@ -371,14 +660,22 @@ def api_refresh_from_ai(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        media_cache_source = get_directory_media_source(media_dir)
+        data = media_cache_source.get_cached_record(unique_id)
 
-        if not json_file.exists():
+        if not data:
             return jsonify({"error": "Media record not found"}), 404
 
-        # Load existing data
-        with open(json_file, encoding="utf-8") as f:
-            data = json.load(f)
+        # Force the AI pipeline to regenerate a fresh description.
+        logger.debug(
+            "Refresh-from-AI: clearing cached description for %s in %s",
+            unique_id,
+            media_dir,
+        )
+        data["description"] = None
+        data.pop("failure_reason", None)
+        data["status"] = MediaStatus.TEMPORARY_FAILURE.value
+        media_cache_source.put(unique_id, data)
 
         # Get the agent for this directory
         try:
@@ -389,7 +686,9 @@ def api_refresh_from_ai(unique_id: str):
 
         # Use the media pipeline to regenerate description
         logger.info(
-            f"Refreshing AI description for {unique_id} using agent '{agent.name}'"
+            "Refreshing AI description for %s using agent '%s'",
+            unique_id,
+            agent.name,
         )
 
         # For refresh, we want to bypass cached results and force fresh AI generation
@@ -411,7 +710,7 @@ def api_refresh_from_ai(unique_id: str):
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the same chain structure as the main application
-        cache_source = DirectoryMediaSource(ai_cache_dir)
+        ai_cache_source = get_directory_media_source(ai_cache_dir)
         unsupported_source = UnsupportedFormatMediaSource()
         budget_source = BudgetExhaustedMediaSource()
         ai_source = AIGeneratingMediaSource(cache_directory=ai_cache_dir)
@@ -419,7 +718,7 @@ def api_refresh_from_ai(unique_id: str):
         media_chain = CompositeMediaSource(
             [
                 AIChainMediaSource(
-                    cache_source=cache_source,
+                    cache_source=ai_cache_source,
                     unsupported_source=unsupported_source,
                     budget_source=budget_source,
                     ai_source=ai_source,
@@ -475,6 +774,7 @@ def api_refresh_from_ai(unique_id: str):
                     duration=data.get(
                         "duration"
                     ),  # Include duration for video/animated stickers
+                    skip_fallback=True,
                 )
             )
         finally:
@@ -485,7 +785,15 @@ def api_refresh_from_ai(unique_id: str):
             new_description = record.get("description")
             new_status = record.get("status", "ok")
             logger.info(
-                f"Got fresh AI description for {unique_id}: {new_description[:50] if new_description else 'None'}..."
+                "Got fresh AI description for %s (status=%s): %s",
+                unique_id,
+                new_status,
+                (new_description[:50] + "…") if new_description else "None",
+            )
+            logger.debug(
+                "Refresh-from-AI: updated metadata for %s -> %s",
+                unique_id,
+                record,
             )
             return jsonify(
                 {"success": True, "description": new_description, "status": new_status}
@@ -499,7 +807,7 @@ def api_refresh_from_ai(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/move", methods=["POST"])
+@bp.route("/api/media/<unique_id>/move", methods=["POST"])
 def api_move_media(unique_id: str):
     """Move a media item from one directory to another."""
     try:
@@ -515,36 +823,13 @@ def api_move_media(unique_id: str):
         from_dir = resolve_media_path(from_directory)
         to_dir = resolve_media_path(to_directory)
 
-        # Ensure target directory exists
-        to_dir.mkdir(parents=True, exist_ok=True)
+        from_source = get_directory_media_source(from_dir)
+        to_source = get_directory_media_source(to_dir)
 
-        # Find the media files
-        json_file_from = from_dir / f"{unique_id}.json"
-
-        if not json_file_from.exists():
+        try:
+            from_source.move_record_to(unique_id, to_source)
+        except KeyError:
             return jsonify({"error": "Media record not found"}), 404
-
-        # Load the media record
-        with open(json_file_from, encoding="utf-8") as f:
-            media_data = json.load(f)
-
-        # Find the media file (could be .webp, .tgs, etc.)
-        media_file_from = find_media_file(from_dir, unique_id)
-
-        # Move JSON file
-        json_file_to = to_dir / f"{unique_id}.json"
-        json_file_from.rename(json_file_to)
-
-        # Move media file if it exists
-        if media_file_from:
-            media_file_to = to_dir / media_file_from.name
-            media_file_from.rename(media_file_to)
-            # Update the media_data to reflect the new file location
-            media_data["media_file"] = media_file_to.name
-
-        # Save updated media data
-        with open(json_file_to, "w", encoding="utf-8") as f:
-            json.dump(media_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Moved media {unique_id} from {from_directory} to {to_directory}")
         return jsonify({"success": True})
@@ -554,7 +839,7 @@ def api_move_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/delete", methods=["DELETE"])
+@bp.route("/api/media/<unique_id>/delete", methods=["DELETE"])
 def api_delete_media(unique_id: str):
     """Delete a media item and its description."""
     try:
@@ -563,24 +848,13 @@ def api_delete_media(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        source = get_directory_media_source(media_dir)
 
-        if not json_file.exists():
+        record = source.get_cached_record(unique_id)
+        if not record:
             return jsonify({"error": "Media record not found"}), 404
 
-        # Load the media record to find the media file
-        with open(json_file, encoding="utf-8") as f:
-            media_data = json.load(f)
-
-        # Delete JSON file
-        json_file.unlink()
-
-        # Delete media file if it exists
-        media_file_name = media_data.get("media_file")
-        if media_file_name:
-            media_file = media_dir / media_file_name
-            if media_file.exists():
-                media_file.unlink()
+        source.delete_record(unique_id)
 
         logger.info(f"Deleted media {unique_id} from {directory_path}")
         return jsonify({"success": True})
@@ -590,7 +864,7 @@ def api_delete_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/download/<unique_id>", methods=["POST"])
+@bp.route("/api/download/<unique_id>", methods=["POST"])
 def api_download_media(unique_id: str):
     """Download missing media file using Telegram API."""
     try:
@@ -610,7 +884,7 @@ def api_download_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/import-sticker-set", methods=["POST"])
+@bp.route("/api/import-sticker-set", methods=["POST"])
 def api_import_sticker_set():
     """Import all stickers from a sticker set."""
     try:
@@ -628,24 +902,44 @@ def api_import_sticker_set():
                 400,
             )
 
-        # Run the async import operation in a separate thread with its own event loop
-        logger.info("Flask route: About to run async import in thread")
+        manager = get_puppet_master_manager()
+        if not manager.is_configured:
+            return (
+                jsonify(
+                    {
+                        "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                    }
+                ),
+                503,
+            )
 
-        def run_async_import():
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    _import_sticker_set_async(sticker_set_name, target_directory)
-                )
-            finally:
-                loop.close()
+        def _coro(client: TelegramClient):
+            return _import_sticker_set_async(client, sticker_set_name, target_directory)
 
-        # Run in a separate thread to avoid event loop conflicts
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_async_import)
-            result = future.result(timeout=300)  # 5 minute timeout
+        try:
+            result = manager.run(_coro, timeout=300)
+        except PuppetMasterNotConfigured:
+            return (
+                jsonify(
+                    {
+                        "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
+                    }
+                ),
+                503,
+            )
+        except PuppetMasterUnavailable as exc:
+            logger.error("Puppet master unavailable during sticker import: %s", exc)
+            return jsonify({"error": str(exc)}), 503
+        except FuturesTimeoutError:
+            logger.error("Sticker import timed out after 300 seconds.")
+            return (
+                jsonify(
+                    {
+                        "error": "Sticker import timed out after 300 seconds. Please try again."
+                    }
+                ),
+                504,
+            )
 
         logger.info("Flask route: async import completed successfully")
         return jsonify(result)
@@ -657,29 +951,26 @@ def api_import_sticker_set():
         return jsonify({"error": str(e)}), 500
 
 
-async def _import_sticker_set_async(sticker_set_name: str, target_directory: str):
+async def _import_sticker_set_async(
+    client: TelegramClient, sticker_set_name: str, target_directory: str
+):
     """Async implementation of sticker set import."""
     logger.info(f"Starting sticker import for set: {sticker_set_name}")
     logger.info(f"Target directory: {target_directory}")
-    try:
-        agent = get_agent_for_directory(target_directory)
-        client = await agent.get_client()
 
+    try:
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
-            logger.error(f"Agent '{agent.name}' is not authenticated to Telegram.")
+            logger.error("Puppet master is not authenticated to Telegram.")
             return {
                 "success": False,
-                "error": f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent.",
+                "error": "Puppet master is not authenticated to Telegram. Run './telegram_login.sh --puppet-master' to log in.",
             }
-
-        logger.info(f"Got authenticated agent: {agent.name}")
-
     except Exception as e:
-        logger.error(f"Failed to get agent or connect client: {e}")
+        logger.error(f"Failed to connect puppet master client: {e}")
         return {
             "success": False,
-            "error": f"Failed to get agent or connect client: {e}",
+            "error": f"Failed to connect puppet master client: {e}",
         }
 
     target_dir = Path(target_directory)
@@ -689,7 +980,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     skipped_count = 0
 
     # Create a single DirectoryMediaSource instance outside the loop to enable in-memory caching
-    cache_source = DirectoryMediaSource(target_dir)
+    cache_source = get_directory_media_source(target_dir)
 
     try:
         # Download sticker set using the same pattern as run.py
@@ -700,7 +991,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             logger.info(
                 f"Attempting to get sticker set with short name: '{sticker_set_name}'"
             )
-            result = await agent.client(
+            result = await client(
                 GetStickerSetRequest(
                     stickerset=InputStickerSetShortName(short_name=sticker_set_name),
                     hash=0,
@@ -719,7 +1010,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
             if sticker_set_name != sticker_set_name.lower():
                 logger.info(f"Trying lowercase version: '{sticker_set_name.lower()}'")
                 try:
-                    result = await agent.client(
+                    result = await client(
                         GetStickerSetRequest(
                             stickerset=InputStickerSetShortName(
                                 short_name=sticker_set_name.lower()
@@ -789,7 +1080,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
 
                 # Download the media file
                 try:
-                    media_bytes = await download_media_bytes(agent.client, doc)
+                    media_bytes = await download_media_bytes(client, doc)
 
                     # Determine file extension
                     mime_type = getattr(doc, "mime_type", None)
@@ -864,6 +1155,27 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     }
 
 
+def create_admin_app() -> Flask:
+    """Create and configure the admin console Flask application."""
+    app = Flask(
+        __name__, template_folder=str(Path(__file__).parent.parent / "templates")
+    )
+    if ADMIN_CONSOLE_SECRET_KEY:
+        app.secret_key = ADMIN_CONSOLE_SECRET_KEY
+    else:
+        app.secret_key = secrets.token_hex(32)
+        logger.warning(
+            "CINDY_ADMIN_CONSOLE_SECRET_KEY is not set; using a transient secret key."
+        )
+
+    # Ensure each app instance has its own OTP challenge manager.
+    if "otp_challenge_manager" not in app.extensions:
+        app.extensions["otp_challenge_manager"] = OTPChallengeManager()
+
+    app.register_blueprint(bp, url_prefix="/admin")
+    return app
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -898,7 +1210,7 @@ def main():
 
     # Start the web server
     logger.info(f"Starting Media Editor on http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    create_admin_app().run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":

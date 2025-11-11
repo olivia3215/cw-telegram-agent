@@ -220,9 +220,43 @@ Curated descriptions are provided at the global level:
 
 **See [samples/media/README.md](samples/media/README.md) for complete details on curated media descriptions, including directory structure, file format, and examples.**
 
-### Media Editor (Web Interface)
+### Admin Console
 
-The media editor provides a web-based interface for managing media descriptions. It's particularly useful for:
+The Admin Console serves administrative tooling (currently the Media Editor tab, with additional tabs ready for future features). It runs alongside the main agent so edits appear immediately in live conversations.
+
+**Key environment variables**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CINDY_ADMIN_CONSOLE_ENABLED` | `true` | Enable/disable the console server |
+| `CINDY_AGENT_LOOP_ENABLED` | `true` | Enable/disable the agent loop (set `false` to run console-only) |
+| `CINDY_PUPPET_MASTER_PHONE` | _(unset)_ | Phone number for the dedicated puppet master account. Required to enable the console. |
+| `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
+| `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface for the console |
+| `CINDY_ADMIN_CONSOLE_PORT` | `5001` | Port for the console |
+
+**Quick start**
+1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):
+   ```bash
+   export CINDY_PUPPET_MASTER_PHONE="+15551234567"        # dedicated Telegram account
+   # Generate once: python -c 'import secrets; print(secrets.token_urlsafe(32))'
+   export CINDY_ADMIN_CONSOLE_SECRET_KEY="copy-the-generated-value-here"
+   export CINDY_ADMIN_CONSOLE_ENABLED=true
+   export CINDY_AGENT_LOOP_ENABLED=true
+   ```
+2. Log in to Telegram for the puppet master and each agent:
+   ```bash
+   ./telegram_login.sh          # logs the puppet master first (if phone set), then all agents
+   ```
+3. Start the service and open the console:
+   ```bash
+   ./run.sh
+   open http://localhost:5001/admin
+   ```
+
+On first visit to the console you’ll be prompted to send a six-digit verification code. Click “Send verification code” to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
+
+The Media Editor tab continues to provide:
 
 - **Browsing and editing** media descriptions across all agents and directories
 - **Importing sticker sets** from Telegram with automatic AI-generated descriptions
@@ -230,24 +264,7 @@ The media editor provides a web-based interface for managing media descriptions.
 - **Managing media** by moving items between directories or deleting unwanted content
 - **Refreshing descriptions** using the AI pipeline to generate new versions
 
-The media editor integrates seamlessly with the existing media pipeline, using the same AI infrastructure and caching system as the main agent.
-
-**Quick start:**
-```bash
-# Start the media editor
-./media_editor.sh start
-
-# Access the web interface
-open http://localhost:5001
-
-# Stop the media editor
-./media_editor.sh stop
-
-# View logs
-./media_editor.sh logs
-```
-
-**See [MEDIA_EDITOR.md](MEDIA_EDITOR.md) for detailed documentation on using the media editor.**
+**See [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md) for comprehensive documentation.**
 
 For detailed information about the script management system and project architecture, see [DESIGN.md](DESIGN.md).
 

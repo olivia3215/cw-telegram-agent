@@ -25,6 +25,11 @@ from message_logging import format_message_content_for_logging
 from register_agents import register_all_agents
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
+from admin_console.app import start_admin_console
+from admin_console.puppet_master import (
+    PuppetMasterUnavailable,
+    get_puppet_master_manager,
+)
 from telegram_util import get_channel_name, get_telegram_client
 from tick import run_tick_loop
 
@@ -32,6 +37,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.json")
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    return default
 
 
 async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bool:
@@ -394,44 +411,115 @@ async def authenticate_all_agents(agents_list):
 
 
 async def main():
+    admin_enabled = _env_flag("CINDY_ADMIN_CONSOLE_ENABLED", True)
+    agent_loop_enabled = _env_flag("CINDY_AGENT_LOOP_ENABLED", True)
+    admin_host = os.getenv("CINDY_ADMIN_CONSOLE_HOST", "0.0.0.0")
+    admin_port_raw = os.getenv("CINDY_ADMIN_CONSOLE_PORT", "5001")
+
+    try:
+        admin_port = int(admin_port_raw)
+    except ValueError:
+        logger.warning(
+            "Invalid CINDY_ADMIN_CONSOLE_PORT value %s; defaulting to 5001",
+            admin_port_raw,
+        )
+        admin_port = 5001
+
     register_all_agents()
     work_queue = load_work_queue()
-    agents_list = all_agents()
+    agents_list = list(all_agents())
 
-    # Authenticate all agents before starting the tick loop
-    auth_success = await authenticate_all_agents(agents_list)
-    if not auth_success:
-        logger.error("Failed to authenticate any agents, exiting.")
-        return
+    admin_server = None
+    puppet_master_manager = get_puppet_master_manager()
 
-    # Now start all the main tasks
-    tick_task = asyncio.create_task(
-        run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
-    )
+    try:
+        if admin_enabled:
+            if not puppet_master_manager.is_configured:
+                logger.info(
+                    "Admin console is disabled because CINDY_PUPPET_MASTER_PHONE is not set."
+                )
+            else:
+                try:
+                    puppet_master_manager.ensure_ready(agents_list)
+                except PuppetMasterUnavailable as exc:
+                    logger.error(
+                        "Admin console disabled because puppet master is unavailable: %s",
+                        exc,
+                    )
+                else:
+                    admin_server = start_admin_console(admin_host, admin_port)
 
-    telegram_tasks = [
-        asyncio.create_task(run_telegram_loop(agent, work_queue))
-        for agent in all_agents()
-    ]
+        if not agent_loop_enabled:
+            if not admin_enabled:
+                logger.info(
+                    "CINDY_AGENT_LOOP_ENABLED and CINDY_ADMIN_CONSOLE_ENABLED are both false; exiting."
+                )
+                return
 
-    scan_task = asyncio.create_task(
-        periodic_scan(work_queue, agents_list, interval_sec=10)
-    )
+            if not admin_server:
+                logger.error(
+                    "Agent loop disabled but admin console failed to start; exiting."
+                )
+                return
 
-    done, pending = await asyncio.wait(
-        [tick_task, scan_task, *telegram_tasks],
-        return_when=asyncio.FIRST_EXCEPTION,
-    )
+            logger.info(
+                "Agent loop disabled via CINDY_AGENT_LOOP_ENABLED; admin console running only."
+            )
+            try:
+                while True:
+                    await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                logger.info("Shutdown requested; stopping admin console.")
+                return
 
-    for task in pending:
-        task.cancel()
+        # Authenticate all agents before starting the tick loop
+        auth_success = await authenticate_all_agents(agents_list)
+        if not auth_success:
+            logger.error("Failed to authenticate any agents, exiting.")
+            return
 
-    for task in done:
-        exc = task.exception()
-        if isinstance(exc, ShutdownException):
-            logger.info("Shutdown signal received.")
-        elif exc:
-            raise exc
+        if admin_enabled and puppet_master_manager.is_configured:
+            try:
+                puppet_master_manager.ensure_ready(agents_list)
+            except PuppetMasterUnavailable as exc:
+                logger.error(
+                    "Puppet master availability check failed after agent authentication: %s",
+                    exc,
+                )
+                return
+        # Now start all the main tasks
+        tick_task = asyncio.create_task(
+            run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
+        )
+
+        telegram_tasks = [
+            asyncio.create_task(run_telegram_loop(agent, work_queue))
+            for agent in all_agents()
+        ]
+
+        scan_task = asyncio.create_task(
+            periodic_scan(work_queue, agents_list, interval_sec=10)
+        )
+
+        done, pending = await asyncio.wait(
+            [tick_task, scan_task, *telegram_tasks],
+            return_when=asyncio.FIRST_EXCEPTION,
+        )
+
+        for task in pending:
+            task.cancel()
+
+        for task in done:
+            exc = task.exception()
+            if isinstance(exc, ShutdownException):
+                logger.info("Shutdown signal received.")
+            elif exc:
+                raise exc
+
+    finally:
+        if admin_server:
+            admin_server.shutdown()
+        puppet_master_manager.shutdown()
 
 
 if __name__ == "__main__":

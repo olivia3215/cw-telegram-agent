@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Editor</title>
+    <title>Admin Console</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
@@ -20,6 +20,96 @@
             width: 100%;
             box-sizing: border-box;
         }
+        body.auth-locked {
+            overflow: hidden;
+        }
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(44, 62, 80, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 1000;
+        }
+        .auth-overlay.hidden {
+            display: none;
+        }
+        .auth-card {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 32px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .auth-card h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .auth-card p {
+            font-size: 14px;
+            color: #4a5765;
+            margin-bottom: 16px;
+        }
+        .auth-actions {
+            margin: 16px 0 8px 0;
+        }
+        .auth-actions button {
+            padding: 10px 18px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #007bff;
+            color: #ffffff;
+        }
+        .auth-actions button:disabled {
+            background: #9bb8e4;
+            cursor: not-allowed;
+        }
+        .auth-code-entry {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .auth-code-entry input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccd2da;
+            border-radius: 4px;
+            text-align: center;
+            letter-spacing: 4px;
+        }
+        .auth-code-entry button {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #28a745;
+            color: #ffffff;
+        }
+        .auth-code-entry button:disabled {
+            background: #8dd3a4;
+            cursor: not-allowed;
+        }
+        .auth-message {
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .auth-message.error {
+            color: #c0392b;
+        }
+        .auth-message.info {
+            color: #2c3e50;
+        }
+        .auth-message.hidden {
+            display: none;
+        }
         .header {
             background: #2c3e50;
             color: white;
@@ -30,6 +120,45 @@
         .header h1 {
             margin: 0;
             font-size: 24px;
+        }
+        .tab-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .tab-button {
+            border: none;
+            background: #e0e6ed;
+            color: #2c3e50;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .tab-button.active {
+            background: #2c3e50;
+            color: #fff;
+        }
+        .tab-button:hover {
+            background: #cfd8e3;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+        .placeholder-card {
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            border: 1px dashed #c3c8d1;
+            color: #6c757d;
+            font-size: 16px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .controls {
             padding: 12px 0;
@@ -184,44 +313,98 @@
     </style>
 </head>
 <body>
+    <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true">
+        <div class="auth-card">
+            <h2>Verify Access</h2>
+            <p>Request a login code sent to the puppet master Telegram account to enable the admin console.</p>
+            <div id="auth-error" class="auth-message error hidden" role="alert"></div>
+            <div id="auth-status" class="auth-message info hidden"></div>
+            <div class="auth-actions">
+                <button id="request-code-btn">Send verification code</button>
+            </div>
+            <div class="auth-code-entry">
+                <input id="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Six digit code">
+                <button id="verify-code-btn">Verify</button>
+            </div>
+        </div>
+    </div>
     <div class="header">
-        <h1>Media Editor</h1>
+        <h1>Admin Console</h1>
     </div>
 
-    <div class="controls">
-        <div class="directory-selector">
-            <label for="directory-select">Select Media Directory:</label><br>
-            <select id="directory-select">
-                <option value="">Choose a directory...</option>
-            </select>
-        </div>
+    <nav class="tab-bar">
+        <button class="tab-button active" data-tab="media">Media Editor</button>
+        <button class="tab-button" data-tab="xsend">xsend</button>
+        <button class="tab-button" data-tab="global-memories">Global Memories</button>
+        <button class="tab-button" data-tab="local-memories">Local Memories</button>
+        <button class="tab-button" data-tab="plans">Plans</button>
+        <button class="tab-button" data-tab="intents">Intents</button>
+        <button class="tab-button" data-tab="conversations">Conversations</button>
+    </nav>
 
-        <div class="import-section">
-            <h3>Import Sticker Set</h3>
-            <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
-            <button onclick="importStickerSet()">Import Set</button>
-            <div id="import-status"></div>
-        </div>
+    <div id="tab-panels">
+        <section class="tab-panel active" data-tab-panel="media">
+            <h2 style="margin: 0 0 16px 0; color: #2c3e50;">Media Editor</h2>
+
+            <div class="controls">
+                <div class="directory-selector">
+                    <label for="directory-select">Select Media Directory:</label><br>
+                    <select id="directory-select">
+                        <option value="">Choose a directory...</option>
+                    </select>
+                </div>
+
+                <div class="import-section">
+                    <h3>Import Sticker Set</h3>
+                    <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+                    <button onclick="importStickerSet()">Import Set</button>
+                    <div id="import-status"></div>
+                </div>
+            </div>
+
+            <div class="main-container">
+                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                    <div id="page-info" style="font-size: 14px; color: #333;"></div>
+                    <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                </div>
+
+                <div id="media-container">
+                    <div class="loading">Select a directory to view media files</div>
+                </div>
+
+                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                    <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
+                    <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="xsend">
+            <div class="placeholder-card">xsend admin tools are coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="global-memories">
+            <div class="placeholder-card">Global memories management coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="local-memories">
+            <div class="placeholder-card">Local memories management coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="plans">
+            <div class="placeholder-card">Plans dashboard coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="intents">
+            <div class="placeholder-card">Intents overview coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="conversations">
+            <div class="placeholder-card">Conversations monitor coming soon.</div>
+        </section>
     </div>
-
-    <div class="main-container">
-        <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-            <div id="page-info" style="font-size: 14px; color: #333;"></div>
-            <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
-        </div>
-
-        <div id="media-container">
-            <div class="loading">Select a directory to view media files</div>
-        </div>
-
-        <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-            <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
-            <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
-        </div>
-    </div>
-
     <script>
         let currentDirectory = '';
         let autoSaveTimers = {}; // Track auto-save timers for each textarea
@@ -229,30 +412,292 @@
         let currentPage = 1;
         let itemsPerPage = 10;
         let allMediaFiles = []; // Store all media files for pagination
+        const API_BASE = '/admin/api';
+        let appInitialized = false;
+        let requestCooldownTimer = null;
+        const DEFAULT_COOLDOWN_SECONDS = 30;
 
-        // Load directories on page load
-        fetch('/api/directories')
-            .then(response => response.json())
-            .then(directories => {
-                const select = document.getElementById('directory-select');
-                directories.forEach(dir => {
-                    const option = document.createElement('option');
-                    option.value = dir.path;
-                    option.textContent = dir.name;
-                    select.appendChild(option);
+        const authOverlay = document.getElementById('auth-overlay');
+        const authStatusEl = document.getElementById('auth-status');
+        const authErrorEl = document.getElementById('auth-error');
+        const requestCodeBtn = document.getElementById('request-code-btn');
+        const verifyCodeBtn = document.getElementById('verify-code-btn');
+        const otpInput = document.getElementById('otp-input');
+        const initialRequestButtonLabel = requestCodeBtn ? requestCodeBtn.textContent : 'Send verification code';
+
+        requestCodeBtn?.addEventListener('click', requestVerificationCode);
+        verifyCodeBtn?.addEventListener('click', verifyVerificationCode);
+        otpInput?.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                verifyVerificationCode();
+            }
+        });
+
+        checkAuthStatus();
+
+        function initializeApp() {
+            if (appInitialized) {
+                return;
+            }
+            appInitialized = true;
+            hideAuthOverlay();
+
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+
+            tabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const target = button.dataset.tab;
+                    tabButtons.forEach((btn) =>
+                        btn.classList.toggle('active', btn === button)
+                    );
+                    tabPanels.forEach((panel) =>
+                        panel.classList.toggle(
+                            'active',
+                            panel.dataset.tabPanel === target
+                        )
+                    );
                 });
             });
 
-        // Handle directory selection
-        document.getElementById('directory-select').addEventListener('change', function(e) {
-            currentDirectory = e.target.value;
-            if (currentDirectory) {
-                loadMediaFiles(currentDirectory);
-            } else {
-                document.getElementById('media-container').innerHTML =
-                    '<div class="loading">Select a directory to view media files</div>';
+            const directorySelect = document.getElementById('directory-select');
+            if (directorySelect) {
+                directorySelect.addEventListener('change', (event) => {
+                    currentDirectory = event.target.value;
+                    if (currentDirectory) {
+                        loadMediaFiles(currentDirectory);
+                    } else {
+                        document.getElementById('media-container').innerHTML =
+                            '<div class="loading">Select a directory to view media files</div>';
+                    }
+                });
+
+                fetchDirectories(directorySelect);
             }
-        });
+        }
+
+        function fetchDirectories(selectElement) {
+            fetchWithAuth(`${API_BASE}/directories`)
+                .then((response) => response.json())
+                .then((directories) => {
+                    directories.forEach((dir) => {
+                        const option = document.createElement('option');
+                        option.value = dir.path;
+                        option.textContent = dir.name;
+                        selectElement.appendChild(option);
+                    });
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Failed to load directories', error);
+                });
+        }
+
+        function fetchWithAuth(url, options = {}) {
+            const finalOptions = Object.assign({ credentials: 'same-origin' }, options);
+            return fetch(url, finalOptions).then((response) => {
+                if (response.status === 401) {
+                    handleUnauthorized();
+                }
+                return response;
+            });
+        }
+
+        function handleUnauthorized(message) {
+            showAuthOverlay(message || 'Session expired. Please verify again.');
+            throw new Error('unauthorized');
+        }
+
+        function showAuthOverlay(message) {
+            clearRequestCooldown();
+            if (typeof message === 'string') {
+                showAuthStatus(message);
+            } else {
+                showAuthStatus('');
+            }
+            showAuthError('');
+            authOverlay?.classList.remove('hidden');
+            document.body.classList.add('auth-locked');
+            if (otpInput) {
+                otpInput.value = '';
+                window.setTimeout(() => otpInput.focus(), 0);
+            }
+        }
+
+        function hideAuthOverlay() {
+            authOverlay?.classList.add('hidden');
+            document.body.classList.remove('auth-locked');
+            showAuthStatus('');
+            showAuthError('');
+            clearRequestCooldown();
+        }
+
+        function showAuthStatus(message) {
+            if (!authStatusEl) {
+                return;
+            }
+            authStatusEl.textContent = message || '';
+            authStatusEl.classList.toggle('hidden', !message);
+        }
+
+        function showAuthError(message) {
+            if (!authErrorEl) {
+                return;
+            }
+            authErrorEl.textContent = message || '';
+            authErrorEl.classList.toggle('hidden', !message);
+        }
+
+        function clearRequestCooldown() {
+            if (requestCooldownTimer) {
+                clearInterval(requestCooldownTimer);
+                requestCooldownTimer = null;
+            }
+            if (requestCodeBtn) {
+                requestCodeBtn.disabled = false;
+                requestCodeBtn.textContent = initialRequestButtonLabel;
+            }
+        }
+
+        function setRequestCooldown(seconds) {
+            if (!requestCodeBtn) {
+                return;
+            }
+            clearRequestCooldown();
+            let remaining = Math.max(Math.floor(seconds), 0);
+            if (remaining <= 0) {
+                return;
+            }
+            requestCodeBtn.disabled = true;
+            requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+            requestCooldownTimer = window.setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearRequestCooldown();
+                    showAuthStatus('You can request a new code if needed.');
+                } else {
+                    requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+                }
+            }, 1000);
+        }
+
+        async function requestVerificationCode() {
+            if (!requestCodeBtn) {
+                return;
+            }
+            showAuthError('');
+            showAuthStatus('Sending verification code...');
+            requestCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/request-code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    const expiresIn = typeof result.expires_in === 'number' ? result.expires_in : 0;
+                    const expireMinutes = Math.max(Math.round(expiresIn / 60) || 1, 1);
+                    showAuthStatus(`Verification code sent. It expires in ${expireMinutes} minute${expireMinutes === 1 ? '' : 's'}.`);
+                    const cooldown = typeof result.cooldown === 'number' ? result.cooldown : DEFAULT_COOLDOWN_SECONDS;
+                    setRequestCooldown(cooldown);
+                    return;
+                }
+                if (response.status === 429 && result.retry_after) {
+                    showAuthError(result.error || 'Please wait before requesting a new code.');
+                    setRequestCooldown(result.retry_after);
+                    return;
+                }
+                showAuthError(result.error || 'Failed to send verification code.');
+                showAuthStatus('');
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Failed to send verification code: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                if (!requestCooldownTimer && requestCodeBtn) {
+                    requestCodeBtn.disabled = false;
+                    requestCodeBtn.textContent = initialRequestButtonLabel;
+                }
+            }
+        }
+
+        async function verifyVerificationCode() {
+            if (!verifyCodeBtn) {
+                return;
+            }
+            const code = (otpInput?.value || '').trim();
+            if (!/^\d{6}$/.test(code)) {
+                showAuthError('Enter the six digit verification code.');
+                return;
+            }
+
+            showAuthError('');
+            showAuthStatus('Verifying code...');
+            verifyCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code }),
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    showAuthStatus('Verification successful.');
+                    clearRequestCooldown();
+                    if (otpInput) {
+                        otpInput.value = '';
+                    }
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                if (result.already_verified) {
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                showAuthError(result.error || 'Verification failed.');
+                if (typeof result.remaining_attempts === 'number') {
+                    showAuthStatus(`Attempts remaining: ${result.remaining_attempts}`);
+                } else {
+                    showAuthStatus('');
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Verification failed: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                verifyCodeBtn.disabled = false;
+            }
+        }
+
+        function checkAuthStatus() {
+            fetchWithAuth(`${API_BASE}/auth/status`)
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.verified) {
+                        initializeApp();
+                    } else {
+                        showAuthOverlay('Request a verification code to continue.');
+                    }
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    showAuthError('Unable to reach the server. Try again in a moment.');
+                    showAuthOverlay();
+                });
+        }
 
         function loadMediaFiles(directoryPath, preservePage = false) {
             document.getElementById('media-container').innerHTML =
@@ -261,7 +706,7 @@
             const savedPage = currentPage; // Save current page
 
             const encodedPath = encodeURIComponent(directoryPath);
-            fetch(`/api/media?directory=${encodedPath}`)
+            fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -290,6 +735,9 @@
                     displayCurrentPage();
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     document.getElementById('media-container').innerHTML =
                         `<div class="error">Error loading media files: ${error}</div>`;
                 });
@@ -397,12 +845,26 @@
 
         function createMediaItemHTML(media) {
             const encodedDir = encodeURIComponent(currentDirectory);
-            const mediaUrl = media.media_file ?
-                `/api/media/${media.unique_id}?directory=${encodedDir}` : null;
-
+            const mediaUrl = `${API_BASE}/media/${media.unique_id}?directory=${encodedDir}`;
+            const mimeType = (media.mime_type || '').toLowerCase();
             let mediaElement = '';
-            if (mediaUrl) {
-                if (media.media_file && media.media_file.endsWith('.tgs')) {
+            const fallbackTypeFromFile = (fileName) => {
+                if (!fileName) return '';
+                const lower = fileName.toLowerCase();
+                if (lower.endsWith('.webm')) return 'video/webm';
+                if (lower.endsWith('.mp4')) return 'video/mp4';
+                if (lower.endsWith('.gif')) return 'image/gif';
+                if (lower.endsWith('.ogg')) return 'audio/ogg';
+                if (lower.endsWith('.mp3')) return 'audio/mpeg';
+                if (lower.endsWith('.m4a')) return 'audio/mp4';
+                if (lower.endsWith('.wav')) return 'audio/wav';
+                if (lower.endsWith('.png')) return 'image/png';
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+                return '';
+            };
+            const effectiveMime = mimeType || fallbackTypeFromFile(media.media_file);
+
+            if (effectiveMime.includes('tgs') || media.kind === 'animated_sticker') {
                     // TGS files - Lottie animations, convert and display
                     mediaElement = `<div style="position: relative; width: 100%; height: 200px; display: flex; align-items: center; justify-content: center;">
                         <div id="tgs-player-${media.unique_id}" class="tgs-animation-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
@@ -413,22 +875,25 @@
                             </div>
                         </div>
                     </div>`;
-                } else if (media.media_file && (media.media_file.endsWith('.gif') || media.media_file.endsWith('.mp4'))) {
-                    // Other animated content (GIF, MP4) - Enhanced video controls
-                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;">
-                        <source src="${mediaUrl}" type="video/mp4">
-                        <source src="${mediaUrl}" type="video/webm">
+            } else if (effectiveMime.startsWith('video') || effectiveMime === 'image/gif') {
+                    // Video content (mp4/webm/gif)
+                    const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
+                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;"${poster}>
+                        <source src="${mediaUrl}" type="${effectiveMime || 'video/mp4'}">
                         Your browser does not support the video tag.
                     </video>`;
-                } else if (media.kind === 'audio' || (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))) {
+            } else if (
+                effectiveMime.startsWith('audio') ||
+                media.kind === 'audio' ||
+                (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))
+            ) {
                     // Audio files - Audio controls
                     mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto;">
-                        <source src="${mediaUrl}" type="${media.mime_type || 'audio/mpeg'}">
+                        <source src="${mediaUrl}" type="${effectiveMime || 'audio/mpeg'}">
                         Your browser does not support the audio tag.
                     </audio>`;
-                } else {
+            } else if (mediaUrl) {
                     mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
-                }
             } else {
                 mediaElement = '<div style="color: #666;">No media file</div>';
             }
@@ -475,12 +940,12 @@
             for (const container of tgsContainers) {
                 const uniqueId = container.id.replace('tgs-player-', '');
                 const encodedDir = encodeURIComponent(currentDirectory);
-                const mediaUrl = `/api/media/${uniqueId}?directory=${encodedDir}`;
+                const mediaUrl = `${API_BASE}/media/${uniqueId}?directory=${encodedDir}`;
                 console.log(`Loading TGS for ${uniqueId} from ${mediaUrl}`);
 
                 try {
                     // Fetch the TGS file
-                    const response = await fetch(mediaUrl);
+                    const response = await fetchWithAuth(mediaUrl);
                     if (!response.ok) {
                         throw new Error(`Failed to fetch TGS file: ${response.status}`);
                     }
@@ -556,6 +1021,9 @@
                     });
 
                 } catch (error) {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     console.error(`Failed to load TGS animation for ${uniqueId}:`, error);
                     container.innerHTML = `
                         <div style="text-align: center; color: #dc3545;">
@@ -673,7 +1141,7 @@
             savingStates[uniqueId] = true;
             updateSaveStatus(uniqueId, 'saving');
 
-            fetch(`/api/media/${uniqueId}/description?directory=${encodedDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/description?directory=${encodedDir}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -701,6 +1169,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 updateSaveStatus(uniqueId, 'error');
             })
             .finally(() => {
@@ -719,7 +1190,7 @@
             button.textContent = 'Generating...';
             button.style.background = '#007bff';
 
-            fetch(`/api/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -748,6 +1219,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 alert('Error refreshing from AI: ' + error);
             })
             .finally(() => {
@@ -763,7 +1237,7 @@
             const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
 
             // Fetch available directories
-            fetch('/api/directories')
+            fetchWithAuth(`${API_BASE}/directories`)
                 .then(response => response.json())
                 .then(directories => {
                     moveDropdowns.forEach(dropdown => {
@@ -784,6 +1258,9 @@
                     });
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     console.error('Error loading directories for move dropdowns:', error);
                 });
         }
@@ -803,7 +1280,7 @@
             select.disabled = true;
             select.style.background = '#f8f9fa';
 
-            fetch(`/api/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -822,6 +1299,9 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
                 alert('Error moving media: ' + error);
                 select.disabled = false;
                 select.style.background = 'white';
@@ -841,7 +1321,7 @@
                 button.textContent = 'Deleting...';
                 button.style.background = '#6c757d';
 
-                fetch(`/api/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                fetchWithAuth(`${API_BASE}/media/${uniqueId}/delete?directory=${encodedDir}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -860,6 +1340,9 @@
                     }
                 })
                 .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
                     alert('Error deleting media: ' + error);
                     button.disabled = false;
                     button.textContent = 'Delete';
@@ -884,7 +1367,7 @@
 
             statusDiv.innerHTML = '<div>Importing sticker set...</div>';
 
-            fetch('/api/import-sticker-set', {
+            fetchWithAuth(`${API_BASE}/import-sticker-set`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -905,6 +1388,10 @@
                 }
             })
             .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
+                    return;
+                }
                 statusDiv.innerHTML = `<div class="error">Error: ${error}</div>`;
             });
         }
