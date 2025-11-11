@@ -22,7 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx  # pyright: ignore[reportMissingImports]
 
 from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
@@ -1068,7 +1068,9 @@ class AIChainMediaSource(MediaSource):
             Media record with description, status, and metadata
         """
         # 1. Try cache first
-        cached_record = await self.cache_source.get(unique_id, agent, doc)
+        cached_record = await self.cache_source.get(
+            unique_id, agent, doc, **metadata
+        )
 
         # 2. If we have a cached record that's NOT temporary failure, return it
         if cached_record and not MediaStatus.is_temporary_failure(
