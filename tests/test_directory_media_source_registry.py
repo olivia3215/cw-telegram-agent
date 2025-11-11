@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from media.media_sources import (
     get_directory_media_source,
@@ -66,5 +69,29 @@ def test_delete_record_removes_files(tmp_path):
 
     assert not (tmp_path / f"{unique_id}.json").exists()
     assert not (tmp_path / f"{unique_id}.bin").exists()
+    assert source.get_cached_record(unique_id) is None
+
+
+def test_put_does_not_write_json_when_media_write_fails(tmp_path, monkeypatch):
+    reset_media_source_registry()
+    source = get_directory_media_source(tmp_path)
+    unique_id = "media-fail"
+    record = {"unique_id": unique_id, "description": "desc"}
+    media_path = tmp_path / f"{unique_id}.dat"
+    temp_media_path = media_path.with_name(f"{media_path.name}.tmp")
+
+    original_write_bytes = Path.write_bytes
+
+    def failing_write_bytes(self, data):
+        if self == temp_media_path:
+            raise OSError("disk full")
+        return original_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", failing_write_bytes, raising=False)
+
+    with pytest.raises(OSError):
+        source.put(unique_id, record.copy(), media_bytes=b"bytes", file_extension=".dat")
+
+    assert not (tmp_path / f"{unique_id}.json").exists()
     assert source.get_cached_record(unique_id) is None
 

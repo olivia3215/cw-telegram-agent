@@ -10,6 +10,7 @@ This module provides a clean abstraction for different sources of media descript
 including curated descriptions, cached AI-generated descriptions, and on-demand AI generation.
 """
 
+import contextlib
 import json
 import logging
 import threading
@@ -348,17 +349,23 @@ class DirectoryMediaSource(MediaSource):
             record_copy = record.copy()
             self.directory.mkdir(parents=True, exist_ok=True)
             if media_bytes and file_extension:
-                record_copy["media_file"] = f"{unique_id}{file_extension}"
-            # Always store the JSON metadata
-            self._write_to_disk(unique_id, record_copy)
-
-            # Optionally store media file if provided
-            if media_bytes and file_extension:
-                media_file = self.directory / f"{unique_id}{file_extension}"
-                media_file.write_bytes(media_bytes)
+                media_filename = f"{unique_id}{file_extension}"
+                record_copy["media_file"] = media_filename
+                media_file = self.directory / media_filename
+                temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
+                try:
+                    temp_media_file.write_bytes(media_bytes)
+                    temp_media_file.replace(media_file)
+                except Exception:
+                    # Clean up any temporary file and propagate the failure so callers can react.
+                    with contextlib.suppress(FileNotFoundError, PermissionError):
+                        temp_media_file.unlink()
+                    raise
                 logger.debug(
                     f"DirectoryMediaSource: stored media file {media_file.name}"
                 )
+            # Always store the JSON metadata after media has been written successfully.
+            self._write_to_disk(unique_id, record_copy)
 
     def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
         """Write a record to disk cache and update in-memory cache."""
