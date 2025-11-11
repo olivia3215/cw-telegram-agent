@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Editor</title>
+    <title>Admin Console</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
@@ -30,6 +30,45 @@
         .header h1 {
             margin: 0;
             font-size: 24px;
+        }
+        .tab-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .tab-button {
+            border: none;
+            background: #e0e6ed;
+            color: #2c3e50;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .tab-button.active {
+            background: #2c3e50;
+            color: #fff;
+        }
+        .tab-button:hover {
+            background: #cfd8e3;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+        .placeholder-card {
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            border: 1px dashed #c3c8d1;
+            color: #6c757d;
+            font-size: 16px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .controls {
             padding: 12px 0;
@@ -185,43 +224,82 @@
 </head>
 <body>
     <div class="header">
-        <h1>Media Editor</h1>
+        <h1>Admin Console</h1>
     </div>
 
-    <div class="controls">
-        <div class="directory-selector">
-            <label for="directory-select">Select Media Directory:</label><br>
-            <select id="directory-select">
-                <option value="">Choose a directory...</option>
-            </select>
-        </div>
+    <nav class="tab-bar">
+        <button class="tab-button active" data-tab="media">Media Editor</button>
+        <button class="tab-button" data-tab="xsend">xsend</button>
+        <button class="tab-button" data-tab="global-memories">Global Memories</button>
+        <button class="tab-button" data-tab="local-memories">Local Memories</button>
+        <button class="tab-button" data-tab="plans">Plans</button>
+        <button class="tab-button" data-tab="intents">Intents</button>
+        <button class="tab-button" data-tab="conversations">Conversations</button>
+    </nav>
 
-        <div class="import-section">
-            <h3>Import Sticker Set</h3>
-            <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
-            <button onclick="importStickerSet()">Import Set</button>
-            <div id="import-status"></div>
-        </div>
+    <div id="tab-panels">
+        <section class="tab-panel active" data-tab-panel="media">
+            <h2 style="margin: 0 0 16px 0; color: #2c3e50;">Media Editor</h2>
+
+            <div class="controls">
+                <div class="directory-selector">
+                    <label for="directory-select">Select Media Directory:</label><br>
+                    <select id="directory-select">
+                        <option value="">Choose a directory...</option>
+                    </select>
+                </div>
+
+                <div class="import-section">
+                    <h3>Import Sticker Set</h3>
+                    <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+                    <button onclick="importStickerSet()">Import Set</button>
+                    <div id="import-status"></div>
+                </div>
+            </div>
+
+            <div class="main-container">
+                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                    <div id="page-info" style="font-size: 14px; color: #333;"></div>
+                    <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                </div>
+
+                <div id="media-container">
+                    <div class="loading">Select a directory to view media files</div>
+                </div>
+
+                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                    <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
+                    <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="xsend">
+            <div class="placeholder-card">xsend admin tools are coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="global-memories">
+            <div class="placeholder-card">Global memories management coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="local-memories">
+            <div class="placeholder-card">Local memories management coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="plans">
+            <div class="placeholder-card">Plans dashboard coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="intents">
+            <div class="placeholder-card">Intents overview coming soon.</div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="conversations">
+            <div class="placeholder-card">Conversations monitor coming soon.</div>
+        </section>
     </div>
-
-    <div class="main-container">
-        <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-            <div id="page-info" style="font-size: 14px; color: #333;"></div>
-            <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
-        </div>
-
-        <div id="media-container">
-            <div class="loading">Select a directory to view media files</div>
-        </div>
-
-        <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-            <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
-            <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
-        </div>
-    </div>
-
     <script>
         let currentDirectory = '';
         let autoSaveTimers = {}; // Track auto-save timers for each textarea
@@ -229,9 +307,28 @@
         let currentPage = 1;
         let itemsPerPage = 10;
         let allMediaFiles = []; // Store all media files for pagination
+        const API_BASE = '/admin/api';
+
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        tabButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const target = button.dataset.tab;
+                tabButtons.forEach((btn) =>
+                    btn.classList.toggle('active', btn === button)
+                );
+                tabPanels.forEach((panel) =>
+                    panel.classList.toggle(
+                        'active',
+                        panel.dataset.tabPanel === target
+                    )
+                );
+            });
+        });
 
         // Load directories on page load
-        fetch('/api/directories')
+        fetch(`${API_BASE}/directories`)
             .then(response => response.json())
             .then(directories => {
                 const select = document.getElementById('directory-select');
@@ -261,7 +358,7 @@
             const savedPage = currentPage; // Save current page
 
             const encodedPath = encodeURIComponent(directoryPath);
-            fetch(`/api/media?directory=${encodedPath}`)
+            fetch(`${API_BASE}/media?directory=${encodedPath}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -397,12 +494,26 @@
 
         function createMediaItemHTML(media) {
             const encodedDir = encodeURIComponent(currentDirectory);
-            const mediaUrl = media.media_file ?
-                `/api/media/${media.unique_id}?directory=${encodedDir}` : null;
-
+            const mediaUrl = `${API_BASE}/media/${media.unique_id}?directory=${encodedDir}`;
+            const mimeType = (media.mime_type || '').toLowerCase();
             let mediaElement = '';
-            if (mediaUrl) {
-                if (media.media_file && media.media_file.endsWith('.tgs')) {
+            const fallbackTypeFromFile = (fileName) => {
+                if (!fileName) return '';
+                const lower = fileName.toLowerCase();
+                if (lower.endsWith('.webm')) return 'video/webm';
+                if (lower.endsWith('.mp4')) return 'video/mp4';
+                if (lower.endsWith('.gif')) return 'image/gif';
+                if (lower.endsWith('.ogg')) return 'audio/ogg';
+                if (lower.endsWith('.mp3')) return 'audio/mpeg';
+                if (lower.endsWith('.m4a')) return 'audio/mp4';
+                if (lower.endsWith('.wav')) return 'audio/wav';
+                if (lower.endsWith('.png')) return 'image/png';
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+                return '';
+            };
+            const effectiveMime = mimeType || fallbackTypeFromFile(media.media_file);
+
+            if (effectiveMime.includes('tgs') || media.kind === 'animated_sticker') {
                     // TGS files - Lottie animations, convert and display
                     mediaElement = `<div style="position: relative; width: 100%; height: 200px; display: flex; align-items: center; justify-content: center;">
                         <div id="tgs-player-${media.unique_id}" class="tgs-animation-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
@@ -413,22 +524,25 @@
                             </div>
                         </div>
                     </div>`;
-                } else if (media.media_file && (media.media_file.endsWith('.gif') || media.media_file.endsWith('.mp4'))) {
-                    // Other animated content (GIF, MP4) - Enhanced video controls
-                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;">
-                        <source src="${mediaUrl}" type="video/mp4">
-                        <source src="${mediaUrl}" type="video/webm">
+            } else if (effectiveMime.startsWith('video') || effectiveMime === 'image/gif') {
+                    // Video content (mp4/webm/gif)
+                    const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
+                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;"${poster}>
+                        <source src="${mediaUrl}" type="${effectiveMime || 'video/mp4'}">
                         Your browser does not support the video tag.
                     </video>`;
-                } else if (media.kind === 'audio' || (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))) {
+            } else if (
+                effectiveMime.startsWith('audio') ||
+                media.kind === 'audio' ||
+                (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))
+            ) {
                     // Audio files - Audio controls
                     mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto;">
-                        <source src="${mediaUrl}" type="${media.mime_type || 'audio/mpeg'}">
+                        <source src="${mediaUrl}" type="${effectiveMime || 'audio/mpeg'}">
                         Your browser does not support the audio tag.
                     </audio>`;
-                } else {
+            } else if (mediaUrl) {
                     mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
-                }
             } else {
                 mediaElement = '<div style="color: #666;">No media file</div>';
             }
@@ -475,7 +589,7 @@
             for (const container of tgsContainers) {
                 const uniqueId = container.id.replace('tgs-player-', '');
                 const encodedDir = encodeURIComponent(currentDirectory);
-                const mediaUrl = `/api/media/${uniqueId}?directory=${encodedDir}`;
+                const mediaUrl = `${API_BASE}/media/${uniqueId}?directory=${encodedDir}`;
                 console.log(`Loading TGS for ${uniqueId} from ${mediaUrl}`);
 
                 try {
@@ -673,7 +787,7 @@
             savingStates[uniqueId] = true;
             updateSaveStatus(uniqueId, 'saving');
 
-            fetch(`/api/media/${uniqueId}/description?directory=${encodedDir}`, {
+            fetch(`${API_BASE}/media/${uniqueId}/description?directory=${encodedDir}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -719,7 +833,7 @@
             button.textContent = 'Generating...';
             button.style.background = '#007bff';
 
-            fetch(`/api/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+            fetch(`${API_BASE}/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -763,7 +877,7 @@
             const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
 
             // Fetch available directories
-            fetch('/api/directories')
+            fetch(`${API_BASE}/directories`)
                 .then(response => response.json())
                 .then(directories => {
                     moveDropdowns.forEach(dropdown => {
@@ -803,7 +917,7 @@
             select.disabled = true;
             select.style.background = '#f8f9fa';
 
-            fetch(`/api/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+            fetch(`${API_BASE}/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -841,7 +955,7 @@
                 button.textContent = 'Deleting...';
                 button.style.background = '#6c757d';
 
-                fetch(`/api/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                fetch(`${API_BASE}/media/${uniqueId}/delete?directory=${encodedDir}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -884,7 +998,7 @@
 
             statusDiv.innerHTML = '<div>Importing sticker set...</div>';
 
-            fetch('/api/import-sticker-set', {
+            fetch(`${API_BASE}/import-sticker-set`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

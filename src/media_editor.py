@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import asyncio
-import concurrent.futures
 import json
 import logging
 import sys
@@ -27,7 +26,8 @@ from typing import Any
 # Add current directory to path to import from the main codebase
 sys.path.insert(0, str(Path(__file__).parent))
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Blueprint, Flask, jsonify, render_template, request, send_file
+from admin_console.loop import run_on_agent_loop
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetShortName
 
@@ -39,10 +39,11 @@ from media.media_source import (
     AIGeneratingMediaSource,
     BudgetExhaustedMediaSource,
     CompositeMediaSource,
-    DirectoryMediaSource,
+    MediaStatus,
     UnsupportedFormatMediaSource,
     get_emoji_unicode_name,
 )
+from media.media_sources import get_directory_media_source
 from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
@@ -66,14 +67,33 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     Returns:
         Path to the media file if found, None otherwise
     """
-    # Look for any file with the unique_id prefix that is not .json
-    for file_path in media_dir.glob(f"{unique_id}.*"):
-        if file_path.suffix.lower() != ".json":
-            return file_path
+    search_dirs: list[Path] = [media_dir]
+
+    # Fallback to AI cache directory if media not present in curated directory
+    if STATE_DIRECTORY:
+        fallback_dir = Path(STATE_DIRECTORY) / "media"
+        if fallback_dir != media_dir:
+            search_dirs.append(fallback_dir)
+
+    for directory in search_dirs:
+        for file_path in directory.glob(f"{unique_id}.*"):
+            if file_path.suffix.lower() != ".json":
+                if directory != media_dir:
+                    logger.debug(
+                        "find_media_file: using fallback media directory %s for %s",
+                        directory,
+                        unique_id,
+                    )
+                return file_path
+
     return None
 
 
-app = Flask(__name__, template_folder=str(Path(__file__).parent.parent / "templates"))
+bp = Blueprint(
+    "admin_console",
+    __name__,
+    template_folder=str(Path(__file__).parent.parent / "templates"),
+)
 
 # Global state
 _available_directories: list[dict[str, str]] = []
@@ -156,13 +176,13 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     return agent
 
 
-@app.route("/")
+@bp.route("/")
 def index():
     """Main page with directory selection and media browser."""
-    return render_template("media_editor.html", directories=_available_directories)
+    return render_template("admin_console.html", directories=_available_directories)
 
 
-@app.route("/favicon.ico")
+@bp.route("/favicon.ico")
 def favicon():
     """Serve the favicon."""
     favicon_path = Path(__file__).parent.parent / "favicon.ico"
@@ -171,7 +191,7 @@ def favicon():
     return send_file(favicon_path, mimetype="image/x-icon")
 
 
-@app.route("/api/directories")
+@bp.route("/api/directories")
 def api_directories():
     """Get list of available media directories."""
     # Rescan directories to get current state
@@ -180,7 +200,7 @@ def api_directories():
     return jsonify(_available_directories)
 
 
-@app.route("/api/media")
+@bp.route("/api/media")
 def api_media_list():
     """Get list of media files in a directory."""
     try:
@@ -195,7 +215,7 @@ def api_media_list():
         # Use MediaSource API to read media descriptions
         # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
         # but without AIGeneratingMediaSource (no AI generation in listing)
-        cache_source = DirectoryMediaSource(media_dir)
+        cache_source = get_directory_media_source(media_dir)
         unsupported_source = UnsupportedFormatMediaSource()
 
         media_chain = CompositeMediaSource(
@@ -292,7 +312,7 @@ def api_media_list():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>")
+@bp.route("/api/media/<unique_id>")
 def api_media_file(unique_id: str):
     """Serve a media file."""
     try:
@@ -324,7 +344,7 @@ def api_media_file(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/description", methods=["PUT"])
+@bp.route("/api/media/<unique_id>/description", methods=["PUT"])
 def api_update_description(unique_id: str):
     """Update a media description."""
     try:
@@ -333,27 +353,22 @@ def api_update_description(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        source = get_directory_media_source(media_dir)
+        record = source.get_cached_record(unique_id)
 
-        if not json_file.exists():
+        if not record:
             return jsonify({"error": "Media record not found"}), 404
-
-        # Load existing data
-        with open(json_file, encoding="utf-8") as f:
-            data = json.load(f)
 
         # Update description
         new_description = request.json.get("description", "").strip()
-        data["description"] = new_description if new_description else None
+        record["description"] = new_description if new_description else None
 
         # Clear error fields if description is provided
         if new_description:
-            data.pop("failure_reason", None)
-            data["status"] = "curated"  # Mark as curated when user edits description
+            record.pop("failure_reason", None)
+            record["status"] = "curated"  # Mark as curated when user edits description
 
-        # Save back
-        with open(json_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        source.put(unique_id, record)
 
         return jsonify({"success": True})
 
@@ -362,7 +377,7 @@ def api_update_description(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/refresh-ai", methods=["POST"])
+@bp.route("/api/media/<unique_id>/refresh-ai", methods=["POST"])
 def api_refresh_from_ai(unique_id: str):
     """Refresh description using AI pipeline."""
     try:
@@ -371,14 +386,22 @@ def api_refresh_from_ai(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        media_cache_source = get_directory_media_source(media_dir)
+        data = media_cache_source.get_cached_record(unique_id)
 
-        if not json_file.exists():
+        if not data:
             return jsonify({"error": "Media record not found"}), 404
 
-        # Load existing data
-        with open(json_file, encoding="utf-8") as f:
-            data = json.load(f)
+        # Force the AI pipeline to regenerate a fresh description.
+        logger.debug(
+            "Refresh-from-AI: clearing cached description for %s in %s",
+            unique_id,
+            media_dir,
+        )
+        data["description"] = None
+        data.pop("failure_reason", None)
+        data["status"] = MediaStatus.TEMPORARY_FAILURE.value
+        media_cache_source.put(unique_id, data)
 
         # Get the agent for this directory
         try:
@@ -389,7 +412,9 @@ def api_refresh_from_ai(unique_id: str):
 
         # Use the media pipeline to regenerate description
         logger.info(
-            f"Refreshing AI description for {unique_id} using agent '{agent.name}'"
+            "Refreshing AI description for %s using agent '%s'",
+            unique_id,
+            agent.name,
         )
 
         # For refresh, we want to bypass cached results and force fresh AI generation
@@ -411,7 +436,7 @@ def api_refresh_from_ai(unique_id: str):
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the same chain structure as the main application
-        cache_source = DirectoryMediaSource(ai_cache_dir)
+        ai_cache_source = get_directory_media_source(ai_cache_dir)
         unsupported_source = UnsupportedFormatMediaSource()
         budget_source = BudgetExhaustedMediaSource()
         ai_source = AIGeneratingMediaSource(cache_directory=ai_cache_dir)
@@ -419,7 +444,7 @@ def api_refresh_from_ai(unique_id: str):
         media_chain = CompositeMediaSource(
             [
                 AIChainMediaSource(
-                    cache_source=cache_source,
+                    cache_source=ai_cache_source,
                     unsupported_source=unsupported_source,
                     budget_source=budget_source,
                     ai_source=ai_source,
@@ -475,6 +500,7 @@ def api_refresh_from_ai(unique_id: str):
                     duration=data.get(
                         "duration"
                     ),  # Include duration for video/animated stickers
+                    skip_fallback=True,
                 )
             )
         finally:
@@ -485,7 +511,15 @@ def api_refresh_from_ai(unique_id: str):
             new_description = record.get("description")
             new_status = record.get("status", "ok")
             logger.info(
-                f"Got fresh AI description for {unique_id}: {new_description[:50] if new_description else 'None'}..."
+                "Got fresh AI description for %s (status=%s): %s",
+                unique_id,
+                new_status,
+                (new_description[:50] + "…") if new_description else "None",
+            )
+            logger.debug(
+                "Refresh-from-AI: updated metadata for %s -> %s",
+                unique_id,
+                record,
             )
             return jsonify(
                 {"success": True, "description": new_description, "status": new_status}
@@ -499,7 +533,7 @@ def api_refresh_from_ai(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/move", methods=["POST"])
+@bp.route("/api/media/<unique_id>/move", methods=["POST"])
 def api_move_media(unique_id: str):
     """Move a media item from one directory to another."""
     try:
@@ -515,36 +549,13 @@ def api_move_media(unique_id: str):
         from_dir = resolve_media_path(from_directory)
         to_dir = resolve_media_path(to_directory)
 
-        # Ensure target directory exists
-        to_dir.mkdir(parents=True, exist_ok=True)
+        from_source = get_directory_media_source(from_dir)
+        to_source = get_directory_media_source(to_dir)
 
-        # Find the media files
-        json_file_from = from_dir / f"{unique_id}.json"
-
-        if not json_file_from.exists():
+        try:
+            from_source.move_record_to(unique_id, to_source)
+        except KeyError:
             return jsonify({"error": "Media record not found"}), 404
-
-        # Load the media record
-        with open(json_file_from, encoding="utf-8") as f:
-            media_data = json.load(f)
-
-        # Find the media file (could be .webp, .tgs, etc.)
-        media_file_from = find_media_file(from_dir, unique_id)
-
-        # Move JSON file
-        json_file_to = to_dir / f"{unique_id}.json"
-        json_file_from.rename(json_file_to)
-
-        # Move media file if it exists
-        if media_file_from:
-            media_file_to = to_dir / media_file_from.name
-            media_file_from.rename(media_file_to)
-            # Update the media_data to reflect the new file location
-            media_data["media_file"] = media_file_to.name
-
-        # Save updated media data
-        with open(json_file_to, "w", encoding="utf-8") as f:
-            json.dump(media_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Moved media {unique_id} from {from_directory} to {to_directory}")
         return jsonify({"success": True})
@@ -554,7 +565,7 @@ def api_move_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/media/<unique_id>/delete", methods=["DELETE"])
+@bp.route("/api/media/<unique_id>/delete", methods=["DELETE"])
 def api_delete_media(unique_id: str):
     """Delete a media item and its description."""
     try:
@@ -563,24 +574,13 @@ def api_delete_media(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        json_file = media_dir / f"{unique_id}.json"
+        source = get_directory_media_source(media_dir)
 
-        if not json_file.exists():
+        record = source.get_cached_record(unique_id)
+        if not record:
             return jsonify({"error": "Media record not found"}), 404
 
-        # Load the media record to find the media file
-        with open(json_file, encoding="utf-8") as f:
-            media_data = json.load(f)
-
-        # Delete JSON file
-        json_file.unlink()
-
-        # Delete media file if it exists
-        media_file_name = media_data.get("media_file")
-        if media_file_name:
-            media_file = media_dir / media_file_name
-            if media_file.exists():
-                media_file.unlink()
+        source.delete_record(unique_id)
 
         logger.info(f"Deleted media {unique_id} from {directory_path}")
         return jsonify({"success": True})
@@ -590,7 +590,7 @@ def api_delete_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/download/<unique_id>", methods=["POST"])
+@bp.route("/api/download/<unique_id>", methods=["POST"])
 def api_download_media(unique_id: str):
     """Download missing media file using Telegram API."""
     try:
@@ -610,7 +610,7 @@ def api_download_media(unique_id: str):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/import-sticker-set", methods=["POST"])
+@bp.route("/api/import-sticker-set", methods=["POST"])
 def api_import_sticker_set():
     """Import all stickers from a sticker set."""
     try:
@@ -628,24 +628,28 @@ def api_import_sticker_set():
                 400,
             )
 
-        # Run the async import operation in a separate thread with its own event loop
-        logger.info("Flask route: About to run async import in thread")
-
-        def run_async_import():
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    _import_sticker_set_async(sticker_set_name, target_directory)
-                )
-            finally:
-                loop.close()
-
-        # Run in a separate thread to avoid event loop conflicts
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(run_async_import)
-            result = future.result(timeout=300)  # 5 minute timeout
+        logger.info("Flask route: Scheduling import on agent loop")
+        import_coro = _import_sticker_set_async(
+            sticker_set_name, target_directory
+        )
+        try:
+            result = run_on_agent_loop(
+                import_coro,
+                timeout=300,
+            )
+        except RuntimeError as exc:
+            import_coro.close()
+            logger.error(
+                "Agent loop not available for sticker import: %s", exc, exc_info=True
+            )
+            return (
+                jsonify(
+                    {
+                        "error": "Agent loop is not running; cannot import sticker set."
+                    }
+                ),
+                503,
+            )
 
         logger.info("Flask route: async import completed successfully")
         return jsonify(result)
@@ -689,7 +693,7 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     skipped_count = 0
 
     # Create a single DirectoryMediaSource instance outside the loop to enable in-memory caching
-    cache_source = DirectoryMediaSource(target_dir)
+    cache_source = get_directory_media_source(target_dir)
 
     try:
         # Download sticker set using the same pattern as run.py
@@ -864,6 +868,15 @@ async def _import_sticker_set_async(sticker_set_name: str, target_directory: str
     }
 
 
+def create_admin_app() -> Flask:
+    """Create and configure the admin console Flask application."""
+    app = Flask(
+        __name__, template_folder=str(Path(__file__).parent.parent / "templates")
+    )
+    app.register_blueprint(bp, url_prefix="/admin")
+    return app
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -898,7 +911,7 @@ def main():
 
     # Start the web server
     logger.info(f"Starting Media Editor on http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    create_admin_app().run(host=args.host, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":

@@ -4,12 +4,16 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import logging
+import threading
 from pathlib import Path
 
 from agent import all_agents, register_telegram_agent
 from config import CONFIG_DIRECTORIES
 
 logger = logging.getLogger("register_agents")
+
+_REGISTER_LOCK = threading.Lock()
+_AGENTS_LOADED = False
 
 REQUIRED_FIELDS = [
     "Agent Name",
@@ -161,7 +165,13 @@ def parse_agent_markdown(path):
         return None
 
 
-def register_all_agents():
+def register_all_agents(force: bool = False):
+    global _AGENTS_LOADED
+    with _REGISTER_LOCK:
+        if _AGENTS_LOADED and not force:
+            logger.debug("register_all_agents: agents already loaded; skipping")
+            return
+
     config_path = CONFIG_DIRECTORIES
 
     # Track registered agent names to avoid duplicates
@@ -220,3 +230,11 @@ def register_all_agents():
     logger.info(
         f"Successfully registered {len(registered_agents)} agents from {len(valid_config_dirs)} config directories"
     )
+    _AGENTS_LOADED = True
+
+
+def reset_registered_agents_flag():
+    """Testing helper: allow register_all_agents to run again."""
+    global _AGENTS_LOADED
+    with _REGISTER_LOCK:
+        _AGENTS_LOADED = False

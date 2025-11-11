@@ -12,6 +12,7 @@ including curated descriptions, cached AI-generated descriptions, and on-demand 
 
 import json
 import logging
+import threading
 import time
 import unicodedata
 from abc import ABC, abstractmethod
@@ -38,6 +39,23 @@ from .mime_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+MEDIA_FILE_EXTENSIONS = [
+    ".webp",
+    ".tgs",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".ogg",
+]
 
 
 # Helper functions for checking media types (works with string kind values from records)
@@ -206,44 +224,47 @@ class DirectoryMediaSource(MediaSource):
         """
         self.directory = Path(directory)
         self._mem_cache: dict[str, dict[str, Any]] = {}
+        self._lock = threading.RLock()
         self._load_cache()
 
     def _load_cache(self) -> None:
         """Load all JSON files from the directory into memory cache."""
-        if not self.directory.exists() or not self.directory.is_dir():
-            logger.debug(
-                f"DirectoryMediaSource: directory {self.directory} does not exist"
-            )
-            return
-
-        loaded_count = 0
-        for json_file in self.directory.glob("*.json"):
-            try:
-                unique_id = json_file.stem
-                data = json.loads(json_file.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    self._mem_cache[unique_id] = data
-                    loaded_count += 1
-                else:
-                    logger.error(
-                        f"DirectoryMediaSource: invalid data type in {json_file}, expected dict"
-                    )
-            except json.JSONDecodeError as e:
-                logger.error(
-                    f"DirectoryMediaSource: corrupted JSON in {json_file}: {e}"
+        with self._lock:
+            if not self.directory.exists() or not self.directory.is_dir():
+                logger.debug(
+                    f"DirectoryMediaSource: directory {self.directory} does not exist"
                 )
-            except Exception as e:
-                logger.error(f"DirectoryMediaSource: error reading {json_file}: {e}")
+                return
 
-        logger.info(
-            f"DirectoryMediaSource: loaded {loaded_count} entries from {self.directory}"
-        )
+            loaded_count = 0
+            for json_file in self.directory.glob("*.json"):
+                try:
+                    unique_id = json_file.stem
+                    data = json.loads(json_file.read_text(encoding="utf-8"))
+                    if isinstance(data, dict):
+                        self._mem_cache[unique_id] = data
+                        loaded_count += 1
+                    else:
+                        logger.error(
+                            f"DirectoryMediaSource: invalid data type in {json_file}, expected dict"
+                        )
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        f"DirectoryMediaSource: corrupted JSON in {json_file}: {e}"
+                    )
+                except Exception as e:
+                    logger.error(f"DirectoryMediaSource: error reading {json_file}: {e}")
+
+            logger.info(
+                f"DirectoryMediaSource: loaded {loaded_count} entries from {self.directory}"
+            )
 
     def refresh_cache(self) -> None:
         """Reload the cache from disk (useful when files have been updated externally)."""
-        logger.info(f"DirectoryMediaSource: refreshing cache for {self.directory}")
-        self._mem_cache.clear()
-        self._load_cache()
+        with self._lock:
+            logger.info(f"DirectoryMediaSource: refreshing cache for {self.directory}")
+            self._mem_cache.clear()
+            self._load_cache()
 
     async def get(
         self,
@@ -261,48 +282,54 @@ class DirectoryMediaSource(MediaSource):
         Returns cached data if available, otherwise None.
         Only uses unique_id - other parameters are ignored by this source.
         """
-        if unique_id in self._mem_cache:
-            logger.debug(
-                f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
-            )
-            record = self._mem_cache[unique_id].copy()
+        skip_fallback = metadata.get("skip_fallback") if metadata else False
 
-            # Special handling for stickers with null descriptions
-            # Provide fallback description for stickers that don't have descriptions
-            # BUT NOT if there's a failure_reason (user might want to clear errors)
-            # AND NOT if status is curated (user has manually curated this)
-            mime_type = record.get("mime_type")
-            has_failure_reason = record.get("failure_reason") is not None
-            is_curated = record.get("status") == "curated"
-
-            if (
-                record.get("kind") == "sticker"
-                and record.get("description") is None
-                and not has_failure_reason
-                and not is_curated
-            ):
-
-                # Create fallback description for stickers
-                sticker_name = record.get("sticker_name") or sticker_name
-                is_animated = mime_type and is_tgs_mime_type(mime_type)
-                description = fallback_sticker_description(
-                    sticker_name, animated=is_animated
+        with self._lock:
+            if unique_id in self._mem_cache:
+                logger.debug(
+                    f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
                 )
+                record = self._mem_cache[unique_id].copy()
 
-                sticker_type = "animated" if is_animated else "static"
-                logger.info(
-                    f"{sticker_type.capitalize()} sticker {unique_id}: providing fallback description '{description}'"
-                )
+                if skip_fallback:
+                    return record
 
-                # Update the record with fallback description
-                record["description"] = description
-                record["status"] = MediaStatus.GENERATED.value
-                record["ts"] = clock.now(UTC).isoformat()
+                # Special handling for stickers with null descriptions
+                # Provide fallback description for stickers that don't have descriptions
+                # BUT NOT if there's a failure_reason (user might want to clear errors)
+                # AND NOT if status is curated (user has manually curated this)
+                mime_type = record.get("mime_type")
+                has_failure_reason = record.get("failure_reason") is not None
+                status = record.get("status")
 
-                # Update the cache with the new description
-                self._mem_cache[unique_id] = record.copy()
+                if (
+                    record.get("kind") == "sticker"
+                    and record.get("description") is None
+                    and not has_failure_reason
+                    and status in (None, MediaStatus.GENERATED.value)
+                ):
 
-            return record
+                    # Create fallback description for stickers
+                    sticker_name = record.get("sticker_name") or sticker_name
+                    is_animated = mime_type and is_tgs_mime_type(mime_type)
+                    description = fallback_sticker_description(
+                        sticker_name, animated=is_animated
+                    )
+
+                    sticker_type = "animated" if is_animated else "static"
+                    logger.info(
+                        f"{sticker_type.capitalize()} sticker {unique_id}: providing fallback description '{description}'"
+                    )
+
+                    # Update the record with fallback description
+                    record["description"] = description
+                    record["status"] = MediaStatus.GENERATED.value
+                    record["ts"] = clock.now(UTC).isoformat()
+
+                    # Update the cache with the new description
+                    self._mem_cache[unique_id] = record.copy()
+
+                return record
 
         logger.debug(
             f"DirectoryMediaSource: cache miss for {unique_id} in {self.directory.name}"
@@ -317,14 +344,20 @@ class DirectoryMediaSource(MediaSource):
         file_extension: str = None,
     ) -> None:
         """Store metadata record and optionally media file to disk."""
-        # Always store the JSON metadata
-        self._write_to_disk(unique_id, record)
+        with self._lock:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            if media_bytes and file_extension:
+                record["media_file"] = f"{unique_id}{file_extension}"
+            # Always store the JSON metadata
+            self._write_to_disk(unique_id, record)
 
-        # Optionally store media file if provided
-        if media_bytes and file_extension:
-            media_file = self.directory / f"{unique_id}{file_extension}"
-            media_file.write_bytes(media_bytes)
-            logger.debug(f"DirectoryMediaSource: stored media file {media_file.name}")
+            # Optionally store media file if provided
+            if media_bytes and file_extension:
+                media_file = self.directory / f"{unique_id}{file_extension}"
+                media_file.write_bytes(media_bytes)
+                logger.debug(
+                    f"DirectoryMediaSource: stored media file {media_file.name}"
+                )
 
     def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
         """Write a record to disk cache and update in-memory cache."""
@@ -336,7 +369,9 @@ class DirectoryMediaSource(MediaSource):
             record["_on_disk"] = True
 
             # Write to temporary file first, then atomically rename
-            temp_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            temp_path.write_text(
+                json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
             temp_path.replace(file_path)
 
             logger.debug(f"DirectoryMediaSource: cached {unique_id} to disk")
@@ -351,6 +386,90 @@ class DirectoryMediaSource(MediaSource):
             logger.exception(
                 f"DirectoryMediaSource: failed to cache {unique_id} to disk: {e}"
             )
+
+    def get_cached_record(self, unique_id: str) -> dict[str, Any] | None:
+        """Return a copy of the cached record without async helpers."""
+        with self._lock:
+            record = self._mem_cache.get(unique_id)
+            return record.copy() if record else None
+
+    def delete_record(self, unique_id: str) -> None:
+        """Delete the JSON and media cache for a record."""
+        with self._lock:
+            record = self._mem_cache.pop(unique_id, None)
+            json_path = self.directory / f"{unique_id}.json"
+            if json_path.exists():
+                json_path.unlink()
+
+            media_file_name = record.get("media_file") if record else None
+
+        if media_file_name:
+            media_path = self.directory / media_file_name
+            if media_path.exists():
+                media_path.unlink()
+        else:
+            for ext in MEDIA_FILE_EXTENSIONS:
+                media_path = self.directory / f"{unique_id}{ext}"
+                if media_path.exists():
+                    media_path.unlink()
+                    break
+
+    def move_record_to(
+        self, unique_id: str, target_source: "DirectoryMediaSource"
+    ) -> None:
+        """Move the record to another directory media source."""
+        if target_source is self:
+            return
+
+        first, second = (
+            (self, target_source)
+            if id(self) < id(target_source)
+            else (target_source, self)
+        )
+
+        with first._lock:
+            with second._lock:
+                record = self._mem_cache.get(unique_id)
+                if record is None:
+                    raise KeyError(
+                        f"Record {unique_id} not found in directory {self.directory}"
+                    )
+
+                source_json = self.directory / f"{unique_id}.json"
+                if not source_json.exists():
+                    raise FileNotFoundError(
+                        f"JSON record for {unique_id} not found at {source_json}"
+                    )
+
+                target_source.directory.mkdir(parents=True, exist_ok=True)
+
+                target_json = target_source.directory / f"{unique_id}.json"
+                source_json.replace(target_json)
+
+                media_file_name = record.get("media_file")
+                moved_media_name = None
+
+                if media_file_name:
+                    source_media = self.directory / media_file_name
+                    if source_media.exists():
+                        target_media = target_source.directory / media_file_name
+                        source_media.replace(target_media)
+                        moved_media_name = media_file_name
+                else:
+                    for ext in MEDIA_FILE_EXTENSIONS:
+                        source_media = self.directory / f"{unique_id}{ext}"
+                        if source_media.exists():
+                            target_media = target_source.directory / source_media.name
+                            source_media.replace(target_media)
+                            moved_media_name = source_media.name
+                            break
+
+                updated_record = record.copy()
+                if moved_media_name:
+                    updated_record["media_file"] = moved_media_name
+
+                target_source._mem_cache[unique_id] = updated_record
+                self._mem_cache.pop(unique_id, None)
 
 
 class CompositeMediaSource(MediaSource):
@@ -979,22 +1098,7 @@ class AIChainMediaSource(MediaSource):
                 media_file_exists = False
                 if isinstance(self.cache_source, DirectoryMediaSource):
                     # Check if media file already exists
-                    for ext in [
-                        ".webp",
-                        ".tgs",
-                        ".png",
-                        ".jpg",
-                        ".jpeg",
-                        ".gif",
-                        ".mp4",
-                        ".webm",
-                        ".mov",
-                        ".avi",
-                        ".mp3",
-                        ".m4a",
-                        ".wav",
-                        ".ogg",
-                    ]:
+                    for ext in MEDIA_FILE_EXTENSIONS:
                         media_file = self.cache_source.directory / f"{unique_id}{ext}"
                         if media_file.exists():
                             media_file_exists = True
@@ -1075,20 +1179,22 @@ def _create_default_chain() -> CompositeMediaSource:
     Internal helper for get_default_media_source_chain.
     """
 
+    from .media_sources import get_directory_media_source
+
     sources: list[MediaSource] = []
 
     # Add config directories (curated descriptions) - checked first
     for config_dir in CONFIG_DIRECTORIES:
         media_dir = Path(config_dir) / "media"
         if media_dir.exists() and media_dir.is_dir():
-            sources.append(DirectoryMediaSource(media_dir))
+            sources.append(get_directory_media_source(media_dir))
             logger.info(f"Added curated media directory: {media_dir}")
 
     # Set up AI cache directory
     state_dir = Path(STATE_DIRECTORY)
     ai_cache_dir = state_dir / "media"
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
-    ai_cache_source = DirectoryMediaSource(ai_cache_dir)
+    ai_cache_source = get_directory_media_source(ai_cache_dir)
     logger.info(f"Added AI cache directory: {ai_cache_dir}")
 
     # Add AI chain source that orchestrates unsupported/budget/AI generation
