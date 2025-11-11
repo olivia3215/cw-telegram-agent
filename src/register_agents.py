@@ -172,65 +172,65 @@ def register_all_agents(force: bool = False):
             logger.debug("register_all_agents: agents already loaded; skipping")
             return
 
-    config_path = CONFIG_DIRECTORIES
+        config_path = CONFIG_DIRECTORIES
 
-    # Track registered agent names to avoid duplicates
-    registered_agents = set()
-    for agent in all_agents():
-        registered_agents.add(agent.name)
+        # Track registered agent names to avoid duplicates
+        registered_agents = set()
+        for agent in all_agents():
+            registered_agents.add(agent.name)
 
-    valid_config_dirs = []  # Track valid config directories found
+        valid_config_dirs = []  # Track valid config directories found
 
-    for config_dir in config_path:
-        path = Path(config_dir)
-        if not path.exists() or not path.is_dir():
-            logger.warning(
-                f"Config directory does not exist or is not a directory: {config_dir}"
-            )
-            continue
-
-        agents_dir = path / "agents"
-        if not agents_dir.exists() or not agents_dir.is_dir():
-            logger.warning(
-                f"Agents directory not found or is not a directory in config directory: {config_dir}"
-            )
-            continue
-
-        valid_config_dirs.append(config_dir)
-
-        for file in agents_dir.glob("*.md"):
-            parsed = parse_agent_markdown(file)
-            if parsed:
-                agent_name = parsed["name"]
-                if agent_name in registered_agents:
-                    logger.warning(
-                        f"Agent '{agent_name}' already registered, skipping duplicate from {file}"
-                    )
-                    continue
-
-                register_telegram_agent(
-                    name=agent_name,
-                    phone=parsed["phone"],
-                    instructions=parsed["instructions"],
-                    role_prompt_names=parsed["role_prompt_names"],
-                    sticker_set_names=parsed.get("sticker_set_names") or [],
-                    explicit_stickers=parsed.get("explicit_stickers") or [],
-                    config_directory=config_dir,
-                    timezone=parsed.get("timezone"),
+        for config_dir in config_path:
+            path = Path(config_dir)
+            if not path.exists() or not path.is_dir():
+                logger.warning(
+                    f"Config directory does not exist or is not a directory: {config_dir}"
                 )
-                registered_agents.add(agent_name)
+                continue
 
-    # Fail fast if no valid config directories were found
-    if not valid_config_dirs:
-        raise RuntimeError(
-            f"No valid configuration directories found. Checked: {config_path}. "
-            f"Each directory must exist and contain an 'agents' subdirectory."
+            agents_dir = path / "agents"
+            if not agents_dir.exists() or not agents_dir.is_dir():
+                logger.warning(
+                    f"Agents directory not found or is not a directory in config directory: {config_dir}"
+                )
+                continue
+
+            valid_config_dirs.append(config_dir)
+
+            for file in agents_dir.glob("*.md"):
+                parsed = parse_agent_markdown(file)
+                if parsed:
+                    agent_name = parsed["name"]
+                    if agent_name in registered_agents:
+                        logger.warning(
+                            f"Agent '{agent_name}' already registered, skipping duplicate from {file}"
+                        )
+                        continue
+
+                    register_telegram_agent(
+                        name=agent_name,
+                        phone=parsed["phone"],
+                        instructions=parsed["instructions"],
+                        role_prompt_names=parsed["role_prompt_names"],
+                        sticker_set_names=parsed.get("sticker_set_names") or [],
+                        explicit_stickers=parsed.get("explicit_stickers") or [],
+                        config_directory=config_dir,
+                        timezone=parsed.get("timezone"),
+                    )
+                    registered_agents.add(agent_name)
+
+        # Fail fast if no valid config directories were found
+        if not valid_config_dirs:
+            raise RuntimeError(
+                f"No valid configuration directories found. Checked: {config_path}. "
+                f"Each directory must exist and contain an 'agents' subdirectory."
+            )
+
+        logger.info(
+            f"Successfully registered {len(registered_agents)} agents from {len(valid_config_dirs)} config directories"
         )
-
-    logger.info(
-        f"Successfully registered {len(registered_agents)} agents from {len(valid_config_dirs)} config directories"
-    )
-    _AGENTS_LOADED = True
+        _AGENTS_LOADED = True
 
 
 def reset_registered_agents_flag():
