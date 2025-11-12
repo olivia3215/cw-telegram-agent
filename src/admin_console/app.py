@@ -7,13 +7,13 @@ import threading
 
 from werkzeug.serving import make_server
 
-from media_editor import create_admin_app as _create_media_editor_app
-
 logger = logging.getLogger(__name__)
 
 
 def create_admin_app():
     """Return a configured Flask app for the admin console."""
+    from media_editor import create_admin_app as _create_media_editor_app
+
     return _create_media_editor_app()
 
 
