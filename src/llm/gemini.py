@@ -5,6 +5,7 @@
 
 import asyncio
 import base64
+import copy
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ from media.mime_utils import (
 )
 
 from .base import LLM, ChatMsg, MsgPart
+from .task_schema import get_task_response_schema_dict
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,9 @@ GEMINI_DEBUG_LOGGING: bool = os.environ.get("GEMINI_DEBUG_LOGGING", "").lower() 
     "yes",
     "on",
 )
+
+
+_TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 
 
 def _format_string_for_logging(s: str) -> str:
@@ -588,6 +593,8 @@ class GeminiLLM(LLM):
             config = GenerateContentConfig(
                 system_instruction=system_instruction,
                 safety_settings=self.safety_settings,
+                response_mime_type="application/json",
+                response_json_schema=copy.deepcopy(_TASK_RESPONSE_SCHEMA_DICT),
             )
 
             response = await asyncio.to_thread(

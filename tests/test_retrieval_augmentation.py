@@ -81,44 +81,10 @@ async def test_parse_retrieve_task_multiple_urls():
 
 
 @pytest.mark.asyncio
-async def test_parse_retrieve_task_with_text():
-    """Test parsing a retrieve task that includes non-URL text (should be ignored)."""
-    payload = json.dumps(
-        [
-            {
-                "kind": "retrieve",
-                "text": "Here are some URLs:\nhttps://example.com/page1\nSome other text\nhttp://example.com/page2\n",
-            }
-        ],
-        indent=2,
-    )
-    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
-
-    graph = TaskGraph(id="g", context={}, tasks=[])
-    tasks = await hr._process_retrieve_tasks(
-        tasks,
-        agent=None,
-        agent_name="TestAgent",
-        channel_id=456,
-        graph=graph,
-        retrieved_urls={"https://example.com/page1", "http://example.com/page2"},
-        retrieved_contents=[],
-    )
-
-    assert len(tasks) == 1
-    assert tasks[0].type == "retrieve"
-    # Only the actual URLs should be extracted
-    assert tasks[0].params["urls"] == [
-        "https://example.com/page1",
-        "http://example.com/page2",
-    ]
-
-
-@pytest.mark.asyncio
 async def test_parse_retrieve_task_empty():
     """Test that an empty retrieve task is not added to task list."""
     payload = json.dumps(
-        [{"kind": "retrieve", "text": "No URLs here!"}],
+        [{"kind": "retrieve", "urls": []}],
         indent=2,
     )
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)

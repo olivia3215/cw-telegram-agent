@@ -85,14 +85,14 @@ def normalize_created_string(raw_value, agent) -> str:
     """Normalize a created timestamp into the agent's timezone-friendly string."""
     agent_tz = get_agent_timezone(agent)
 
+    current = agent.get_current_time().astimezone(agent_tz)
+
     if raw_value is None:
-        current = agent.get_current_time()
-        return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return current.isoformat(timespec="seconds")
 
     text = coerce_to_str(raw_value).strip()
     if not text:
-        current = agent.get_current_time()
-        return current.astimezone(agent_tz).strftime("%Y-%m-%d %H:%M:%S %Z")
+        return current.isoformat(timespec="seconds")
 
     try:
         datetime.strptime(text, "%Y-%m-%d")
@@ -103,9 +103,9 @@ def normalize_created_string(raw_value, agent) -> str:
     parsed = parse_datetime_with_optional_tz(text, agent_tz)
     if not parsed:
         logger.debug("Unable to parse created timestamp '%s'; using current time", text)
-        parsed = agent.get_current_time()
+        parsed = current
     localized = parsed.astimezone(agent_tz)
-    return localized.strftime("%Y-%m-%d %H:%M:%S %Z")
+    return localized.isoformat(timespec="seconds")
 
 
 def memory_sort_key(memory: dict, agent) -> tuple:

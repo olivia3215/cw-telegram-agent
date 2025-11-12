@@ -510,11 +510,6 @@ async def _process_retrieve_tasks(
                 urls.append(url)
 
         if not urls:
-            for url in _normalize_list(task.params.get("text")):
-                if url.startswith("http://") or url.startswith("https://"):
-                    urls.append(url)
-
-        if not urls:
             logger.warning("[retrieve] No valid URLs provided; dropping task")
             continue
 

@@ -8,6 +8,7 @@ import types
 import pytest
 
 from llm import ChatMsg, GeminiLLM
+from llm.task_schema import get_task_response_schema_dict
 
 
 class FakeClient:
@@ -88,6 +89,10 @@ async def test_roles_and_system_instruction_path():
     sys_text = getattr(sent_config, "system_instruction", None)
     assert isinstance(sys_text, str) and "SYSTEM HERE" in sys_text
 
+    assert getattr(sent_config, "response_mime_type", None) == "application/json"
+    expected_schema = get_task_response_schema_dict()
+    assert sent_config.response_json_schema == expected_schema
+
     # Contents contain only 'user' and 'model' roles; no 'system'
     roles = [turn.get("role") for turn in sent_contents]
     assert "system" not in roles
@@ -125,6 +130,10 @@ async def test_empty_conversation_ends_with_user_role():
     assert sent_config is not None
     sys_text = getattr(sent_config, "system_instruction", None)
     assert isinstance(sys_text, str) and "SYSTEM HERE" in sys_text
+
+    assert getattr(sent_config, "response_mime_type", None) == "application/json"
+    expected_schema = get_task_response_schema_dict()
+    assert sent_config.response_json_schema == expected_schema
 
     # Contents should contain only the target message as a user role
     assert len(sent_contents) == 1

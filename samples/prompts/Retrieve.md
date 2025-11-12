@@ -21,7 +21,7 @@ Use the `retrieve` task object to fetch web pages by their URL:
 ## Important Guidelines
 
 - **Limit**: You can retrieve up to **3 URLs** in a single retrieve task.
-- **Format**: Supply `urls` as an array of strings, or put URLs (one per line) in `text`.
+- **Format**: Supply `urls` as an array of strings.
 - **No Duplicates**: Don't request URLs you've already retrieved—check system messages first.
 - **Be Strategic**: Think carefully about what information you need before retrieving
 

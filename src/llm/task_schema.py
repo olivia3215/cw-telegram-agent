@@ -1,0 +1,238 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+import copy
+
+_TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
+    "title": "Task List",
+    "description": (
+        "Ordered list of task objects for the Telegram agent. Emit every action as a "
+        "separate object in this array."
+    ),
+    "type": "array",
+    "items": {
+        "anyOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["think"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier to delete a previous task.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Private reasoning or planning text. Never sent to the human user.",
+                    },
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": False,
+                "title": "Think Task",
+                "description": "Internal reasoning task; output is discarded before reaching the user.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["send"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Recommended identifier so later tasks can revise or cancel this message.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Markdown-formatted message to send to the current conversation.",
+                    },
+                    "reply_to": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string", "minLength": 1},
+                        ],
+                        "description": "Optional Telegram message ID to reply to.",
+                    },
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": False,
+                "title": "Send Task",
+                "description": "Send a Markdown-formatted Telegram message.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["sticker"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier for later revisions.",
+                    },
+                    "sticker_set": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Telegram sticker set short name (e.g., 'WendyDancer').",
+                    },
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Sticker name or emoji within the set.",
+                    },
+                    "reply_to": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string", "minLength": 1},
+                        ],
+                        "description": "Optional Telegram message ID to reply to.",
+                    },
+                },
+                "required": ["kind", "sticker_set", "name"],
+                "additionalProperties": False,
+                "title": "Sticker Task",
+                "description": "Send a sticker from a known Telegram sticker set.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["wait"],
+                        "description": "Task type identifier; always 'wait'.",
+                    },
+                    "delay": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Delay duration in seconds before following tasks may run.",
+                    },
+                },
+                "required": ["kind", "delay"],
+                "additionalProperties": False,
+                "title": "Wait Task",
+                "description": "Insert a delay before subsequent tasks run.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["block"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier for later revision.",
+                    },
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+                "title": "Block Task",
+                "description": "Block the current direct-message peer.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["unblock"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier for later revision.",
+                    },
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+                "title": "Unblock Task",
+                "description": "Unblock a previously blocked direct-message peer.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["remember"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional memory identifier for updating or deleting an existing memory entry.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Memory text to store. Use an empty string to delete an existing memory.",
+                    },
+                    "created": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+                "title": "Remember Task",
+                "description": "Create, update, or delete a persistent memory entry.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["retrieve"],
+                    },
+                    "urls": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "description": "List of HTTP or HTTPS URLs to fetch (maximum three per task).",
+                    },
+                },
+                "required": ["kind", "urls"],
+                "additionalProperties": False,
+                "title": "Retrieve Task",
+                "description": "Request retrieval of up to three web pages to augment context.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["xsend"],
+                    },
+                    "target_channel_id": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string", "minLength": 1},
+                        ],
+                        "description": "Telegram peer ID of the target conversation.",
+                    },
+                    "intent": {
+                        "type": "string",
+                        "description": "Optional secret instruction for the agent to send its future self in the target channel.",
+                    },
+                },
+                "required": ["kind", "target_channel_id"],
+                "additionalProperties": False,
+                "title": "XSend Task",
+                "description": "Send an intent to the agent's future self in another channel for later follow-up.",
+            }
+        ]
+    },
+}
+
+
+def get_task_response_schema_dict() -> Dict[str, Any]:
+    """Return a JSON schema dict describing valid task responses."""
+
+    return copy.deepcopy(_TASK_RESPONSE_SCHEMA_DICT)
