@@ -8,7 +8,7 @@ import uuid
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
-from telegram_util import get_channel_name
+from telegram_util import get_channel_name, is_group_or_channel
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,16 @@ async def insert_received_task_for_conversation(
         "agent_name": recipient_name,
         "channel_name": channel_name,
     }
+
+    is_group_chat = False
+    try:
+        dialog = await agent.get_cached_entity(channel_id)
+        is_group_chat = bool(is_group_or_channel(dialog))
+    except Exception:
+        # Fallback heuristic: negative ids normally correspond to group/channel chats.
+        is_group_chat = channel_id is not None and channel_id < 0
+
+    new_context["is_group_chat"] = is_group_chat
 
     # Copy fetched resources from old graph if they exist
     if old_graph and "fetched_resources" in old_graph.context:

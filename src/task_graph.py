@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+from agent import get_agent_for_id
 from clock import clock
+from typing_state import is_partner_typing
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -196,7 +198,31 @@ class TaskGraph:
 
     def pending_tasks(self, now: datetime):
         done = self.completed_ids()
-        return [n for n in self.tasks if n.is_ready(done, now)]
+        pending: list[TaskNode] = []
+        for task in self.tasks:
+            if not task.is_ready(done, now):
+                continue
+            if task.type == "received" and self._is_received_blocked_by_typing():
+                continue
+            pending.append(task)
+        return pending
+
+    def _is_received_blocked_by_typing(self) -> bool:
+        is_group = self.context.get("is_group_chat")
+
+        channel_id = self.context.get("channel_id")
+        if is_group is None and isinstance(channel_id, int) and channel_id < 0:
+            is_group = True
+
+        if is_group:
+            return False
+
+        agent_id = self.context.get("agent_id")
+
+        if agent_id is None or channel_id is None:
+            return False
+
+        return is_partner_typing(agent_id, channel_id)
 
     def get_node(self, node_id: str) -> TaskNode | None:
         for task in self.tasks:
