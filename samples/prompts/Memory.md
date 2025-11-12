@@ -29,27 +29,14 @@ JSON response. The task itself describes the memory directly:
 ```
 
 The required fields are "kind" ("remember") and "content".
-You may include additional fields in the task if helpful (for example `category`, `tags`, or custom metadata).
-
-```json
-[
-  {
-    "kind": "remember",
-    "id": "memory-1234abcd",
-    "content": "User mentioned they have a younger sister named Sarah who is studying abroad.",
-    "category": "family",
-    "created": "2025-11-09"
-  }
-]
-```
-
 The system automatically augments the stored memory with:
 - `created` (either the value you supplied—converted to the agent’s timezone—or the current time)
 - `creation_channel`, `creation_channel_id`, and `creation_channel_username`
 
-If you emit a `remember` task with an empty `content` string—or omit `content` entirely—the system will delete any
-existing memory with the same `id`. This is useful for removing duplicates or consolidating multiple snippets into
-one richer memory.
+When you emit a `remember` task, the system will delete any
+existing memory with the same `id` before adding the new one.
+This is useful for removing duplicates or consolidating multiple snippets into
+one richer memory. If `content` is empty, no new memory is created.
 
 ## Memory Guidelines
 
@@ -76,9 +63,7 @@ Good memory entries:
 [
   {
     "kind": "remember",
-    "id": "memory-a1b2c3d4",
-    "content": "User works as a software engineer at Google and enjoys hiking on weekends",
-    "category": "career"
+    "content": "User works as a software engineer at Google and enjoys hiking on weekends"
   }
 ]
 ```
@@ -87,10 +72,7 @@ Good memory entries:
 [
   {
     "kind": "remember",
-    "id": "memory-bday0315",
-    "content": "User's birthday is March 15th and they love chocolate cake",
-    "category": "important dates",
-    "created": "2025-03-15"
+    "content": "User's birthday is March 15th and they love chocolate cake"
   }
 ]
 ```
@@ -99,9 +81,7 @@ Good memory entries:
 [
   {
     "kind": "remember",
-    "id": "memory-spanish-travel",
-    "content": "User is learning Spanish and wants to visit Mexico next year",
-    "tags": ["travel", "goals"]
+    "content": "User is learning Spanish and wants to visit Mexico next year"
   }
 ]
 ```
@@ -110,9 +90,7 @@ Good memory entries:
 [
   {
     "kind": "remember",
-    "id": "memory-max-dog",
-    "content": "User has a golden retriever named Max who is 3 years old",
-    "category": "family"
+    "content": "User has a golden retriever named Max who is 3 years old"
   }
 ]
 ```
@@ -125,36 +103,35 @@ If you detect that two memories carry the same information, delete the duplicate
 [
   {
     "kind": "remember",
-    "id": "memory-jerry-favorite-color",
+    "id": "memory-1234abcd",
     "content": ""
   }
 ]
 ```
 
-For consolidation, first remove the fragmented memories, then emit one richer entry:
+For consolidation, first remove the all but one of the fragments, then replace the final fragment with a richer entry:
 
 ```json
 [
   {
     "kind": "remember",
-    "id": "memory-jerry-name",
+    "id": "memory-1234abcd",
     "content": ""
   },
   {
     "kind": "remember",
-    "id": "memory-jerry-age",
+    "id": "memory-5679efgh",
     "content": ""
   },
   {
     "kind": "remember",
-    "id": "memory-jerry-location",
+    "id": "memory-0123ijkl",
     "content": ""
   },
   {
     "kind": "remember",
-    "id": "memory-jerry-profile",
-    "content": "User's name is Jerry. He is 35 years old and lives on the west coast of the USA.",
-    "category": "profile"
+    "id": "memory-8432fhdn",
+    "content": "User's name is Jerry. He is 35 years old and lives on the west coast of the USA."
   }
 ]
 ```
