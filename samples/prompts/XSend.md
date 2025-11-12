@@ -1,6 +1,6 @@
 # Cross-Channel Communication (`xsend`) Instructions
 
-You have the ability to send a message, called the _**intent**_ *to yourself* in another channel.
+You have the ability to send a message, called the _**intent**_ *to your future self* in another channel.
 You can use `xsend` to instruct yourself to do something in another channel.
 
 ## How to Use the XSend Task
@@ -9,7 +9,7 @@ This task lets you trigger action in another channel, carrying a text describing
 The intent is an instruction you are sending to yourself.
 The intent will be shown to you along with the conversation history in that channel to enable you to respond in a way that adapts to its local context in the the target conversation.
 Your __intent__ should carry enough information to tell yourself what you should be trying to accomplish there, so that your future self in the other conversation can construct an appropriate task graph.
-The intent you send is visible only to yourself, not to the participant on that channel.
+The intent you send is visible only to your future self in the other channel, not to the participant on that channel.
 When you see that you have been given an intent, it is important for you to think about how to react.
 The intent is transient. You will only be shown it once.
 

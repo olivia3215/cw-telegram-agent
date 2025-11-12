@@ -30,8 +30,11 @@ JSON response. The task itself describes the memory directly:
 
 The required fields are "kind" ("remember") and "content".
 The system automatically augments the stored memory with:
+- `id` if omitted
 - `created` (either the value you supplied—converted to the agent’s timezone—or the current time)
 - `creation_channel`, `creation_channel_id`, and `creation_channel_username`
+
+When you include `created`, use either a full ISO-8601 date-time (for example, `"2025-05-21T16:45:00"`) or just the date (`"2025-05-21"`).
 
 When you emit a `remember` task, the system will delete any
 existing memory with the same `id` before adding the new one.

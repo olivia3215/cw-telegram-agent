@@ -20,6 +20,10 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                         "type": "string",
                         "enum": ["think"],
                     },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier to delete a previous task.",
+                    },
                     "text": {
                         "type": "string",
                         "description": "Private reasoning or planning text. Never sent to the human user.",
@@ -105,10 +109,6 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                         "minimum": 0,
                         "description": "Delay duration in seconds before following tasks may run.",
                     },
-                    "preserve": {
-                        "type": "boolean",
-                        "description": "If true, keep this wait task across replans.",
-                    },
                 },
                 "required": ["kind", "delay"],
                 "additionalProperties": False,
@@ -124,7 +124,7 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                     },
                     "id": {
                         "type": "string",
-                        "description": "Optional identifier for later reference.",
+                        "description": "Optional identifier for later revision.",
                     },
                 },
                 "required": ["kind"],
@@ -141,7 +141,7 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                     },
                     "id": {
                         "type": "string",
-                        "description": "Optional identifier for later reference.",
+                        "description": "Optional identifier for later revision.",
                     },
                 },
                 "required": ["kind"],
@@ -165,8 +165,17 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                         "description": "Memory text to store. Use an empty string to delete an existing memory.",
                     },
                     "created": {
-                        "type": "string",
-                        "description": "Optional ISO-8601 timestamp for when the memory was created.",
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
                     },
                 },
                 "required": ["kind"],
@@ -210,7 +219,7 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                     },
                     "intent": {
                         "type": "string",
-                        "description": "Optional secret instruction for the agent to send itself in the target channel.",
+                        "description": "Optional secret instruction for the agent to send its future self in the target channel.",
                     },
                 },
                 "required": ["kind", "target_channel_id"],
