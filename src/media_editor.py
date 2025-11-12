@@ -571,7 +571,7 @@ def api_media_list():
                 # Add emoji description for sticker names
                 sticker_name = record.get("sticker_name", "")
                 emoji_description = ""
-                if sticker_name and kind == "sticker":
+                if sticker_name and kind in ("sticker", "animated_sticker"):
                     try:
                         emoji_description = get_emoji_unicode_name(sticker_name)
                     except Exception:

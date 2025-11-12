@@ -56,6 +56,7 @@ def test_api_media_list_detects_missing_tgs_mime(monkeypatch, tmp_path):
         assert entry["mime_type"] == "application/x-tgsticker"
         assert entry["kind"] == "animated_sticker"
         assert payload["grouped_media"]["SamplePack"][0]["mime_type"] == "application/x-tgsticker"
+        assert entry["emoji_description"] == "face with finger covering closed lips"
 
 
 @pytest.fixture
