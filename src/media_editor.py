@@ -51,9 +51,10 @@ from media.media_source import (
     CompositeMediaSource,
     MediaStatus,
     UnsupportedFormatMediaSource,
+    get_default_media_source_chain,
     get_emoji_unicode_name,
 )
-from media.media_sources import get_directory_media_source
+from media.media_sources import get_directory_media_source, iter_directory_media_sources
 from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from register_agents import register_all_agents
 from telegram_download import download_media_bytes
@@ -388,46 +389,32 @@ def api_auth_verify():
 
 
 def scan_media_directories() -> list[dict[str, str]]:
-    """Scan CINDY_AGENT_CONFIG_PATH for all media directories and agents."""
-    directories = []
+    """Return available media directories from the shared registry."""
+    # Ensure the global media chain has been initialised so registry entries exist.
+    get_default_media_source_chain()
 
-    # First, collect global media directories from config directories
-    for config_dir in CONFIG_DIRECTORIES:
-        config_path = Path(config_dir)
-        if not config_path.exists():
-            logger.warning(f"Config directory does not exist: {config_dir}")
+    directories: list[dict[str, str]] = []
+    seen_paths: set[Path] = set()
+
+    for source in iter_directory_media_sources():
+        media_dir = source.directory.resolve()
+        if media_dir in seen_paths:
             continue
 
-        logger.info(f"Scanning config directory: {config_path}")
+        display_name = str(media_dir)
+        if display_name.endswith("/media"):
+            display_name = display_name[: -len("/media")]
 
-        # Global media directory
-        global_media = config_path / "media"
-        if global_media.exists() and global_media.is_dir():
-            directories.append(
-                {
-                    "path": str(global_media),
-                    "name": f"Global Media ({config_path.name})",
-                    "type": "global",
-                }
-            )
-            logger.info(f"Found global media directory: {global_media}")
-
-    # Add AI cache directory from CINDY_AGENT_STATE_DIR
-    state_dir = STATE_DIRECTORY
-    if state_dir:
-        state_media_dir = Path(state_dir) / "media"
         directories.append(
             {
-                "path": str(state_media_dir.resolve()),
-                "name": f"AI Cache ({state_media_dir.name})",
-                "type": "cache",
+                "path": str(media_dir),
+                "name": display_name,
+                "type": "directory",
             }
         )
-        logger.info(f"Added AI cache directory: {state_media_dir}")
-    else:
-        logger.warning("CINDY_AGENT_STATE_DIR not set, skipping AI cache directory")
+        seen_paths.add(media_dir)
 
-    logger.info(f"Total media directories found: {len(directories)}")
+    logger.debug("Media directories available: %s", directories)
     return directories
 
 
