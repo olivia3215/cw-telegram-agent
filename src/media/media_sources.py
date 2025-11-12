@@ -2,7 +2,7 @@
 
 import threading
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 from .media_source import DirectoryMediaSource
 
@@ -34,18 +34,15 @@ def get_directory_media_source(path: str | Path) -> DirectoryMediaSource:
         return source
 
 
-def refresh_directory(path: str | Path) -> None:
-    """Refresh the cached data for the given directory if it is registered."""
-    directory = _normalize_path(path)
+def iter_directory_media_sources() -> Tuple[DirectoryMediaSource, ...]:
+    """
+    Return all registered DirectoryMediaSource instances.
+
+    This allows other components (like the admin console) to reuse the shared
+    in-memory caches without performing additional filesystem scans.
+    """
     with _registry_lock:
-        source = _directory_sources.get(directory)
-        if source:
-            source.refresh_cache()
-
-
-def refresh_directory_media_source(path: str | Path) -> None:
-    """Backward-compatible alias for refresh_directory."""
-    refresh_directory(path)
+        return tuple(_directory_sources.values())
 
 
 def reset_media_source_registry() -> None:

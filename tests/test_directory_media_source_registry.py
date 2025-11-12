@@ -5,7 +5,7 @@ import pytest
 
 from media.media_sources import (
     get_directory_media_source,
-    refresh_directory_media_source,
+    iter_directory_media_sources,
     reset_media_source_registry,
 )
 
@@ -65,11 +65,22 @@ def test_delete_record_removes_files(tmp_path):
     source.put(unique_id, record.copy(), media_bytes=b"payload", file_extension=".bin")
 
     source.delete_record(unique_id)
-    refresh_directory_media_source(tmp_path)
+    source.refresh_cache()
 
     assert not (tmp_path / f"{unique_id}.json").exists()
     assert not (tmp_path / f"{unique_id}.bin").exists()
     assert source.get_cached_record(unique_id) is None
+
+
+def test_iter_directory_media_sources_returns_registered_sources(tmp_path):
+    reset_media_source_registry()
+    first = get_directory_media_source(tmp_path / "first")
+    second = get_directory_media_source(tmp_path / "second")
+
+    sources = iter_directory_media_sources()
+
+    assert first in sources
+    assert second in sources
 
 
 def test_put_does_not_write_json_when_media_write_fails(tmp_path, monkeypatch):
