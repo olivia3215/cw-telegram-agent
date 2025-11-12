@@ -11,7 +11,9 @@ from telethon import events
 from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest
 from telethon.tl.types import (
     InputStickerSetShortName,
+    PeerUser,
     UpdateDialogFilter,
+    UpdateUserTyping,
 )
 
 import handlers  # noqa: F401
@@ -32,8 +34,12 @@ from admin_console.puppet_master import (
 )
 from telegram_util import get_channel_name, get_telegram_client
 from tick import run_tick_loop
+from typing_state import mark_partner_typing
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging level from environment variable, default to INFO
+log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
+logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.json")
@@ -116,6 +122,8 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     dialog = await agent.get_dialog(event.chat_id)
     muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
+
+    mark_partner_typing(agent.agent_id, sender_id)
 
     sender_is_blocked = await agent.is_blocked(sender_id)
     if sender_is_blocked:
@@ -336,6 +344,19 @@ async def run_telegram_loop(agent: Agent, work_queue):
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
             await handle_incoming_message(agent, work_queue, event)
+
+        @client.on(events.Raw(UpdateUserTyping))
+        async def handle_user_typing(update):
+            user_id = getattr(update, "user_id", None)
+            
+            if not isinstance(user_id, int):
+                return
+            if user_id == agent.agent_id:
+                return
+            
+            # Handle DM typing updates. When peer is None or PeerUser, user_id is the partner typing.
+            # For DMs, we track the user_id as the partner who is typing.
+            mark_partner_typing(agent.agent_id, user_id)
 
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):

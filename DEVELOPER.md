@@ -25,6 +25,16 @@ PYTHONPATH=src pytest -vv
 
 We do not allow slow or networked tests. Media, clock, and Gemini calls are mocked or rendered to compact text.
 
+### Debug Logging
+
+To see debug-level log messages (including detailed typing detection logs), set the `CINDY_LOG_LEVEL` environment variable:
+
+```bash
+export CINDY_LOG_LEVEL=DEBUG
+```
+
+Supported log levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (defaults to `INFO`).
+
 ## Script Management System
 
 The project uses a shared library approach for service management scripts:

@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import secrets
 import sys
 import threading
@@ -61,8 +62,11 @@ from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
 from telegram_util import get_telegram_client
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging (only if not already configured)
+if not logging.getLogger().handlers:
+    log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
 

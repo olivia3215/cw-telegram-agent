@@ -21,7 +21,7 @@ def fake_clock(monkeypatch):
 
     # Replace the global singleton instance and module references
     # This is necessary because modules hold their own references to the clock object
-    modules_to_patch = ["clock", "tick", "agent", "task_graph"]
+    modules_to_patch = ["clock", "tick", "agent", "task_graph", "typing_state"]
     for module_name in modules_to_patch:
         try:
             monkeypatch.setattr(f"{module_name}.clock", fake_clock_instance)
