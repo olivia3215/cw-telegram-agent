@@ -363,20 +363,33 @@
             </div>
 
             <div class="main-container">
-                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                    <div id="page-info" style="font-size: 14px; color: #333;"></div>
-                    <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                        <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                        <select id="page-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                            <option value="">Go to page…</option>
+                        </select>
+                        <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                        <select id="sticker-set-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 220px;">
+                            <option value="">Jump to sticker set…</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="media-container">
                     <div class="loading">Select a directory to view media files</div>
                 </div>
 
-                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                    <div id="page-info-bottom" style="font-size: 14px; color: #333;"></div>
-                    <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                        <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                        <select id="page-select-bottom" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                            <option value="">Go to page…</option>
+                        </select>
+                        <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -412,6 +425,11 @@
         let currentPage = 1;
         let itemsPerPage = 10;
         let allMediaFiles = []; // Store all media files for pagination
+        let currentTotalPages = 1;
+        let stickerSetStartIndexMap = {};
+        let stickerSetOrder = [];
+        let stickerSetFirstMediaMap = {};
+        let pendingScrollToMediaId = null;
         const API_BASE = '/admin/api';
         let appInitialized = false;
         let requestCooldownTimer = null;
@@ -474,6 +492,8 @@
 
                 fetchDirectories(directorySelect);
             }
+
+            setupPaginationControls();
         }
 
         function fetchDirectories(selectElement) {
@@ -717,10 +737,25 @@
 
                     // Flatten the grouped media into a single array
                     allMediaFiles = [];
+                    pendingScrollToMediaId = null;
+                    stickerSetStartIndexMap = {};
+                    stickerSetOrder = [];
+                    stickerSetFirstMediaMap = {};
+                    let globalIndex = 0;
+
                     for (const [stickerSet, mediaFiles] of Object.entries(data.grouped_media)) {
+                        if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) {
+                            continue;
+                        }
+
+                        stickerSetStartIndexMap[stickerSet] = globalIndex;
+                        stickerSetOrder.push(stickerSet);
+                        stickerSetFirstMediaMap[stickerSet] = mediaFiles[0]?.unique_id || null;
+
                         mediaFiles.forEach(media => {
                             media.sticker_set_display = stickerSet;
                             allMediaFiles.push(media);
+                            globalIndex += 1;
                         });
                     }
 
@@ -750,11 +785,16 @@
                 container.innerHTML = '<div class="loading">No media files found</div>';
                 document.getElementById('pagination-top').style.display = 'none';
                 document.getElementById('pagination-bottom').style.display = 'none';
+                updatePaginationControls(0);
+                populatePageSelect(0);
+                populateStickerSetSelect();
                 return;
             }
 
             // Calculate pagination
-            const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+            const totalItems = allMediaFiles.length;
+            const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / itemsPerPage);
+            currentTotalPages = totalPages;
             const startIndex = (currentPage - 1) * itemsPerPage;
             const endIndex = Math.min(startIndex + itemsPerPage, allMediaFiles.length);
             const pageItems = allMediaFiles.slice(startIndex, endIndex);
@@ -784,6 +824,8 @@
 
             // Update pagination controls
             updatePaginationControls(totalPages);
+            populatePageSelect(totalPages);
+            populateStickerSetSelect();
 
             // Populate move directory dropdowns
             populateMoveDirectoryDropdowns();
@@ -793,21 +835,28 @@
                 loadTGSAnimations();
             }, 100);
 
-            // Scroll to top
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Scroll to relevant media item or top
+            if (pendingScrollToMediaId) {
+                setTimeout(() => {
+                    scrollToMediaItem(pendingScrollToMediaId);
+                    pendingScrollToMediaId = null;
+                }, 0);
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         }
 
         function updatePaginationControls(totalPages) {
-            const pageInfo = `Page ${currentPage} of ${totalPages} (${allMediaFiles.length} items total)`;
-
-            // Update both top and bottom pagination
-            document.getElementById('page-info').textContent = pageInfo;
-            document.getElementById('page-info-bottom').textContent = pageInfo;
-
+            const hasItems = allMediaFiles.length > 0;
             // Show/hide and enable/disable buttons
-            const showPagination = totalPages > 1;
-            document.getElementById('pagination-top').style.display = showPagination ? 'flex' : 'none';
-            document.getElementById('pagination-bottom').style.display = showPagination ? 'flex' : 'none';
+            const topContainer = document.getElementById('pagination-top');
+            const bottomContainer = document.getElementById('pagination-bottom');
+            if (topContainer) {
+                topContainer.style.display = hasItems ? 'flex' : 'none';
+            }
+            if (bottomContainer) {
+                bottomContainer.style.display = hasItems ? 'flex' : 'none';
+            }
 
             // Disable previous button on first page
             const prevDisabled = currentPage === 1;
@@ -819,7 +868,7 @@
             document.getElementById('prev-btn-bottom').style.cursor = prevDisabled ? 'not-allowed' : 'pointer';
 
             // Disable next button on last page
-            const nextDisabled = currentPage === totalPages;
+            const nextDisabled = currentPage === totalPages || !hasItems || totalPages === 0;
             document.getElementById('next-btn').disabled = nextDisabled;
             document.getElementById('next-btn-bottom').disabled = nextDisabled;
             document.getElementById('next-btn').style.opacity = nextDisabled ? '0.5' : '1';
@@ -828,9 +877,162 @@
             document.getElementById('next-btn-bottom').style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
         }
 
+        function setupPaginationControls() {
+            const pageSelects = [
+                document.getElementById('page-select'),
+                document.getElementById('page-select-bottom'),
+            ];
+
+            pageSelects.forEach((select) => {
+                if (!select) {
+                    return;
+                }
+                select.addEventListener('change', (event) => {
+                    const value = parseInt(event.target.value, 10);
+                    if (Number.isNaN(value)) {
+                        return;
+                    }
+                    jumpToPage(value);
+                });
+            });
+
+            const stickerSetSelect = document.getElementById('sticker-set-select');
+            if (stickerSetSelect) {
+                stickerSetSelect.addEventListener('change', (event) => {
+                    const selectedSet = event.target.value;
+                    if (!selectedSet) {
+                        return;
+                    }
+                    jumpToStickerSet(selectedSet);
+                    event.target.value = '';
+                });
+            }
+        }
+
+        function populatePageSelect(totalPages) {
+            const hasItems = allMediaFiles.length > 0;
+            const pageSelects = [
+                document.getElementById('page-select'),
+                document.getElementById('page-select-bottom'),
+            ];
+
+            pageSelects.forEach((select) => {
+                if (!select) {
+                    return;
+                }
+
+                select.innerHTML = '';
+
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'Go to page…';
+                placeholderOption.disabled = true;
+                placeholderOption.hidden = hasItems;
+                select.appendChild(placeholderOption);
+
+                if (hasItems) {
+                    for (let page = 1; page <= totalPages; page += 1) {
+                        const option = document.createElement('option');
+                        option.value = String(page);
+                        option.textContent = `Page ${page}`;
+                        select.appendChild(option);
+                    }
+
+                    select.value = String(currentPage);
+                    select.disabled = totalPages <= 1;
+                } else {
+                    select.value = '';
+                    select.disabled = true;
+                }
+            });
+        }
+
+        function populateStickerSetSelect() {
+            const stickerSetSelect = document.getElementById('sticker-set-select');
+            if (!stickerSetSelect) {
+                return;
+            }
+
+            const previousValue = stickerSetSelect.value;
+            stickerSetSelect.innerHTML = '';
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Jump to sticker set…';
+            stickerSetSelect.appendChild(placeholder);
+
+            if (!stickerSetOrder.length) {
+                stickerSetSelect.value = '';
+                stickerSetSelect.disabled = true;
+                return;
+            }
+
+            stickerSetOrder.forEach((setName) => {
+                const option = document.createElement('option');
+                option.value = setName;
+                option.textContent = setName;
+                stickerSetSelect.appendChild(option);
+            });
+
+            if (previousValue && stickerSetStartIndexMap[previousValue] !== undefined) {
+                stickerSetSelect.value = previousValue;
+            } else {
+                stickerSetSelect.value = '';
+            }
+            stickerSetSelect.disabled = false;
+        }
+
+        function jumpToPage(pageNumber) {
+            const page = Number(pageNumber);
+            const totalPages = currentTotalPages || Math.ceil(allMediaFiles.length / itemsPerPage) || 1;
+
+            if (Number.isNaN(page) || page < 1 || page > totalPages || page === currentPage) {
+                return;
+            }
+
+            pendingScrollToMediaId = null;
+            currentPage = page;
+            displayCurrentPage();
+        }
+
+        function jumpToStickerSet(stickerSetName) {
+            const startIndex = stickerSetStartIndexMap[stickerSetName];
+            if (typeof startIndex !== 'number') {
+                return;
+            }
+
+            const targetMediaId = stickerSetFirstMediaMap[stickerSetName];
+            pendingScrollToMediaId = targetMediaId || null;
+
+            const totalPages = currentTotalPages || Math.ceil(allMediaFiles.length / itemsPerPage) || 1;
+            const desiredPage = Math.floor(startIndex / itemsPerPage) + 1;
+            const targetPage = Math.min(Math.max(1, desiredPage), totalPages);
+
+            if (targetPage !== currentPage) {
+                currentPage = targetPage;
+                displayCurrentPage();
+            } else if (pendingScrollToMediaId) {
+                setTimeout(() => {
+                    scrollToMediaItem(pendingScrollToMediaId);
+                    pendingScrollToMediaId = null;
+                }, 0);
+            }
+        }
+
+        function scrollToMediaItem(mediaId) {
+            if (!mediaId) {
+                return;
+            }
+            const target = document.getElementById(`media-item-${mediaId}`);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
         function previousPage() {
             if (currentPage > 1) {
                 currentPage--;
+                pendingScrollToMediaId = null;
                 displayCurrentPage();
             }
         }
@@ -839,6 +1041,7 @@
             const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
             if (currentPage < totalPages) {
                 currentPage++;
+                pendingScrollToMediaId = null;
                 displayCurrentPage();
             }
         }
@@ -851,6 +1054,7 @@
             const fallbackTypeFromFile = (fileName) => {
                 if (!fileName) return '';
                 const lower = fileName.toLowerCase();
+                if (lower.endsWith('.tgs')) return 'application/x-tgsticker';
                 if (lower.endsWith('.webm')) return 'video/webm';
                 if (lower.endsWith('.mp4')) return 'video/mp4';
                 if (lower.endsWith('.gif')) return 'image/gif';
@@ -862,7 +1066,15 @@
                 if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
                 return '';
             };
-            const effectiveMime = mimeType || fallbackTypeFromFile(media.media_file);
+            const lowerMediaFile = (media.media_file || '').toLowerCase();
+            let effectiveMime = mimeType || fallbackTypeFromFile(media.media_file);
+            if (!effectiveMime && lowerMediaFile.endsWith('.tgs')) {
+                effectiveMime = 'application/x-tgsticker';
+            }
+            if (effectiveMime === 'application/gzip' && lowerMediaFile.endsWith('.tgs')) {
+                effectiveMime = 'application/x-tgsticker';
+            }
+            effectiveMime = (effectiveMime || '').toLowerCase();
 
             if (effectiveMime.includes('tgs') || media.kind === 'animated_sticker') {
                     // TGS files - Lottie animations, convert and display
@@ -905,7 +1117,7 @@
                 : stickerName;
 
             return `
-                <div class="media-item" style="border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box;">
+                <div class="media-item" id="media-item-${media.unique_id}" style="border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box;">
                     <div class="media-preview">
                         ${mediaElement}
                     </div>

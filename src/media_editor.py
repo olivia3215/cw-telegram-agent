@@ -524,9 +524,46 @@ def api_media_list():
                 media_file_path = find_media_file(media_dir, unique_id)
                 media_file = str(media_file_path) if media_file_path else None
 
+                mime_type = record.get("mime_type")
+
+                # Attempt to detect MIME type when missing (common for legacy stickers)
+                if (not mime_type) and media_file_path and media_file_path.exists():
+                    try:
+                        with open(media_file_path, "rb") as media_fp:
+                            file_head = media_fp.read(1024)
+                        detected_mime_type = detect_mime_type_from_bytes(file_head)
+                        if (
+                            detected_mime_type == "application/gzip"
+                            and media_file_path.suffix.lower() == ".tgs"
+                        ):
+                            mime_type = "application/x-tgsticker"
+                        else:
+                            mime_type = detected_mime_type
+                        logger.debug(
+                            "Detected MIME type %s for %s",
+                            mime_type,
+                            media_file_path.name,
+                        )
+                    except Exception as mime_error:  # pragma: no cover - defensive
+                        logger.warning(
+                            "Failed to detect MIME type for %s: %s",
+                            media_file_path,
+                            mime_error,
+                        )
+                        mime_type = record.get("mime_type")
+                elif (
+                    mime_type == "application/gzip"
+                    and media_file_path
+                    and media_file_path.suffix.lower() == ".tgs"
+                ):
+                    mime_type = "application/x-tgsticker"
+
                 # Group by sticker set for organization
                 kind = record.get("kind", "unknown")
-                if kind == "sticker":
+                if is_tgs_mime_type(mime_type) and kind == "sticker":
+                    kind = "animated_sticker"
+
+                if kind == "sticker" or kind == "animated_sticker":
                     sticker_set = record.get("sticker_set_name") or "Other Media"
                 else:
                     sticker_set = "Other Media"
@@ -534,7 +571,7 @@ def api_media_list():
                 # Add emoji description for sticker names
                 sticker_name = record.get("sticker_name", "")
                 emoji_description = ""
-                if sticker_name and kind == "sticker":
+                if sticker_name and kind in ("sticker", "animated_sticker"):
                     try:
                         emoji_description = get_emoji_unicode_name(sticker_name)
                     except Exception:
@@ -552,7 +589,7 @@ def api_media_list():
                         "emoji_description": emoji_description,
                         "status": record.get("status", "unknown"),
                         "failure_reason": record.get("failure_reason"),
-                        "mime_type": record.get("mime_type"),
+                        "mime_type": mime_type,
                     }
                 )
 
