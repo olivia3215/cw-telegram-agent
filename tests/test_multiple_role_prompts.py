@@ -67,8 +67,8 @@ def test_agent_multiple_role_prompts():
             assert "# Agent Instructions" in system_prompt
             assert "Follow these instructions." in system_prompt  # Agent instructions
 
-            # Verify the order: specific instructions, agent instructions,
-            # LLM prompt, then role prompts (in order)
+            # Verify the order: specific instructions, LLM prompt,
+            # agent instructions, then role prompts (in order)
             lines = system_prompt.split("\n")
             specific_index = next(
                 i for i, line in enumerate(lines) if "Test specific instructions." in line
@@ -94,8 +94,8 @@ def test_agent_multiple_role_prompts():
 
             assert (
                 specific_index
-                < instructions_index
                 < llm_index
+                < instructions_index
                 < role1_index
                 < role2_index
             )
