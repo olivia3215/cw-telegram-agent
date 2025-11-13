@@ -67,6 +67,25 @@ you do not need to supply them.
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - Link specific messages with `https://t.me/username/msgid` when appropriate.
 
+### `react`
+- Fields:
+  - `emoji`: The emoji reaction to send (for example `👍`, `😂`, `❤️`, `🔥`, `🎉`).
+  - `message_id`: Telegram message ID to react to (integer). This is required.
+  - `id` (optional): Identifier if you plan to revise or cancel this reaction later.
+- Purpose: Add an emoji reaction to a specific message without sending new text.
+- Suggested common emoji: `👍`, `😂`, `❤️`, `🔥`, `🎉`, `😮`, `🥺`.
+
+```json
+[
+  {
+    "kind": "react",
+    "id": "react-1",
+    "emoji": "🔥",
+    "message_id": 123456
+  }
+]
+```
+
 ### `sticker`
 - Fields:
   - `sticker_set`: Sticker set short name (e.g., `"WendyDancer"`).
