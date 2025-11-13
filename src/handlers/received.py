@@ -649,7 +649,7 @@ async def _specific_instructions(
         instructions += (
            "## Cross-channel Trigger (`xsend`)\n\n"
            "Begin your response with a `think` task, and react to the following intent,\n"
-           "which was sent by you from another channelas an instruction *to yourself*.\n\n"
+           "which was sent by you from another channel as an instruction *to yourself*.\n\n"
            "```\n"
            f"{xsend_intent}\n"
            "```\n"
