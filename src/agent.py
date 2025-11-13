@@ -165,14 +165,14 @@ class Agent:
         if specific_instructions:
             prompt_parts.append(specific_instructions)
 
+        # Add LLM-specific prompt
+        llm_prompt = load_system_prompt(self.llm.prompt_name)
+        prompt_parts.append(llm_prompt)
+
         # Add agent instructions
         instructions = (self.instructions or "").strip()
         if instructions:
             prompt_parts.append(f"# Agent Instructions\n\n{instructions}")
-
-        # Add LLM-specific prompt
-        llm_prompt = load_system_prompt(self.llm.prompt_name)
-        prompt_parts.append(llm_prompt)
 
         # Add all role prompts in order
         for role_prompt_name in self.role_prompt_names:
