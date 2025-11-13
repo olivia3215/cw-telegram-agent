@@ -143,7 +143,8 @@ class Agent:
         Get the base system prompt for this agent (core prompt components only).
 
         This includes:
-        1. LLM-specific prompt (e.g., Gemini.md) — with {SPECIFIC_INSTRUCTIONS} substituted
+        1. Specific instructions for the current turn
+        1. LLM-specific prompt (e.g., Gemini.md)
         2. All role prompts (in order)
         3. Agent instructions
 
@@ -153,17 +154,19 @@ class Agent:
         Args:
             agent_name: The agent's display name used for template substitution.
             channel_name: The human/user display name used for template substitution.
-            specific_instructions: Paragraph injected into the LLM prompt where
-                {SPECIFIC_INSTRUCTIONS} appears.
+            specific_instructions: Paragraph injected into the LLM prompt before .
 
         Returns:
             Base system prompt string
         """
         prompt_parts = []
 
+        # Add specific instructions for the current turn
+        if specific_instructions:
+            prompt_parts.append(specific_instructions)
+
         # Add LLM-specific prompt
         llm_prompt = load_system_prompt(self.llm.prompt_name)
-        llm_prompt = llm_prompt.replace("{SPECIFIC_INSTRUCTIONS}", specific_instructions)
         prompt_parts.append(llm_prompt)
 
         # Add all role prompts in order

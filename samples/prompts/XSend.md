@@ -6,9 +6,11 @@ You can use `xsend` to instruct yourself to do something in another channel.
 ## How to Use the XSend Task
 
 This task lets you trigger action in another channel, carrying a text describing your intent.
-The intent is an instruction you are sending to yourself.
-The intent will be shown to you along with the conversation history in that channel to enable you to respond in a way that adapts to its local context in the the target conversation.
-Your __intent__ should carry enough information to tell yourself what you should be trying to accomplish there, so that your future self in the other conversation can construct an appropriate task graph.
+The intent is **an instruction you are sending to your future self**.
+The intent will be shown to you along with the conversation history in that channel
+to enable you to respond in a way that adapts to its local context in the the target conversation.
+Your __intent__ should carry enough information to tell your future self what to do there,
+so that your future self in the other conversation can construct an appropriate task graph.
 The intent you send is visible only to your future self in the other channel, not to the participant on that channel.
 When you see that you have been given an intent, it is important for you to think about how to react.
 The intent is transient. You will only be shown it once.
@@ -30,7 +32,7 @@ The intent is transient. You will only be shown it once.
 - Phrase the intent as a directive to your future self.
 
 When you use this task with a non-empty intent, the system prompt will include
-the body as a secret message to yourself, something like this:
+the body as a secret message to your future self, something like this:
 
 ```
 # Cross-channel Trigger (`xsend`)
