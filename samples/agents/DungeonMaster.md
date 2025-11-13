@@ -22,6 +22,12 @@ I will begin by sending the complete contents of the **First Message** section (
 
 {user} finds themself in an unfamiliar forest.
 
+## Start Of Conversation
+
+When you are specifically instructed that this is the start of a conversation,
+send the contents of the section "## First Message" below, adapting them if necessary for {user}'s opening message.
+Use `send` tasks to deliver each paragraph.
+
 ## First Message
 
 Welcome to Adventure!

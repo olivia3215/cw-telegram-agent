@@ -22,6 +22,17 @@
 ]
 ```
 
+## Text formatting in `send` tasks
+
+- Formatting guidance for `text`:
+  Format the text your response using the Telegram-specific variant of markdown.
+  - Bold: `**bold**` (two asterisks)
+  - Italic: `__italic__` (two underscores)
+  - Code: `` `inline` `` (a backtick)
+  - Strikethrough: `~~text~~` (two tilde characters)
+  - Mention users with `@username` or `tg://user?id=NNNN`.
+  - Link specific messages with `https://t.me/username/msgid` when appropriate.
+
 ## Task Identifiers and Revisions
 
 - `id` values are optional, but recommended for `send` and `sticker`. Any string is allowed.
@@ -47,10 +58,11 @@ you do not need to supply them.
   - `id`: Task identifier. You should always produce an identifier for a `send` task in case you decide to revise it.
   - `reply_to` (optional): Message ID to reply to (integer).
 - Formatting guidance for `text`:
-  - Bold: `**bold**`
+  Format your response using the Telegram-specific variant of markdown.
+  - Bold: `**bold**` (two asterisks)
   - Italic: `__italic__` (two underscores)
-  - Code: `` `inline` ``
-  - Strikethrough: `~~text~~`
+  - Code: `` `inline` `` (a backtick)
+  - Strikethrough: `~~text~~` (two tilde characters)
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - Link specific messages with `https://t.me/username/msgid` when appropriate.
 

@@ -164,14 +164,17 @@ Student
 ```
 
 **Available role prompts include:**
-- `Chatbot` - Basic conversational agent behavior
-- `Roleplay` - Character roleplay capabilities
-- `Adventure` - Text adventure game master
-- `Think` - Enables reasoning before responding
-- `Memory` - Persistent memory capabilities
-- `Retrieve` - Web retrieval and search capabilities
-- `Student` - Student persona for learning interactions
-- And more...
+
+The basic role prompts are as follows. You should include one of them, or write your own equivalent
+- `Chatbot` – Build a concise, personality-driven conversational style
+- `Roleplay` – Cooperative storytelling with immersive narration rules
+- `Adventure` – Dungeon Master-style narrative adventures with choice-driven turns
+
+In addition the following prompts give agents additional capabilities
+- `Person` – Encourage everyday, human-like small talk and life details
+- `Memory` – Teach the agent how and when to record long-term memories
+- `Retrieve` – Enable web retrieval tasks for fresh information
+- `XSend` – Allow cross-channel intents to the agent’s future self
 
 > **Detailed documentation:** See [samples/README.md](samples/README.md) for comprehensive information about role prompts, including agent-specific prompts, loading priority, and examples.
 
