@@ -51,6 +51,27 @@ This loads and combines prompts from:
 
 The prompts are combined in the order listed, with each prompt separated by double newlines.
 
+### Prompt Categories
+
+You can mix and match any prompts that exist in your configuration directories. The prompts shipped in this repository fall into two broad groups:
+
+#### Core personalities
+
+Include at least one of these or supply your own equivalent persona prompt to anchor the agent’s voice and tone:
+
+- `Chatbot` – concise, personality-driven conversation style
+- `Roleplay` – cooperative storytelling with immersive narration rules
+- `Adventure` – Dungeon Master narration with explicit choice points
+
+#### Optional capabilities
+
+Layer these on top of a core prompt when you want to unlock extra behavior:
+
+- `Person` – encourages everyday, human-like small talk and life details
+- `Memory` – teaches the agent how and when to record long-term memories
+- `Retrieve` – allows web retrieval tasks for fresh, external information
+- `XSend` – enables cross-channel intents to the agent’s future self
+
 ### Prompt Loading
 
 All role prompts are loaded from the global `prompts/` directory within each configuration directory. The system searches for prompts in this order:

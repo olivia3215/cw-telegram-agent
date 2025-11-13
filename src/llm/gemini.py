@@ -102,13 +102,17 @@ class GeminiLLM(LLM):
         # Configure safety settings to disable content filtering
         # Note: Only disable HARM_CATEGORY_SEXUALLY_EXPLICIT as other categories may cause issues
         self.safety_settings = [
+            # {
+            #     "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            #     "threshold": HarmBlockThreshold.BLOCK_NONE,
+            # },
             {
                 "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
             {
                 "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-                "threshold": HarmBlockThreshold.BLOCK_NONE,
+                "threshold": HarmBlockThreshold.OFF,
             },
             # Other categories commented out as they may cause problems:
             # - HARM_CATEGORY_CIVIC_INTEGRITY
