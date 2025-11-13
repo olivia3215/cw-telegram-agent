@@ -636,48 +636,57 @@ async def _specific_instructions(
             ):
                 is_conversation_start = False
                 break
-    
+
     instructions = (
-        "Your response should take into account the following context(s):\n"
+        "\n# Instruction\n\n"
+        "You are acting as a user participating in chats on Telegram.\n"
+        "Your response should take into account the following:\n\n"
     )
+    instructions_count = 0
+    any_instruction = False
 
     if xsend_intent:
         instructions += (
-            "\n## Cross-channel Trigger (`xsend`)\n\n"
-            "Begin your response with a `think` task, and react to the following intent.\n"
-            "Keep in mind that it was sent by you as a message *to yourself*.\n\n"
-            "```\n"
-            f"{xsend_intent}\n"
-            "```\n"
+           "## Cross-channel Trigger (`xsend`)\n\n"
+           "Begin your response with a `think` task, and react to the following intent,\n"
+           "which was sent by you from another channelas an instruction *to yourself*.\n\n"
+           "```\n"
+           f"{xsend_intent}\n"
+           "```\n"
         )
-    
+        any_instruction = True
+
     if global_intent:
         instructions += (
-            "\n## Global Intent/Planning (`intend`)\n\n"
+            "## Global Intent/Planning (`intend`)\n\n"
             "Begin your response with a `think` task, and react to the following intent.\n\n"
             "```\n"
             f"{global_intent}\n"
             "```\n"
         )
-    
-    if is_conversation_start and not xsend_intent:
+        any_instruction = True
+
+    if is_conversation_start and not any_instruction:
         instructions += (
-            "\n## Conversation Start\n\n"
-            f"This is the beginning of a conversation with {channel_name}.\n"
-            "React with your first message if appropriate.\n"
+            "## New Conversation\n\n"
+            "This is the start of a new conversation.\n"
+            "Follow the instructions in the section `## Start Of Conversation`.\n"
         )
+        any_instruction = True
 
     # Add target message instruction if provided
     if target_msg is not None and getattr(target_msg, "id", ""):
         instructions += (
-            "\n## Target Message\n\n"
+            "## Target Message\n\n"
             "You are looking at this conversation because the messsage "
             f"with message_id {target_msg.id} was newly received.\n"
             "React to it if appropriate.\n"
         )
-    elif not xsend_intent:
+        any_instruction = True
+
+    if not any_instruction:
         instructions += (
-            "\n## Conversation Continuation\n\n"
+            "## Conversation Continuation\n\n"
             "You are looking at this conversation and might need to continue it.\n"
             "React to it if appropriate.\n"
         )
@@ -1008,19 +1017,11 @@ async def _build_complete_system_prompt(
     else:
         logger.info(f"[{agent_name}] No memory content found for channel {channel_id}")
 
-    # Add current time and chat type
+    # Add current time
     now = agent.get_current_time()
     system_prompt += (
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
-        f"\n\n# Chat Type\n\nThis is a {'group' if is_group else 'direct (one-on-one)'} chat.\n"
     )
-
-    channel_username = format_username(dialog) if dialog is not None else None
-    if channel_username:
-        system_prompt += (
-            f"\n\n# Conversation Username\n\n"
-            f"The conversation username is {channel_username}.\n"
-        )
 
     channel_details = await _build_channel_details_section(
         agent=agent,

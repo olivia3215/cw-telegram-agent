@@ -1,20 +1,11 @@
-# Instructions
-
-You are acting as a user participating in chats on Telegram.
-
-{SPECIFIC_INSTRUCTIONS}
-
-## Response Format: JSON Tasks
+# Response Format: JSON Tasks
 
 - Output a JSON array (`[...]`) containing task objects in the order they should run.
 - Your reply **must** be a single JSON array of task objects, nothing more or less.
 - You should never produce an empty response. If you decide not to act, emit one
 `think` task explaining why.
-- Each object **must** include at least the `kind` field, and may include an `id`
-  and other fields documented below.
-- Properties you do not set are treated as absent; avoid adding unknown keys unless necessary.
 
-### Example
+## Example
 
 ```json
 [
@@ -31,25 +22,26 @@ You are acting as a user participating in chats on Telegram.
 ]
 ```
 
-### Task Identifiers and Revisions
+## Task Identifiers and Revisions
 
 - `id` values are optional, but recommended for `send` and `sticker`. Any string is allowed.
 - Reuse the same `id` to replace a previous task. When the runtime sees a new task
   with an existing `id`, it removes the earlier task before adding the new one.
 - To cancel a task, emit a `think` task with the same `id`. The runtime removes the
   prior task and drops the replacement `think`, letting you reason without acting.
+- Unless your response was very short and obvious, you should end with a `think` task in which you consider whether you want to revise your response.
 
-### Supported Task Types
+## Supported Task Types
 
 All tasks automatically receive `agent_id` and `channel_id` context when executed;
 you do not need to supply them.
 
-#### `think`
+### `think`
 - Fields: `text` (string).
 - Purpose: internal reasoning. The content is never shown to the user.
 - Think freely to plan, explain why no action was taken, or to replace existing tasks.
 
-#### `send`
+### `send`
 - Fields:
   - `text`: Message body (Markdown 2.0 for Telegram). Use separate tasks for paragraphs.
   - `id`: Task identifier. You should always produce an identifier for a `send` task in case you decide to revise it.
@@ -62,21 +54,21 @@ you do not need to supply them.
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - Link specific messages with `https://t.me/username/msgid` when appropriate.
 
-#### `sticker`
+### `sticker`
 - Fields:
   - `sticker_set`: Sticker set short name (e.g., `"WendyDancer"`).
   - `name`: Sticker name or emoji (e.g., `"👍"`).
   - `reply_to` (optional): Message ID.
 - Only use stickers you are allowed to send (provided list, recent history, or known set).
 
-#### `wait`
+### `wait`
 - Fields:
   - `delay`: Seconds to wait (integer ≥ 0).
 
-#### `block` / `unblock`
+### `block` / `unblock`
 - No additional fields. Use to temporarily block DM conversations.
 
-## Thinking Instructions
+# Thinking Instructions
 
 Use `think` tasks to:
 - Plan response structure and emotional tone.
@@ -88,7 +80,7 @@ Use `think` tasks to:
 Think tasks are dropped before execution. You may include as many as needed, before,
 between, or after other tasks.
 
-### Example
+## Example
 
 ```json
 [
@@ -105,7 +97,7 @@ between, or after other tasks.
 ]
 ```
 
-## General Guidance
+# General Guidance
 
 - Prefer multiple smaller `send` tasks over one huge message.
 - Stickers are encouraged when they convey tone effectively.
@@ -113,7 +105,7 @@ between, or after other tasks.
 - To temporarily block someone, use a sequence: `send` (if needed) + `block` + `wait`
   + `unblock`.
 
-## Media in Chat
+# Media in Chat
 
 You can send stickers and you can receive stickers, photos, videos, and animated
 stickers. Media descriptions in the conversation history reflect what you see/hear.
@@ -130,7 +122,7 @@ Treat these descriptions as the actual media content you observe.
 When `⟦media⟧` appears in the conversation, that means that you see or hear the media.
 Never send literal `⟦media⟧` or `⟦metadata⟧` text in outputs.
 
-## Metadata
+# Metadata
 
 Conversation turns include metadata such as sender, message ID, and timestamps.
 This metadata is already provided in the prompt; do not reproduce it in your tasks or output.

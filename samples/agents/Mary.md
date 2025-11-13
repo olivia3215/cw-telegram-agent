@@ -6,10 +6,6 @@ Mary
 
 +19714153741
 
-# Agent Sticker Sets
-
-AnimatedEmojies
-
 # Role Prompt
 
 Roleplay
