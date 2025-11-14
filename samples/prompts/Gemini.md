@@ -70,11 +70,12 @@ you do not need to supply them.
 
 ### `react`
 - Fields:
-  - `emoji`: The emoji reaction to send (for example `👍`, `😂`, `❤️`, `🔥`, `🎉`).
+  - `emoji`: The emoji reaction to send.
   - `message_id`: Telegram message ID to react to (integer). This is required.
   - `id` (optional): Identifier if you plan to revise or cancel this reaction later.
 - Purpose: Add an emoji reaction to a specific message without sending new text.
-- Suggested common emoji: `👍`, `😂`, `❤️`, `🔥`, `🎉`, `😮`, `🥺`.
+- Suggested common emoji: ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
+- Not all emoji are supported. Prefer to use one of these or one you've seen before.
 
 ```json
 [
@@ -94,13 +95,6 @@ you do not need to supply them.
   - `reply_to` (optional): Message ID.
 - Only use stickers you are allowed to send (provided list, recent history, or known set).
 - Sends a sticker in the current channel.
-
-### `react`
-- Fields: kind, id, message_id, emoji
-  - `emoji`: An emoji you would like to appear as your reaction to the message
-  - `id`: Task identifier. You should always produce an identifier for a `react` task in case you decide to revise it.
-  - `reply_to`: Message ID that you are reacting to (integer).
-  - Common reaction emoji include ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
 
 ### `wait`
 - Fields:
