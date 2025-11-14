@@ -14,6 +14,7 @@ from telethon.tl.functions.contacts import GetBlockedRequest
 
 from clock import clock
 from config import GOOGLE_GEMINI_API_KEY, STATE_DIRECTORY
+from memory_storage import MemoryStorageError, load_property_entries
 from id_utils import normalize_peer_id
 from llm import GeminiLLM
 from prompt_loader import load_system_prompt
@@ -165,6 +166,10 @@ class Agent:
         if specific_instructions:
             prompt_parts.append(specific_instructions)
 
+        intention_content = self._load_intention_content()
+        if intention_content:
+            prompt_parts.append("# Intentions\n\n```json\n" + intention_content + "\n```")
+
         # Add LLM-specific prompt
         llm_prompt = load_system_prompt(self.llm.prompt_name)
         prompt_parts.append(llm_prompt)
@@ -190,6 +195,29 @@ class Agent:
         final_prompt = final_prompt.replace("{user}", channel_name)
         return final_prompt
 
+    def _load_intention_content(self) -> str:
+        """
+        Load agent-specific global intentions content.
+
+        Returns:
+            JSON-formatted string of intention entries, or empty string when absent.
+        """
+        try:
+            state_dir = STATE_DIRECTORY
+            intention_file = Path(state_dir) / self.name / "memory.json"
+            intentions, _ = load_property_entries(
+                intention_file, "intention", default_id_prefix="intent"
+            )
+            if intentions:
+                return json.dumps(intentions, indent=2, ensure_ascii=False)
+        except MemoryStorageError as exc:
+            logger.warning(f"[{self.name}] Failed to load intention content: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.exception(
+                f"[{self.name}] Unexpected error while loading intention content: {exc}"
+            )
+        return ""
+
     def _load_memory_content(self, channel_id: int) -> str:
         """
         Load agent-specific global memory content.
@@ -212,6 +240,10 @@ class Agent:
             config_memory = self._load_config_memory(channel_id)
             if config_memory:
                 memory_parts.append("# Curated Memories\n\n```json\n" + config_memory + "\n```")
+
+            channel_plan = self._load_plan_content(channel_id)
+            if channel_plan:
+                memory_parts.append("# Channel Plan\n\n```json\n" + channel_plan + "\n```")
 
             # Load state memory (agent-specific global episodic memories)
             state_memory = self._load_state_memory()
@@ -282,32 +314,38 @@ class Agent:
             state_dir = STATE_DIRECTORY
             memory_file = Path(state_dir) / self.name / "memory.json"
             if memory_file.exists():
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        memories = loaded.get("memory", [])
-                    elif isinstance(loaded, list):
-                        memories = loaded
-                    else:
-                        logger.warning(
-                            f"[{self.name}] State memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
-                        )
-                        return ""
-                    if not isinstance(memories, list):
-                        logger.warning(
-                            f"[{self.name}] State memory file {memory_file} contains invalid 'memory' structure"
-                        )
-                        return ""
+                memories, _ = load_property_entries(
+                    memory_file, "memory", default_id_prefix="memory"
+                )
+                if memories:
                     return json.dumps(memories, indent=2, ensure_ascii=False)
-        except json.JSONDecodeError as e:
+        except MemoryStorageError as exc:
             logger.warning(
-                f"[{self.name}] Corrupted JSON in state memory file {memory_file}: {e}"
+                f"[{self.name}] Corrupted state memory file {memory_file}: {exc}"
             )
         except Exception as e:
             logger.warning(
                 f"[{self.name}] Failed to load state memory from {memory_file}: {e}"
             )
 
+        return ""
+
+    def _load_plan_content(self, channel_id: int) -> str:
+        """Load channel-specific plan content from state directory."""
+        try:
+            state_dir = STATE_DIRECTORY
+            plan_file = Path(state_dir) / self.name / "memory" / f"{channel_id}.json"
+            plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
+            if plans:
+                return json.dumps(plans, indent=2, ensure_ascii=False)
+        except MemoryStorageError as exc:
+            logger.warning(
+                f"[{self.name}] Corrupted plan file {plan_file}: {exc}"
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning(
+                f"[{self.name}] Failed to load plan content from {plan_file}: {exc}"
+            )
         return ""
 
     def clear_entity_cache(self):
