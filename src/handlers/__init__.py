@@ -7,6 +7,8 @@
 from . import (
     block,  # noqa: F401
     clear_conversation,  # noqa: F401
+    intend,  # noqa: F401
+    plan,  # noqa: F401
     remember,  # noqa: F401
     received,  # noqa: F401
     react,  # noqa: F401

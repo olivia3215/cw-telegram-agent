@@ -356,8 +356,8 @@ async def parse_llm_reply_from_json(
     Parse LLM JSON response into a list of TaskNode instances.
 
     The response must be a JSON array where each element represents a task object.
-    Recognized task kinds: send, sticker, wait, shutdown, remember, think, retrieve,
-    xsend, block, unblock, clear-conversation.
+    Recognized task kinds: send, sticker, wait, think, retrieve, block, unblock.
+    There may be other task kinds that are documented later in the prompt.
     """
 
     if not json_text.strip():
@@ -1061,7 +1061,7 @@ async def _process_message_history(
             continue
 
         # Filter out telepathic messages from agent's view
-        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, or ⟦retrieve⟧)
+        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, or ⟦retrieve⟧)
         message_text = ""
         for part in message_parts:
             if part.get("kind") == "text":
@@ -1069,7 +1069,7 @@ async def _process_message_history(
             elif part.get("kind") == "media":
                 message_text += part.get("rendered_text", "")
         
-        if not is_telepath(agent.agent_id) and message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦retrieve⟧")):
+        if not is_telepath(agent.agent_id) and message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧")):
             logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text[:50]}...")
             continue
 

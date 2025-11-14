@@ -217,6 +217,74 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["intend"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional intention identifier for updating or deleting an existing intention entry.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Intention text to store. Use an empty string to delete an existing intention.",
+                    },
+                    "created": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                },
+                "required": ["kind", "content"],
+                "additionalProperties": False,
+                "title": "Intend Task",
+                "description": "Create, update, or delete a global intention entry.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["plan"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional plan identifier for updating or deleting an existing plan entry.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Channel-specific plan text to store. Use an empty string to delete an existing plan.",
+                    },
+                    "created": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                },
+                "required": ["kind", "content"],
+                "additionalProperties": False,
+                "title": "Plan Task",
+                "description": "Create, update, or delete a channel-specific plan entry.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["retrieve"],
                     },
                     "urls": {

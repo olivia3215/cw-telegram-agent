@@ -278,6 +278,92 @@ class TestTelepathicMessageHandling:
                 mock_process.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_parse_llm_reply_intend_telepathic(self):
+        """Intent tasks should be processed immediately and sent telepathically when appropriate."""
+        from handlers.received import parse_llm_reply
+
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123
+
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "intend",
+                    "content": "Schedule a check-in with Wendy tomorrow morning.",
+                }
+            ],
+            indent=2,
+        )
+
+        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+            "handlers.telepathic.is_telepath"
+        ) as mock_telepath:
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
+
+            with patch(
+                "handlers.intend._process_intend_task", new_callable=AsyncMock
+            ) as mock_process:
+                tasks = await parse_llm_reply(
+                    json_text, agent_id=123, channel_id=456, agent=mock_agent
+                )
+
+                assert tasks == []
+                mock_agent.client.send_message.assert_called_once()
+                send_args, send_kwargs = mock_agent.client.send_message.call_args
+                assert send_args[0] == 456
+                assert send_kwargs["parse_mode"] == "Markdown"
+                prefix, _, body = send_args[1].partition("\n")
+                assert prefix == "⟦intend⟧"
+                payload = json.loads(body)
+                assert payload["content"] == "Schedule a check-in with Wendy tomorrow morning."
+                mock_process.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_parse_llm_reply_plan_telepathic(self):
+        """Plan tasks should be processed immediately and sent telepathically when appropriate."""
+        from handlers.received import parse_llm_reply
+
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 123
+
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "plan",
+                    "content": "Prepare a three-step follow-up for Neal about the funding update.",
+                }
+            ],
+            indent=2,
+        )
+
+        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+            "handlers.telepathic.is_telepath"
+        ) as mock_telepath:
+            mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
+
+            with patch(
+                "handlers.plan._process_plan_task", new_callable=AsyncMock
+            ) as mock_process:
+                tasks = await parse_llm_reply(
+                    json_text, agent_id=123, channel_id=456, agent=mock_agent
+                )
+
+                assert tasks == []
+                mock_agent.client.send_message.assert_called_once()
+                send_args, send_kwargs = mock_agent.client.send_message.call_args
+                assert send_args[0] == 456
+                assert send_kwargs["parse_mode"] == "Markdown"
+                prefix, _, body = send_args[1].partition("\n")
+                assert prefix == "⟦plan⟧"
+                payload = json.loads(body)
+                assert payload["content"] == "Prepare a three-step follow-up for Neal about the funding update."
+                mock_process.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_parse_llm_reply_retrieve_telepathic(self):
         """Test that retrieve tasks send telepathic messages when channel is telepathic and agent is not."""
         from handlers.received import parse_llm_reply
