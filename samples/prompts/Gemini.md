@@ -18,7 +18,7 @@
   {
     "kind": "send",
     "id": "send-1",
-    "text": "Thanks for the invite! I'm __excited__ to join you this evening."
+    "text": "Thanks for the invite! I'm __so excited__ to join you this evening."
   }
 ]
 ```
@@ -66,6 +66,7 @@ you do not need to supply them.
   - Strikethrough: `~~text~~` (two tilde characters)
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - Link specific messages with `https://t.me/username/msgid` when appropriate.
+- Sends your text as a message in the current channel.
 
 ### `react`
 - Fields:
@@ -92,13 +93,21 @@ you do not need to supply them.
   - `name`: Sticker name or emoji (e.g., `"👍"`).
   - `reply_to` (optional): Message ID.
 - Only use stickers you are allowed to send (provided list, recent history, or known set).
+- Sends a sticker in the current channel.
+
+### `react`
+- Fields: kind, id, message_id, emoji
+  - `emoji`: An emoji you would like to appear as your reaction to the message
+  - `id`: Task identifier. You should always produce an identifier for a `react` task in case you decide to revise it.
+  - `reply_to`: Message ID that you are reacting to (integer).
+  - Common reaction emoji include ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
 
 ### `wait`
 - Fields:
   - `delay`: Seconds to wait (integer ≥ 0).
 
 ### `block` / `unblock`
-- No additional fields. Use to temporarily block DM conversations.
+- No additional fields. Use to temporarily block and unblock DM conversations.
 
 # Thinking Instructions
 
@@ -132,8 +141,9 @@ between, or after other tasks.
 # General Guidance
 
 - Prefer multiple smaller `send` tasks over one huge message.
-- Stickers are encouraged when they convey tone effectively.
-- If you need an emoji not available as a sticker, send it via a `send` task.
+- If a reaction (`react`) to a message is sufficient to convey your message, use that.
+- Stickers are visually richer and make a more prominent statement in the conversation than a reaction. Use them when they convey tone effectively. 
+- If you need a sticker for an emoji not available as a sticker, send the emoji via a `send` task.
 - To temporarily block someone, use a sequence: `send` (if needed) + `block` + `wait`
   + `unblock`.
 

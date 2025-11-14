@@ -67,6 +67,35 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["react"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier so later tasks can revise or cancel this reaction.",
+                    },
+                    "emoji": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Emoji to react with. Use standard Unicode emoji characters.",
+                    },
+                    "message_id": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string", "minLength": 1},
+                        ],
+                        "description": "Telegram message ID to target with the reaction.",
+                    },
+                },
+                "required": ["kind", "emoji", "message_id"],
+                "additionalProperties": False,
+                "title": "React Task",
+                "description": "Add an emoji reaction to a specific Telegram message.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["sticker"],
                     },
                     "id": {
