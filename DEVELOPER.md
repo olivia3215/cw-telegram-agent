@@ -199,6 +199,49 @@ All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which co
   - Grok: `grok.messages: turns=… (history=…)`
 * Enable debug logging for the respective LLM provider.
 
+### Channel-Specific LLM Model Override
+
+Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property in channel memory files.
+
+**Location:** `{statedir}/{agent_name}/memory/{channel_id}.json`
+
+**Configuration:**
+
+The `llm_model` property in the channel memory file specifies which LLM model to use for that channel:
+
+```json
+{
+  "llm_model": "grok-4-0709",
+  "plan": [
+    {
+      "id": "plan-example",
+      "content": "...",
+      "created": "2025-01-15T10:00:00-08:00"
+    }
+  ]
+}
+```
+
+**Supported values:**
+- `"gemini"` or `"grok"` - Uses the default model from `GEMINI_MODEL` or `GROK_MODEL` environment variable
+- Specific model names like `"gemini-2.0-flash"` or `"grok-4-fast-non-reasoning"`
+
+**Behavior:**
+- When processing `received` tasks for a channel, the system checks for `llm_model` in the channel memory file
+- If present, creates an LLM instance with that model (overriding the agent's default LLM)
+- If the specified model is invalid or unavailable, falls back to the agent's default LLM
+- The override affects both message history fetching (uses channel LLM's `history_size`) and LLM queries
+
+**Implementation:**
+- `Agent.get_channel_llm_model()` reads the `llm_model` property from the channel memory file
+- `handlers/received.py` uses this to select the appropriate LLM for each channel
+- Logs indicate when a channel-specific LLM is being used
+
+**Example usage:**
+1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json`
+2. Add or update the `llm_model` property
+3. The next `received` task for that channel will use the specified model
+
 ## Tests you’ll care about
 
 * `tests/test_llm_builder_parts.py` — core coverage for the structured builder.

@@ -509,6 +509,28 @@ The system routes LLM requests based on the `LLM` field in agent configuration:
 
 **Implementation:** The `llm.factory.create_llm_from_name()` function handles routing and model selection.
 
+### Channel-Specific LLM Model Override
+
+Agents can override the default LLM model for specific channels using the `llm_model` property in channel memory files.
+
+**Location:** `{statedir}/{agent_name}/memory/{channel_id}.json`
+
+**Configuration:**
+- The `llm_model` property specifies which LLM model to use for that specific channel
+- Can be a provider name (`"gemini"`, `"grok"`) or a specific model name
+- Overrides the agent's default LLM when processing `received` tasks for that channel
+
+**Precedence:**
+1. Channel-specific LLM model (from channel memory file)
+2. Agent's default LLM (from agent configuration)
+
+**Use cases:**
+- Testing different models on specific conversations
+- Using different models for different user preferences
+- Debugging model behavior on specific channels
+
+**Implementation:** `Agent.get_channel_llm_model()` reads the property, and `handlers/received.py` uses it to select the appropriate LLM instance.
+
 ### Role Mapping
 
 **Gemini API:**
@@ -688,17 +710,27 @@ configdir/
 └── ...
 
 state/
-└── memory/
-    └── AgentName.json          # Global episodic memories (automatically created)
+├── AgentName/
+│   ├── memory.json             # Global episodic memories (automatically created)
+│   └── memory/
+│       └── {channel_id}.json   # Channel-specific plans and LLM overrides
+└── ...
 ```
 
 - **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand
 - **State memories** (`state/AgentName/memory.json`): Global episodic memories automatically created from agent conversations
+- **Channel memory files** (`state/AgentName/memory/{channel_id}.json`): Channel-specific plans, LLM model overrides, and metadata
 
 **Global Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
 - Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner.
 - Memories produced by the agent are stored in `state/AgentName/memory.json` and are visible by the agent during all conversations.
+
+**Channel Memory Files:**
+- Store channel-specific plans (via `plan` tasks)
+- Store channel-specific LLM model overrides (via `llm_model` property)
+- Automatically store metadata: `agent_name`, `channel_name`, `channel_id`, `channel_username`
+- Located at `{statedir}/{agent_name}/memory/{channel_id}.json`
 
 ### Remember Task Processing
 
