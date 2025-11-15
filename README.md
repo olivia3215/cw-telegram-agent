@@ -12,7 +12,8 @@ Conversational Telegram agents powered by an LLM. This README covers how to **se
   - Ubuntu/Debian: `sudo apt-get install libcairo2-dev pkg-config`
   - Other Linux: Install cairo development packages for your distribution
 * A Telegram account (for each agent persona you run)
-* A Google Gemini API key (for image/sticker descriptions and video analysis)
+* A Google Gemini API key (for image/sticker descriptions and video analysis, and for composing LLM responses if using Gemini)
+* A Grok API key (optional, only required if using Grok LLM for agent responses)
 
 ---
 
@@ -42,6 +43,7 @@ Set these environment variables (example uses a local `./state` dir):
 export CINDY_AGENT_STATE_DIR="$(pwd)/state"
 export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
+export GROK_API_KEY="your_api_key_here"  # Optional, only needed if using Grok LLM
 export TELEGRAM_API_ID="your_api_id_here"
 export TELEGRAM_API_HASH="your_api_hash_here"
 ```
@@ -57,7 +59,7 @@ export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/custom-configs"
 
 **Google Gemini API Key (`GOOGLE_GEMINI_API_KEY`)**
 
-Required for image and sticker descriptions and for composing the LLM responses for the agents. To obtain:
+Required for image and sticker descriptions and video analysis. Also required if using Gemini LLM for agent responses (default). To obtain:
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and sign in with your Google account
 2. Click "Get API Key" and create a new key
@@ -66,6 +68,20 @@ Required for image and sticker descriptions and for composing the LLM responses 
    ```bash
    export GOOGLE_GEMINI_API_KEY="your_actual_api_key_here"
    ```
+
+**Grok API Key (`GROK_API_KEY`)**
+
+Required only if using Grok LLM for agent responses. To obtain:
+
+1. Visit [console.x.ai](https://console.x.ai) and create an account
+2. Generate an API key from your account settings
+3. Copy the generated API key
+4. Set it as an environment variable:
+   ```bash
+   export GROK_API_KEY="your_actual_api_key_here"
+   ```
+
+See the [samples/README.md](samples/README.md) documentation for how to specify which LLM to use in agent configurations.
 
 **Telegram API Credentials (`TELEGRAM_API_ID` and `TELEGRAM_API_HASH`)**
 
@@ -131,6 +147,9 @@ Wendy
 # Agent Timezone
 America/Los_Angeles   # optional; IANA timezone (e.g., America/New_York, Pacific/Honolulu)
 
+# LLM
+gemini-2.0-flash   # optional; LLM to use (gemini, grok, or specific model name)
+
 # Role Prompt
 Chatbot
 
@@ -181,8 +200,13 @@ In addition the following prompts give agents additional capabilities
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
-* **Optional fields:** `Agent Timezone`, `Agent Sticker Sets`, `Agent Stickers`.
+* **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely.
+  
+  The `LLM` field specifies which LLM to use:
+  - `gemini` or names starting with `gemini` (e.g., `gemini-2.0-flash`) - uses Gemini LLM
+  - `grok` or names starting with `grok` (e.g., `grok-4-fast-non-reasoning`) - uses Grok LLM
+  - If omitted, defaults to Gemini with `gemini-2.5-flash-preview-09-2025`
 * **Reserved names:** Agent names cannot be `media` (reserved for system directories).
 
 > Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
@@ -278,6 +302,7 @@ For detailed information about the script management system and project architec
 * **Missing environment variables error**
 
   * Ensure all required environment variables are set: `GOOGLE_GEMINI_API_KEY`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `CINDY_AGENT_STATE_DIR`.
+  * If using Grok LLM, also set `GROK_API_KEY`.
   * See the "Obtaining API Keys" section above for detailed instructions on getting these credentials.
 
 * **Agent seems slow or idle**
@@ -300,6 +325,7 @@ For detailed information about the script management system and project architec
 * **Debugging LLM behavior**
 
   * Set `GEMINI_DEBUG_LOGGING=true` to log complete prompts sent to Gemini and full responses received.
+  * Set `GROK_DEBUG_LOGGING=true` to log complete prompts sent to Grok and full responses received.
   * This will show system instructions, conversation history, and detailed response metadata.
 
 ---

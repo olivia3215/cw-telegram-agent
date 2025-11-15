@@ -21,7 +21,7 @@ from google.genai.types import (
     HarmCategory,
 )
 
-from config import GOOGLE_GEMINI_API_KEY
+from config import GOOGLE_GEMINI_API_KEY, GEMINI_MODEL, MEDIA_MODEL
 from media.mime_utils import (
     detect_mime_type_from_bytes,
     is_tgs_mime_type,
@@ -45,15 +45,8 @@ GEMINI_DEBUG_LOGGING: bool = os.environ.get("GEMINI_DEBUG_LOGGING", "").lower() 
 _TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 
 
-def _format_string_for_logging(s: str) -> str:
-    """
-    Format a string for logging, preserving actual newlines and special characters
-    without backslash substitution. This makes multi-line strings readable in logs.
-    """
-    if not s:
-        return s
-    # Return as-is to preserve actual newlines; Python logging will handle them correctly
-    return s
+# Use shared utility function
+from .utils import format_string_for_logging as _format_string_for_logging
 
 
 def _extract_response_text(response: Any) -> str:
@@ -83,18 +76,26 @@ def _extract_response_text(response: Any) -> str:
 
 
 class GeminiLLM(LLM):
-    prompt_name = "Gemini"
+    prompt_name = "Instructions"
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash-preview-09-2025",
+        model: str | None = None,
         api_key: str | None = None,
     ):
-        self.model_name = model
         self.api_key = api_key or GOOGLE_GEMINI_API_KEY
         if not self.api_key:
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or pass it explicitly."
+            )
+        # Use provided model, or GEMINI_MODEL env var, or raise error
+        if model:
+            self.model_name = model
+        elif GEMINI_MODEL:
+            self.model_name = GEMINI_MODEL
+        else:
+            raise ValueError(
+                "Missing model specification. Either pass 'model' parameter or set GEMINI_MODEL environment variable."
             )
         self.client = genai.Client(api_key=self.api_key)
         self.history_size = 100
@@ -264,10 +265,18 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for image description"
             )
 
-        # Use gemini-2.0-flash for image descriptions
-        model = "gemini-2.0-flash"
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        # Use MEDIA_MODEL for image descriptions (always, regardless of agent's LLM)
+        from .media_helper import get_media_llm
+        
+        media_llm = get_media_llm()
+        
+        # If media model is Gemini, use this instance's API key with media model
+        if isinstance(media_llm, GeminiLLM):
+            model = media_llm.model_name
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        else:
+            # Media model is Grok, delegate to GrokLLM
+            return await media_llm.describe_image(image_bytes, mime_type, timeout_s)
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache
@@ -374,10 +383,18 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for video description"
             )
 
-        # Use gemini-2.0-flash for video descriptions
-        model = "gemini-2.0-flash"
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        # Use MEDIA_MODEL for video descriptions (always, regardless of agent's LLM)
+        from .media_helper import get_media_llm
+        
+        media_llm = get_media_llm()
+        
+        # If media model is Gemini, use this instance's API key with media model
+        if isinstance(media_llm, GeminiLLM):
+            model = media_llm.model_name
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        else:
+            # Media model is Grok, delegate to GrokLLM
+            return await media_llm.describe_video(video_bytes, mime_type, duration, timeout_s)
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache
@@ -478,10 +495,18 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for audio description"
             )
 
-        # Use gemini-2.0-flash for audio descriptions
-        model = "gemini-2.0-flash"
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        # Use MEDIA_MODEL for audio descriptions (always, regardless of agent's LLM)
+        from .media_helper import get_media_llm
+        
+        media_llm = get_media_llm()
+        
+        # If media model is Gemini, use this instance's API key with media model
+        if isinstance(media_llm, GeminiLLM):
+            model = media_llm.model_name
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        else:
+            # Media model is Grok, delegate to GrokLLM
+            return await media_llm.describe_audio(audio_bytes, mime_type, duration, timeout_s)
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache

@@ -34,6 +34,7 @@ class Agent:
         instructions,
         role_prompt_names,
         llm=None,
+        llm_name=None,
         # Multi-set config
         sticker_set_names=None,
         explicit_stickers=None,
@@ -96,25 +97,15 @@ class Agent:
         # System prompt is built dynamically to include fresh memory content
 
         self._llm = llm
+        self._llm_name = llm_name
 
     @property
     def llm(self):
         if self._llm is None:
-            #### Code for using ChatGPT ####
-            ## Experiments have proven that ChatGPT gpt-4.1-nano works poorly for this use.
-            ## We prefer Gemini.
-            # self._llm = ChatGPT()
+            # Use llm_name if provided, otherwise default to Gemini
+            from llm.factory import create_llm_from_name
 
-            #### Code for using Ollama
-            # self._llm = OllamaLLM()
-
-            #### Code for using Google Gemini
-            api_key = GOOGLE_GEMINI_API_KEY
-            if not api_key:
-                raise ValueError(
-                    "LLM not configured (no GOOGLE_GEMINI_API_KEY). Inject an LLM or set the key."
-                )
-            self._llm = GeminiLLM(api_key=api_key)
+            self._llm = create_llm_from_name(self._llm_name)
 
         return self._llm
 
@@ -145,7 +136,7 @@ class Agent:
 
         This includes:
         1. Specific instructions for the current turn
-        1. LLM-specific prompt (e.g., Gemini.md)
+        1. Instructions prompt (Instructions.md) - shared across all LLMs
         2. All role prompts (in order)
         3. Agent instructions
 
@@ -348,6 +339,35 @@ class Agent:
             )
         return ""
 
+    def get_channel_llm_model(self, channel_id: int) -> str | None:
+        """
+        Get the LLM model name for a specific channel from the channel memory file.
+        
+        Reads the `llm_model` property from {statedir}/{agent_name}/memory/{channel_id}.json.
+        
+        Args:
+            channel_id: The conversation ID (Telegram channel/user ID)
+            
+        Returns:
+            The LLM model name (e.g., "gemini-2.0-flash", "grok") or None if not set
+        """
+        try:
+            state_dir = STATE_DIRECTORY
+            memory_file = Path(state_dir) / self.name / "memory" / f"{channel_id}.json"
+            if not memory_file.exists():
+                return None
+            # Load the file to get the payload (which contains top-level properties)
+            _, payload = load_property_entries(memory_file, "plan", default_id_prefix="plan")
+            if payload and isinstance(payload, dict):
+                llm_model = payload.get("llm_model")
+                if llm_model and isinstance(llm_model, str):
+                    return llm_model.strip()
+        except Exception as exc:
+            logger.debug(
+                f"[{self.name}] Failed to load llm_model from {memory_file}: {exc}"
+            )
+        return None
+
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""
         logger.info(f"Clearing entity cache for agent {self.name}.")
@@ -459,6 +479,7 @@ class AgentRegistry:
         instructions: str,
         role_prompt_names: list[str],
         llm=None,
+        llm_name=None,
         sticker_set_names=None,
         explicit_stickers=None,
         config_directory=None,
@@ -482,6 +503,7 @@ class AgentRegistry:
             instructions=instructions,
             role_prompt_names=role_prompt_names,
             llm=llm,
+            llm_name=llm_name,
             sticker_set_names=sticker_set_names,
             explicit_stickers=explicit_stickers,
             config_directory=config_directory,

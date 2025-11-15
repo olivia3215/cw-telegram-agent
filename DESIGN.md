@@ -452,7 +452,7 @@ The system uses a combination of async/await and threading to coordinate between
 
 ## LLM Integration Details
 
-The system integrates with Google Gemini using a structured approach that separates system instructions from conversation content.
+The system supports multiple LLM providers (Gemini and Grok) using a structured approach that separates system instructions from conversation content.
 
 ### System Instruction Handling
 
@@ -472,7 +472,7 @@ The system supports multiple role prompts that are combined to create complex ag
 2. **Global prompts** (fallback): `samples/prompts/{PromptName}.md`
 
 **Combination Order:**
-1. LLM-specific prompt (e.g., `Gemini.md`)
+1. Instructions prompt (`Instructions.md`) - shared across all LLMs
 2. Role prompts (in the order specified in agent configuration)
 3. Agent instructions (specific behavior instructions)
 
@@ -484,7 +484,7 @@ The system supports multiple role prompts that are combined to create complex ag
 
 **Example System Prompt Structure:**
 ```
-[LLM-specific prompt content]
+[Instructions prompt content]
 
 [First role prompt content]
 
@@ -493,21 +493,48 @@ The system supports multiple role prompts that are combined to create complex ag
 [Agent-specific instructions]
 ```
 
+### LLM Routing
+
+The system routes LLM requests based on the `LLM` field in agent configuration:
+
+- **Gemini LLMs**: Names starting with `gemini` route through `llm/gemini.py`
+  - Default model: `gemini-2.5-flash-preview-09-2025` (if name is just `gemini`)
+  - Specific models: `gemini-2.0-flash`, `gemini-2.5-flash-preview-09-2025`, etc.
+
+- **Grok LLMs**: Names starting with `grok` route through `llm/grok.py`
+  - Default model: `grok-4-fast-non-reasoning` (if name is just `grok`)
+  - Specific models: `grok-4-fast-non-reasoning`, etc.
+
+- **Default**: If `LLM` field is omitted, defaults to Gemini
+
+**Implementation:** The `llm.factory.create_llm_from_name()` function handles routing and model selection.
+
 ### Role Mapping
 
+**Gemini API:**
 - **Input**: `assistant` role (agent's prior messages)
 - **Output**: `model` role (Gemini API requirement)
 - **User messages**: Remain as `user` role
+- **System instructions**: Passed via `system_instruction` parameter (not in message contents)
 
-**Purpose:** Compatibility with newer Gemini model families that reject `system` roles and require `user`/`model` roles only.
+**Grok API (OpenAI-compatible):**
+- **Input/Output**: `assistant` role (agent's prior messages)
+- **User messages**: Remain as `user` role
+- **System instructions**: Passed as `system` role message (OpenAI-compatible format)
+
+**Purpose:** Each LLM provider has different API requirements, and the implementation adapts to each provider's format.
 
 ### API Compatibility
 
-The system is designed to work with both legacy and newer Gemini API versions:
-- **Legacy**: Supports `system` roles in contents
-- **Newer**: Requires `system_instruction` parameter and `user`/`model` roles only
+**Gemini:**
+- Supports both legacy and newer API versions
+- Uses `system_instruction` parameter for system content
+- Requires `user`/`model` roles (not `system` roles) in contents
 
-**Migration path:** The structured approach ensures compatibility with both versions while preparing for future API changes.
+**Grok:**
+- Uses OpenAI-compatible API at `https://api.x.ai/v1`
+- Supports `system`, `user`, and `assistant` roles in messages
+- JSON response format based on prompt instructions
 
 ## Script Management System
 
@@ -686,7 +713,7 @@ The `remember` task is processed immediately during LLM response parsing and doe
 
 Memory content is integrated into the system prompt in a specific position within the complete prompt structure:
 
-1. **LLM-specific prompt** (e.g., `Gemini.md`)
+1. **Instructions prompt** (`Instructions.md`) - shared across all LLMs
 2. **Role prompts** (in the order specified in the agent configuration)
 3. **Agent instructions** (the specific behavior instructions for this agent)
 4. **Stickers section** (available stickers for the agent to send)
