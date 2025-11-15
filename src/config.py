@@ -28,10 +28,6 @@ def _parse_config_directories() -> list[str]:
 
 CONFIG_DIRECTORIES: list[str] = _parse_config_directories()
 
-# API credentials
-GOOGLE_GEMINI_API_KEY: str | None = os.environ.get("GOOGLE_GEMINI_API_KEY")
-TELEGRAM_API_ID: str | None = os.environ.get("TELEGRAM_API_ID")
-TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
 
 def _get_optional_str(env_name: str) -> str | None:
     """Return stripped environment variable value or None if unset/empty."""
@@ -40,6 +36,18 @@ def _get_optional_str(env_name: str) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+# API credentials
+GOOGLE_GEMINI_API_KEY: str | None = os.environ.get("GOOGLE_GEMINI_API_KEY")
+GROK_API_KEY: str | None = os.environ.get("GROK_API_KEY")
+TELEGRAM_API_ID: str | None = os.environ.get("TELEGRAM_API_ID")
+TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
+
+# Model configuration
+GEMINI_MODEL: str | None = _get_optional_str("GEMINI_MODEL")
+GROK_MODEL: str | None = _get_optional_str("GROK_MODEL")
+MEDIA_MODEL: str | None = os.environ.get("MEDIA_MODEL")
 
 
 # Puppet master configuration

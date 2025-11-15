@@ -149,6 +149,9 @@ def parse_agent_markdown(path):
         # Parse timezone (optional field)
         timezone = _norm_set(fields.get("Agent Timezone"))
 
+        # Parse LLM (optional field)
+        llm_name = _norm_set(fields.get("LLM"))
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
@@ -159,6 +162,8 @@ def parse_agent_markdown(path):
             "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
             # timezone config:
             "timezone": timezone,  # str | None
+            # llm config:
+            "llm_name": llm_name,  # str | None
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -217,6 +222,7 @@ def register_all_agents(force: bool = False):
                         explicit_stickers=parsed.get("explicit_stickers") or [],
                         config_directory=config_dir,
                         timezone=parsed.get("timezone"),
+                        llm_name=parsed.get("llm_name"),
                     )
                     registered_agents.add(agent_name)
 

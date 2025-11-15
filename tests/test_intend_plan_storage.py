@@ -366,7 +366,7 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
 
 
 class DummyLLM:
-    prompt_name = "Gemini"
+    prompt_name = "Instructions"
 
 
 def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):

@@ -115,52 +115,132 @@ state/
   ruff format .
   ```
 
-## LLM integration (Gemini)
+## LLM integration
 
-### Builder: `build_gemini_contents(...)`
+The system supports multiple LLM providers (Gemini and Grok) with a unified interface. Each LLM implementation follows the same pattern while adapting to each provider's API requirements.
+
+### LLM Routing
+
+The `llm.factory.create_llm_from_name()` function routes LLM creation based on the name prefix:
+- `gemini` prefix → `GeminiLLM` (uses Google Gemini API)
+- `grok` prefix → `GrokLLM` (uses xAI Grok API via OpenAI-compatible interface)
+
+Agents specify their LLM via the `LLM` field in their configuration file.
+
+### Gemini LLM
+
+**Builder: `_build_gemini_contents(...)`**
 
 Emits:
 
-1. **Leading system turn** (persona, role prompt, model-specific notes, time, chat type, curated stickers, target message instruction)
-2. **Chronological history** (user/model turns with ordered parts)
+1. **Chronological history** (user/model turns with ordered parts)
+2. System instructions are passed separately via `system_instruction` parameter
 
-> Implementation detail: we **extract** the system text and pass it via `system_instruction`. We never send a `system` role in `contents`. The target message is no longer appended as a separate turn; instead, a system instruction is added to respond to the specific message.
+> Implementation detail: we **never** send a `system` role in `contents`. The target message is not appended as a separate turn; instead, a system instruction is added to respond to the specific message.
 
-### Call path: `GeminiLLM.query_structured(...)`
+**Call path: `GeminiLLM.query_structured(...)`**
 
-* Extracts system text from the leading system turn.
+* Builds contents using `_build_gemini_contents()`
 * Sends `system_instruction` via Gemini model config; **contents** contain only `user` and `model` turns.
 * Remaps `assistant → model` to satisfy stricter Gemini families.
 * Uses compact rendered media text in parts to keep prompts small.
 
-### Roles
-
+**Roles:**
 * **user**: all non-agent speakers (group chats may contain many).
-* **model**: the agent’s prior turns (assistant remapped to model).
+* **model**: the agent's prior turns (assistant remapped to model).
 
-### Target message selection
+**Logging:**
+* Set `GEMINI_DEBUG_LOGGING=true` for comprehensive prompt/response logging.
 
-* In DMs: last message.
-* In groups: may be earlier; we add a system instruction "Consider responding to message with message_id NNNN" so the model focuses on it.
+### Grok LLM
 
-### Logging
+**Builder: `_build_messages(...)`**
 
-* We log a concise summary of built contents and, when available, model candidate counts/finish reasons for diagnosis.
+Emits:
 
-## Adding/changing models
+1. **System message** (if provided)
+2. **Chronological history** (user/assistant turns with combined text parts)
 
-* Update the model string in config/env.
-* The structured path is compatible with both prior defaults and newer families like:
+**Call path: `GrokLLM.query_structured(...)`**
 
-  ```
-  gemini-2.5-flash-preview-09-2025
-  ```
+* Builds messages using `_build_messages()`
+* Sends messages in OpenAI-compatible format (system, user, assistant roles)
+* Combines message parts into single content strings per message
+* Response should be JSON array per Instructions.md prompt
+
+**Roles:**
+* **system**: system instructions
+* **user**: all non-agent speakers
+* **assistant**: the agent's prior turns
+
+**Logging:**
+* Set `GROK_DEBUG_LOGGING=true` for comprehensive prompt/response logging.
+
+### Shared Prompt System
+
+All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which contains task format instructions and response guidelines. This ensures consistent behavior across LLM providers.
+
+### Adding/changing models
+
+**For existing LLMs:**
+* Update the model string in agent configuration (`LLM` field)
+* Gemini defaults to `gemini-2.5-flash-preview-09-2025` if name is just `gemini`
+* Grok defaults to `grok-4-fast-non-reasoning` if name is just `grok`
+
+**For new LLM providers:**
+1. Create `llm/{provider}.py` implementing the `LLM` base class
+2. Set `prompt_name = "Instructions"` to use shared prompt
+3. Add routing logic in `llm.factory.create_llm_from_name()`
+4. Export in `llm/__init__.py`
+
+**Debugging:**
 * If you see an empty reply, consult logs:
+  - Gemini: `gemini.contents built: turns=… (history=…, target=…)`
+  - Grok: `grok.messages: turns=… (history=…)`
+* Enable debug logging for the respective LLM provider.
 
-  ```
-  gemini.contents built: turns=… (history=…, target=…)
-  gemini.response: candidates=… finish_reason=…
-  ```
+### Channel-Specific LLM Model Override
+
+Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property in channel memory files.
+
+**Location:** `{statedir}/{agent_name}/memory/{channel_id}.json`
+
+**Configuration:**
+
+The `llm_model` property in the channel memory file specifies which LLM model to use for that channel:
+
+```json
+{
+  "llm_model": "grok-4-0709",
+  "plan": [
+    {
+      "id": "plan-example",
+      "content": "...",
+      "created": "2025-01-15T10:00:00-08:00"
+    }
+  ]
+}
+```
+
+**Supported values:**
+- `"gemini"` or `"grok"` - Uses the default model from `GEMINI_MODEL` or `GROK_MODEL` environment variable
+- Specific model names like `"gemini-2.0-flash"` or `"grok-4-fast-non-reasoning"`
+
+**Behavior:**
+- When processing `received` tasks for a channel, the system checks for `llm_model` in the channel memory file
+- If present, creates an LLM instance with that model (overriding the agent's default LLM)
+- If the specified model is invalid or unavailable, falls back to the agent's default LLM
+- The override affects both message history fetching (uses channel LLM's `history_size`) and LLM queries
+
+**Implementation:**
+- `Agent.get_channel_llm_model()` reads the `llm_model` property from the channel memory file
+- `handlers/received.py` uses this to select the appropriate LLM for each channel
+- Logs indicate when a channel-specific LLM is being used
+
+**Example usage:**
+1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json`
+2. Add or update the `llm_model` property
+3. The next `received` task for that channel will use the specified model
 
 ## Tests you’ll care about
 

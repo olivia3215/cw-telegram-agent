@@ -83,13 +83,13 @@ All role prompts are loaded from the global `prompts/` directory within each con
 
 The final system prompt sent to the LLM combines prompts in this order:
 
-1. **LLM-specific prompt** (e.g., `Gemini.md`)
+1. **Instructions prompt** (`Instructions.md`) - shared across all LLMs
 2. **Role prompts** (in the order specified in the agent configuration)
 3. **Agent instructions** (the specific behavior instructions for this agent)
 
 Example with multiple role prompts:
 ```
-[LLM-specific prompt content]
+[Instructions prompt content]
 
 [First role prompt content]
 
@@ -223,6 +223,75 @@ By using the agent's timezone:
 
 - **Heidi** (`samples/agents/Heidi.md`): Uses `America/Los_Angeles` timezone
 - See your agent configurations for more examples
+
+## Agent LLM Configuration
+
+Each agent can specify which LLM to use for generating responses. This allows you to use different models for different agents or experiment with different LLM providers.
+
+### Configuration
+
+Add the `LLM` field to your agent's markdown file:
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# LLM
+gemini-2.0-flash
+
+# Role Prompt
+Chatbot
+Student
+
+# Agent Instructions
+You are Heidi...
+```
+
+### LLM Routing
+
+LLM names are routed based on their prefix:
+
+- **Gemini LLMs**: Names starting with `gemini` route through `llm/gemini.py`
+  - `gemini` → uses default model `gemini-2.5-flash-preview-09-2025`
+  - `gemini-2.0-flash` → uses the specified model name
+  - `gemini-2.5-flash-preview-09-2025` → uses the specified model name
+
+- **Grok LLMs**: Names starting with `grok` route through `llm/grok.py`
+  - `grok` → uses default model `grok-4-fast-non-reasoning`
+  - `grok-4-fast-non-reasoning` → uses the specified model name
+
+### Default Behavior
+
+If the `LLM` field is omitted, the agent defaults to Gemini with model `gemini-2.5-flash-preview-09-2025`.
+
+### API Keys Required
+
+- **Gemini LLM**: Requires `GOOGLE_GEMINI_API_KEY` environment variable
+- **Grok LLM**: Requires `GROK_API_KEY` environment variable
+
+See the main [README.md](../README.md) for instructions on obtaining API keys.
+
+### LLM Capabilities
+
+**Gemini** (default):
+- Text generation
+- Image description
+- Video description (up to 10 seconds)
+- Audio description (up to 5 minutes)
+
+**Grok**:
+- Text generation
+- Image description
+- Video and audio description not yet supported (raises `NotImplementedError`)
+
+If you need video or audio description capabilities, use Gemini LLM for that agent.
+
+### Error Handling
+
+If the specified model name doesn't exist, the LLM's API will throw an exception. Ensure the model name is correct for the selected LLM provider.
 
 ## Configuration
 

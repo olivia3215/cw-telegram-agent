@@ -15,7 +15,7 @@ from agent import Agent
 class MockLLM:
     """Mock LLM class for testing."""
 
-    prompt_name = "Gemini"
+    prompt_name = "Instructions"
 
     def __init__(self):
         pass
@@ -39,7 +39,7 @@ def test_agent_multiple_role_prompts():
         role_prompt2.write_text("You are also a creative writer.")
 
         # Create LLM prompt file
-        llm_prompt = prompts_dir / "Gemini.md"
+        llm_prompt = prompts_dir / "Instructions.md"
         llm_prompt.write_text("You are a chatbot.")
 
         # Mock the CONFIG_DIRECTORIES to return our temp directory
@@ -115,7 +115,7 @@ def test_agent_single_role_prompt():
         role_prompt.write_text("You are a single role assistant.")
 
         # Create LLM prompt file
-        llm_prompt = prompts_dir / "Gemini.md"
+        llm_prompt = prompts_dir / "Instructions.md"
         llm_prompt.write_text("You are a chatbot.")
 
         # Mock the CONFIG_DIRECTORIES to return our temp directory
@@ -153,7 +153,7 @@ def test_agent_no_role_prompts():
         prompts_dir.mkdir()
 
         # Create LLM prompt file
-        llm_prompt = prompts_dir / "Gemini.md"
+        llm_prompt = prompts_dir / "Instructions.md"
         llm_prompt.write_text("You are a chatbot.")
 
         # Mock the CONFIG_DIRECTORIES to return our temp directory

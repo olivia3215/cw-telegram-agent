@@ -1158,7 +1158,22 @@ async def _run_llm_with_retrieval(
         List of TaskNode objects parsed from the LLM response.
     """
     agent_name = agent.name
-    llm = agent.llm
+    
+    # Check for channel-specific LLM model override
+    channel_llm_model = agent.get_channel_llm_model(channel_id)
+    if channel_llm_model:
+        # Create LLM instance with channel-specific model
+        from llm.factory import create_llm_from_name
+        try:
+            llm = create_llm_from_name(channel_llm_model)
+            logger.debug(f"[{agent_name}] Using channel-specific LLM model: {channel_llm_model}")
+        except Exception as e:
+            logger.warning(
+                f"[{agent_name}] Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
+            )
+            llm = agent.llm
+    else:
+        llm = agent.llm
 
     # Get existing fetched resources from graph context
     existing_resources = graph.context.get("fetched_resources", {})
@@ -1212,7 +1227,7 @@ async def _run_llm_with_retrieval(
             now_iso=now_iso,
             chat_type=chat_type,
             history=combined_history,
-            history_size=agent.llm.history_size,
+            history_size=llm.history_size,
             timeout_s=None,
         )
     except Exception as e:
@@ -1370,8 +1385,20 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
+    # Check for channel-specific LLM model override to determine history_size for fetching
+    channel_llm_model = agent.get_channel_llm_model(channel_id)
+    if channel_llm_model:
+        from llm.factory import create_llm_from_name
+        try:
+            channel_llm = create_llm_from_name(channel_llm_model)
+            history_size = channel_llm.history_size
+        except Exception:
+            history_size = agent.llm.history_size
+    else:
+        history_size = agent.llm.history_size
+
     # Fetch and prepare messages
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    messages = await client.get_messages(channel_id, limit=history_size)
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
