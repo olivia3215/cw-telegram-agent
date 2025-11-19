@@ -21,7 +21,7 @@ Use the `retrieve` task object to fetch web pages by their URL:
 ## Important Guidelines
 
 - **Limit**: You can retrieve up to **3 URLs** in a single retrieve task.
-- **No Duplicates**: Don't request URLs you've already retrieved—check system messages first.
+- **No Duplicates**: Don't request URLs you've already retrieved—check system messages first. If you attempt to retrieve a document already in your context nothing will happen and you will not get another turn to react.
 
 Use retrieval when you need:
 - Current information (news, events, recent developments)
