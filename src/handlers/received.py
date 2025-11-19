@@ -1129,6 +1129,35 @@ async def _process_message_history(
     return history_rendered_items
 
 
+def _get_channel_llm(agent, channel_id: int, agent_name: str):
+    """
+    Get the appropriate LLM instance for a channel, using channel-specific override if available.
+    
+    Args:
+        agent: The agent instance
+        channel_id: Conversation ID
+        agent_name: Agent name for logging
+        
+    Returns:
+        LLM instance (channel-specific if configured, otherwise default)
+    """
+    channel_llm_model = agent.get_channel_llm_model(channel_id)
+    if channel_llm_model:
+        # Create LLM instance with channel-specific model
+        from llm.factory import create_llm_from_name
+        try:
+            llm = create_llm_from_name(channel_llm_model)
+            logger.debug(f"[{agent_name}] Using channel-specific LLM model: {channel_llm_model}")
+            return llm
+        except Exception as e:
+            logger.warning(
+                f"[{agent_name}] Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
+            )
+            return agent.llm
+    else:
+        return agent.llm
+
+
 async def _run_llm_with_retrieval(
     agent,
     system_prompt: str,
@@ -1159,21 +1188,8 @@ async def _run_llm_with_retrieval(
     """
     agent_name = agent.name
     
-    # Check for channel-specific LLM model override
-    channel_llm_model = agent.get_channel_llm_model(channel_id)
-    if channel_llm_model:
-        # Create LLM instance with channel-specific model
-        from llm.factory import create_llm_from_name
-        try:
-            llm = create_llm_from_name(channel_llm_model)
-            logger.debug(f"[{agent_name}] Using channel-specific LLM model: {channel_llm_model}")
-        except Exception as e:
-            logger.warning(
-                f"[{agent_name}] Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
-            )
-            llm = agent.llm
-    else:
-        llm = agent.llm
+    # Get appropriate LLM instance (channel-specific if configured)
+    llm = _get_channel_llm(agent, channel_id, agent_name)
 
     # Get existing fetched resources from graph context
     existing_resources = graph.context.get("fetched_resources", {})
@@ -1385,17 +1401,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
-    # Check for channel-specific LLM model override to determine history_size for fetching
-    channel_llm_model = agent.get_channel_llm_model(channel_id)
-    if channel_llm_model:
-        from llm.factory import create_llm_from_name
-        try:
-            channel_llm = create_llm_from_name(channel_llm_model)
-            history_size = channel_llm.history_size
-        except Exception:
-            history_size = agent.llm.history_size
-    else:
-        history_size = agent.llm.history_size
+    # Get appropriate LLM instance to determine history_size for fetching
+    llm = _get_channel_llm(agent, channel_id, agent_name)
+    history_size = llm.history_size
 
     # Fetch and prepare messages
     messages = await client.get_messages(channel_id, limit=history_size)
