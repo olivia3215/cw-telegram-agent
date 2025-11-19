@@ -7,9 +7,9 @@ import asyncio
 import logging
 import os
 
-from telethon import events
-from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest
-from telethon.tl.types import (
+from telethon import events  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
@@ -69,7 +69,6 @@ async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bo
         True if the agent's last message has unread reactions, False otherwise
     """
     client = agent.client
-    agent_name = agent.name
     
     try:
         # First, get the agent's last message
@@ -97,13 +96,13 @@ async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bo
             if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
                 for message in unread_reactions_result.messages:
                     if message.id == agent_last_message.id:
-                        logger.info(f"[{agent_name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
+                        logger.info(f"[{agent.name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
                         return True
         
         return False
         
     except Exception as e:
-        logger.debug(f"[{agent_name}] Error checking unread reactions on agent's last message in dialog {dialog.id}: {e}")
+        logger.debug(f"[{agent.name}] Error checking unread reactions on agent's last message in dialog {dialog.id}: {e}")
         return False
 
 
@@ -116,7 +115,6 @@ def load_work_queue():
 
 
 async def handle_incoming_message(agent: Agent, work_queue, event):
-    agent_name = agent.name
     client = agent.client
     await event.get_sender()
     dialog = await agent.get_dialog(event.chat_id)
@@ -143,11 +141,11 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
     if not muted or is_callout:
         if sender_name == dialog_name:
             logger.info(
-                f"[{agent_name}] Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
+                f"[{agent.name}] Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
             )
         else:
             logger.info(
-                f"[{agent_name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
+                f"[{agent.name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
             )
         await insert_received_task_for_conversation(
             work_queue,
@@ -161,7 +159,6 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
 
 async def scan_unread_messages(agent: Agent, work_queue):
     client = agent.client
-    agent_name = agent.name
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
         await clock.sleep(1)  # Don't poll too fast
@@ -188,7 +185,7 @@ async def scan_unread_messages(agent: Agent, work_queue):
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
-                f"[{agent_name}] Found unread content in [{dialog_name}] "
+                f"[{agent.name}] Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
             )
             await client.send_read_acknowledge(dialog, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
@@ -273,7 +270,6 @@ async def authenticate_agent(agent: Agent):
     Authenticate an agent and set up their basic connection.
     Returns True if successful, False if authentication failed.
     """
-    agent_name = agent.name
     client = get_telegram_client(agent.name, agent.phone)
     agent._client = client
 
@@ -284,12 +280,12 @@ async def authenticate_agent(agent: Agent):
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
             logger.error(
-                f"[{agent_name}] Agent '{agent_name}' is not authenticated to Telegram."
+                f"[{agent.name}] Agent '{agent.name}' is not authenticated to Telegram."
             )
             logger.error(
-                f"[{agent_name}] Please run './telegram_login.sh' to authenticate this agent."
+                f"[{agent.name}] Please run './telegram_login.sh' to authenticate this agent."
             )
-            logger.error(f"[{agent_name}] Authentication failed.")
+            logger.error(f"[{agent.name}] Authentication failed.")
             await client.disconnect()
             return False
 
@@ -303,12 +299,12 @@ async def authenticate_agent(agent: Agent):
         agent.filter_premium_stickers = not is_premium  # Filter if NOT premium
 
         logger.info(
-            f"[{agent_name}] Agent authenticated ({agent_id}) - Premium: {is_premium}"
+            f"[{agent.name}] Agent authenticated ({agent_id}) - Premium: {is_premium}"
         )
         return True
 
     except Exception as e:
-        logger.exception(f"[{agent_name}] Authentication error: {e}")
+        logger.exception(f"[{agent.name}] Authentication error: {e}")
         try:
             await client.disconnect()
         except Exception:
@@ -317,8 +313,6 @@ async def authenticate_agent(agent: Agent):
 
 
 async def run_telegram_loop(agent: Agent, work_queue):
-    agent_name = agent.name
-
     while True:
         # Check if agent already has a connected client from initial authentication
         if agent._client and not agent._client.is_connected():
@@ -333,12 +327,12 @@ async def run_telegram_loop(agent: Agent, work_queue):
             # Need to authenticate - either first time or after disconnection
             auth_success = await authenticate_agent(agent)
             if not auth_success:
-                logger.error(f"[{agent_name}] Authentication failed, exiting.")
+                logger.error(f"[{agent.name}] Authentication failed, exiting.")
                 break
 
         client = agent.client
         if not client:
-            logger.error(f"[{agent_name}] No client available after authentication.")
+            logger.error(f"[{agent.name}] No client available after authentication.")
             break
 
         @client.on(events.NewMessage(incoming=True))
@@ -366,7 +360,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
             to re-scan the dialogs.
             """
             logger.info(
-                f"[{agent_name}] Detected a dialog filter update. Triggering a scan."
+                f"[{agent.name}] Detected a dialog filter update. Triggering a scan."
             )
             # We don't need to inspect the event further; its existence is the trigger.
             # We call the existing scan function to check for the unread mark.
@@ -379,7 +373,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         except Exception as e:
             logger.exception(
-                f"[{agent_name}] Telegram client error: {e}. Reconnecting in 10 seconds..."
+                f"[{agent.name}] Telegram client error: {e}. Reconnecting in 10 seconds..."
             )
             await clock.sleep(10)
 

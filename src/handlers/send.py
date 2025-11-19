@@ -22,7 +22,6 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
-    agent_name = agent.name
     client = agent.client
 
     message = task.params.get("text")
@@ -40,7 +39,7 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     if not channel_id:
         raise ValueError(f"Missing required 'channel_id' field in task {task.id}")
     logger.info(
-        f"[{agent_name}] SEND: to=[{await get_channel_name(agent, channel_id)}] message={message!r}"
+        f"[{agent.name}] SEND: to=[{await get_channel_name(agent, channel_id)}] message={message!r}"
     )
 
     if not client:
@@ -57,5 +56,5 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
             await client.send_message(channel_id, message, parse_mode="Markdown")
     except Exception as e:
         logger.exception(
-            f"[{agent_name}] Failed to send reply to message {reply_to_int}: {e}"
+            f"[{agent.name}] Failed to send reply to message {reply_to_int}: {e}"
         )

@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from handlers import received as hr
@@ -22,13 +24,15 @@ async def test_schedule_tasks_uses_text_for_typing_delay():
         depends_on=[],
     )
 
+    mock_agent = MagicMock()
+    mock_agent.name = "TestAgent"
     await hr._schedule_tasks(
         [send_task],
         received_task=received_task,
         graph=graph,
         is_callout=False,
         is_group=False,
-        agent_name="TestAgent",
+        agent=mock_agent,
     )
 
     wait_tasks = [t for t in graph.tasks if t.type == "wait" and t.params.get("typing")]
@@ -55,13 +59,15 @@ async def test_schedule_tasks_defaults_delay_when_text_missing():
         depends_on=[],
     )
 
+    mock_agent = MagicMock()
+    mock_agent.name = "TestAgent"
     await hr._schedule_tasks(
         [send_task],
         received_task=received_task,
         graph=graph,
         is_callout=False,
         is_group=False,
-        agent_name="TestAgent",
+        agent=mock_agent,
     )
 
     wait_tasks = [t for t in graph.tasks if t.type == "wait" and t.params.get("typing")]

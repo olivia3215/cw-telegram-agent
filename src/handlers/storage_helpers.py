@@ -8,8 +8,9 @@ from typing import Any
 
 from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
+from telegram_util import get_channel_name
 from time_utils import normalize_created_string
-from utils import coerce_to_str
+from utils import coerce_to_str, format_username
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,45 @@ async def process_property_entry_task(
             if entry_mutator:
                 await entry_mutator(new_entry, existing_entry)
 
+        # Fetch channel metadata for payload
+        # Only fetch if we're writing to a channel-specific memory file
+        # (i.e., file_path is in "{statedir}/{agent_name}/memory/{channel_id}.json")
+        # Check if parent directory is "memory" and filename matches channel_id
+        channel_metadata = {}
+        if file_path.parent.name == "memory" and file_path.name == f"{channel_id}.json":
+            try:
+                # Get channel name
+                channel_name = await get_channel_name(agent, channel_id)
+                channel_metadata["channel_name"] = channel_name
+                
+                # Get channel username if available
+                try:
+                    entity = await agent.get_cached_entity(channel_id)
+                    if entity:
+                        username = format_username(entity)
+                        if username:
+                            channel_metadata["channel_username"] = username
+                except Exception:
+                    pass  # Username is optional
+                
+                # Set other metadata
+                channel_metadata["agent_name"] = agent.name
+                channel_metadata["channel_id"] = channel_id
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Failed to fetch channel metadata: {e}")
+                # Continue without metadata - it's optional
+
         def mutator(
             entries: list[dict[str, Any]], payload: dict[str, Any] | None
         ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+            # Initialize payload if None
+            updated_payload = dict(payload or {})
+            
+            # Add channel metadata if not already present
+            for key, value in channel_metadata.items():
+                if key not in updated_payload:
+                    updated_payload[key] = value
+            
             if content_value is not None:
                 # Find the index of the existing entry with this ID, if any
                 existing_index = None
@@ -134,7 +171,7 @@ async def process_property_entry_task(
                 if post_process:
                     updated_entries = post_process(updated_entries, agent)
 
-                return updated_entries, payload
+                return updated_entries, updated_payload
             else:
                 # Delete: remove the entry with this ID
                 updated_entries = [
@@ -142,7 +179,7 @@ async def process_property_entry_task(
                 ]
                 if post_process:
                     updated_entries = post_process(updated_entries, agent)
-                return updated_entries, payload
+                return updated_entries, updated_payload
 
         mutate_property_entries(
             file_path,

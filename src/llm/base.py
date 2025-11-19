@@ -76,7 +76,6 @@ class LLM(ABC):
         system_prompt: str,
         now_iso: str,
         chat_type: str,  # "direct" | "group"
-        curated_stickers: Iterable[str] | None,
         history: Iterable[ChatMsg],
         history_size: int = 500,
         model: str | None = None,

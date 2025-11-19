@@ -15,9 +15,10 @@ from .base import LLM, ChatMsg, MsgMediaPart, MsgPart, MsgTextPart
 
 # Import LLM implementations
 from .gemini import GeminiLLM
+from .grok import GrokLLM
 
 # Import utility functions
-# (prompt_builder functions moved to GeminiLLM as private methods)
+# (prompt_builder functions moved to LLM implementations as private methods)
 
 # Maintain backward compatibility by exposing everything at package level
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "MsgMediaPart",
     # LLM implementations
     "GeminiLLM",
+    "GrokLLM",
 ]

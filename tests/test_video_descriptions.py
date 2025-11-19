@@ -138,7 +138,7 @@ def test_video_without_duration_attribute():
 
 def test_gemini_is_mime_type_supported_video_formats():
     """Test that video MIME types are recognized as supported."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     # Should support various video formats
     assert llm.is_mime_type_supported_by_llm("video/mp4")
@@ -159,7 +159,7 @@ def test_gemini_is_mime_type_supported_video_formats():
     assert not llm.is_mime_type_supported_by_llm("application/pdf")
 def test_gemini_audio_mime_aliases_supported():
     """Audio MIME aliases such as audio/mp3 should resolve to supported types."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     assert llm.is_audio_mime_type_supported("audio/mp3")
     assert llm.is_audio_mime_type_supported("audio/x-mp3")
     assert llm.is_audio_mime_type_supported("AUDIO/X-MPEG-3")
@@ -169,7 +169,7 @@ def test_gemini_audio_mime_aliases_supported():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_success():
     """Test successful video description generation."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     # Mock the HTTP response
     mock_response_data = {
@@ -186,7 +186,7 @@ async def test_gemini_describe_video_success():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -211,7 +211,7 @@ async def test_gemini_describe_video_success():
         # Verify the API call
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
-        assert "gemini-2.0-flash" in call_args[0][0]  # Check model in URL
+        assert "gemini-1.5-flash" in call_args[0][0]  # Check model in URL
         payload = call_args[1]["json"]
         assert payload["contents"][0]["role"] == "user"
         assert len(payload["contents"][0]["parts"]) == 2
@@ -221,7 +221,7 @@ async def test_gemini_describe_video_success():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_too_long():
     """Test that videos longer than 10 seconds are rejected."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     video_bytes = b"fake_long_video"
 
@@ -236,7 +236,7 @@ async def test_gemini_describe_video_too_long():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_exactly_10_seconds():
     """Test that videos exactly 10 seconds are accepted."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     mock_response_data = {
         "candidates": [
@@ -244,7 +244,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -265,7 +265,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_no_duration():
     """Test that videos without duration metadata are accepted."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     mock_response_data = {
         "candidates": [
@@ -273,7 +273,7 @@ async def test_gemini_describe_video_no_duration():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -294,7 +294,7 @@ async def test_gemini_describe_video_no_duration():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_unsupported_mime():
     """Test that unsupported video MIME types are rejected."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     with pytest.raises(ValueError) as exc_info:
         await llm.describe_video(b"fake_audio", mime_type="audio/mp3", duration=5)
@@ -306,9 +306,9 @@ async def test_gemini_describe_video_unsupported_mime():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_timeout():
     """Test handling of timeout errors."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -474,23 +474,25 @@ async def test_ai_generating_source_calls_describe_video():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
-            result = await source.get(
-                unique_id="test_video_123",
-                agent=agent,
-                doc=doc,
-                kind="video",
-                duration=7,
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_video_123",
+                    agent=agent,
+                    doc=doc,
+                    kind="video",
+                    duration=7,
+                )
 
-            # Verify describe_video was called (not describe_image)
-            llm.describe_video.assert_called_once()
-            call_args = llm.describe_video.call_args
-            assert call_args[0][0] == b"fake_video_bytes_12345"
-            assert call_args[1]["duration"] == 7
+                # Verify describe_video was called (not describe_image)
+                llm.describe_video.assert_called_once()
+                call_args = llm.describe_video.call_args
+                assert call_args[0][0] == b"fake_video_bytes_12345"
+                assert call_args[1]["duration"] == 7
 
-            # Verify result
-            assert result["status"] == MediaStatus.GENERATED.value
-            assert result["description"] == "A person skateboarding in a park."
+                # Verify result
+                assert result["status"] == MediaStatus.GENERATED.value
+                assert result["description"] == "A person skateboarding in a park."
 
 
 @pytest.mark.asyncio
@@ -527,28 +529,30 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
                         b"fake_video_bytes"
                     )
 
-                    result = await source.get(
-                        unique_id="test_animated_sticker_456",
-                        agent=agent,
-                        doc=doc,
-                        kind="sticker",
-                        duration=4,
-                    )
+                    # Mock get_media_llm to return our mock LLM
+                    with patch("media.media_source.get_media_llm", return_value=llm):
+                        result = await source.get(
+                            unique_id="test_animated_sticker_456",
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            duration=4,
+                        )
 
-                    # Verify TGS converter was called
-                    mock_converter.assert_called_once()
+                        # Verify TGS converter was called
+                        mock_converter.assert_called_once()
 
-                    # Verify describe_video was called with video data (not describe_image)
-                    llm.describe_video.assert_called_once()
-                    call_args = llm.describe_video.call_args
-                    assert (
-                        call_args[0][0] == b"fake_video_bytes"
-                    )  # First positional arg should be video bytes
-                    assert call_args[0][1] == "video/mp4"  # Second should be MIME type
+                        # Verify describe_video was called with video data (not describe_image)
+                        llm.describe_video.assert_called_once()
+                        call_args = llm.describe_video.call_args
+                        assert (
+                            call_args[0][0] == b"fake_video_bytes"
+                        )  # First positional arg should be video bytes
+                        assert call_args[0][1] == "video/mp4"  # Second should be MIME type
 
-                    # Verify result
-                    assert result["status"] == MediaStatus.GENERATED.value
-                    assert result["description"] == "An animated dancing cat."
+                        # Verify result
+                        assert result["status"] == MediaStatus.GENERATED.value
+                        assert result["description"] == "An animated dancing cat."
 
 
 @pytest.mark.asyncio
@@ -573,20 +577,22 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "image/jpeg"
 
-            result = await source.get(
-                unique_id="test_photo_789",
-                agent=agent,
-                doc=doc,
-                kind="photo",
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_photo_789",
+                    agent=agent,
+                    doc=doc,
+                    kind="photo",
+                )
 
-            # Verify describe_image was called (not describe_video)
-            llm.describe_image.assert_called_once()
-            llm.describe_video.assert_not_called()
+                # Verify describe_image was called (not describe_video)
+                llm.describe_image.assert_called_once()
+                llm.describe_video.assert_not_called()
 
-            # Verify result
-            assert result["status"] == MediaStatus.GENERATED.value
-            assert result["description"] == "A sunset over the ocean."
+                # Verify result
+                assert result["status"] == MediaStatus.GENERATED.value
+                assert result["description"] == "A sunset over the ocean."
 
 
 @pytest.mark.asyncio
@@ -613,14 +619,16 @@ async def test_ai_generating_source_handles_video_too_long_error():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
-            result = await source.get(
-                unique_id="test_long_video_999",
-                agent=agent,
-                doc=doc,
-                kind="video",
-                duration=15,
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_long_video_999",
+                    agent=agent,
+                    doc=doc,
+                    kind="video",
+                    duration=15,
+                )
 
-            # Should return UNSUPPORTED status (permanent failure)
-            assert result["status"] == MediaStatus.UNSUPPORTED.value
-            assert "too long" in result["failure_reason"].lower()
+                # Should return UNSUPPORTED status (permanent failure)
+                assert result["status"] == MediaStatus.UNSUPPORTED.value
+                assert "too long" in result["failure_reason"].lower()

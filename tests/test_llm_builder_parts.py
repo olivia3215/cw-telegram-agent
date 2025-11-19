@@ -83,7 +83,7 @@ def test_history_roles_and_order_with_parts():
     ]
 
     # Create a GeminiLLM instance to test the private method
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history)
 
     # system + 3 history turns (target is no longer appended as separate turn) = 4
@@ -124,7 +124,7 @@ def test_placeholder_emitted_when_media_has_no_rendering():
         )
     ]
     # Create a GeminiLLM instance to test the private method
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
     assert len(contents) == 1
     parts = contents[0]["parts"]
@@ -154,7 +154,7 @@ def test_audio_media_part_with_reactions_and_text():
     ]
     history[0]["reactions"] = '"alice"(123)=❤'
 
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
     assert len(contents) == 1
     parts = contents[0]["parts"]
@@ -177,7 +177,7 @@ def test_reply_to_msg_id_in_metadata():
         ),
     ]
 
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
 
     assert len(contents) == 2
@@ -215,7 +215,7 @@ def test_agent_reply_to_msg_id_in_metadata():
         ),
     ]
 
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
 
     # Should have 4 messages from history plus 1 appended user turn (since last is agent)
@@ -272,7 +272,7 @@ def test_timestamp_in_metadata():
         ),
     ]
 
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     contents = llm._build_gemini_contents(history=history)
 
     assert len(contents) == 3

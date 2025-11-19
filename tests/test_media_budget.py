@@ -5,6 +5,7 @@
 
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -96,23 +97,25 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     # Budget = 1 AI attempt
     reset_description_budget(1)
 
-    # Act
-    result1 = await media_chain.get(
-        unique_id="uid-1", agent=agent, doc=SimpleNamespace(uid="uid-1"), kind="photo"
-    )
-    result2 = await media_chain.get(
-        unique_id="uid-2", agent=agent, doc=SimpleNamespace(uid="uid-2"), kind="photo"
-    )
+    # Mock get_media_llm to return our fake LLM
+    with patch("media.media_source.get_media_llm", return_value=llm):
+        # Act
+        result1 = await media_chain.get(
+            unique_id="uid-1", agent=agent, doc=SimpleNamespace(uid="uid-1"), kind="photo"
+        )
+        result2 = await media_chain.get(
+            unique_id="uid-2", agent=agent, doc=SimpleNamespace(uid="uid-2"), kind="photo"
+        )
 
-    # Assert: first consumed budget and produced a description
-    assert result1["unique_id"] == "uid-1"
-    assert result1["description"] == "first desc"
-    assert result1["status"] == MediaStatus.GENERATED.value
+        # Assert: first consumed budget and produced a description
+        assert result1["unique_id"] == "uid-1"
+        assert result1["description"] == "first desc"
+        assert result1["status"] == MediaStatus.GENERATED.value
 
-    # Second should return fallback due to budget exhaustion
-    assert result2["unique_id"] == "uid-2"
-    assert result2["description"] is None
-    assert result2["status"] == MediaStatus.BUDGET_EXHAUSTED.value
+        # Second should return fallback due to budget exhaustion
+        assert result2["unique_id"] == "uid-2"
+        assert result2["description"] is None
+        assert result2["status"] == MediaStatus.BUDGET_EXHAUSTED.value
 
     # Budget should now be 0
     assert get_remaining_description_budget() == 0
@@ -250,22 +253,24 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     # Budget = 1 AI attempt
     reset_description_budget(1)
 
-    # Act: Generate a description through the AI chain
-    result = await ai_chain.get(
-        unique_id="test-uid-123",
-        agent=agent,
-        doc=SimpleNamespace(uid="test-uid-123"),
-        kind="photo",
-    )
+    # Mock get_media_llm to return our fake LLM
+    with patch("media.media_source.get_media_llm", return_value=llm):
+        # Act: Generate a description through the AI chain
+        result = await ai_chain.get(
+            unique_id="test-uid-123",
+            agent=agent,
+            doc=SimpleNamespace(uid="test-uid-123"),
+            kind="photo",
+        )
 
-    # Assert: Description was generated and returned
-    assert result["unique_id"] == "test-uid-123"
-    assert result["description"] == "generated description"
-    assert result["status"] == MediaStatus.GENERATED.value
+        # Assert: Description was generated and returned
+        assert result["unique_id"] == "test-uid-123"
+        assert result["description"] == "generated description"
+        assert result["status"] == MediaStatus.GENERATED.value
 
-    # Assert: File was written to disk
-    cache_file = ai_cache_dir / "test-uid-123.json"
-    assert cache_file.exists()
+        # Assert: File was written to disk
+        cache_file = ai_cache_dir / "test-uid-123.json"
+        assert cache_file.exists()
 
     # Assert: In-memory cache was updated
     assert "test-uid-123" in ai_cache_source._mem_cache

@@ -30,17 +30,16 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
         raise RuntimeError("Missing agent_id or channel_id in graph context")
 
     agent = get_agent_for_id(agent_id)
-    agent_name = agent.name
 
     raw_target = task.params.get("target_channel_id")
     if raw_target is None:
-        logger.warning(f"[{agent_name}] xsend: missing target_channel_id")
+        logger.warning(f"[{agent.name}] xsend: missing target_channel_id")
         return
 
     try:
         target_channel_id = normalize_peer_id(raw_target)
     except Exception:
-        logger.warning(f"[{agent_name}] xsend: invalid target_channel_id: {raw_target!r}")
+        logger.warning(f"[{agent.name}] xsend: invalid target_channel_id: {raw_target!r}")
         return
 
     intent_raw = task.params.get("intent")
@@ -48,7 +47,7 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
 
     # Block xsend to the same channel
     if target_channel_id == normalize_peer_id(current_channel_id):
-        logger.info(f"[{agent_name}] xsend: target equals current channel; ignoring")
+        logger.info(f"[{agent.name}] xsend: target equals current channel; ignoring")
         return
 
     # Coalesce with existing received for the target; preserve/overwrite xsend_intent
@@ -60,7 +59,7 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
     )
 
     logger.info(
-        f"[{agent_name}] xsend scheduled received on channel {target_channel_id} (intent length={len(intent)})"
+        f"[{agent.name}] xsend scheduled received on channel {target_channel_id} (intent length={len(intent)})"
     )
 
 

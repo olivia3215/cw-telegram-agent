@@ -487,7 +487,6 @@ async def _process_retrieve_tasks(
     tasks: list[TaskNode],
     *,
     agent,
-    agent_name: str,
     channel_id: int,
     graph: TaskGraph,
     retrieved_urls: set[str],
@@ -527,6 +526,7 @@ async def _process_retrieve_tasks(
     if not retrieve_tasks:
         return normalized_tasks
 
+    agent_name = agent.name if agent else "[unknown]"
     logger.info(f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)")
 
     remaining = 3
@@ -988,8 +988,6 @@ async def _build_complete_system_prompt(
     Returns:
         Complete system prompt string
     """
-    agent_name = agent.name
-
     # Get base system prompt with context-appropriate instructions
     specific_instructions = await _specific_instructions(
         agent=agent,
@@ -999,7 +997,7 @@ async def _build_complete_system_prompt(
         global_intent=None,  # TODO: implement global intent
         xsend_intent=xsend_intent,
     )
-    system_prompt = agent.get_system_prompt(agent_name, channel_name, specific_instructions)
+    system_prompt = agent.get_system_prompt(agent.name, channel_name, specific_instructions)
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
@@ -1012,10 +1010,10 @@ async def _build_complete_system_prompt(
     if memory_content:
         system_prompt += f"\n\n{memory_content}\n"
         logger.info(
-            f"[{agent_name}] Added memory content to system prompt for channel {channel_id}"
+            f"[{agent.name}] Added memory content to system prompt for channel {channel_id}"
         )
     else:
-        logger.info(f"[{agent_name}] No memory content found for channel {channel_id}")
+        logger.info(f"[{agent.name}] No memory content found for channel {channel_id}")
 
     # Add current time
     now = agent.get_current_time()
@@ -1129,6 +1127,34 @@ async def _process_message_history(
     return history_rendered_items
 
 
+def _get_channel_llm(agent, channel_id: int):
+    """
+    Get the appropriate LLM instance for a channel, using channel-specific override if available.
+    
+    Args:
+        agent: The agent instance
+        channel_id: Conversation ID
+        
+    Returns:
+        LLM instance (channel-specific if configured, otherwise default)
+    """
+    channel_llm_model = agent.get_channel_llm_model(channel_id)
+    if channel_llm_model:
+        # Create LLM instance with channel-specific model
+        from llm.factory import create_llm_from_name
+        try:
+            llm = create_llm_from_name(channel_llm_model)
+            logger.debug(f"[{agent.name}] Using channel-specific LLM model: {channel_llm_model}")
+            return llm
+        except Exception as e:
+            logger.warning(
+                f"[{agent.name}] Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
+            )
+            return agent.llm
+    else:
+        return agent.llm
+
+
 async def _run_llm_with_retrieval(
     agent,
     system_prompt: str,
@@ -1157,8 +1183,8 @@ async def _run_llm_with_retrieval(
     Returns:
         List of TaskNode objects parsed from the LLM response.
     """
-    agent_name = agent.name
-    llm = agent.llm
+    # Get appropriate LLM instance (channel-specific if configured)
+    llm = _get_channel_llm(agent, channel_id)
 
     # Get existing fetched resources from graph context
     existing_resources = graph.context.get("fetched_resources", {})
@@ -1212,27 +1238,27 @@ async def _run_llm_with_retrieval(
             now_iso=now_iso,
             chat_type=chat_type,
             history=combined_history,
-            history_size=agent.llm.history_size,
+            history_size=llm.history_size,
             timeout_s=None,
         )
     except Exception as e:
         if is_retryable_llm_error(e):
-            logger.warning(f"[{agent_name}] LLM temporary failure, will retry: {e}")
+            logger.warning(f"[{agent.name}] LLM temporary failure, will retry: {e}")
             several = 15
             wait_task = task.insert_delay(graph, several)
             logger.info(
-            f"[{agent_name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
+            f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
             )
             raise
         else:
-            logger.error(f"[{agent_name}] LLM permanent failure: {e}")
+            logger.error(f"[{agent.name}] LLM permanent failure: {e}")
             return []
 
     if reply == "":
-        logger.info(f"[{agent_name}] LLM decided not to reply")
+        logger.info(f"[{agent.name}] LLM decided not to reply")
         return []
 
-    logger.debug(f"[{agent_name}] LLM reply: {reply}")
+    logger.debug(f"[{agent.name}] LLM reply: {reply}")
 
     # Parse the tasks
     try:
@@ -1241,24 +1267,23 @@ async def _run_llm_with_retrieval(
         )
     except TransientLLMResponseError as e:
         logger.warning(
-            f"[{agent_name}] LLM produced malformed task response; scheduling retry: {e}"
+            f"[{agent.name}] LLM produced malformed task response; scheduling retry: {e}"
         )
         retry_delay = 10
         wait_task = task.insert_delay(graph, retry_delay)
         logger.info(
-            f"[{agent_name}] Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
+            f"[{agent.name}] Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
         )
         raise Exception("Temporary error: malformed LLM response - will retry") from e
     except ValueError as e:
         logger.exception(
-            f"[{agent_name}] Failed to parse LLM response '{reply}': {e}"
+            f"[{agent.name}] Failed to parse LLM response '{reply}': {e}"
         )
         return []
 
     tasks = await _process_retrieve_tasks(
         tasks,
         agent=agent,
-        agent_name=agent_name,
         channel_id=channel_id,
         graph=graph,
         retrieved_urls=retrieved_urls,
@@ -1274,7 +1299,7 @@ async def _schedule_tasks(
     graph: TaskGraph,
     is_callout: bool,
     is_group: bool,
-    agent_name: str,
+    agent,
 ):
     """
     Add tasks to graph with proper dependencies and typing delays.
@@ -1285,7 +1310,7 @@ async def _schedule_tasks(
         graph: Task graph to add tasks to
         is_callout: Whether this was a callout message
         is_group: Whether this is a group chat
-        agent_name: Agent name for logging
+        agent: Agent instance
     """
     fallback_reply_to = received_task.params.get("message_id") if is_group else None
     last_id = received_task.id
@@ -1317,7 +1342,7 @@ async def _schedule_tasks(
             last_id = wait_task.id
 
             logger.info(
-                f"[{agent_name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
+                f"[{agent.name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
             )
         else:
             task.depends_on.append(last_id)
@@ -1365,13 +1390,16 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         return
 
     client = agent.client
-    agent_name = agent.name
 
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
+    # Get appropriate LLM instance to determine history_size for fetching
+    llm = _get_channel_llm(agent, channel_id)
+    history_size = llm.history_size
+
     # Fetch and prepare messages
-    messages = await client.get_messages(channel_id, limit=agent.llm.history_size)
+    messages = await client.get_messages(channel_id, limit=history_size)
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
@@ -1429,7 +1457,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Schedule output tasks
-    await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent_name)
+    await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent)
 
     # Add a wait task to keep the graph alive if we have fetched resources
     # Check the graph context, which persists fetched resources across retries
@@ -1447,7 +1475,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             )
             graph.add_task(wait_task)
             logger.info(
-                f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
+                f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
             )
 
     # Mark conversation as read
