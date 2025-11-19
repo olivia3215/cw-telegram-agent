@@ -138,7 +138,7 @@ def test_video_without_duration_attribute():
 
 def test_gemini_is_mime_type_supported_video_formats():
     """Test that video MIME types are recognized as supported."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     # Should support various video formats
     assert llm.is_mime_type_supported_by_llm("video/mp4")
@@ -159,7 +159,7 @@ def test_gemini_is_mime_type_supported_video_formats():
     assert not llm.is_mime_type_supported_by_llm("application/pdf")
 def test_gemini_audio_mime_aliases_supported():
     """Audio MIME aliases such as audio/mp3 should resolve to supported types."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
     assert llm.is_audio_mime_type_supported("audio/mp3")
     assert llm.is_audio_mime_type_supported("audio/x-mp3")
     assert llm.is_audio_mime_type_supported("AUDIO/X-MPEG-3")
@@ -169,7 +169,7 @@ def test_gemini_audio_mime_aliases_supported():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_success():
     """Test successful video description generation."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     # Mock the HTTP response
     mock_response_data = {
@@ -186,7 +186,7 @@ async def test_gemini_describe_video_success():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -211,7 +211,7 @@ async def test_gemini_describe_video_success():
         # Verify the API call
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
-        assert "gemini-2.0-flash" in call_args[0][0]  # Check model in URL
+        assert "gemini-1.5-flash" in call_args[0][0]  # Check model in URL
         payload = call_args[1]["json"]
         assert payload["contents"][0]["role"] == "user"
         assert len(payload["contents"][0]["parts"]) == 2
@@ -221,7 +221,7 @@ async def test_gemini_describe_video_success():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_too_long():
     """Test that videos longer than 10 seconds are rejected."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     video_bytes = b"fake_long_video"
 
@@ -236,7 +236,7 @@ async def test_gemini_describe_video_too_long():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_exactly_10_seconds():
     """Test that videos exactly 10 seconds are accepted."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     mock_response_data = {
         "candidates": [
@@ -244,7 +244,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -265,7 +265,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_no_duration():
     """Test that videos without duration metadata are accepted."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     mock_response_data = {
         "candidates": [
@@ -273,7 +273,7 @@ async def test_gemini_describe_video_no_duration():
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -294,7 +294,7 @@ async def test_gemini_describe_video_no_duration():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_unsupported_mime():
     """Test that unsupported video MIME types are rejected."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     with pytest.raises(ValueError) as exc_info:
         await llm.describe_video(b"fake_audio", mime_type="audio/mp3", duration=5)
@@ -306,9 +306,9 @@ async def test_gemini_describe_video_unsupported_mime():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_timeout():
     """Test handling of timeout errors."""
-    llm = GeminiLLM(api_key="test_key")
+    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)

@@ -128,20 +128,26 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     mock_llm = object.__new__(GeminiLLM)
     mock_llm.client = mock_llm_client
     mock_llm.model_name = "test-model"
+    mock_llm.api_key = "test-api-key"
     mock_llm.safety_settings = []
     mock_llm._safety_settings_rest_cache = []
     mock_llm.history_size = 10
 
     mock_agent = MagicMock(
-        name="TestAgent",
         agent_id=agent_id,
         system_prompt_name="TestPrompt",
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
     )
+    # Set name as a string attribute, not a MagicMock
+    mock_agent.name = "TestAgent"
     # Make get_cached_entity async
     mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Mock get_channel_llm_model to return None (no channel-specific model)
+    mock_agent.get_channel_llm_model = MagicMock(return_value=None)
+    # Mock get_system_prompt to return a string
+    mock_agent.get_system_prompt = MagicMock(return_value="System prompt")
 
     # Patch necessary functions
     monkeypatch.setattr("handlers.received.get_agent_for_id", lambda x: mock_agent)
@@ -213,20 +219,26 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     mock_llm = object.__new__(GeminiLLM)
     mock_llm.client = mock_llm_client
     mock_llm.model_name = "test-model"
+    mock_llm.api_key = "test-api-key"
     mock_llm.safety_settings = []
     mock_llm._safety_settings_rest_cache = []
     mock_llm.history_size = 10
 
     mock_agent = MagicMock(
-        name="TestAgent",
         agent_id=agent_id,
         system_prompt_name="TestPrompt",
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
     )
+    # Set name as a string attribute, not a MagicMock
+    mock_agent.name = "TestAgent"
     # Make get_cached_entity async
     mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Mock get_channel_llm_model to return None (no channel-specific model)
+    mock_agent.get_channel_llm_model = MagicMock(return_value=None)
+    # Mock get_system_prompt to return a string
+    mock_agent.get_system_prompt = MagicMock(return_value="System prompt")
 
     # Mock URL fetching to return content
     async def mock_fetch_url(url):
@@ -333,20 +345,26 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     mock_llm = object.__new__(GeminiLLM)
     mock_llm.client = mock_llm_client
     mock_llm.model_name = "test-model"
+    mock_llm.api_key = "test-api-key"
     mock_llm.safety_settings = []
     mock_llm._safety_settings_rest_cache = []
     mock_llm.history_size = 10
 
     mock_agent = MagicMock(
-        name="TestAgent",
         agent_id=agent_id,
         system_prompt_name="TestPrompt",
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
     )
+    # Set name as a string attribute, not a MagicMock
+    mock_agent.name = "TestAgent"
     # Make get_cached_entity async
     mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Mock get_channel_llm_model to return None (no channel-specific model)
+    mock_agent.get_channel_llm_model = MagicMock(return_value=None)
+    # Mock get_system_prompt to return a string
+    mock_agent.get_system_prompt = MagicMock(return_value="System prompt")
 
     # Track if retrieved content was used in the query
     query_calls = []
@@ -377,6 +395,7 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
         AsyncMock(),
     )
     # Override query_structured to track calls
+    # Replace the method with our tracking function
     mock_llm.query_structured = track_query
 
     # Run one tick - should succeed using pre-populated fetched resources
