@@ -11,8 +11,8 @@ import os
 from collections.abc import Iterable
 from typing import Any
 
-import httpx
-from openai import AsyncOpenAI
+import httpx  # pyright: ignore[reportMissingImports]
+from openai import AsyncOpenAI  # pyright: ignore[reportMissingImports]
 
 from config import GROK_API_KEY, GROK_MODEL
 from media.mime_utils import (

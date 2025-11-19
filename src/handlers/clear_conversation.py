@@ -20,24 +20,23 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent: Agent = get_agent_for_id(agent_id)
-    agent_name = agent.name
     client = agent.client
 
     channel = await agent.get_cached_entity(channel_id)
     channel_name = await get_channel_name(agent, channel_id)
 
     logger.debug(
-        f"[{agent_name}] Resolved channel for ID [{channel_name}]: {channel} (type: {type(channel)})"
+        f"[{agent.name}] Resolved channel for ID [{channel_name}]: {channel} (type: {type(channel)})"
     )
 
     if not is_dm(channel):
         logger.info(
-            f"[{agent_name}] Skipping clear-conversation: channel [{channel_name}] is not a DM."
+            f"[{agent.name}] Skipping clear-conversation: channel [{channel_name}] is not a DM."
         )
         return
 
     logger.info(
-        f"[{agent_name}] Clearing conversation history with channel [{channel_name}]."
+        f"[{agent.name}] Clearing conversation history with channel [{channel_name}]."
     )
 
     try:
@@ -49,9 +48,9 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
             )
         )
         logger.info(
-            f"[{agent_name}] Successfully cleared conversation with [{channel_name}]"
+            f"[{agent.name}] Successfully cleared conversation with [{channel_name}]"
         )
     except Exception as e:
         logger.exception(
-            f"[{agent_name}] Failed to clear conversation with [{channel_name}]: {e}"
+            f"[{agent.name}] Failed to clear conversation with [{channel_name}]: {e}"
         )

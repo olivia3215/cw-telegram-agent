@@ -12,9 +12,9 @@ import os
 from collections.abc import Iterable
 from typing import Any
 
-import httpx
-from google import genai
-from google.genai.types import (
+import httpx  # pyright: ignore[reportMissingImports]
+from google import genai  # pyright: ignore[reportMissingImports]
+from google.genai.types import (  # pyright: ignore[reportMissingImports]
     FinishReason,
     GenerateContentConfig,
     HarmBlockThreshold,

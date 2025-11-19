@@ -5,7 +5,7 @@
 
 import logging
 
-from telethon.tl.functions.contacts import BlockRequest
+from telethon.tl.functions.contacts import BlockRequest  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode
@@ -20,7 +20,6 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     agent_id = graph.context.get("agent_id")
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
-    agent_name = agent.name
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
@@ -32,6 +31,6 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
         return
 
     logger.info(
-        f"[{agent_name}] Blocking [{await get_channel_name(agent, channel_id)}]."
+        f"[{agent.name}] Blocking [{await get_channel_name(agent, channel_id)}]."
     )
     await client(BlockRequest(id=channel_id))
