@@ -27,7 +27,7 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
     - Names starting with "grok" route through GrokLLM
       - If name is exactly "grok", uses GROK_MODEL env variable (required if using "grok")
       - Otherwise uses the specified model name
-    - If llm_name is None or empty, defaults to GeminiLLM with GEMINI_MODEL env variable
+    - If llm_name is None or empty, defaults to GeminiLLM with hardcoded model "gemini-2.5-flash-preview-09-2025"
 
     Args:
         llm_name: The LLM name from agent configuration (e.g., "gemini", "grok", "gemini-2.0-flash")
@@ -40,16 +40,14 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
         ImportError: If GrokLLM is not available and grok is requested
     """
     if not llm_name or not llm_name.strip():
-        # Default to Gemini
+        # Default to Gemini with hardcoded default model (per documentation)
         if not GOOGLE_GEMINI_API_KEY:
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or specify an LLM with its API key."
             )
-        if not GEMINI_MODEL:
-            raise ValueError(
-                "Missing GEMINI_MODEL environment variable. Set GEMINI_MODEL to specify the default Gemini model."
-            )
-        return GeminiLLM(model=GEMINI_MODEL, api_key=GOOGLE_GEMINI_API_KEY)
+        # Use hardcoded default model when LLM field is omitted (per documentation)
+        default_model = "gemini-2.5-flash-preview-09-2025"
+        return GeminiLLM(model=default_model, api_key=GOOGLE_GEMINI_API_KEY)
 
     llm_name = llm_name.strip().lower()
 
