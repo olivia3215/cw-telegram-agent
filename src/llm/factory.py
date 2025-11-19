@@ -25,7 +25,7 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
       - If name is exactly "gemini", uses GEMINI_MODEL env variable (required if using "gemini")
       - Otherwise uses the specified model name
     - Names starting with "grok" route through GrokLLM
-      - If name is exactly "grok", uses GROK_MODEL env variable (required if using "grok")
+      - If name is exactly "grok", uses GROK_MODEL env variable if set, otherwise defaults to "grok-4-fast-non-reasoning"
       - Otherwise uses the specified model name
     - If llm_name is None or empty, defaults to GeminiLLM with hardcoded model "gemini-2.5-flash-preview-09-2025"
 
@@ -36,7 +36,7 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
         An LLM instance configured with the appropriate model
 
     Raises:
-        ValueError: If required API keys or model env variables are missing
+        ValueError: If required API keys are missing
         ImportError: If GrokLLM is not available and grok is requested
     """
     if not llm_name or not llm_name.strip():
@@ -82,11 +82,8 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
             )
         # Use env variable if just "grok", otherwise use specified model name
         if llm_name == "grok":
-            if not GROK_MODEL:
-                raise ValueError(
-                    "Missing GROK_MODEL environment variable. Set GROK_MODEL to specify the Grok model."
-                )
-            model = GROK_MODEL
+            # Default to grok-4-fast-non-reasoning if GROK_MODEL not set (per documentation)
+            model = GROK_MODEL if GROK_MODEL else "grok-4-fast-non-reasoning"
         else:
             model = llm_name
         return GrokLLM(model=model, api_key=GROK_API_KEY)
