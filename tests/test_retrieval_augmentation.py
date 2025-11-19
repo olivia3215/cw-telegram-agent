@@ -26,7 +26,6 @@ async def test_parse_retrieve_task_single_url():
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,
-        agent_name="TestAgent",
         channel_id=456,
         graph=graph,
         retrieved_urls={"https://example.com/page1"},
@@ -60,7 +59,6 @@ async def test_parse_retrieve_task_multiple_urls():
     tasks = await hr._process_retrieve_tasks(
         tasks,
         agent=None,
-        agent_name="TestAgent",
         channel_id=456,
         graph=graph,
         retrieved_urls={
@@ -93,7 +91,6 @@ async def test_parse_retrieve_task_empty():
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,
-        agent_name="TestAgent",
         channel_id=456,
         graph=graph,
         retrieved_urls=set(),
@@ -124,7 +121,6 @@ async def test_parse_mixed_tasks_with_retrieve():
     await hr._process_retrieve_tasks(
         tasks,
         agent=None,
-        agent_name="TestAgent",
         channel_id=456,
         graph=graph,
         retrieved_urls={"https://www.google.com/search?q=test"},

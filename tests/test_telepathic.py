@@ -420,7 +420,6 @@ class TestTelepathicMessageHandling:
                         await hr._process_retrieve_tasks(
                             tasks,
                             agent=mock_agent,
-                            agent_name="TestAgent",
                             channel_id=456,
                             graph=graph,
                             retrieved_urls=set(),

@@ -526,7 +526,8 @@ async def _process_retrieve_tasks(
     if not retrieve_tasks:
         return normalized_tasks
 
-    logger.info(f"[{agent.name}] Found {len(retrieve_tasks)} retrieve task(s)")
+    agent_name = agent.name if agent else "[unknown]"
+    logger.info(f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)")
 
     remaining = 3
     urls_to_fetch: list[str] = []
@@ -552,7 +553,7 @@ async def _process_retrieve_tasks(
 
     if not urls_to_fetch:
         logger.info(
-            f"[{agent.name}] All requested URLs already retrieved - content is already in history"
+            f"[{agent_name}] All requested URLs already retrieved - content is already in history"
         )
         return normalized_tasks
 
@@ -566,20 +567,20 @@ async def _process_retrieve_tasks(
             )
 
     logger.info(
-        f"[{agent.name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
+        f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
     )
     for url in urls_to_fetch:
         fetched_url, content = await _fetch_url(url)
         retrieved_urls.add(fetched_url)
         retrieved_contents.append((fetched_url, content))
         logger.info(
-            f"[{agent.name}] Retrieved {fetched_url} ({len(content)} chars)"
+            f"[{agent_name}] Retrieved {fetched_url} ({len(content)} chars)"
         )
 
     if retrieved_contents:
         graph.context["fetched_resources"] = dict(retrieved_contents)
         logger.info(
-            f"[{agent.name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
+            f"[{agent_name}] Stored {len(retrieved_contents)} fetched resource(s) in graph context"
         )
 
     wait_task = make_wait_task(
@@ -588,11 +589,11 @@ async def _process_retrieve_tasks(
     )
     graph.add_task(wait_task)
     logger.info(
-        f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
+        f"[{agent_name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep fetched resources alive"
     )
 
     logger.info(
-        f"[{agent.name}] Successfully fetched {len(urls_to_fetch)} URL(s); triggering retry to process with retrieved content"
+        f"[{agent_name}] Successfully fetched {len(urls_to_fetch)} URL(s); triggering retry to process with retrieved content"
     )
 
     raise Exception(

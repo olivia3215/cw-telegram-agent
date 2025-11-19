@@ -110,14 +110,14 @@ class GrokLLM(LLM):
         Uses Grok via OpenAI-compatible API with this instance's api key.
         Raises on failures so the scheduler's retry policy can handle it.
         """
-        # Assert that this instance is the media LLM (caller should select the correct LLM)
+        # Assert that this instance is the correct type for media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
         
         media_llm = get_media_llm()
-        if media_llm is not self:
+        if type(media_llm) != type(self):
             raise RuntimeError(
-                f"GrokLLM.describe_image called on wrong instance. "
-                f"Expected media_llm ({media_llm}) to be self ({self}). "
+                f"GrokLLM.describe_image called on wrong LLM type. "
+                f"Expected media_llm type {type(media_llm).__name__} to be {type(self).__name__}. "
                 f"Caller should use get_media_llm() to get the correct instance."
             )
         

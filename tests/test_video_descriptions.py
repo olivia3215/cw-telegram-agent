@@ -474,23 +474,25 @@ async def test_ai_generating_source_calls_describe_video():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
-            result = await source.get(
-                unique_id="test_video_123",
-                agent=agent,
-                doc=doc,
-                kind="video",
-                duration=7,
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_video_123",
+                    agent=agent,
+                    doc=doc,
+                    kind="video",
+                    duration=7,
+                )
 
-            # Verify describe_video was called (not describe_image)
-            llm.describe_video.assert_called_once()
-            call_args = llm.describe_video.call_args
-            assert call_args[0][0] == b"fake_video_bytes_12345"
-            assert call_args[1]["duration"] == 7
+                # Verify describe_video was called (not describe_image)
+                llm.describe_video.assert_called_once()
+                call_args = llm.describe_video.call_args
+                assert call_args[0][0] == b"fake_video_bytes_12345"
+                assert call_args[1]["duration"] == 7
 
-            # Verify result
-            assert result["status"] == MediaStatus.GENERATED.value
-            assert result["description"] == "A person skateboarding in a park."
+                # Verify result
+                assert result["status"] == MediaStatus.GENERATED.value
+                assert result["description"] == "A person skateboarding in a park."
 
 
 @pytest.mark.asyncio
@@ -527,28 +529,30 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
                         b"fake_video_bytes"
                     )
 
-                    result = await source.get(
-                        unique_id="test_animated_sticker_456",
-                        agent=agent,
-                        doc=doc,
-                        kind="sticker",
-                        duration=4,
-                    )
+                    # Mock get_media_llm to return our mock LLM
+                    with patch("media.media_source.get_media_llm", return_value=llm):
+                        result = await source.get(
+                            unique_id="test_animated_sticker_456",
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            duration=4,
+                        )
 
-                    # Verify TGS converter was called
-                    mock_converter.assert_called_once()
+                        # Verify TGS converter was called
+                        mock_converter.assert_called_once()
 
-                    # Verify describe_video was called with video data (not describe_image)
-                    llm.describe_video.assert_called_once()
-                    call_args = llm.describe_video.call_args
-                    assert (
-                        call_args[0][0] == b"fake_video_bytes"
-                    )  # First positional arg should be video bytes
-                    assert call_args[0][1] == "video/mp4"  # Second should be MIME type
+                        # Verify describe_video was called with video data (not describe_image)
+                        llm.describe_video.assert_called_once()
+                        call_args = llm.describe_video.call_args
+                        assert (
+                            call_args[0][0] == b"fake_video_bytes"
+                        )  # First positional arg should be video bytes
+                        assert call_args[0][1] == "video/mp4"  # Second should be MIME type
 
-                    # Verify result
-                    assert result["status"] == MediaStatus.GENERATED.value
-                    assert result["description"] == "An animated dancing cat."
+                        # Verify result
+                        assert result["status"] == MediaStatus.GENERATED.value
+                        assert result["description"] == "An animated dancing cat."
 
 
 @pytest.mark.asyncio
@@ -573,20 +577,22 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "image/jpeg"
 
-            result = await source.get(
-                unique_id="test_photo_789",
-                agent=agent,
-                doc=doc,
-                kind="photo",
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_photo_789",
+                    agent=agent,
+                    doc=doc,
+                    kind="photo",
+                )
 
-            # Verify describe_image was called (not describe_video)
-            llm.describe_image.assert_called_once()
-            llm.describe_video.assert_not_called()
+                # Verify describe_image was called (not describe_video)
+                llm.describe_image.assert_called_once()
+                llm.describe_video.assert_not_called()
 
-            # Verify result
-            assert result["status"] == MediaStatus.GENERATED.value
-            assert result["description"] == "A sunset over the ocean."
+                # Verify result
+                assert result["status"] == MediaStatus.GENERATED.value
+                assert result["description"] == "A sunset over the ocean."
 
 
 @pytest.mark.asyncio
@@ -613,14 +619,16 @@ async def test_ai_generating_source_handles_video_too_long_error():
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
-            result = await source.get(
-                unique_id="test_long_video_999",
-                agent=agent,
-                doc=doc,
-                kind="video",
-                duration=15,
-            )
+            # Mock get_media_llm to return our mock LLM
+            with patch("media.media_source.get_media_llm", return_value=llm):
+                result = await source.get(
+                    unique_id="test_long_video_999",
+                    agent=agent,
+                    doc=doc,
+                    kind="video",
+                    duration=15,
+                )
 
-            # Should return UNSUPPORTED status (permanent failure)
-            assert result["status"] == MediaStatus.UNSUPPORTED.value
-            assert "too long" in result["failure_reason"].lower()
+                # Should return UNSUPPORTED status (permanent failure)
+                assert result["status"] == MediaStatus.UNSUPPORTED.value
+                assert "too long" in result["failure_reason"].lower()
