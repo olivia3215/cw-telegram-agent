@@ -265,18 +265,20 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for image description"
             )
 
-        # Use MEDIA_MODEL for image descriptions (always, regardless of agent's LLM)
+        # Assert that this instance is the media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
         
         media_llm = get_media_llm()
+        if media_llm is not self:
+            raise RuntimeError(
+                f"GeminiLLM.describe_image called on wrong instance. "
+                f"Expected media_llm ({media_llm}) to be self ({self}). "
+                f"Caller should use get_media_llm() to get the correct instance."
+            )
         
-        # If media model is Gemini, use this instance's API key with media model
-        if isinstance(media_llm, GeminiLLM):
-            model = media_llm.model_name
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
-        else:
-            # Media model is Grok, delegate to GrokLLM
-            return await media_llm.describe_image(image_bytes, mime_type, timeout_s)
+        # Use this instance's model and API key
+        model = self.model_name
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache
@@ -383,18 +385,20 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for video description"
             )
 
-        # Use MEDIA_MODEL for video descriptions (always, regardless of agent's LLM)
+        # Assert that this instance is the media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
         
         media_llm = get_media_llm()
+        if media_llm is not self:
+            raise RuntimeError(
+                f"GeminiLLM.describe_video called on wrong instance. "
+                f"Expected media_llm ({media_llm}) to be self ({self}). "
+                f"Caller should use get_media_llm() to get the correct instance."
+            )
         
-        # If media model is Gemini, use this instance's API key with media model
-        if isinstance(media_llm, GeminiLLM):
-            model = media_llm.model_name
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
-        else:
-            # Media model is Grok, delegate to GrokLLM
-            return await media_llm.describe_video(video_bytes, mime_type, duration, timeout_s)
+        # Use this instance's model and API key
+        model = self.model_name
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache
@@ -495,18 +499,20 @@ class GeminiLLM(LLM):
                 f"MIME type {mime_type} is not supported by Gemini for audio description"
             )
 
-        # Use MEDIA_MODEL for audio descriptions (always, regardless of agent's LLM)
+        # Assert that this instance is the media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
         
         media_llm = get_media_llm()
+        if media_llm is not self:
+            raise RuntimeError(
+                f"GeminiLLM.describe_audio called on wrong instance. "
+                f"Expected media_llm ({media_llm}) to be self ({self}). "
+                f"Caller should use get_media_llm() to get the correct instance."
+            )
         
-        # If media model is Gemini, use this instance's API key with media model
-        if isinstance(media_llm, GeminiLLM):
-            model = media_llm.model_name
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
-        else:
-            # Media model is Grok, delegate to GrokLLM
-            return await media_llm.describe_audio(audio_bytes, mime_type, duration, timeout_s)
+        # Use this instance's model and API key
+        model = self.model_name
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
         # Use cached REST API format safety settings
         safety_settings_rest = self._safety_settings_rest_cache

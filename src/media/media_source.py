@@ -26,6 +26,7 @@ import httpx  # pyright: ignore[reportMissingImports]
 
 from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
+from llm.media_helper import get_media_llm
 from telegram_download import download_media_bytes
 
 from .media_budget import (
@@ -803,12 +804,13 @@ class AIGeneratingMediaSource(MediaSource):
             raise ValueError("AIGeneratingMediaSource: doc is required but was None")
 
         client = getattr(agent, "client", None)
-        llm = getattr(agent, "llm", None)
-
-        if not client or not llm:
+        if not client:
             raise ValueError(
-                f"AIGeneratingMediaSource: agent missing client or llm for {unique_id}"
+                f"AIGeneratingMediaSource: agent missing client for {unique_id}"
             )
+
+        # Use the media LLM for descriptions (from MEDIA_MODEL), not the agent's LLM
+        media_llm = get_media_llm()
 
         t0 = time.perf_counter()
 
@@ -904,7 +906,7 @@ class AIGeneratingMediaSource(MediaSource):
             # - Converted TGS files (now in video format)
             if _needs_video_analysis(kind, detected_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
-                desc = await llm.describe_video(
+                desc = await media_llm.describe_video(
                     data,
                     detected_mime_type,
                     duration=duration,
@@ -912,19 +914,19 @@ class AIGeneratingMediaSource(MediaSource):
                 )
             elif (
                 kind == "audio"
-                and hasattr(llm, "is_audio_mime_type_supported")
-                and llm.is_audio_mime_type_supported(detected_mime_type)
+                and hasattr(media_llm, "is_audio_mime_type_supported")
+                and media_llm.is_audio_mime_type_supported(detected_mime_type)
             ):
                 # Audio files (including voice messages)
                 duration = metadata.get("duration")
-                desc = await llm.describe_audio(
+                desc = await media_llm.describe_audio(
                     data,
                     detected_mime_type,
                     duration=duration,
                     timeout_s=_DESCRIBE_TIMEOUT_SECS,
                 )
             else:
-                desc = await llm.describe_image(
+                desc = await media_llm.describe_image(
                     data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
                 )
             desc = (desc or "").strip()

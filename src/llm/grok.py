@@ -110,20 +110,20 @@ class GrokLLM(LLM):
         Uses Grok via OpenAI-compatible API with this instance's api key.
         Raises on failures so the scheduler's retry policy can handle it.
         """
-        # Use MEDIA_MODEL for image descriptions (always, regardless of agent's LLM)
+        # Assert that this instance is the media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
         
         media_llm = get_media_llm()
+        if media_llm is not self:
+            raise RuntimeError(
+                f"GrokLLM.describe_image called on wrong instance. "
+                f"Expected media_llm ({media_llm}) to be self ({self}). "
+                f"Caller should use get_media_llm() to get the correct instance."
+            )
         
-        # If media model is Grok, use media_llm (which has the correct model from MEDIA_MODEL)
-        if isinstance(media_llm, GrokLLM):
-            # Use media_llm directly (it has correct model and API key from MEDIA_MODEL)
-            # But we'll use this instance's API key if available, or media_llm's
-            model_name = media_llm.model_name
-            api_key = self.api_key or media_llm.api_key
-        else:
-            # Media model is Gemini, delegate to GeminiLLM
-            return await media_llm.describe_image(image_bytes, mime_type, timeout_s)
+        # Use this instance's model and API key
+        model_name = self.model_name
+        api_key = self.api_key
         
         if not api_key:
             raise ValueError("Missing Grok API key")
@@ -157,10 +157,8 @@ class GrokLLM(LLM):
         timeout = timeout_s or 30.0
 
         try:
-            # Create temporary client if needed (if model differs from instance model)
-            client = self.client if model_name == self.model_name else AsyncOpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
-            
-            response = await client.chat.completions.create(
+            # Use this instance's client (model_name is guaranteed to be self.model_name)
+            response = await self.client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {
