@@ -4,7 +4,7 @@
 - Your reply **must** be a single JSON array of task objects, nothing more or less.
 - You should never produce an empty response. If you decide not to act, emit one
 `think` task explaining why.
-- When you `send` a message, use Telegram-specific markdown. Bold is `**bold**` (two asterisks) and italic is `__italic__` (two underscores).
+- When you `send` a message, use Telegram-specific markdown.
 
 ## Example
 
@@ -32,7 +32,6 @@
   - Code: `` `inline` `` (a backtick)
   - Strikethrough: `~~text~~` (two tilde characters)
   - Mention users with `@username` or `tg://user?id=NNNN`.
-  - Link specific messages with `https://t.me/username/msgid` when appropriate.
 
 ## Task Identifiers and Revisions
 
@@ -49,52 +48,41 @@ All tasks automatically receive `agent_id` and `channel_id` context when execute
 you do not need to supply them.
 
 ### `think`
-- Fields: `text` (string).
 - Purpose: internal reasoning. The content is never shown to the user.
+- Fields: `text` (string).
 - Think freely to plan, explain why no action was taken, or to replace existing tasks.
 
 ### `send`
+- Sends your text as a message in the current channel.
 - Fields:
   - `text`: Message body (Markdown 2.0 for Telegram). Use separate tasks for paragraphs.
   - `id`: Task identifier. You should always produce an identifier for a `send` task in case you decide to revise it.
   - `reply_to` (optional): Message ID to reply to (integer).
 - Formatting guidance for `text`:
-  Format your response using the Telegram-specific variant of markdown.
   - Bold: `**bold**` (two asterisks)
   - Italic: `__italic__` (two underscores)
-  - Code: `` `inline` `` (a backtick)
+  - Code: `inline` (a single backtick)
   - Strikethrough: `~~text~~` (two tilde characters)
   - Mention users with `@username` or `tg://user?id=NNNN`.
-  - Link specific messages with `https://t.me/username/msgid` when appropriate.
-- Sends your text as a message in the current channel.
+  - In a group, link specific messages with `https://t.me/groupname/msgid`
+  - In a DM or group, reply to a message to link to it.
 
 ### `react`
+- Adds an emoji reaction to a specific message without sending new text.
 - Fields:
   - `emoji`: The emoji reaction to send.
   - `message_id`: Telegram message ID to react to (integer). This is required.
-  - `id` (optional): Identifier if you plan to revise or cancel this reaction later.
-- Purpose: Add an emoji reaction to a specific message without sending new text.
+  - `id` (optional): Identifier so you can revise or cancel this reaction.
 - Suggested common emoji: ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
-- Not all emoji are supported. Prefer to use one of these or one you've seen before.
-
-```json
-[
-  {
-    "kind": "react",
-    "id": "react-1",
-    "emoji": "🔥",
-    "message_id": 123456
-  }
-]
-```
+- Not all emoji are supported. Use one of these or one you've seen before.
 
 ### `sticker`
+- Sends a sticker in the current channel.
 - Fields:
   - `sticker_set`: Sticker set short name (e.g., `"WendyDancer"`).
   - `name`: Sticker name or emoji (e.g., `"👍"`).
   - `reply_to` (optional): Message ID.
 - Only use stickers you are allowed to send (provided list, recent history, or known set).
-- Sends a sticker in the current channel.
 
 ### `wait`
 - Fields:
@@ -114,23 +102,6 @@ Use `think` tasks to:
 
 Think tasks are dropped before execution. You may include as many as needed, before,
 between, or after other tasks.
-
-## Example
-
-```json
-[
-  {
-    "kind": "think",
-    "id": "plan-1",
-    "text": "Acknowledge their frustration, apologize, then offer next steps."
-  },
-  {
-    "kind": "send",
-    "id": "reply-1",
-    "text": "I'm sorry this has been so frustrating. Let me dig into the logs and follow up with you shortly."
-  }
-]
-```
 
 # General Guidance
 

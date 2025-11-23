@@ -10,7 +10,7 @@ The intent is **an instruction you are sending to your future self**.
 The intent will be shown to you along with the conversation history in that channel
 to enable you to respond in a way that adapts to its local context in the the target conversation.
 Your __intent__ should carry enough information to tell your future self what to do there,
-so that your future self in the other conversation can construct an appropriate task graph.
+so that your future self in the other conversation can construct appropriate tasks.
 The intent you send is visible only to your future self in the other channel, not to the participant on that channel.
 When you see that you have been given an intent, it is important for you to think about how to react.
 The intent is transient. You will only be shown it once.

@@ -1,6 +1,6 @@
 # Telepathic Channels
 
-This file configures which channels, groups, or users are "telepathic" - meaning the agent's thoughts, memories, and retrievals are visible to conversation participants.
+This file configures which channels, groups, or users are "telepathic" - meaning a agent's thoughts, memories, and retrievals are visible to conversation participants.
 
 Each line starting with `- ` followed by a number designates a Telegram channel, group, or user ID.
 
