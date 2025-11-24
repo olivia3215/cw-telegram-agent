@@ -84,7 +84,7 @@ def make_wait_task(
 
 
 async def insert_received_task_for_conversation(
-    work_queue: WorkQueue,
+    work_queue=None,
     *,
     recipient_id: str,
     channel_id: str,
@@ -94,7 +94,13 @@ async def insert_received_task_for_conversation(
 ):
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
+    
+    Args:
+        work_queue: Optional WorkQueue instance (for backward compatibility with tests).
+                   If None, uses WorkQueue.get_instance().
     """
+    if work_queue is None:
+        work_queue = WorkQueue.get_instance()
     agent = get_agent_for_id(recipient_id)
     preserved_tasks = []
     # Find the existing graph for this conversation

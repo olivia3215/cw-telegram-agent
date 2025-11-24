@@ -3,7 +3,8 @@ import json
 
 import pytest
 
-from media_editor import SESSION_VERIFIED_KEY, create_admin_app
+from admin_console.auth import SESSION_VERIFIED_KEY
+from admin_console.app import create_admin_app
 from media.media_sources import reset_media_source_registry
 
 
@@ -37,7 +38,7 @@ def test_api_media_list_detects_missing_tgs_mime(monkeypatch, tmp_path):
 
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    monkeypatch.setattr("media_editor.STATE_DIRECTORY", str(state_dir))
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
 
     app = create_admin_app()
     app.config["TESTING"] = True

@@ -568,17 +568,15 @@ The project uses a shared library approach for service management scripts to eli
 ```
 cw-telegram-agent/
 ├── run.sh                    # Agent server wrapper
-├── media_editor.sh           # Media editor wrapper
 ├── telegram_login.sh         # Telegram login wrapper
 ├── src/                      # Python source code
 │   ├── run.py               # Main agent server
-│   ├── media_editor.py      # Media editor web interface
+│   ├── admin_console/       # Admin console web interface (includes media editor)
 │   ├── telegram_login.py    # Telegram login utility
 │   └── [other modules]
 └── scripts/                  # Service management scripts
     ├── lib.sh               # Shared library
     ├── run.sh               # Agent server management
-    └── media_editor.sh      # Media editor management
 ```
 
 ### Shared Library (`scripts/lib.sh`)

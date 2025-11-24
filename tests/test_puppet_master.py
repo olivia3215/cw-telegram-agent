@@ -5,8 +5,7 @@ import pytest
 
 from admin_console import puppet_master
 from admin_console.puppet_master import PuppetMasterUnavailable
-import media_editor
-from media_editor import (
+from admin_console.auth import (
     ChallengeAttemptsExceeded,
     ChallengeExpired,
     ChallengeInvalid,
@@ -127,7 +126,7 @@ class FakeClock:
 @pytest.fixture()
 def fake_clock(monkeypatch):
     clock = FakeClock(datetime(2025, 1, 1, tzinfo=UTC))
-    monkeypatch.setattr(media_editor, "clock", clock, raising=False)
+    monkeypatch.setattr("admin_console.auth.clock", clock, raising=False)
     return clock
 
 

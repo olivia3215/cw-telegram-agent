@@ -7,7 +7,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Regular task handler type: async function(task, graph, work_queue)
+# Regular task handler type: async function(task, graph, work_queue=None)
+# Note: work_queue parameter is kept for backward compatibility but is ignored
 TaskHandler = Callable[..., Awaitable[None]]
 
 # Immediate task handler type: async function(task, *, agent, channel_id) -> bool

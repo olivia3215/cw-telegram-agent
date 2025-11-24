@@ -34,8 +34,9 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
         "task_graph_helpers.get_channel_name", AsyncMock(return_value="TestUser")
     )
 
-    # Create work queue
-    work_queue = WorkQueue()
+    # Reset and get work queue singleton
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
 
     # Create initial graph with fetched resources and a preserve wait task
     agent_id = 12345
@@ -76,7 +77,6 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
 
     # Trigger a replan by inserting a new received task
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=channel_id,
         message_id=123,
@@ -139,8 +139,9 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
         "task_graph_helpers.get_channel_name", AsyncMock(return_value="TestUser")
     )
 
-    # Create work queue
-    work_queue = WorkQueue()
+    # Reset and get work queue singleton
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
 
     # Create initial graph WITHOUT fetched resources
     agent_id = 12345
@@ -169,7 +170,6 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
 
     # Trigger a replan
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=channel_id,
         message_id=123,

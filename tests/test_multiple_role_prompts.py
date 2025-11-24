@@ -55,7 +55,6 @@ def test_agent_multiple_role_prompts():
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(
-                agent_name=agent.name,
                 channel_name="TestUser",
                 specific_instructions="Test specific instructions."
             )
@@ -131,7 +130,6 @@ def test_agent_single_role_prompt():
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(
-                agent_name=agent.name,
                 channel_name="TestUser",
                 specific_instructions="Test specific instructions."
             )
@@ -169,7 +167,6 @@ def test_agent_no_role_prompts():
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(
-                agent_name=agent.name,
                 channel_name="TestUser",
                 specific_instructions="Test specific instructions."
             )

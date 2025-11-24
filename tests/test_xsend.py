@@ -75,7 +75,8 @@ async def test_parse_xsend_negative_group_id():
 @pytest.mark.asyncio
 async def test_helper_coalesce_sets_intent(monkeypatch):
     # Prepare an empty work queue
-    work_queue = WorkQueue()
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
 
     # Stub agent and channel name resolution
     class _StubAgent:
@@ -96,7 +97,6 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
 
     # First insertion creates a new received
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=100,
         channel_id=200,
         xsend_intent="hello",
@@ -109,7 +109,6 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
 
     # Second insertion coalesces and overwrites intent
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=100,
         channel_id=200,
         xsend_intent="updated",

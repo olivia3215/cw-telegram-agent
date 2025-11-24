@@ -239,6 +239,7 @@ class WorkQueue:
     _task_graphs: list[TaskGraph] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _last_index: int = field(default=0, init=False, repr=False)
+    _state_file_path: str | None = field(default=None, init=False, repr=False)
 
     def remove_all(self, predicate):
         with self._lock:
@@ -291,29 +292,43 @@ class WorkQueue:
                     return graph
             return None
 
-    def save(self, path: str):
-        """Saves the current state of the work queue to a file."""
+    def save(self, path: str | None = None):
+        """Saves the current state of the work queue to a file.
+        
+        Args:
+            path: Optional file path. If not provided, uses the stored _state_file_path.
+                  If _state_file_path is also None, raises ValueError.
+        """
+        save_path = path or self._state_file_path
+        if save_path is None:
+            raise ValueError("No file path provided and _state_file_path is not set")
+        
         with self._lock:
             data = self._serialize()
-            backup = path + ".bak"
-            tmp = path + ".tmp"
-            if os.path.exists(path):
-                shutil.copy2(path, backup)
+            backup = save_path + ".bak"
+            tmp = save_path + ".tmp"
+            if os.path.exists(save_path):
+                shutil.copy2(save_path, backup)
             with open(tmp, "w") as f:
                 f.write(data)
-            os.replace(tmp, path)
+            os.replace(tmp, save_path)
 
     @classmethod
-    def load(cls, path: str):
+    def _load(cls, path: str):
+        """Private method to load WorkQueue from a file. Use get_instance() instead."""
         if not os.path.exists(path):
-            return cls()
+            instance = cls()
+            instance._state_file_path = path
+            return instance
 
         with open(path) as f:
             content = f.read()
 
         content = content.strip()
         if not content:
-            return cls()
+            instance = cls()
+            instance._state_file_path = path
+            return instance
 
         parsed = json.loads(content)
         if isinstance(parsed, dict):
@@ -355,7 +370,9 @@ class WorkQueue:
                     tasks=tasks,
                 )
             )
-        return cls(_task_graphs=graphs)
+        instance = cls(_task_graphs=graphs)
+        instance._state_file_path = path
+        return instance
 
     def graph_for_conversation(
         self, agent_id: int, channel_id: int
@@ -368,3 +385,51 @@ class WorkQueue:
                 ):
                     return graph
             return None
+
+
+# Singleton instance (outside dataclass)
+_work_queue_instance: WorkQueue | None = None
+_work_queue_lock: threading.Lock = threading.Lock()
+
+
+def _get_work_queue_instance() -> WorkQueue:
+    """Get the singleton instance of WorkQueue, loading from state file if it exists."""
+    global _work_queue_instance
+    if _work_queue_instance is None:
+        with _work_queue_lock:
+            # Double-check locking pattern
+            if _work_queue_instance is None:
+                import os
+                from config import STATE_DIRECTORY
+                state_path = os.path.join(STATE_DIRECTORY, "work_queue.json")
+                if os.path.exists(state_path):
+                    _work_queue_instance = WorkQueue._load(state_path)
+                else:
+                    _work_queue_instance = WorkQueue()
+                    _work_queue_instance._state_file_path = state_path
+    return _work_queue_instance
+
+
+def _reset_work_queue_instance():
+    """Reset the singleton instance (useful for testing)."""
+    global _work_queue_instance
+    with _work_queue_lock:
+        # Create a fresh instance instead of setting to None
+        # This prevents get_instance() from reloading from state file
+        _work_queue_instance = WorkQueue()
+        _work_queue_instance._state_file_path = None
+
+
+# Add get_instance and reset_instance as class methods
+def _get_instance(cls) -> WorkQueue:
+    """Get the singleton instance of WorkQueue."""
+    return _get_work_queue_instance()
+
+
+def _reset_instance(cls):
+    """Reset the singleton instance (useful for testing)."""
+    _reset_work_queue_instance()
+
+
+WorkQueue.get_instance = classmethod(_get_instance)
+WorkQueue.reset_instance = classmethod(_reset_instance)

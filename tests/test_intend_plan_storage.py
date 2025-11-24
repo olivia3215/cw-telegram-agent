@@ -427,7 +427,6 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
     assert "# Global Memories" in memory_content
 
     system_prompt = agent_instance.get_system_prompt(
-        agent_name="Planner",
         channel_name="Olivia",
         specific_instructions="Focus on actionable commitments.",
     )

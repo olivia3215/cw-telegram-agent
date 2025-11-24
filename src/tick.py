@@ -33,13 +33,18 @@ def is_graph_complete(graph) -> bool:
     return all(n.status.is_completed() for n in graph.tasks)
 
 
-async def trigger_typing_indicators(work_queue: WorkQueue):
+async def trigger_typing_indicators():
     """
     Check for pending wait tasks with typing=True and trigger typing indicators.
     """
     clock.now(UTC)
+    work_queue = WorkQueue.get_instance()
 
-    for graph in work_queue._task_graphs:
+    # Acquire lock to safely get a snapshot of the graphs list
+    with work_queue._lock:
+        graphs_snapshot = list(work_queue._task_graphs)
+
+    for graph in graphs_snapshot:
         agent_id = graph.context.get("agent_id")
         channel_id = graph.context.get("channel_id")
 
@@ -79,14 +84,32 @@ async def trigger_typing_indicators(work_queue: WorkQueue):
             logger.debug(f"Error checking typing indicators for agent {agent_id}: {e}")
 
 
-async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
+async def run_one_tick(work_queue=None, state_file_path: str = None):
+    """
+    Run one tick of the task processing loop.
+    
+    Args:
+        work_queue: Optional WorkQueue instance (for backward compatibility with tests).
+                   If None, uses WorkQueue.get_instance().
+        state_file_path: Optional path to save state file.
+    """
     clock.now(UTC)
+    if work_queue is None:
+        work_queue = WorkQueue.get_instance()
+    # Update stored path if provided (always update when explicitly provided)
+    if state_file_path:
+        if work_queue._state_file_path and work_queue._state_file_path != state_file_path:
+            logger.warning(
+                f"Updating WorkQueue state file path from '{work_queue._state_file_path}' "
+                f"to '{state_file_path}'"
+            )
+        work_queue._state_file_path = state_file_path
 
     # Reset per-tick AI description budget at start of each tick
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
 
     # Trigger typing indicators for pending wait tasks
-    await trigger_typing_indicators(work_queue)
+    await trigger_typing_indicators()
 
     task = work_queue.round_robin_one_task()
 
@@ -113,16 +136,20 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
 
     try:
         task.status = TaskStatus.ACTIVE
+        # Only save if explicitly requested via parameter, not based on _state_file_path
+        # This prevents tests from accidentally writing to the persisted state file
         if state_file_path:
             work_queue.save(state_file_path)
         logger.info(f"[{agent_name}] Task {task.id} is now active.")
-        handled = await dispatch_task(task.type, task, graph, work_queue)
+        
+        handled = await dispatch_task(task.type, task, graph)
         if not handled:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
+        
         task.status = TaskStatus.DONE
 
     except Exception as e:
-        if isinstance(e, PeerIdInvalidError):
+        if isinstance(e, PeerIdInvalidError) and agent:
             agent.clear_entity_cache()
         else:
             logger.exception(f"[{agent_name}] Task {task.id} raised exception: {e}")
@@ -132,13 +159,14 @@ async def run_one_tick(work_queue: WorkQueue, state_file_path: str = None):
         work_queue.remove(graph)
         logger.info(f"[{agent_name}] Graph {graph.id} completed and removed.")
 
+    # Only save if explicitly requested via parameter, not based on _state_file_path
+    # This prevents tests from accidentally writing to the persisted state file
     if state_file_path:
         work_queue.save(state_file_path)
-        logger.debug(f"[{agent_name}] Work queue state saved to {state_file_path}")
+        logger.debug(f"[{agent_name}] Work queue state saved")
 
 
 async def run_tick_loop(
-    work_queue: WorkQueue,
     tick_interval_sec: int = 10,
     state_file_path: str = None,
     tick_fn=run_one_tick,
@@ -147,7 +175,7 @@ async def run_tick_loop(
     while True:
         try:
             n += 1
-            await tick_fn(work_queue, state_file_path)
+            await tick_fn(state_file_path=state_file_path)
             if n % 10 == 0:
                 logger.info(f"Tick {n} completed.")
         except ShutdownException:

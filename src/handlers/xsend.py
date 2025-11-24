@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @register_task_handler("xsend")
-async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
+async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
     """
     Cross-channel send: schedule a received task on another channel for the same agent.
 
@@ -52,7 +52,6 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue):
 
     # Coalesce with existing received for the target; preserve/overwrite xsend_intent
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=target_channel_id,
         xsend_intent=intent,
