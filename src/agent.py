@@ -123,10 +123,11 @@ class Agent:
         """
         Get the client's event loop, caching it in self._loop.
         
-        Always refreshes the cache from the client to ensure we have the current loop,
-        even if the client has been replaced.
+        Uses cached value if available to avoid accessing client.loop from threads
+        that don't have a current event loop (e.g., Flask request threads).
         
-        Uses Telethon's public 'loop' property, not the private '_loop' attribute.
+        Only refreshes the cache if we're in the same thread as the client's event loop,
+        or if the cached loop is None.
         
         Returns:
             The event loop if available, None otherwise.
@@ -135,14 +136,59 @@ class Agent:
             self._loop = None
             return None
         
-        # Use Telethon's public 'loop' property
+        # If we already have a cached loop, use it (avoids accessing client.loop from wrong thread)
+        if self._loop is not None:
+            return self._loop
+        
+        # Try to get the loop from the client, but only if we're in an async context
+        # or if we can safely access it. Use the private _loop attribute to avoid
+        # triggering event loop checks.
+        try:
+            # Try accessing the private _loop attribute directly to avoid event loop checks
+            if hasattr(self._client, '_loop') and self._client._loop is not None:
+                self._loop = self._client._loop
+                return self._loop
+        except Exception:
+            pass
+        
+        # Fallback: try the public loop property, but catch RuntimeError about event loops
         try:
             self._loop = self._client.loop
-        except AttributeError:
-            # Fallback if loop property doesn't exist (shouldn't happen with valid client)
+        except (AttributeError, RuntimeError) as e:
+            # RuntimeError can occur if accessing from a thread without a current event loop
+            # In this case, return None - the caller should handle this gracefully
+            if "event loop" in str(e).lower() or "no current event loop" in str(e).lower():
+                # Can't access loop from this thread, return None
+                return None
+            # For other errors, also return None
             self._loop = None
         
         return self._loop
+    
+    def _cache_client_loop(self):
+        """
+        Cache the client's event loop. Should be called when the client is set
+        and we're in the client's event loop thread.
+        
+        This allows us to access the loop later from other threads (e.g., Flask threads)
+        without triggering "no current event loop" errors.
+        """
+        if self._client is None:
+            self._loop = None
+            return
+        
+        try:
+            # Try to get the loop - this should work if called from the client's thread
+            self._loop = self._client.loop
+        except (AttributeError, RuntimeError):
+            # If we can't get it, try the private attribute
+            try:
+                if hasattr(self._client, '_loop'):
+                    self._loop = self._client._loop
+                else:
+                    self._loop = None
+            except Exception:
+                self._loop = None
 
     async def get_client(self):
         """Get the Telegram client, ensuring it's connected. Raises RuntimeError if not authenticated."""
@@ -185,7 +231,13 @@ class Agent:
             )
         
         # Get the client's event loop from our cached field
-        client_loop = self._get_client_loop()
+        try:
+            client_loop = self._get_client_loop()
+        except Exception as e:
+            raise RuntimeError(
+                f"Agent '{self.name}' client event loop is not accessible: {e}"
+            ) from e
+        
         if not client_loop:
             raise RuntimeError(
                 f"Agent '{self.name}' client has no accessible event loop"
@@ -198,7 +250,18 @@ class Agent:
         
         # Use run_coroutine_threadsafe to schedule the coroutine in the client's loop
         # and get the result back to this thread
-        future = asyncio.run_coroutine_threadsafe(coro, client_loop)
+        # Note: This must be called from a thread that does NOT have a running event loop
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, client_loop)
+        except RuntimeError as e:
+            # If there's a RuntimeError about event loops, provide clearer error message
+            error_msg = str(e).lower()
+            if "no current event loop" in error_msg or "event loop" in error_msg:
+                raise RuntimeError(
+                    f"Agent '{self.name}' cannot execute coroutine: {e}. "
+                    f"This method must be called from a thread without a running event loop."
+                ) from e
+            raise
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:

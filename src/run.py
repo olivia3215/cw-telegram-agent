@@ -271,6 +271,8 @@ async def authenticate_agent(agent: Agent):
     try:
         # Start the client connection without using async with
         await client.start()
+        # Cache the client's event loop after connection so it can be accessed from other threads
+        agent._cache_client_loop()
 
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
@@ -317,6 +319,7 @@ async def run_telegram_loop(agent: Agent):
             except Exception:
                 pass
             agent._client = None
+            agent._loop = None  # Clear cached loop when client is cleared
 
         if not agent._client:
             # Need to authenticate - either first time or after disconnection
@@ -375,6 +378,7 @@ async def run_telegram_loop(agent: Agent):
         finally:
             # client has disconnected
             agent._client = None
+            agent._loop = None  # Clear cached loop when client is cleared
 
 
 async def periodic_scan(agents, interval_sec):
