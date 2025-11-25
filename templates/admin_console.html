@@ -2138,8 +2138,11 @@
 
         document.getElementById('conversations-partner-select')?.addEventListener('change', (e) => {
             document.getElementById('conversations-user-id').value = '';
-            // Automatically load when partner is selected
-            loadConversationData();
+            // Automatically load when partner is selected (only if non-empty)
+            const userId = stripAsterisk(e.target.value);
+            if (userId) {
+                loadConversationData();
+            }
         });
 
         function loadConversationData() {
