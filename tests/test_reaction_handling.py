@@ -12,6 +12,8 @@ from agent import Agent
 from task_graph import WorkQueue
 
 
+
+
 @pytest.fixture
 def mock_agent():
     """Create a mock agent for testing."""
@@ -57,12 +59,15 @@ def mock_unread_reactions_result(mock_message):
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dialog, mock_unread_reactions_result, mock_message, monkeypatch):
+async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dialog, mock_unread_reactions_result, mock_message, monkeypatch, fake_clock):
     """Test that the code uses GetUnreadReactions API instead of recent_reactions."""
     # Set required environment variable before importing
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
     from run import scan_unread_messages
+    
+    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("run.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -93,11 +98,14 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_only_triggers_for_agent_last_message(mock_agent, mock_dialog, monkeypatch):
+async def test_reaction_detection_only_triggers_for_agent_last_message(mock_agent, mock_dialog, monkeypatch, fake_clock):
     """Test that reactions only trigger responses when they're on the agent's last message."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
     from run import scan_unread_messages
+    
+    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("run.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -137,11 +145,14 @@ async def test_reaction_detection_only_triggers_for_agent_last_message(mock_agen
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_triggers_for_agent_last_message(mock_agent, mock_dialog, mock_message, monkeypatch):
+async def test_reaction_detection_triggers_for_agent_last_message(mock_agent, mock_dialog, mock_message, monkeypatch, fake_clock):
     """Test that reactions on the agent's last message trigger responses."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
     from run import scan_unread_messages
+    
+    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("run.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -171,11 +182,14 @@ async def test_reaction_detection_triggers_for_agent_last_message(mock_agent, mo
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock_dialog, mock_message, monkeypatch):
+async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock_dialog, mock_message, monkeypatch, fake_clock):
     """Test that API errors in GetUnreadReactions are handled gracefully."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
     from run import scan_unread_messages
+    
+    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("run.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -204,11 +218,14 @@ async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock
 
 
 @pytest.mark.asyncio
-async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dialog, monkeypatch):
+async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dialog, monkeypatch, fake_clock):
     """Test behavior when there are no unread reactions."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
     from run import scan_unread_messages
+    
+    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("run.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
