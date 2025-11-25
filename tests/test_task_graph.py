@@ -93,7 +93,7 @@ def test_serialization_and_reload(tmp_path):
     assert raw[0]["id"] == "gX"
     assert raw[0]["nodes"][0]["status"] == TaskStatus.PENDING.value
 
-    reloaded = WorkQueue.load(str(file_path))
+    reloaded = WorkQueue._load(str(file_path))
     assert len(reloaded._task_graphs) == 1
     assert reloaded._task_graphs[0].id == "gX"
     assert reloaded._task_graphs[0].tasks[0].id == "wX"
@@ -173,7 +173,7 @@ def test_reloads_active_task_as_pending(tmp_path):
     queue.save(str(file_path))
 
     # 3. Load the queue from the file
-    reloaded_queue = WorkQueue.load(str(file_path))
+    reloaded_queue = WorkQueue._load(str(file_path))
 
     # 4. Assert that the task's status is now 'pending'
     assert len(reloaded_queue._task_graphs) == 1

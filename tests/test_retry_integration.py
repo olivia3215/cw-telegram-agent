@@ -118,11 +118,17 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
         },
         tasks=[task],
     )
-    queue = WorkQueue(_task_graphs=[graph])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # Create mock agent
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []
+    
+    # Create a mock entity for the channel
+    mock_entity = MagicMock(spec=["id", "first_name", "last_name", "username"])
+    mock_entity.id = channel_id
 
     mock_llm_client = MockClientWithProhibitedContent(return_prohibited_first=True)
     mock_llm = object.__new__(GeminiLLM)
@@ -142,8 +148,8 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
-    # Make get_cached_entity async
-    mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Make get_cached_entity async and return the mock entity
+    mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
     mock_agent.get_channel_llm_model = MagicMock(return_value=None)
     # Mock get_system_prompt to return a string
@@ -169,7 +175,7 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     )
 
     # Run one tick - should catch the exception and trigger retry
-    await run_one_tick(queue)
+    await run_one_tick()
 
     # Verify task was marked for retry (status is PENDING, not DONE)
     assert task.status == TaskStatus.PENDING
@@ -209,11 +215,17 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
         },
         tasks=[task],
     )
-    queue = WorkQueue(_task_graphs=[graph])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # Create mock agent
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []
+    
+    # Create a mock entity for the channel
+    mock_entity = MagicMock(spec=["id", "first_name", "last_name", "username"])
+    mock_entity.id = channel_id
 
     mock_llm_client = MockClientWithRetrieval()
     mock_llm = object.__new__(GeminiLLM)
@@ -233,8 +245,8 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
-    # Make get_cached_entity async
-    mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Make get_cached_entity async and return the mock entity
+    mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
     mock_agent.get_channel_llm_model = MagicMock(return_value=None)
     # Mock get_system_prompt to return a string
@@ -265,7 +277,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     monkeypatch.setattr("handlers.received._fetch_url", mock_fetch_url)
 
     # Run one tick - should fetch URLs, store them, and trigger retry
-    await run_one_tick(queue)
+    await run_one_tick()
 
     # Verify fetched resources were stored in graph context
     assert "fetched_resources" in graph.context
@@ -317,11 +329,17 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
         },
         tasks=[task],
     )
-    queue = WorkQueue(_task_graphs=[graph])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # Create mock agent
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []
+    
+    # Create a mock entity for the channel
+    mock_entity = MagicMock(spec=["id", "first_name", "last_name", "username"])
+    mock_entity.id = channel_id
 
     # Mock LLM that returns send task (no more retrieve)
     mock_llm_client = types.SimpleNamespace()
@@ -359,8 +377,8 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
-    # Make get_cached_entity async
-    mock_agent.get_cached_entity = AsyncMock(return_value=None)
+    # Make get_cached_entity async and return the mock entity
+    mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
     mock_agent.get_channel_llm_model = MagicMock(return_value=None)
     # Mock get_system_prompt to return a string
@@ -399,7 +417,7 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     mock_llm.query_structured = track_query
 
     # Run one tick - should succeed using pre-populated fetched resources
-    await run_one_tick(queue)
+    await run_one_tick()
 
     # Verify task completed successfully
     assert task.status == TaskStatus.DONE

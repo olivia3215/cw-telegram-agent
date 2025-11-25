@@ -107,14 +107,11 @@ async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bo
 
 
 def load_work_queue():
-    try:
-        return WorkQueue.load(STATE_PATH)
-    except Exception as e:
-        logger.exception(f"Failed to load work queue, starting fresh: {e}")
-        return WorkQueue()
+    """Load the work queue singleton (for compatibility, but now uses singleton)."""
+    return WorkQueue.get_instance()
 
 
-async def handle_incoming_message(agent: Agent, work_queue, event):
+async def handle_incoming_message(agent: Agent, event):
     client = agent.client
     await event.get_sender()
     dialog = await agent.get_dialog(event.chat_id)
@@ -148,7 +145,6 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
                 f"[{agent.name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
             )
         await insert_received_task_for_conversation(
-            work_queue,
             recipient_id=agent.agent_id,
             channel_id=event.chat_id,
             message_id=event.message.id,
@@ -157,7 +153,7 @@ async def handle_incoming_message(agent: Agent, work_queue, event):
         await client.send_read_acknowledge(dialog, clear_mentions=True, clear_reactions=True)
 
 
-async def scan_unread_messages(agent: Agent, work_queue):
+async def scan_unread_messages(agent: Agent):
     client = agent.client
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
@@ -190,7 +186,6 @@ async def scan_unread_messages(agent: Agent, work_queue):
             )
             await client.send_read_acknowledge(dialog, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
             await insert_received_task_for_conversation(
-                work_queue,
                 recipient_id=agent_id,
                 channel_id=dialog.id,
                 is_callout=is_callout or is_marked_unread,
@@ -276,6 +271,8 @@ async def authenticate_agent(agent: Agent):
     try:
         # Start the client connection without using async with
         await client.start()
+        # Cache the client's event loop after connection so it can be accessed from other threads
+        agent._cache_client_loop()
 
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
@@ -312,7 +309,7 @@ async def authenticate_agent(agent: Agent):
         return False
 
 
-async def run_telegram_loop(agent: Agent, work_queue):
+async def run_telegram_loop(agent: Agent):
     while True:
         # Check if agent already has a connected client from initial authentication
         if agent._client and not agent._client.is_connected():
@@ -322,6 +319,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
             except Exception:
                 pass
             agent._client = None
+            agent._loop = None  # Clear cached loop when client is cleared
 
         if not agent._client:
             # Need to authenticate - either first time or after disconnection
@@ -337,7 +335,7 @@ async def run_telegram_loop(agent: Agent, work_queue):
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):
-            await handle_incoming_message(agent, work_queue, event)
+            await handle_incoming_message(agent, event)
 
         @client.on(events.Raw(UpdateUserTyping))
         async def handle_user_typing(update):
@@ -364,11 +362,11 @@ async def run_telegram_loop(agent: Agent, work_queue):
             )
             # We don't need to inspect the event further; its existence is the trigger.
             # We call the existing scan function to check for the unread mark.
-            await scan_unread_messages(agent, work_queue)
+            await scan_unread_messages(agent)
 
         try:
             async with client:
-                await scan_unread_messages(agent, work_queue)
+                await scan_unread_messages(agent)
                 await client.run_until_disconnected()
 
         except Exception as e:
@@ -380,9 +378,10 @@ async def run_telegram_loop(agent: Agent, work_queue):
         finally:
             # client has disconnected
             agent._client = None
+            agent._loop = None  # Clear cached loop when client is cleared
 
 
-async def periodic_scan(work_queue, agents, interval_sec):
+async def periodic_scan(agents, interval_sec):
     """A background task that periodically scans for unread messages."""
     await clock.sleep(interval_sec / 9)
     while True:
@@ -390,7 +389,7 @@ async def periodic_scan(work_queue, agents, interval_sec):
         for agent in agents:
             if agent.client:  # Only scan if the client is connected
                 try:
-                    await scan_unread_messages(agent, work_queue)
+                    await scan_unread_messages(agent)
                 except Exception as e:
                     logger.exception(
                         f"Error during periodic scan for agent {agent.name}: {e}"
@@ -441,7 +440,6 @@ async def main():
         admin_port = 5001
 
     register_all_agents()
-    work_queue = load_work_queue()
     agents_list = list(all_agents())
 
     admin_server = None
@@ -504,16 +502,16 @@ async def main():
                 return
         # Now start all the main tasks
         tick_task = asyncio.create_task(
-            run_tick_loop(work_queue, tick_interval_sec=2, state_file_path=STATE_PATH)
+            run_tick_loop(tick_interval_sec=2, state_file_path=STATE_PATH)
         )
 
         telegram_tasks = [
-            asyncio.create_task(run_telegram_loop(agent, work_queue))
+            asyncio.create_task(run_telegram_loop(agent))
             for agent in all_agents()
         ]
 
         scan_task = asyncio.create_task(
-            periodic_scan(work_queue, agents_list, interval_sec=10)
+            periodic_scan(agents_list, interval_sec=10)
         )
 
         done, pending = await asyncio.wait(

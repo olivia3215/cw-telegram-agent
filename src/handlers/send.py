@@ -45,15 +45,26 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     if not client:
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
+    # Convert channel_id to integer and resolve entity
+    try:
+        channel_id_int = int(channel_id)
+    except (ValueError, TypeError):
+        channel_id_int = channel_id  # Keep as-is if conversion fails
+    
+    # Get the entity first to ensure it's resolved
+    entity = await agent.get_cached_entity(channel_id_int)
+    if not entity:
+        raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
+
     reply_to_raw = task.params.get("reply_to")
     reply_to_int = coerce_to_int(reply_to_raw)
     try:
         if reply_to_int:
             await client.send_message(
-                channel_id, message, reply_to=reply_to_int, parse_mode="Markdown"
+                entity, message, reply_to=reply_to_int, parse_mode="Markdown"
             )
         else:
-            await client.send_message(channel_id, message, parse_mode="Markdown")
+            await client.send_message(entity, message, parse_mode="Markdown")
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to send reply to message {reply_to_int}: {e}"

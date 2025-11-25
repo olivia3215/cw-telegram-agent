@@ -1,2 +1,2998 @@
-{% include "media_editor.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Console</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 8px;
+            background-color: #f5f5f5;
+            max-width: 100vw;
+            overflow-x: hidden;
+        }
+        .main-container {
+            max-width: 100%;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        body.auth-locked {
+            overflow: hidden;
+        }
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(44, 62, 80, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 1000;
+        }
+        .auth-overlay.hidden {
+            display: none;
+        }
+        .auth-card {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 32px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .auth-card h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .auth-card p {
+            font-size: 14px;
+            color: #4a5765;
+            margin-bottom: 16px;
+        }
+        .auth-actions {
+            margin: 16px 0 8px 0;
+        }
+        .auth-actions button {
+            padding: 10px 18px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #007bff;
+            color: #ffffff;
+        }
+        .auth-actions button:disabled {
+            background: #9bb8e4;
+            cursor: not-allowed;
+        }
+        .auth-code-entry {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .auth-code-entry input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccd2da;
+            border-radius: 4px;
+            text-align: center;
+            letter-spacing: 4px;
+        }
+        .auth-code-entry button {
+            padding: 10px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #28a745;
+            color: #ffffff;
+        }
+        .auth-code-entry button:disabled {
+            background: #8dd3a4;
+            cursor: not-allowed;
+        }
+        .auth-message {
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        .auth-message.error {
+            color: #c0392b;
+        }
+        .auth-message.info {
+            color: #2c3e50;
+        }
+        .auth-message.hidden {
+            display: none;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 12px 0;
+            margin-bottom: 16px;
+            border-radius: 4px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .tab-bar {
+            display: flex !important;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        /* Ensure subtab bars inside tab panels are always visible when panel is active */
+        .tab-panel.active .tab-bar {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        /* Ensure subtab buttons are visible */
+        .tab-panel.active .tab-bar .tab-button {
+            display: inline-block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        .tab-button {
+            border: none;
+            background: #e0e6ed;
+            color: #2c3e50;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .tab-button.active {
+            background: #2c3e50;
+            color: #fff;
+        }
+        .tab-button:hover {
+            background: #cfd8e3;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+        /* Ensure subtab bars are visible when their parent tab panel is active */
+        .tab-panel.active .tab-bar {
+            display: flex;
+        }
+        .subtab-panel {
+            display: none;
+        }
+        .subtab-panel.active {
+            display: block;
+        }
+        option.expensive {
+            color: #800000 !important;
+        }
+        .placeholder-card {
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            border: 1px dashed #c3c8d1;
+            color: #6c757d;
+            font-size: 16px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .controls {
+            padding: 12px 0;
+            margin-bottom: 16px;
+        }
+        .directory-selector {
+            margin-bottom: 12px;
+        }
+        .directory-selector select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 300px;
+        }
+        .import-section {
+            padding: 10px 0;
+            margin-bottom: 12px;
+        }
+        .import-section input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .import-section button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .import-section button:hover {
+            background: #0056b3;
+        }
+        .media-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding: 0;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+        .media-item {
+            display: flex;
+            flex-direction: row;
+            gap: 12px;
+            margin-bottom: 16px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        @media (max-width: 768px) {
+            .media-item {
+                flex-direction: column;
+            }
+            .media-preview {
+                flex: none;
+                max-width: 100%;
+            }
+        }
+        .media-preview {
+            flex: 0 0 50%;
+            max-width: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .media-preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .media-preview video {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        .media-preview audio {
+            width: 100%;
+            height: auto;
+        }
+        .media-info {
+            flex: 1;
+            padding: 8px 0;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .media-info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+        .media-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .description-edit {
+            margin-top: 10px;
+        }
+        .description-edit textarea {
+            width: 100%;
+            min-height: 180px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+            background: #fafafa;
+            box-sizing: border-box;
+        }
+        .description-edit button {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .description-edit button:hover {
+            background: #1e7e34;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .tgs-animation-container {
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            overflow: hidden;
+        }
+        .tgs-animation-container svg {
+            max-width: 100%;
+            max-height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true">
+        <div class="auth-card">
+            <h2>Verify Access</h2>
+            <p>Request a login code sent to the puppet master Telegram account to enable the admin console.</p>
+            <div id="auth-error" class="auth-message error hidden" role="alert"></div>
+            <div id="auth-status" class="auth-message info hidden"></div>
+            <div class="auth-actions">
+                <button id="request-code-btn">Send verification code</button>
+            </div>
+            <div class="auth-code-entry">
+                <input id="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Six digit code">
+                <button id="verify-code-btn">Verify</button>
+            </div>
+        </div>
+    </div>
+    <div class="header">
+        <h1>Admin Console</h1>
+    </div>
 
+    <nav class="tab-bar">
+        <button class="tab-button active" data-tab="media">Media Editor</button>
+        <button class="tab-button" data-tab="agents">Agents</button>
+        <button class="tab-button" data-tab="conversations">Conversations</button>
+    </nav>
+
+    <div id="tab-panels">
+        <!-- Media Editor Tab -->
+        <section class="tab-panel active" data-tab-panel="media">
+            <div class="controls">
+                <div class="directory-selector">
+                    <label for="directory-select">Select Media Directory:</label><br>
+                    <select id="directory-select">
+                        <option value="">Choose a directory...</option>
+                    </select>
+                </div>
+
+                <div class="import-section">
+                    <h3>Import Sticker Set</h3>
+                    <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+                    <button onclick="importStickerSet()">Import Set</button>
+                    <div id="import-status"></div>
+                </div>
+            </div>
+
+            <div class="main-container">
+                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                        <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                        <select id="page-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                            <option value="">Go to page…</option>
+                        </select>
+                        <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                        <select id="sticker-set-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 220px;">
+                            <option value="">Jump to sticker set…</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="media-container">
+                    <div class="loading">Select a directory to view media files</div>
+                </div>
+
+                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                        <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                        <select id="page-select-bottom" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                            <option value="">Go to page…</option>
+                        </select>
+                        <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Agents Tab -->
+        <section class="tab-panel" data-tab-panel="agents">
+            <nav class="tab-bar" style="margin-bottom: 16px;">
+                <button class="tab-button active" data-subtab="parameters">Parameters</button>
+                <button class="tab-button" data-subtab="memories">Memories</button>
+                <button class="tab-button" data-subtab="curated-memories">Curated Memories</button>
+                <button class="tab-button" data-subtab="intentions">Intentions</button>
+            </nav>
+            <div class="controls">
+                <div class="directory-selector">
+                    <label for="agents-agent-select">Select Agent:</label><br>
+                    <select id="agents-agent-select">
+                        <option value="">Choose an agent...</option>
+                    </select>
+                </div>
+            </div>
+            <div id="agents-container" class="main-container">
+                <div class="subtab-panel active" data-subtab-panel="parameters">
+                    <div id="parameters-container">
+                        <div class="loading">Select an agent to configure</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="memories">
+                    <div id="memories-container">
+                        <div class="loading">Select an agent to view memories</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="curated-memories">
+                    <div id="curated-memories-container">
+                        <div class="loading">Select an agent to view curated memories</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="intentions">
+                    <div id="intentions-container">
+                        <div class="loading">Select an agent to view intentions</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Conversations Tab -->
+        <section class="tab-panel" data-tab-panel="conversations">
+            <nav class="tab-bar" style="margin-bottom: 16px;">
+                <button class="tab-button active" data-subtab="curated-memories-conv">Curated Memories</button>
+                <button class="tab-button" data-subtab="conversation-llm">Conversation LLM</button>
+                <button class="tab-button" data-subtab="plans">Plans</button>
+                <button class="tab-button" data-subtab="conversation">Conversation</button>
+                <button class="tab-button" data-subtab="xsend">XSend</button>
+            </nav>
+            <div class="controls">
+                <div class="directory-selector">
+                    <label for="conversations-agent-select">Select Agent:</label><br>
+                    <select id="conversations-agent-select">
+                        <option value="">Choose an agent...</option>
+                    </select>
+                </div>
+                <div class="directory-selector" style="margin-top: 16px;">
+                    <label for="conversations-partner-select">Select Conversation Partner:</label><br>
+                    <select id="conversations-partner-select">
+                        <option value="">Choose a partner...</option>
+                    </select>
+                    <input type="text" id="conversations-user-id" placeholder="Or type Telegram user ID" style="margin-top: 8px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;">
+                    <button onclick="loadConversationData()" style="margin-top: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Load</button>
+                </div>
+            </div>
+            <div id="conversations-container" class="main-container">
+                <div class="subtab-panel active" data-subtab-panel="curated-memories-conv">
+                    <div id="curated-memories-conv-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="conversation-llm">
+                    <div id="conversation-llm-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="plans">
+                    <div id="plans-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="conversation">
+                    <div id="conversation-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="xsend">
+                    <div id="xsend-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                        <div style="margin-top: 16px; display: none;" id="xsend-content">
+                            <div class="directory-selector">
+                                <label for="xsend-intent-textarea">Intent:</label><br>
+                                <textarea id="xsend-intent-textarea" placeholder="Enter the intent message..." style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea>
+                            </div>
+                            <div style="margin-top: 16px;">
+                                <button onclick="sendXSend()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">XSend</button>
+                                <div id="xsend-status" style="margin-top: 8px; font-size: 14px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+    </div>
+    <script>
+        let currentDirectory = '';
+        let autoSaveTimers = {}; // Track auto-save timers for each textarea
+        let savingStates = {}; // Track saving state for each textarea
+        let currentPage = 1;
+        let itemsPerPage = 10;
+        let allMediaFiles = []; // Store all media files for pagination
+        let currentTotalPages = 1;
+        let stickerSetStartIndexMap = {};
+        let stickerSetOrder = [];
+        let stickerSetFirstMediaMap = {};
+        let pendingScrollToMediaId = null;
+        const API_BASE = '/admin/api';
+        let appInitialized = false;
+        let requestCooldownTimer = null;
+        const DEFAULT_COOLDOWN_SECONDS = 30;
+
+        const authOverlay = document.getElementById('auth-overlay');
+        const authStatusEl = document.getElementById('auth-status');
+        const authErrorEl = document.getElementById('auth-error');
+        const requestCodeBtn = document.getElementById('request-code-btn');
+        const verifyCodeBtn = document.getElementById('verify-code-btn');
+        const otpInput = document.getElementById('otp-input');
+        const initialRequestButtonLabel = requestCodeBtn ? requestCodeBtn.textContent : 'Send verification code';
+
+        requestCodeBtn?.addEventListener('click', requestVerificationCode);
+        verifyCodeBtn?.addEventListener('click', verifyVerificationCode);
+        otpInput?.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                verifyVerificationCode();
+            }
+        });
+
+        checkAuthStatus();
+
+        function initializeApp() {
+            if (appInitialized) {
+                return;
+            }
+            appInitialized = true;
+            hideAuthOverlay();
+
+            // Don't add old event listeners - we use event delegation now
+            // The event delegation is set up below in the script
+
+            const directorySelect = document.getElementById('directory-select');
+            if (directorySelect) {
+                directorySelect.addEventListener('change', (event) => {
+                    currentDirectory = event.target.value;
+                    if (currentDirectory) {
+                        loadMediaFiles(currentDirectory);
+                    } else {
+                        // Clear everything when directory is deselected
+                        allMediaFiles = [];
+                        currentPage = 1;
+                        document.getElementById('media-container').innerHTML =
+                            '<div class="loading">Select a directory to view media files</div>';
+                        // Hide pagination controls
+                        document.getElementById('pagination-top').style.display = 'none';
+                        document.getElementById('pagination-bottom').style.display = 'none';
+                        updatePaginationControls(0);
+                        populatePageSelect(0);
+                        populateStickerSetSelect();
+                    }
+                });
+
+                fetchDirectories(directorySelect);
+            }
+
+            setupPaginationControls();
+            
+            // Ensure pagination is hidden initially (no directory selected)
+            document.getElementById('pagination-top').style.display = 'none';
+            document.getElementById('pagination-bottom').style.display = 'none';
+        }
+
+        function fetchDirectories(selectElement) {
+            fetchWithAuth(`${API_BASE}/directories`)
+                .then((response) => response.json())
+                .then((directories) => {
+                    directories.forEach((dir) => {
+                        const option = document.createElement('option');
+                        option.value = dir.path;
+                        option.textContent = dir.name;
+                        selectElement.appendChild(option);
+                    });
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Failed to load directories', error);
+                });
+        }
+
+        function fetchWithAuth(url, options = {}) {
+            const finalOptions = Object.assign({ credentials: 'same-origin' }, options);
+            return fetch(url, finalOptions).then((response) => {
+                if (response.status === 401) {
+                    handleUnauthorized();
+                }
+                return response;
+            });
+        }
+
+        function handleUnauthorized(message) {
+            showAuthOverlay(message || 'Session expired. Please verify again.');
+            throw new Error('unauthorized');
+        }
+
+        function showAuthOverlay(message) {
+            clearRequestCooldown();
+            if (typeof message === 'string') {
+                showAuthStatus(message);
+            } else {
+                showAuthStatus('');
+            }
+            showAuthError('');
+            authOverlay?.classList.remove('hidden');
+            document.body.classList.add('auth-locked');
+            if (otpInput) {
+                otpInput.value = '';
+                window.setTimeout(() => otpInput.focus(), 0);
+            }
+        }
+
+        function hideAuthOverlay() {
+            authOverlay?.classList.add('hidden');
+            document.body.classList.remove('auth-locked');
+            showAuthStatus('');
+            showAuthError('');
+            clearRequestCooldown();
+        }
+
+        function showAuthStatus(message) {
+            if (!authStatusEl) {
+                return;
+            }
+            authStatusEl.textContent = message || '';
+            authStatusEl.classList.toggle('hidden', !message);
+        }
+
+        function showAuthError(message) {
+            if (!authErrorEl) {
+                return;
+            }
+            authErrorEl.textContent = message || '';
+            authErrorEl.classList.toggle('hidden', !message);
+        }
+
+        function clearRequestCooldown() {
+            if (requestCooldownTimer) {
+                clearInterval(requestCooldownTimer);
+                requestCooldownTimer = null;
+            }
+            if (requestCodeBtn) {
+                requestCodeBtn.disabled = false;
+                requestCodeBtn.textContent = initialRequestButtonLabel;
+            }
+        }
+
+        function setRequestCooldown(seconds) {
+            if (!requestCodeBtn) {
+                return;
+            }
+            clearRequestCooldown();
+            let remaining = Math.max(Math.floor(seconds), 0);
+            if (remaining <= 0) {
+                return;
+            }
+            requestCodeBtn.disabled = true;
+            requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+            requestCooldownTimer = window.setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearRequestCooldown();
+                    showAuthStatus('You can request a new code if needed.');
+                } else {
+                    requestCodeBtn.textContent = `Resend code (${remaining}s)`;
+                }
+            }, 1000);
+        }
+
+        async function requestVerificationCode() {
+            if (!requestCodeBtn) {
+                return;
+            }
+            showAuthError('');
+            showAuthStatus('Sending verification code...');
+            requestCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/request-code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    const expiresIn = typeof result.expires_in === 'number' ? result.expires_in : 0;
+                    const expireMinutes = Math.max(Math.round(expiresIn / 60) || 1, 1);
+                    showAuthStatus(`Verification code sent. It expires in ${expireMinutes} minute${expireMinutes === 1 ? '' : 's'}.`);
+                    const cooldown = typeof result.cooldown === 'number' ? result.cooldown : DEFAULT_COOLDOWN_SECONDS;
+                    setRequestCooldown(cooldown);
+                    return;
+                }
+                if (response.status === 429 && result.retry_after) {
+                    showAuthError(result.error || 'Please wait before requesting a new code.');
+                    setRequestCooldown(result.retry_after);
+                    return;
+                }
+                showAuthError(result.error || 'Failed to send verification code.');
+                showAuthStatus('');
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Failed to send verification code: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                if (!requestCooldownTimer && requestCodeBtn) {
+                    requestCodeBtn.disabled = false;
+                    requestCodeBtn.textContent = initialRequestButtonLabel;
+                }
+            }
+        }
+
+        async function verifyVerificationCode() {
+            if (!verifyCodeBtn) {
+                return;
+            }
+            const code = (otpInput?.value || '').trim();
+            if (!/^\d{6}$/.test(code)) {
+                showAuthError('Enter the six digit verification code.');
+                return;
+            }
+
+            showAuthError('');
+            showAuthStatus('Verifying code...');
+            verifyCodeBtn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/auth/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code }),
+                });
+                const result = await response.json();
+                if (response.status === 200 && result.success) {
+                    showAuthStatus('Verification successful.');
+                    clearRequestCooldown();
+                    if (otpInput) {
+                        otpInput.value = '';
+                    }
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                if (result.already_verified) {
+                    hideAuthOverlay();
+                    initializeApp();
+                    return;
+                }
+                showAuthError(result.error || 'Verification failed.');
+                if (typeof result.remaining_attempts === 'number') {
+                    showAuthStatus(`Attempts remaining: ${result.remaining_attempts}`);
+                } else {
+                    showAuthStatus('');
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                showAuthError(`Verification failed: ${error.message || error}`);
+                showAuthStatus('');
+            } finally {
+                verifyCodeBtn.disabled = false;
+            }
+        }
+
+        function checkAuthStatus() {
+            fetchWithAuth(`${API_BASE}/auth/status`)
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.verified) {
+                        initializeApp();
+                    } else {
+                        showAuthOverlay('Request a verification code to continue.');
+                    }
+                })
+                .catch((error) => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    showAuthError('Unable to reach the server. Try again in a moment.');
+                    showAuthOverlay();
+                });
+        }
+
+        function loadMediaFiles(directoryPath, preservePage = false) {
+            document.getElementById('media-container').innerHTML =
+                '<div class="loading">Loading media files...</div>';
+
+            const savedPage = currentPage; // Save current page
+
+            const encodedPath = encodeURIComponent(directoryPath);
+            fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('media-container').innerHTML =
+                            `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+
+                    // Flatten the grouped media into a single array
+                    allMediaFiles = [];
+                    pendingScrollToMediaId = null;
+                    stickerSetStartIndexMap = {};
+                    stickerSetOrder = [];
+                    stickerSetFirstMediaMap = {};
+                    let globalIndex = 0;
+
+                    for (const [stickerSet, mediaFiles] of Object.entries(data.grouped_media)) {
+                        if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) {
+                            continue;
+                        }
+
+                        stickerSetStartIndexMap[stickerSet] = globalIndex;
+                        stickerSetOrder.push(stickerSet);
+                        stickerSetFirstMediaMap[stickerSet] = mediaFiles[0]?.unique_id || null;
+
+                        mediaFiles.forEach(media => {
+                            media.sticker_set_display = stickerSet;
+                            allMediaFiles.push(media);
+                            globalIndex += 1;
+                        });
+                    }
+
+                    // Reset to page 1 unless preservePage is true
+                    if (!preservePage) {
+                        currentPage = 1;
+                    } else {
+                        // Restore the saved page, but ensure it's within bounds
+                        const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+                        currentPage = Math.min(savedPage, Math.max(1, totalPages));
+                    }
+                    displayCurrentPage();
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    document.getElementById('media-container').innerHTML =
+                        `<div class="error">Error loading media files: ${error}</div>`;
+                });
+        }
+
+        function displayCurrentPage() {
+            const container = document.getElementById('media-container');
+
+            // If no directory is selected, don't display anything
+            if (!currentDirectory) {
+                container.innerHTML = '<div class="loading">Select a directory to view media files</div>';
+                document.getElementById('pagination-top').style.display = 'none';
+                document.getElementById('pagination-bottom').style.display = 'none';
+                updatePaginationControls(0);
+                populatePageSelect(0);
+                populateStickerSetSelect();
+                return;
+            }
+
+            if (allMediaFiles.length === 0) {
+                container.innerHTML = '<div class="loading">No media files found</div>';
+                document.getElementById('pagination-top').style.display = 'none';
+                document.getElementById('pagination-bottom').style.display = 'none';
+                updatePaginationControls(0);
+                populatePageSelect(0);
+                populateStickerSetSelect();
+                return;
+            }
+
+            // Calculate pagination
+            const totalItems = allMediaFiles.length;
+            const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / itemsPerPage);
+            currentTotalPages = totalPages;
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, allMediaFiles.length);
+            const pageItems = allMediaFiles.slice(startIndex, endIndex);
+
+            // Build HTML for current page
+            let html = '';
+
+            let lastStickerSet = null;
+            pageItems.forEach(media => {
+                // Add sticker set header if it changed
+                if (media.sticker_set_display !== lastStickerSet) {
+                    if (lastStickerSet !== null) {
+                        html += '</div>'; // Close previous grid
+                    }
+                    html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${media.sticker_set_display}</h2>`;
+                    html += '<div class="media-grid">';
+                    lastStickerSet = media.sticker_set_display;
+                }
+                html += createMediaItemHTML(media);
+            });
+
+            // Close the last grid if we opened one
+            if (lastStickerSet !== null) {
+                html += '</div>';
+            }
+            container.innerHTML = html;
+
+            // Update pagination controls
+            updatePaginationControls(totalPages);
+            populatePageSelect(totalPages);
+            populateStickerSetSelect();
+
+            // Populate move directory dropdowns
+            populateMoveDirectoryDropdowns();
+
+            // Load TGS animations (with a small delay to ensure DOM is updated)
+            setTimeout(() => {
+                loadTGSAnimations();
+            }, 100);
+
+            // Scroll to relevant media item or top
+            if (pendingScrollToMediaId) {
+                setTimeout(() => {
+                    scrollToMediaItem(pendingScrollToMediaId);
+                    pendingScrollToMediaId = null;
+                }, 0);
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function updatePaginationControls(totalPages) {
+            const hasItems = allMediaFiles.length > 0 && currentDirectory;
+            // Show/hide and enable/disable buttons
+            const topContainer = document.getElementById('pagination-top');
+            const bottomContainer = document.getElementById('pagination-bottom');
+            if (topContainer) {
+                topContainer.style.display = hasItems ? 'flex' : 'none';
+            }
+            if (bottomContainer) {
+                bottomContainer.style.display = hasItems ? 'flex' : 'none';
+            }
+
+            // Disable previous button on first page
+            const prevDisabled = currentPage === 1;
+            document.getElementById('prev-btn').disabled = prevDisabled;
+            document.getElementById('prev-btn-bottom').disabled = prevDisabled;
+            document.getElementById('prev-btn').style.opacity = prevDisabled ? '0.5' : '1';
+            document.getElementById('prev-btn-bottom').style.opacity = prevDisabled ? '0.5' : '1';
+            document.getElementById('prev-btn').style.cursor = prevDisabled ? 'not-allowed' : 'pointer';
+            document.getElementById('prev-btn-bottom').style.cursor = prevDisabled ? 'not-allowed' : 'pointer';
+
+            // Disable next button on last page
+            const nextDisabled = currentPage === totalPages || !hasItems || totalPages === 0;
+            document.getElementById('next-btn').disabled = nextDisabled;
+            document.getElementById('next-btn-bottom').disabled = nextDisabled;
+            document.getElementById('next-btn').style.opacity = nextDisabled ? '0.5' : '1';
+            document.getElementById('next-btn-bottom').style.opacity = nextDisabled ? '0.5' : '1';
+            document.getElementById('next-btn').style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
+            document.getElementById('next-btn-bottom').style.cursor = nextDisabled ? 'not-allowed' : 'pointer';
+        }
+
+        function setupPaginationControls() {
+            const pageSelects = [
+                document.getElementById('page-select'),
+                document.getElementById('page-select-bottom'),
+            ];
+
+            pageSelects.forEach((select) => {
+                if (!select) {
+                    return;
+                }
+                select.addEventListener('change', (event) => {
+                    const value = parseInt(event.target.value, 10);
+                    if (Number.isNaN(value)) {
+                        return;
+                    }
+                    jumpToPage(value);
+                });
+            });
+
+            const stickerSetSelect = document.getElementById('sticker-set-select');
+            if (stickerSetSelect) {
+                stickerSetSelect.addEventListener('change', (event) => {
+                    const selectedSet = event.target.value;
+                    if (!selectedSet) {
+                        return;
+                    }
+                    jumpToStickerSet(selectedSet);
+                    event.target.value = '';
+                });
+            }
+        }
+
+        function populatePageSelect(totalPages) {
+            const hasItems = allMediaFiles.length > 0;
+            const pageSelects = [
+                document.getElementById('page-select'),
+                document.getElementById('page-select-bottom'),
+            ];
+
+            pageSelects.forEach((select) => {
+                if (!select) {
+                    return;
+                }
+
+                select.innerHTML = '';
+
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'Go to page…';
+                placeholderOption.disabled = true;
+                placeholderOption.hidden = hasItems;
+                select.appendChild(placeholderOption);
+
+                if (hasItems) {
+                    for (let page = 1; page <= totalPages; page += 1) {
+                        const option = document.createElement('option');
+                        option.value = String(page);
+                        option.textContent = `Page ${page}`;
+                        select.appendChild(option);
+                    }
+
+                    select.value = String(currentPage);
+                    select.disabled = totalPages <= 1;
+                } else {
+                    select.value = '';
+                    select.disabled = true;
+                }
+            });
+        }
+
+        function populateStickerSetSelect() {
+            const stickerSetSelect = document.getElementById('sticker-set-select');
+            if (!stickerSetSelect) {
+                return;
+            }
+
+            const previousValue = stickerSetSelect.value;
+            stickerSetSelect.innerHTML = '';
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Jump to sticker set…';
+            stickerSetSelect.appendChild(placeholder);
+
+            if (!stickerSetOrder.length) {
+                stickerSetSelect.value = '';
+                stickerSetSelect.disabled = true;
+                return;
+            }
+
+            stickerSetOrder.forEach((setName) => {
+                const option = document.createElement('option');
+                option.value = setName;
+                option.textContent = setName;
+                stickerSetSelect.appendChild(option);
+            });
+
+            if (previousValue && stickerSetStartIndexMap[previousValue] !== undefined) {
+                stickerSetSelect.value = previousValue;
+            } else {
+                stickerSetSelect.value = '';
+            }
+            stickerSetSelect.disabled = false;
+        }
+
+        function jumpToPage(pageNumber) {
+            if (!currentDirectory) return; // Don't paginate if no directory selected
+            const page = Number(pageNumber);
+            const totalPages = currentTotalPages || Math.ceil(allMediaFiles.length / itemsPerPage) || 1;
+
+            if (Number.isNaN(page) || page < 1 || page > totalPages || page === currentPage) {
+                return;
+            }
+
+            pendingScrollToMediaId = null;
+            currentPage = page;
+            displayCurrentPage();
+        }
+
+        function jumpToStickerSet(stickerSetName) {
+            const startIndex = stickerSetStartIndexMap[stickerSetName];
+            if (typeof startIndex !== 'number') {
+                return;
+            }
+
+            const targetMediaId = stickerSetFirstMediaMap[stickerSetName];
+            pendingScrollToMediaId = targetMediaId || null;
+
+            const totalPages = currentTotalPages || Math.ceil(allMediaFiles.length / itemsPerPage) || 1;
+            const desiredPage = Math.floor(startIndex / itemsPerPage) + 1;
+            const targetPage = Math.min(Math.max(1, desiredPage), totalPages);
+
+            if (targetPage !== currentPage) {
+                currentPage = targetPage;
+                displayCurrentPage();
+            } else if (pendingScrollToMediaId) {
+                setTimeout(() => {
+                    scrollToMediaItem(pendingScrollToMediaId);
+                    pendingScrollToMediaId = null;
+                }, 0);
+            }
+        }
+
+        function scrollToMediaItem(mediaId) {
+            if (!mediaId) {
+                return;
+            }
+            const target = document.getElementById(`media-item-${mediaId}`);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function previousPage() {
+            if (!currentDirectory) return; // Don't paginate if no directory selected
+            if (currentPage > 1) {
+                currentPage--;
+                pendingScrollToMediaId = null;
+                displayCurrentPage();
+            }
+        }
+
+        function nextPage() {
+            if (!currentDirectory) return; // Don't paginate if no directory selected
+            const totalPages = Math.ceil(allMediaFiles.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                pendingScrollToMediaId = null;
+                displayCurrentPage();
+            }
+        }
+
+        function createMediaItemHTML(media) {
+            const encodedDir = encodeURIComponent(currentDirectory);
+            const mediaUrl = `${API_BASE}/media/${media.unique_id}?directory=${encodedDir}`;
+            const mimeType = (media.mime_type || '').toLowerCase();
+            let mediaElement = '';
+            const fallbackTypeFromFile = (fileName) => {
+                if (!fileName) return '';
+                const lower = fileName.toLowerCase();
+                if (lower.endsWith('.tgs')) return 'application/x-tgsticker';
+                if (lower.endsWith('.webm')) return 'video/webm';
+                if (lower.endsWith('.mp4')) return 'video/mp4';
+                if (lower.endsWith('.gif')) return 'image/gif';
+                if (lower.endsWith('.ogg')) return 'audio/ogg';
+                if (lower.endsWith('.mp3')) return 'audio/mpeg';
+                if (lower.endsWith('.m4a')) return 'audio/mp4';
+                if (lower.endsWith('.wav')) return 'audio/wav';
+                if (lower.endsWith('.png')) return 'image/png';
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+                return '';
+            };
+            const lowerMediaFile = (media.media_file || '').toLowerCase();
+            let effectiveMime = mimeType || fallbackTypeFromFile(media.media_file);
+            if (!effectiveMime && lowerMediaFile.endsWith('.tgs')) {
+                effectiveMime = 'application/x-tgsticker';
+            }
+            if (effectiveMime === 'application/gzip' && lowerMediaFile.endsWith('.tgs')) {
+                effectiveMime = 'application/x-tgsticker';
+            }
+            effectiveMime = (effectiveMime || '').toLowerCase();
+
+            if (effectiveMime.includes('tgs') || media.kind === 'animated_sticker') {
+                    // TGS files - Lottie animations, convert and display
+                    mediaElement = `<div style="position: relative; width: 100%; height: 200px; display: flex; align-items: center; justify-content: center;">
+                        <div id="tgs-player-${media.unique_id}" class="tgs-animation-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <div style="text-align: center; color: #666;">
+                                <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
+                                <div style="font-size: 12px; margin-bottom: 10px;">Loading TGS animation...</div>
+                                <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 11px;">Download TGS</a>
+                            </div>
+                        </div>
+                    </div>`;
+            } else if (effectiveMime.startsWith('video') || effectiveMime === 'image/gif') {
+                    // Video content (mp4/webm/gif)
+                    const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
+                    mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;"${poster}>
+                        <source src="${mediaUrl}" type="${effectiveMime || 'video/mp4'}">
+                        Your browser does not support the video tag.
+                    </video>`;
+            } else if (
+                effectiveMime.startsWith('audio') ||
+                media.kind === 'audio' ||
+                (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))
+            ) {
+                    // Audio files - Audio controls
+                    mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto;">
+                        <source src="${mediaUrl}" type="${effectiveMime || 'audio/mpeg'}">
+                        Your browser does not support the audio tag.
+                    </audio>`;
+            } else if (mediaUrl) {
+                    mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
+            } else {
+                mediaElement = '<div style="color: #666;">No media file</div>';
+            }
+
+            // Format sticker name with emoji description
+            const stickerName = media.sticker_name || media.unique_id;
+            const displayName = (media.sticker_name && media.emoji_description)
+                ? `${media.sticker_name} (${media.emoji_description})`
+                : stickerName;
+
+            return `
+                <div class="media-item" id="media-item-${media.unique_id}" style="border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box;">
+                    <div class="media-preview">
+                        ${mediaElement}
+                    </div>
+                    <div class="media-info">
+                        <h3 style="margin-top: 10px; margin-bottom: 10px;">${displayName}</h3>
+                        <p><strong>Type:</strong> ${media.kind}</p>
+                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_name}</p>` : ''}
+                        <p><strong>Status:</strong> ${media.status}</p>
+                        ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
+
+                        <div class="description-edit">
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${media.description || ''}</textarea>
+                            <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
+                                <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
+                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
+                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${media.unique_id}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
+                                    <option value="">Move to...</option>
+                                </select>
+                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadTGSAnimations() {
+            // Find all TGS player containers
+            const tgsContainers = document.querySelectorAll('[id^="tgs-player-"]');
+            console.log(`Found ${tgsContainers.length} TGS containers to load`);
+
+            for (const container of tgsContainers) {
+                const uniqueId = container.id.replace('tgs-player-', '');
+                const encodedDir = encodeURIComponent(currentDirectory);
+                const mediaUrl = `${API_BASE}/media/${uniqueId}?directory=${encodedDir}`;
+                console.log(`Loading TGS for ${uniqueId} from ${mediaUrl}`);
+
+                try {
+                    // Fetch the TGS file
+                    const response = await fetchWithAuth(mediaUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch TGS file: ${response.status}`);
+                    }
+
+                    const tgsData = await response.arrayBuffer();
+                    console.log(`Fetched TGS data: ${tgsData.byteLength} bytes`);
+
+                    // Decompress the gzipped Lottie data
+                    let lottieJson;
+
+                    // Try pako first since DecompressionStream is unreliable
+                    if (typeof pako !== 'undefined') {
+                        try {
+                            console.log('Attempting pako decompression...');
+                            const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
+                            lottieJson = JSON.parse(decompressed);
+                            console.log('Pako decompression successful');
+                        } catch (pakoError) {
+                            console.error('Pako decompression failed:', pakoError);
+                            throw new Error('Failed to decompress TGS file with pako');
+                        }
+                    } else {
+                        // Fallback to DecompressionStream if pako not available
+                        try {
+                            console.log('Attempting DecompressionStream decompression...');
+                            const decompressedData = await decompressGzip(tgsData);
+                            const jsonText = new TextDecoder().decode(decompressedData);
+                            lottieJson = JSON.parse(jsonText);
+                            console.log('DecompressionStream decompression successful');
+                        } catch (decompError) {
+                            console.error('DecompressionStream failed:', decompError.message);
+                            throw new Error('Failed to decompress TGS file - no suitable decompression method available');
+                        }
+                    }
+
+                    // Clear the loading content and create a new container for Lottie
+                    container.innerHTML = '';
+                    const animationContainer = document.createElement('div');
+                    animationContainer.style.width = '100%';
+                    animationContainer.style.height = '100%';
+                    animationContainer.style.display = 'flex';
+                    animationContainer.style.alignItems = 'center';
+                    animationContainer.style.justifyContent = 'center';
+                    animationContainer.style.backgroundColor = '#ffffff';
+                    container.appendChild(animationContainer);
+
+                    // Initialize Lottie animation
+                    console.log('Initializing Lottie animation...');
+                    const animation = lottie.loadAnimation({
+                        container: animationContainer,
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        animationData: lottieJson
+                    });
+                    console.log('Lottie animation initialized successfully');
+
+                    // Handle animation errors
+                    animation.addEventListener('error', (error) => {
+                        console.error('Lottie animation error:', error);
+                        container.innerHTML = `
+                            <div style="text-align: center; color: #dc3545;">
+                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                                <div style="font-size: 11px;">Animation Error</div>
+                                <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            </div>
+                        `;
+                    });
+
+                    // Handle successful loading
+                    animation.addEventListener('DOMLoaded', () => {
+                        console.log('Lottie animation DOM loaded successfully');
+                    });
+
+                } catch (error) {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error(`Failed to load TGS animation for ${uniqueId}:`, error);
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #dc3545;">
+                            <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                            <div style="font-size: 11px;">Load Failed</div>
+                            <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Simple gzip decompression using browser APIs
+        async function decompressGzip(data) {
+            // Check if DecompressionStream is supported
+            if (!('DecompressionStream' in window)) {
+                console.log('DecompressionStream not supported in this browser');
+                throw new Error('DecompressionStream not supported in this browser');
+            }
+
+            try {
+                console.log('Creating DecompressionStream...');
+                const stream = new DecompressionStream('gzip');
+                const writer = stream.writable.getWriter();
+                const reader = stream.readable.getReader();
+
+                console.log('Writing data to stream...');
+                await writer.write(data);
+                await writer.close();
+
+                console.log('Reading decompressed data...');
+                const chunks = [];
+                let done = false;
+
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    if (value) {
+                        chunks.push(value);
+                    }
+                }
+
+                console.log(`Decompressed into ${chunks.length} chunks`);
+                const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                const result = new Uint8Array(totalLength);
+                let offset = 0;
+
+                for (const chunk of chunks) {
+                    result.set(chunk, offset);
+                    offset += chunk.length;
+                }
+
+                console.log(`Total decompressed size: ${result.length} bytes`);
+                return result;
+            } catch (error) {
+                console.error('DecompressionStream error:', error);
+                throw new Error(`Failed to decompress gzip data: ${error.message}`);
+            }
+        }
+
+        function scheduleAutoSave(uniqueId) {
+            // Clear existing timer for this textarea
+            if (autoSaveTimers[uniqueId]) {
+                clearTimeout(autoSaveTimers[uniqueId]);
+            }
+
+            // Set new timer for 1 second delay
+            autoSaveTimers[uniqueId] = setTimeout(() => {
+                updateDescription(uniqueId);
+            }, 1000);
+
+            // Update status to show "typing..."
+            updateSaveStatus(uniqueId, 'typing');
+        }
+
+        function updateSaveStatus(uniqueId, status) {
+            const statusElement = document.getElementById(`save-status-${uniqueId}`);
+            if (!statusElement) return;
+
+            switch (status) {
+                case 'typing':
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
+                    break;
+                case 'saving':
+                    statusElement.textContent = 'Saving...';
+                    statusElement.style.color = '#007bff';
+                    break;
+                case 'saved':
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
+                    break;
+                case 'error':
+                    statusElement.textContent = 'Error';
+                    statusElement.style.color = '#dc3545';
+                    break;
+                default:
+                    statusElement.textContent = 'Saved';
+                    statusElement.style.color = '#28a745';
+            }
+        }
+
+        function updateDescription(uniqueId) {
+            // Don't save if already saving
+            if (savingStates[uniqueId]) {
+                return;
+            }
+
+            const textarea = document.getElementById(`desc-${uniqueId}`);
+            const description = textarea.value.trim();
+            const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Mark as saving
+            savingStates[uniqueId] = true;
+            updateSaveStatus(uniqueId, 'saving');
+
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/description?directory=${encodedDir}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ description: description })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    updateSaveStatus(uniqueId, 'error');
+                } else {
+                    updateSaveStatus(uniqueId, 'saved');
+
+                    // Update the status display to show "curated" and clear error message
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = '<strong>Status:</strong> curated';
+                        } else if (p.classList.contains('error')) {
+                            // Clear the error message (failure_reason)
+                            p.remove();
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                updateSaveStatus(uniqueId, 'error');
+            })
+            .finally(() => {
+                // Mark as no longer saving
+                savingStates[uniqueId] = false;
+            });
+        }
+
+        function refreshFromAI(uniqueId) {
+            const button = document.getElementById(`refresh-ai-btn-${uniqueId}`);
+            const textarea = document.getElementById(`desc-${uniqueId}`);
+            const encodedDir = encodeURIComponent(currentDirectory);
+
+            // Disable button and show loading state
+            button.disabled = true;
+            button.textContent = 'Generating...';
+            button.style.background = '#007bff';
+
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/refresh-ai?directory=${encodedDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error refreshing from AI: ' + data.error);
+                } else {
+                    // Update the textarea with the new AI-generated description
+                    textarea.value = data.description || '';
+
+                    // Update the status display
+                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
+                    const statusElements = mediaItem.querySelectorAll('p');
+                    for (const p of statusElements) {
+                        if (p.textContent.includes('Status:')) {
+                            p.innerHTML = `<strong>Status:</strong> ${data.status || 'ok'}`;
+                            break;
+                        }
+                    }
+
+                    // Trigger auto-save to save the new description
+                    scheduleAutoSave(uniqueId);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error refreshing from AI: ' + error);
+            })
+            .finally(() => {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = 'Refresh from AI';
+                button.style.background = '#6c757d';
+            });
+        }
+
+        function populateMoveDirectoryDropdowns() {
+            // Get all move directory dropdowns
+            const moveDropdowns = document.querySelectorAll('[id^="move-dir-"]');
+
+            // Fetch available directories
+            fetchWithAuth(`${API_BASE}/directories`)
+                .then(response => response.json())
+                .then(directories => {
+                    moveDropdowns.forEach(dropdown => {
+                        // Clear existing options except the first one
+                        while (dropdown.children.length > 1) {
+                            dropdown.removeChild(dropdown.lastChild);
+                        }
+
+                        // Add directory options
+                        directories.forEach(dir => {
+                            if (dir.path !== currentDirectory) { // Don't show current directory
+                                const option = document.createElement('option');
+                                option.value = dir.path;
+                                option.textContent = dir.name;
+                                dropdown.appendChild(option);
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Error loading directories for move dropdowns:', error);
+                });
+        }
+
+        function moveMedia(uniqueId) {
+            const select = document.getElementById(`move-dir-${uniqueId}`);
+            const targetDirectory = select.value;
+
+            if (!targetDirectory) {
+                return; // No selection made
+            }
+
+            const encodedCurrentDir = encodeURIComponent(currentDirectory);
+            const encodedTargetDir = encodeURIComponent(targetDirectory);
+
+            // Show loading state
+            select.disabled = true;
+            select.style.background = '#f8f9fa';
+
+            fetchWithAuth(`${API_BASE}/media/${uniqueId}/move?from_directory=${encodedCurrentDir}&to_directory=${encodedTargetDir}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error moving media: ' + data.error);
+                    select.disabled = false;
+                    select.style.background = 'white';
+                    select.value = '';
+                } else {
+                    // Reload the current directory to refresh the list, preserving current page
+                    loadMediaFiles(currentDirectory, true);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error moving media: ' + error);
+                select.disabled = false;
+                select.style.background = 'white';
+                select.value = '';
+            });
+        }
+
+        function deleteMedia(uniqueId) {
+            const mediaName = document.querySelector(`#desc-${uniqueId}`).placeholder || 'this media item';
+
+            if (confirm(`Are you sure you want to delete ${mediaName}? This will permanently remove both the media file and description.`)) {
+                const button = document.getElementById(`delete-btn-${uniqueId}`);
+                const encodedDir = encodeURIComponent(currentDirectory);
+
+                // Show loading state
+                button.disabled = true;
+                button.textContent = 'Deleting...';
+                button.style.background = '#6c757d';
+
+                fetchWithAuth(`${API_BASE}/media/${uniqueId}/delete?directory=${encodedDir}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error deleting media: ' + data.error);
+                        button.disabled = false;
+                        button.textContent = 'Delete';
+                        button.style.background = '#dc3545';
+                    } else {
+                        // Reload the current directory to refresh the list, preserving current page
+                        loadMediaFiles(currentDirectory, true);
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    alert('Error deleting media: ' + error);
+                    button.disabled = false;
+                    button.textContent = 'Delete';
+                    button.style.background = '#dc3545';
+                });
+            }
+        }
+
+        function importStickerSet() {
+            const stickerSetName = document.getElementById('sticker-set-name').value.trim();
+            const statusDiv = document.getElementById('import-status');
+
+            if (!stickerSetName) {
+                statusDiv.innerHTML = '<div class="error">Please enter a sticker set name</div>';
+                return;
+            }
+
+            if (!currentDirectory) {
+                statusDiv.innerHTML = '<div class="error">Please select a directory first</div>';
+                return;
+            }
+
+            statusDiv.innerHTML = '<div>Importing sticker set...</div>';
+
+            fetchWithAuth(`${API_BASE}/import-sticker-set`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    sticker_set_name: stickerSetName,
+                    target_directory: currentDirectory
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                } else {
+                    statusDiv.innerHTML = '<div style="color: #28a745;">Import completed!</div>';
+                    // Reload media files
+                    loadMediaFiles(currentDirectory);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
+                    return;
+                }
+                statusDiv.innerHTML = `<div class="error">Error: ${error}</div>`;
+            });
+        }
+
+        // Main tab switching logic - use event delegation
+        // The main tab bar is directly after the header, subtab bars are inside tab panels
+        function handleMainTabClick(e) {
+            const button = e.target.closest('button.tab-button[data-tab]');
+            if (!button) return;
+            
+            // Make sure it's in the main tab bar (not a subtab)
+            const mainTabBar = document.querySelector('.header').nextElementSibling;
+            if (!mainTabBar || !mainTabBar.classList.contains('tab-bar')) return;
+            if (!mainTabBar.contains(button)) return;
+            
+            // Make sure it's not a subtab button
+            if (button.hasAttribute('data-subtab') && !button.hasAttribute('data-tab')) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            const tabName = button.getAttribute('data-tab');
+            if (!tabName) return;
+            
+            // Update main tab buttons (only top-level ones)
+            mainTabBar.querySelectorAll('.tab-button[data-tab]').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            button.classList.add('active');
+            
+            // Update main tab panels - clear all first
+            document.querySelectorAll('.tab-panel[data-tab-panel]').forEach(panel => {
+                panel.classList.remove('active');
+                panel.style.display = ''; // Clear inline display style to let CSS handle it
+            });
+            
+            // Activate the selected panel
+            const panel = document.querySelector(`.tab-panel[data-tab-panel="${tabName}"]`);
+            if (panel) {
+                panel.classList.add('active');
+                panel.style.display = 'block'; // Explicitly set to ensure visibility
+                
+                // Ensure subtab bar is visible
+                const subtabBar = panel.querySelector('.tab-bar');
+                if (subtabBar) {
+                    subtabBar.style.display = 'flex';
+                    subtabBar.style.visibility = 'visible';
+                    subtabBar.style.opacity = '1';
+                    subtabBar.style.height = 'auto';
+                    subtabBar.style.minHeight = '40px';
+                    
+                    // Force show each button
+                    const subtabButtons = subtabBar.querySelectorAll('.tab-button[data-subtab]');
+                    subtabButtons.forEach(btn => {
+                        btn.style.display = 'inline-block';
+                        btn.style.visibility = 'visible';
+                        btn.style.opacity = '1';
+                    });
+                }
+            }
+            
+            // Load data when switching to main tabs
+            if (tabName === 'agents') {
+                loadAgents();
+                // Show first subtab
+                switchSubtab('parameters');
+            } else if (tabName === 'conversations') {
+                loadAgents();
+                // Show first subtab
+                switchSubtab('curated-memories-conv');
+            } else if (tabName === 'media') {
+                // Media editor doesn't need agent loading
+            }
+        }
+        
+        // Attach event delegation to the main tab bar
+        const mainTabBar = document.querySelector('.header').nextElementSibling;
+        if (mainTabBar && mainTabBar.classList.contains('tab-bar')) {
+            mainTabBar.addEventListener('click', handleMainTabClick);
+        }
+
+        // Subtab switching logic (for Agents and Conversations tabs)
+        function switchSubtab(subtabName) {
+            // Get the active main tab - check both agents and conversations tabs
+            // First try to find an active tab panel
+            let activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="agents"]');
+            if (!activeMainTab) {
+                activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="conversations"]');
+            }
+            
+            // If no active tab found, try to find by checking which main tab button is active
+            if (!activeMainTab) {
+                const activeMainTabButton = document.querySelector('nav.tab-bar:first-of-type .tab-button.active[data-tab]');
+                if (activeMainTabButton) {
+                    const tabName = activeMainTabButton.getAttribute('data-tab');
+                    activeMainTab = document.querySelector(`.tab-panel[data-tab-panel="${tabName}"]`);
+                }
+            }
+            
+            // If still not found, this shouldn't happen, but return early
+            if (!activeMainTab) {
+                return;
+            }
+            
+            // Ensure the main tab panel stays active and visible
+            activeMainTab.classList.add('active');
+            activeMainTab.style.display = 'block'; // Explicitly set to block to ensure visibility
+            
+            // Ensure the subtab bar is visible
+            const subtabBar = activeMainTab.querySelector('.tab-bar');
+            if (subtabBar) {
+                subtabBar.style.display = 'flex';
+                subtabBar.style.visibility = 'visible';
+                subtabBar.style.opacity = '1';
+                subtabBar.style.height = 'auto';
+                subtabBar.style.minHeight = '40px';
+            }
+            
+            const mainTabName = activeMainTab.getAttribute('data-tab-panel');
+            
+            // Update subtab buttons within the active main tab
+            const subtabButtons = activeMainTab.querySelectorAll('.tab-button[data-subtab]');
+            subtabButtons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.display = 'inline-block';
+                btn.style.visibility = 'visible';
+                btn.style.opacity = '1';
+                if (btn.getAttribute('data-subtab') === subtabName) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Update subtab panels within the active main tab
+            const subtabPanels = activeMainTab.querySelectorAll('.subtab-panel');
+            subtabPanels.forEach(panel => {
+                panel.classList.remove('active');
+                if (panel.getAttribute('data-subtab-panel') === subtabName) {
+                    panel.classList.add('active');
+                }
+            });
+            
+            // Load data for the subtab
+            if (mainTabName === 'agents') {
+                const agentSelect = document.getElementById('agents-agent-select');
+                const agentName = agentSelect?.value;
+                if (agentName) {
+                    if (subtabName === 'parameters') {
+                        loadAgentConfiguration(agentName);
+                    } else if (subtabName === 'memories') {
+                        loadMemories(agentName);
+                    } else if (subtabName === 'curated-memories') {
+                        loadCuratedMemories(agentName);
+                    } else if (subtabName === 'intentions') {
+                        loadIntentions(agentName);
+                    }
+                }
+            } else if (mainTabName === 'conversations') {
+                const agentSelect = document.getElementById('conversations-agent-select');
+                const partnerSelect = document.getElementById('conversations-partner-select');
+                const userIdInput = document.getElementById('conversations-user-id');
+                const agentName = agentSelect?.value;
+                const userId = userIdInput?.value.trim() || partnerSelect?.value;
+                
+                if (agentName && userId) {
+                    if (subtabName === 'curated-memories-conv') {
+                        loadCuratedMemoriesForPartner();
+                    } else if (subtabName === 'conversation-llm') {
+                        loadConversationLLM();
+                    } else if (subtabName === 'plans') {
+                        loadPlans();
+                    } else if (subtabName === 'conversation') {
+                        loadConversation();
+                    } else if (subtabName === 'xsend') {
+                        // Show XSend content
+                        const xsendContainer = document.getElementById('xsend-container');
+                        const xsendContent = document.getElementById('xsend-content');
+                        if (xsendContainer && xsendContent) {
+                            xsendContainer.querySelector('.loading').style.display = 'none';
+                            xsendContent.style.display = 'block';
+                        }
+                    }
+                }
+            }
+        }
+
+        // Subtab button click handlers - simple event delegation
+        document.addEventListener('click', function(e) {
+            const button = e.target.closest('button.tab-button[data-subtab]');
+            if (!button) return;
+            
+            // Skip if it's a main tab button
+            if (button.hasAttribute('data-tab')) return;
+            
+            // Must be inside a tab panel
+            if (!button.closest('.tab-panel[data-tab-panel]')) return;
+            
+            const subtabName = button.getAttribute('data-subtab');
+            if (subtabName) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                switchSubtab(subtabName);
+            }
+        }, true);
+
+
+        // Load agents list
+        function loadAgents() {
+            fetchWithAuth(`${API_BASE}/agents`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading agents:', data.error);
+                        return;
+                    }
+                    
+                    const agents = data.agents || [];
+                    
+                    // Populate all agent selects
+                    ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
+                        const select = document.getElementById(selectId);
+                        if (select) {
+                            const currentValue = select.value;
+                            select.innerHTML = '<option value="">Choose an agent...</option>';
+                            agents.forEach(agent => {
+                                const option = document.createElement('option');
+                                option.value = agent.name;
+                                // Display format: "Name (agent_id)" or just "Name" if no agent_id
+                                const displayName = agent.agent_id 
+                                    ? `${agent.name} (${agent.agent_id})` 
+                                    : agent.name;
+                                option.textContent = displayName;
+                                select.appendChild(option);
+                            });
+                            if (currentValue) {
+                                select.value = currentValue;
+                            }
+                        }
+                    });
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Error loading agents:', error);
+                });
+        }
+
+        // Set up agent select change handlers with synchronization
+        document.getElementById('agents-agent-select')?.addEventListener('change', (e) => {
+            const agentName = e.target.value;
+            
+            // Synchronize with conversations agent select
+            const conversationsSelect = document.getElementById('conversations-agent-select');
+            if (conversationsSelect && conversationsSelect.value !== agentName) {
+                conversationsSelect.value = agentName;
+            }
+            
+            if (agentName) {
+                // Load data for the active subtab
+                const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button.active');
+                if (activeSubtab) {
+                    const subtabName = activeSubtab.getAttribute('data-subtab');
+                    if (subtabName === 'parameters') {
+                        loadAgentConfiguration(agentName);
+                    } else if (subtabName === 'memories') {
+                        loadMemories(agentName);
+                    } else if (subtabName === 'curated-memories') {
+                        loadCuratedMemories(agentName);
+                    } else if (subtabName === 'intentions') {
+                        loadIntentions(agentName);
+                    }
+                }
+            }
+        });
+
+        document.getElementById('conversations-agent-select')?.addEventListener('change', (e) => {
+            const agentName = e.target.value;
+            
+            // Synchronize with agents agent select
+            const agentsSelect = document.getElementById('agents-agent-select');
+            if (agentsSelect && agentsSelect.value !== agentName) {
+                agentsSelect.value = agentName;
+            }
+            
+            if (agentName) {
+                loadConversationPartners(agentName, 'conversations');
+            }
+        });
+
+        document.getElementById('conversations-partner-select')?.addEventListener('change', (e) => {
+            document.getElementById('conversations-user-id').value = '';
+        });
+
+        function loadConversationData() {
+            const agentName = document.getElementById('conversations-agent-select')?.value;
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            
+            if (!agentName || !userId) {
+                alert('Please select an agent and enter/select a conversation partner');
+                return;
+            }
+            
+            // Load data for the active subtab
+            const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
+            if (activeSubtab) {
+                const subtabName = activeSubtab.getAttribute('data-subtab');
+                switchSubtab(subtabName);
+            }
+        }
+
+        // Load memories
+        function loadMemories(agentName) {
+            const container = document.getElementById('memories-container');
+            container.innerHTML = '<div class="loading">Loading memories...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const memories = data.memories || [];
+                    if (memories.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No memories found.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = memories.map(memory => `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
+                                    <strong>Created:</strong> ${memory.created || 'N/A'}
+                                </div>
+                                <button onclick="deleteMemory('${agentName}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                            <textarea 
+                                id="memory-${memory.id}" 
+                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="scheduleMemoryAutoSave('${agentName}', '${memory.id}')"
+                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading memories: ${error}</div>`;
+                });
+        }
+
+        // Auto-save for memories
+        const memoryAutoSaveTimers = {};
+        function scheduleMemoryAutoSave(agentName, memoryId) {
+            if (memoryAutoSaveTimers[memoryId]) {
+                clearTimeout(memoryAutoSaveTimers[memoryId]);
+            }
+            
+            const statusEl = document.getElementById(`memory-status-${memoryId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            memoryAutoSaveTimers[memoryId] = setTimeout(() => {
+                const textarea = document.getElementById(`memory-${memoryId}`);
+                const content = textarea.value.trim();
+                
+                const statusEl = document.getElementById(`memory-status-${memoryId}`);
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories/${memoryId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: content })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        function deleteMemory(agentName, memoryId) {
+            if (!confirm('Are you sure you want to delete this memory?')) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories/${memoryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting memory: ' + data.error);
+                } else {
+                    loadMemories(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting memory: ' + error);
+            });
+        }
+
+        // Load curated memories (similar structure to memories)
+        function loadCuratedMemories(agentName) {
+            const container = document.getElementById('curated-memories-container');
+            container.innerHTML = '<div class="loading">Loading curated memories...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const curatedMemories = data.curated_memories || [];
+                    if (curatedMemories.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No curated memories found.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = curatedMemories.map(({user_id, memories}) => `
+                        <div style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3 style="margin-top: 0;">User ID: ${user_id}</h3>
+                            ${memories.map(memory => `
+                                <div class="memory-item" style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 4px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                        <div>
+                                            <strong>ID:</strong> ${memory.id || 'N/A'}<br>
+                                            <strong>Created:</strong> ${memory.created || 'N/A'}
+                                        </div>
+                                        <button onclick="deleteCuratedMemory('${agentName}', '${user_id}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                    </div>
+                                    <textarea 
+                                        id="curated-memory-${user_id}-${memory.id}" 
+                                        style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                        oninput="scheduleCuratedMemoryAutoSave('${agentName}', '${user_id}', '${memory.id}')"
+                                    >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                    <div id="curated-memory-status-${user_id}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading curated memories: ${error}</div>`;
+                });
+        }
+
+        // Auto-save for curated memories
+        const curatedMemoryAutoSaveTimers = {};
+        function scheduleCuratedMemoryAutoSave(agentName, userId, memoryId) {
+            const key = `${userId}-${memoryId}`;
+            if (curatedMemoryAutoSaveTimers[key]) {
+                clearTimeout(curatedMemoryAutoSaveTimers[key]);
+            }
+            
+            const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            curatedMemoryAutoSaveTimers[key] = setTimeout(() => {
+                const textarea = document.getElementById(`curated-memory-${userId}-${memoryId}`);
+                const content = textarea.value.trim();
+                
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}/${memoryId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: content })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        function deleteCuratedMemory(agentName, userId, memoryId) {
+            if (!confirm('Are you sure you want to delete this curated memory?')) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}/${memoryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting curated memory: ' + data.error);
+                } else {
+                    loadCuratedMemories(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting curated memory: ' + error);
+            });
+        }
+
+        // Load intentions (similar to memories)
+        function loadIntentions(agentName) {
+            const container = document.getElementById('intentions-container');
+            container.innerHTML = '<div class="loading">Loading intentions...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const intentions = data.intentions || [];
+                    if (intentions.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No intentions found.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = intentions.map(intention => `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>ID:</strong> ${intention.id || 'N/A'}<br>
+                                    <strong>Created:</strong> ${intention.created || 'N/A'}
+                                </div>
+                                <button onclick="deleteIntention('${agentName}', '${intention.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                            <textarea 
+                                id="intention-${intention.id}" 
+                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="scheduleIntentionAutoSave('${agentName}', '${intention.id}')"
+                            >${(intention.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="intention-status-${intention.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading intentions: ${error}</div>`;
+                });
+        }
+
+        // Auto-save for intentions
+        const intentionAutoSaveTimers = {};
+        function scheduleIntentionAutoSave(agentName, intentionId) {
+            if (intentionAutoSaveTimers[intentionId]) {
+                clearTimeout(intentionAutoSaveTimers[intentionId]);
+            }
+            
+            const statusEl = document.getElementById(`intention-status-${intentionId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            intentionAutoSaveTimers[intentionId] = setTimeout(() => {
+                const textarea = document.getElementById(`intention-${intentionId}`);
+                const content = textarea.value.trim();
+                
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions/${intentionId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: content })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        function deleteIntention(agentName, intentionId) {
+            if (!confirm('Are you sure you want to delete this intention?')) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions/${intentionId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting intention: ' + data.error);
+                } else {
+                    loadIntentions(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting intention: ' + error);
+            });
+        }
+
+        // Load agent configuration
+        function loadAgentConfiguration(agentName) {
+            const container = document.getElementById('parameters-container');
+            container.innerHTML = '<div class="loading">Loading configuration...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const currentLLM = data.llm || '';
+                    const availableLLMs = data.available_llms || [];
+                    const prompt = data.prompt || '';
+                    
+                    container.innerHTML = `
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3>Agent LLM</h3>
+                            <select id="agent-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentLLM('${agentName}', this.value)">
+                                ${availableLLMs.map(llm => {
+                                    const isExpensive = Boolean(llm.expensive);
+                                    const classAttr = isExpensive ? 'class="expensive"' : '';
+                                    const styleAttr = isExpensive ? 'style="color: #800000 !important;"' : '';
+                                    return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''} ${classAttr} ${styleAttr}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                }).join('')}
+                            </select>
+                            
+                            <h3>Agent Prompt</h3>
+                            <textarea 
+                                id="agent-prompt-textarea" 
+                                style="width: 100%; min-height: 300px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="scheduleAgentPromptAutoSave('${agentName}')"
+                            >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading configuration: ${error}</div>`;
+                });
+        }
+
+        function updateAgentLLM(agentName, llmName) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/llm`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ llm_name: llmName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error updating LLM: ' + data.error);
+                    // Reload to restore previous value
+                    loadAgentConfiguration(agentName);
+                } else {
+                    alert('LLM updated successfully');
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error updating LLM: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        // Auto-save for agent prompt
+        let agentPromptAutoSaveTimer = null;
+        function scheduleAgentPromptAutoSave(agentName) {
+            if (agentPromptAutoSaveTimer) {
+                clearTimeout(agentPromptAutoSaveTimer);
+            }
+            
+            const statusEl = document.getElementById('agent-prompt-status');
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            agentPromptAutoSaveTimer = setTimeout(() => {
+                const textarea = document.getElementById('agent-prompt-textarea');
+                const prompt = textarea.value.trim();
+                
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/prompt`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: prompt })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        // Load conversation partners
+        function loadConversationPartners(agentName, subtab) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading conversation partners:', data.error);
+                        return;
+                    }
+                    
+                    const partners = data.partners || [];
+                    const select = document.getElementById('conversations-partner-select');
+                    if (select) {
+                        const currentValue = select.value;
+                        select.innerHTML = '<option value="">Choose a partner...</option>';
+                        partners.forEach(partner => {
+                            const option = document.createElement('option');
+                            const userId = partner.user_id || partner;
+                            option.value = userId;
+                            // Display format: "Name (user_id)" or just "user_id" if no name
+                            // Check for both null/undefined and empty string
+                            const hasName = partner.name && partner.name.trim().length > 0;
+                            const displayName = hasName ? `${partner.name} (${userId})` : userId;
+                            option.textContent = displayName;
+                            select.appendChild(option);
+                        });
+                        if (currentValue) {
+                            select.value = currentValue;
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error('Error loading conversation partners:', error);
+                });
+        }
+
+        // Functions for Parameters subtabs
+        function loadCuratedMemoriesForPartner() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            
+            const agentName = agentSelect?.value;
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            
+            if (!agentName || !userId) {
+                alert('Please select an agent and enter/select a conversation partner');
+                return;
+            }
+            
+            const container = document.getElementById('curated-memories-conv-container');
+            container.innerHTML = '<div class="loading">Loading curated memories...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const memories = data.memories || [];
+                    if (memories.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No curated memories found for this user.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = memories.map(memory => `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
+                                    <strong>Created:</strong> ${memory.created || 'N/A'}
+                                </div>
+                                <button onclick="deleteCuratedMemory('${agentName}', '${userId}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                            <textarea 
+                                id="curated-memory-params-${userId}-${memory.id}" 
+                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="scheduleCuratedMemoryAutoSave('${agentName}', '${userId}', '${memory.id}')"
+                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading curated memories: ${error}</div>`;
+                });
+        }
+
+        function loadConversationLLM() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            
+            const agentName = agentSelect?.value;
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            
+            if (!agentName || !userId) {
+                alert('Please select an agent and enter/select a conversation partner');
+                return;
+            }
+            
+            const container = document.getElementById('conversation-llm-container');
+            container.innerHTML = '<div class="loading">Loading conversation LLM...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const conversationLLM = data.conversation_llm || null;
+                    const agentDefaultLLM = data.agent_default_llm || '';
+                    const availableLLMs = data.available_llms || [];
+                    
+                    container.innerHTML = `
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <h3>Conversation LLM</h3>
+                            <p>Current: ${conversationLLM || agentDefaultLLM + ' (agent default)'}</p>
+                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${agentName}', '${userId}', this.value)">
+                                ${availableLLMs.map(llm => {
+                                    const isExpensive = Boolean(llm.expensive);
+                                    const classAttr = isExpensive ? 'class="expensive"' : '';
+                                    const styleAttr = isExpensive ? 'style="color: #800000 !important;"' : '';
+                                    const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
+                                    return `<option value="${llm.value}" ${isSelected ? 'selected' : ''} ${classAttr} ${styleAttr}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                }).join('')}
+                            </select>
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading conversation LLM: ${error}</div>`;
+                });
+        }
+
+        function updateConversationLLM(agentName, userId, llmName) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ llm_name: llmName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error updating conversation LLM: ' + data.error);
+                } else {
+                    // Reload to show updated value
+                    loadConversationLLM();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error updating conversation LLM: ' + error);
+            });
+        }
+
+        function loadPlans() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            
+            const agentName = agentSelect?.value;
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            
+            if (!agentName || !userId) {
+                alert('Please select an agent and enter/select a conversation partner');
+                return;
+            }
+            
+            const container = document.getElementById('plans-container');
+            container.innerHTML = '<div class="loading">Loading plans...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const plans = data.plans || [];
+                    if (plans.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No plans found for this conversation.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = plans.map(plan => `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>ID:</strong> ${plan.id || 'N/A'}<br>
+                                    <strong>Created:</strong> ${plan.created || 'N/A'}
+                                </div>
+                                <button onclick="deletePlan('${agentName}', '${userId}', '${plan.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                            <textarea 
+                                id="plan-${userId}-${plan.id}" 
+                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="schedulePlanAutoSave('${agentName}', '${userId}', '${plan.id}')"
+                            >${(plan.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="plan-status-${userId}-${plan.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading plans: ${error}</div>`;
+                });
+        }
+
+        // Auto-save for plans
+        const planAutoSaveTimers = {};
+        function schedulePlanAutoSave(agentName, userId, planId) {
+            const key = `${userId}-${planId}`;
+            if (planAutoSaveTimers[key]) {
+                clearTimeout(planAutoSaveTimers[key]);
+            }
+            
+            const statusEl = document.getElementById(`plan-status-${userId}-${planId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            planAutoSaveTimers[key] = setTimeout(() => {
+                const textarea = document.getElementById(`plan-${userId}-${planId}`);
+                const content = textarea.value.trim();
+                
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}/${planId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: content })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        if (statusEl) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        }
+                    } else {
+                        if (statusEl) {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        function deletePlan(agentName, userId, planId) {
+            if (!confirm('Are you sure you want to delete this plan?')) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}/${planId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting plan: ' + data.error);
+                } else {
+                    loadPlans();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting plan: ' + error);
+            });
+        }
+
+        function loadConversation() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            
+            const agentName = agentSelect?.value;
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            
+            if (!agentName || !userId) {
+                alert('Please select an agent and enter/select a conversation partner');
+                return;
+            }
+            
+            const container = document.getElementById('conversation-container');
+            container.innerHTML = '<div class="loading">Loading conversation...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    const messages = data.messages || [];
+                    if (messages.length === 0) {
+                        container.innerHTML = '<div class="placeholder-card">No conversation history found.</div>';
+                        return;
+                    }
+                    
+                    container.innerHTML = messages.map(msg => `
+                        <div style="background: ${msg.is_from_agent ? '#e3f2fd' : 'white'}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                                ${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}
+                            </div>
+                            <div style="white-space: pre-wrap;">${(msg.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading conversation: ${error}</div>`;
+                });
+        }
+
+        // Set up conversation partner select change handlers
+        document.getElementById('curated-memories-params-partner-select')?.addEventListener('change', (e) => {
+            if (e.target.value) {
+                document.getElementById('curated-memories-params-user-id').value = '';
+                loadCuratedMemoriesForPartner();
+            }
+        });
+
+        document.getElementById('conversation-llm-partner-select')?.addEventListener('change', (e) => {
+            if (e.target.value) {
+                document.getElementById('conversation-llm-user-id').value = '';
+                loadConversationLLM();
+            }
+        });
+
+        document.getElementById('plans-partner-select')?.addEventListener('change', (e) => {
+            if (e.target.value) {
+                document.getElementById('plans-user-id').value = '';
+                loadPlans();
+            }
+        });
+
+        document.getElementById('conversation-partner-select')?.addEventListener('change', (e) => {
+            if (e.target.value) {
+                document.getElementById('conversation-user-id').value = '';
+                loadConversation();
+            }
+        });
+
+        // XSend functionality
+        function sendXSend() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            const intentTextarea = document.getElementById('xsend-intent-textarea');
+            const statusDiv = document.getElementById('xsend-status');
+            
+            const agentName = agentSelect?.value;
+            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const intent = intentTextarea?.value.trim() || '';
+            
+            if (!agentName) {
+                statusDiv.innerHTML = '<div style="color: #dc3545;">Please select an agent</div>';
+                return;
+            }
+            
+            if (!userId) {
+                statusDiv.innerHTML = '<div style="color: #dc3545;">Please select or enter a conversation partner</div>';
+                return;
+            }
+            
+            if (!intent) {
+                statusDiv.innerHTML = '<div style="color: #dc3545;">Please enter an intent message</div>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<div style="color: #007bff;">Sending...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/xsend/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ intent: intent })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${data.error}</div>`;
+                } else {
+                    statusDiv.innerHTML = '<div style="color: #28a745;">XSend task created successfully!</div>';
+                    intentTextarea.value = '';
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${error}</div>`;
+            });
+        }
+
+        // Initialize on page load
+        loadAgents();
+        
+        // Ensure subtab bars are visible for active tab panels on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const activePanel = document.querySelector('.tab-panel.active');
+            if (activePanel) {
+                const subtabBar = activePanel.querySelector('.tab-bar');
+                if (subtabBar) {
+                    subtabBar.style.display = 'flex';
+                    subtabBar.style.visibility = 'visible';
+                    subtabBar.style.opacity = '1';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -51,27 +51,30 @@ Before using the Media Editor, ensure you have:
 
 ### Starting the Media Editor
 
-1. **Start the server**:
+The admin console (which includes the media editor) is automatically started with the agent server.
+
+1. **Start the agent server**:
    ```bash
-   ./media_editor.sh start
+   ./run.sh start
    ```
+   The admin console will be available on port 5001 by default (configurable via `CINDY_ADMIN_CONSOLE_PORT`).
 
 2. **Access the web interface**:
    Open your browser and navigate to: http://localhost:5001
 
 3. **Check status** (optional):
    ```bash
-   ./media_editor.sh status
+   ./run.sh status
    ```
 
 4. **View logs** (if needed):
    ```bash
-   ./media_editor.sh logs
+   ./run.sh logs
    ```
 
 5. **Stop the server** (when done):
    ```bash
-   ./media_editor.sh stop
+   ./run.sh stop
    ```
 
 ## Web Interface
@@ -240,7 +243,7 @@ When multiple directories contain the same media item:
 **Media Editor won't start**
 - Check that all environment variables are set
 - Ensure dependencies are installed: `pip install -r requirements.txt`
-- Verify port 5001 is available: `./media_editor.sh status`
+- Verify port 5001 is available: `./run.sh status`
 
 **Sticker import fails**
 - Ensure Telegram sessions are logged in: `./telegram_login.sh`
@@ -250,7 +253,7 @@ When multiple directories contain the same media item:
 **AI descriptions not generating**
 - Check that `GOOGLE_GEMINI_API_KEY` is set and valid
 - Ensure budget is available (restart the media editor to reset)
-- Check logs for specific error messages: `./media_editor.sh logs`
+- Check logs for specific error messages: `./run.sh logs`
 
 **Changes not saving**
 - Check browser console for JavaScript errors
@@ -267,22 +270,22 @@ When multiple directories contain the same media item:
 **Enable debug logging**:
 ```bash
 export GEMINI_DEBUG_LOGGING=true
-./media_editor.sh restart
+./run.sh restart
 ```
 
 **View detailed logs**:
 ```bash
-./media_editor.sh logs | tail -50
+./run.sh logs | tail -50
 ```
 
 **Check server status**:
 ```bash
-./media_editor.sh status
+./run.sh status
 ```
 
 **Reset budget** (if AI descriptions aren't generating):
 ```bash
-./media_editor.sh restart
+./run.sh restart
 ```
 
 ### Performance Tips

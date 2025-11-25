@@ -3,7 +3,7 @@ import json
 import pytest
 
 from admin_console.app import create_admin_app
-from media_editor import ChallengeNotFound, get_challenge_manager
+from admin_console.auth import ChallengeNotFound, get_challenge_manager
 from media.media_sources import (
     get_directory_media_source,
     reset_media_source_registry,
@@ -70,7 +70,7 @@ def test_delete_media_removes_cache_and_files(tmp_path):
 def test_import_sticker_set_requires_puppet_master(monkeypatch, tmp_path):
     reset_media_source_registry()
     dummy_manager = type("DummyManager", (), {"is_configured": False})()
-    monkeypatch.setattr("media_editor.get_puppet_master_manager", lambda: dummy_manager)
+    monkeypatch.setattr("admin_console.media.get_puppet_master_manager", lambda: dummy_manager)
     client = _make_client()
     response = client.post(
         "/admin/api/import-sticker-set",

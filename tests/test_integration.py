@@ -17,7 +17,8 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     When a new message arrives for a conversation, the new received node is added.
     Current behavior keeps both existing callout tasks and regular tasks (no pruning).
     """
-    work_queue = WorkQueue()
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
     agent_id = 123
     channel_id = 456
 
@@ -54,7 +55,6 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
 
     # 3. Call the helper to simulate a new message arriving
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=channel_id,
         message_id=999,  # A new message
@@ -82,7 +82,8 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
     Test that wait tasks with preserve:true do not become dependencies of received tasks.
     This ensures that preserved wait tasks run independently and don't block other tasks.
     """
-    work_queue = WorkQueue()
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
     agent_id = 123
     channel_id = 456
 
@@ -114,7 +115,6 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
 
     # 3. Call the helper to simulate a new message arriving
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=channel_id,
         message_id=999,  # A new message
@@ -151,7 +151,8 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     Test that non-wait tasks with preserve:true can still become dependencies of received tasks.
     This ensures we only exclude wait tasks with preserve:true, not all tasks with preserve:true.
     """
-    work_queue = WorkQueue()
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
     agent_id = 123
     channel_id = 456
 
@@ -185,7 +186,6 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
 
     # 3. Call the helper to simulate a new message arriving
     await insert_received_task_for_conversation(
-        work_queue,
         recipient_id=agent_id,
         channel_id=channel_id,
         message_id=999,  # A new message

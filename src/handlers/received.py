@@ -997,7 +997,7 @@ async def _build_complete_system_prompt(
         global_intent=None,  # TODO: implement global intent
         xsend_intent=xsend_intent,
     )
-    system_prompt = agent.get_system_prompt(agent.name, channel_name, specific_instructions)
+    system_prompt = agent.get_system_prompt(channel_name, specific_instructions)
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
@@ -1394,12 +1394,24 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
+    # Convert channel_id to integer if it's a string
+    try:
+        channel_id_int = int(channel_id)
+    except (ValueError, TypeError):
+        channel_id_int = channel_id  # Keep as-is if conversion fails
+
     # Get appropriate LLM instance to determine history_size for fetching
-    llm = _get_channel_llm(agent, channel_id)
+    llm = _get_channel_llm(agent, channel_id_int)
     history_size = llm.history_size
 
-    # Fetch and prepare messages
-    messages = await client.get_messages(channel_id, limit=history_size)
+    # Get the entity first to ensure it's resolved, then fetch messages
+    # This ensures Telethon can resolve the entity properly
+    entity = await agent.get_cached_entity(channel_id_int)
+    if not entity:
+        raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
+
+    # Fetch and prepare messages using the entity
+    messages = await client.get_messages(entity, limit=history_size)
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
@@ -1478,5 +1490,5 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
             )
 
-    # Mark conversation as read
-    await client.send_read_acknowledge(channel_id)
+    # Mark conversation as read (use entity object, not raw channel_id)
+    await client.send_read_acknowledge(entity)

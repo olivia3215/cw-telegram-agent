@@ -107,7 +107,7 @@ For developers, the implementation lives under:
 
 - `src/admin_console/app.py` — Flask factory + background server helper
 - `src/media_editor.py` — Blueprint, routes, and AI integrations
-- `templates/admin_console.html` — Tab shell + media editor partial
+- `templates/admin_console.html` — Full admin console interface with tabs (Media Editor, Agents, Conversations)
 
 Feel free to update this document as new capabilities are added. ***
 

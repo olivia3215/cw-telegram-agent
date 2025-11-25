@@ -41,29 +41,26 @@ The project uses a shared library approach for service management scripts:
 
 ### Structure
 - **`scripts/lib.sh`** - Shared library with common functions
-- **`scripts/run.sh`** - Agent server management script
-- **`scripts/media_editor.sh`** - Media editor management script
+- **`scripts/run.sh`** - Agent server management script (includes admin console)
 - **Root wrappers** - Simple wrapper scripts for easy access
 
 ### Development Workflow
 
 ```bash
-# Start services for development
+# Start the agent server (includes admin console on port 5001)
 ./run.sh start
-./media_editor.sh start
 
 # View logs
 ./run.sh logs
-./media_editor.sh logs
 
-# Stop services
+# Stop the server
 ./run.sh stop
-./media_editor.sh stop
 
 # Check status
 ./run.sh status
-./media_editor.sh status
 ```
+
+The admin console is automatically started with the agent server and is accessible at http://localhost:5001 (configurable via `CINDY_ADMIN_CONSOLE_PORT`).
 
 ### Adding New Services
 

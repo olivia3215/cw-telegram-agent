@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Shared Library for Service Management Scripts
-# Common functions for run.sh and media_editor.sh
+# Common functions for run.sh
 # Usage: source "$(dirname "$0")/scripts/lib.sh"
 
 # Common configuration (can be overridden by scripts)

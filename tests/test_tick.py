@@ -21,16 +21,20 @@ from handlers.registry import get_task_dispatch_table
 async def test_run_one_tick_marks_task_done(monkeypatch):
     dispatch_table = get_task_dispatch_table()
 
-    async def fake_handle_send(task, graph, work_queue):
+    async def fake_handle_send(task, graph, work_queue=None):
         pass
 
     monkeypatch.setitem(dispatch_table, "send", fake_handle_send)
+    # Mock get_agent_for_id to avoid lookup errors
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
-    graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g1", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
-    await run_one_tick(queue)
+    await run_one_tick()
 
     assert task.status == TaskStatus.DONE
     assert graph not in queue._task_graphs  # Should be removed after completion
@@ -39,10 +43,12 @@ async def test_run_one_tick_marks_task_done(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_one_tick_retries_on_failure():
     task = TaskNode(id="bad", type="explode", params={})
-    graph = TaskGraph(id="g2", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g2", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
-    await run_one_tick(queue)
+    await run_one_tick()
 
     assert "previous_retries" in task.params
     assert task.status == TaskStatus.PENDING
@@ -56,21 +62,23 @@ async def test_run_tick_loop_stops_on_shutdown(fake_clock):
     from tick import run_one_tick as real_run_one_tick
 
     task = TaskNode(id="shutdown", type="shutdown", params={})
-    graph = TaskGraph(id="g3", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g3", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     def mock_round_robin():
         return task
 
     queue.round_robin_one_task = mock_round_robin
 
-    async def patched_run_one_tick(work_queue, state_file_path=None):
-        await real_run_one_tick(work_queue, state_file_path)
+    async def patched_run_one_tick(state_file_path=None):
+        await real_run_one_tick(state_file_path)
         fake_clock.advance(10)
         raise ShutdownException("stop test")
 
     with pytest.raises(ShutdownException):
-        await run_tick_loop(queue, tick_interval_sec=10, tick_fn=patched_run_one_tick)
+        await run_tick_loop(tick_interval_sec=10, tick_fn=patched_run_one_tick)
 
 
 def test_failed_method_max_retries():
@@ -97,11 +105,13 @@ def test_failed_method_max_retries():
 async def test_single_tick_with_invalid_task():
     """Test that a single tick with invalid task calls failed() method."""
     task = TaskNode(id="fail", type="invalid_task_type", params={})
-    graph = TaskGraph(id="g4", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g4", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # Run one tick - should call failed() method
-    await run_one_tick(queue)
+    await run_one_tick()
 
     # Verify that failed() was called and retry count was incremented
     assert task.params["previous_retries"] == 1
@@ -113,8 +123,10 @@ async def test_retry_eventually_gives_up(fake_clock):
     """Test that the tick loop eventually gives up after max retries."""
     # Create a task with an invalid type that will cause an exception
     task = TaskNode(id="fail", type="invalid_task_type", params={})
-    graph = TaskGraph(id="g4", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g4", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # Use a much shorter interval to avoid hanging on real sleep
     tick_interval_sec = 0.1  # 100ms instead of 10s
@@ -122,13 +134,13 @@ async def test_retry_eventually_gives_up(fake_clock):
     tick_count = 0
     max_ticks = 50  # Increased to allow for more retry cycles
 
-    async def patched_tick(queue, state_file_path=None):
+    async def patched_tick(state_file_path=None):
         nonlocal tick_count
         tick_count += 1
 
         # Advance the clock by 15 seconds to ensure wait tasks complete
         fake_clock.advance(15)
-        await run_one_tick(queue, state_file_path=state_file_path)
+        await run_one_tick(state_file_path=state_file_path)
 
         # Check if task has exhausted all retries and failed
         if task.status == TaskStatus.FAILED:
@@ -144,7 +156,7 @@ async def test_retry_eventually_gives_up(fake_clock):
     # Run the tick loop - it should eventually give up and raise ShutdownException
     with pytest.raises(ShutdownException):
         await run_tick_loop(
-            work_queue=queue, tick_interval_sec=tick_interval_sec, tick_fn=patched_tick
+            tick_interval_sec=tick_interval_sec, tick_fn=patched_tick
         )
 
     # Verify the task eventually failed after max retries
@@ -166,7 +178,9 @@ async def test_execute_clear_conversation(monkeypatch):
         },
         tasks=[task],
     )
-    queue = WorkQueue(_task_graphs=[graph])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     mock_client = AsyncMock()
     # This configures the mock to work correctly with 'async with'
@@ -188,13 +202,17 @@ async def test_execute_clear_conversation(monkeypatch):
 
     mock_agent._client = mock_client
     mock_agent.agent_id = "a1"
+    # Mock get_cached_entity to return the mock_user immediately
+    mock_agent.get_cached_entity = AsyncMock(return_value=mock_user)
 
     monkeypatch.setattr(
         "handlers.clear_conversation.get_agent_for_id", lambda x: mock_agent
     )
+    # Also patch get_agent_for_id in tick.py since that's where it's called
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: mock_agent)
 
     # Run the tick to execute the clear-conversation task
-    await run_one_tick(queue)
+    await run_one_tick()
 
     # Validate outcome
     assert task.status == TaskStatus.DONE
@@ -210,7 +228,7 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     dispatch_table = get_task_dispatch_table()
 
     # Mock the handler so we can inspect the task's status during its run
-    async def fake_handle_send(task, graph, work_queue):
+    async def fake_handle_send(task, graph, work_queue=None):
         # When the handler is called, the task should be 'active'
         assert task.status == TaskStatus.ACTIVE
         # Simulate work
@@ -219,14 +237,16 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     monkeypatch.setitem(dispatch_table, "send", fake_handle_send)
 
     task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
-    graph = TaskGraph(id="g1", context={"peer_id": "test"}, tasks=[task])
-    queue = WorkQueue(_task_graphs=[graph])
+    graph = TaskGraph(id="g1", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
 
     # The task should start as 'pending'
     assert task.status == TaskStatus.PENDING
 
     # Run the tick
-    await run_one_tick(queue, state_file_path=None)
+    await run_one_tick(state_file_path=None)
 
     # After the tick completes, the task should be 'done'
     assert task.status == TaskStatus.DONE
