@@ -1789,6 +1789,12 @@
                 loadAgents();
                 // Show first subtab
                 switchSubtab('curated-memories-conv');
+                // If an agent is already selected, load conversation partners
+                const conversationsAgentSelect = document.getElementById('conversations-agent-select');
+                const agentName = conversationsAgentSelect?.value;
+                if (agentName) {
+                    loadConversationPartners(agentName, 'conversations');
+                }
             } else if (tabName === 'media') {
                 // Media editor doesn't need agent loading
             }
@@ -1975,6 +1981,11 @@
             const conversationsSelect = document.getElementById('conversations-agent-select');
             if (conversationsSelect && conversationsSelect.value !== agentName) {
                 conversationsSelect.value = agentName;
+                // If conversations tab is active, load conversation partners
+                const conversationsTab = document.querySelector('.tab-panel[data-tab-panel="conversations"]');
+                if (conversationsTab && conversationsTab.classList.contains('active') && agentName) {
+                    loadConversationPartners(agentName, 'conversations');
+                }
             }
             
             if (agentName) {
