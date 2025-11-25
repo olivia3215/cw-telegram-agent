@@ -1467,29 +1467,19 @@ async def _perform_summarization(
     is_group = is_group_or_channel(dialog)
     channel_name = await get_dialog_name(agent, channel_id)
     
-    # Build summarization-specific instructions
-    # Include full JSON of existing summaries for editing
+    # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
     summary_json = agent._load_summary_content(channel_id, json_format=True)
     
-    specific_instructions = "# Summarization Task\n\n"
-    specific_instructions += "You need to create or update a summary entry for the conversation history below.\n\n"
-    specific_instructions += "The messages shown below are NOT yet summarized. Create a summary that covers these messages.\n\n"
-    specific_instructions += "Each summary entry must include:\n"
-    specific_instructions += "- `content`: The summary text\n"
-    specific_instructions += "- `min_message_id`: The minimum message ID covered by this summary\n"
-    specific_instructions += "- `max_message_id`: The maximum message ID covered by this summary\n\n"
-    specific_instructions += "Optional fields:\n"
-    specific_instructions += "- `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)\n\n"
+    # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
+    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
     
+    # Add current summaries JSON immediately before the conversation history
     if summary_json:
-        specific_instructions += "Current summaries (you can edit these by using their IDs):\n\n"
-        specific_instructions += "```json\n"
-        specific_instructions += summary_json
-        specific_instructions += "\n```\n\n"
-    
-    specific_instructions += "You may emit only one `summarize` task (along with any `think` tasks for reasoning).\n"
-    
-    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions)
+        system_prompt += "\n\n# Current Summaries\n\n"
+        system_prompt += "Current summaries (you can edit these by using their IDs):\n\n"
+        system_prompt += "```json\n"
+        system_prompt += summary_json
+        system_prompt += "\n```\n\n"
     
     # Process messages to summarize
     history_items = await _process_message_history(messages_to_summarize, agent, media_chain)

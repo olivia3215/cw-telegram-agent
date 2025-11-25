@@ -456,7 +456,6 @@
                 <button class="tab-button active" data-subtab="curated-memories-conv">Curated Memories</button>
                 <button class="tab-button" data-subtab="conversation-llm">Conversation LLM</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
-                <button class="tab-button" data-subtab="summaries">Summaries</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
             </nav>
@@ -489,11 +488,6 @@
                 </div>
                 <div class="subtab-panel" data-subtab-panel="plans">
                     <div id="plans-container">
-                    </div>
-                </div>
-                <div class="subtab-panel" data-subtab-panel="summaries">
-                    <div id="summaries-container">
-                        <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
                 <div class="subtab-panel" data-subtab-panel="conversation">
@@ -1900,8 +1894,6 @@
                         loadConversationLLM();
                     } else if (subtabName === 'plans') {
                         loadPlans();
-                    } else if (subtabName === 'summaries') {
-                        loadSummaries();
                     } else if (subtabName === 'conversation') {
                         loadConversation();
                     } else if (subtabName === 'xsend') {
@@ -2006,16 +1998,14 @@
                     const data = await response.json();
                     if (data.error) return false;
                     return data.plans && data.plans.length > 0;
-                } else if (subtabName === 'summaries') {
+                } else if (subtabName === 'conversation') {
+                    // For conversation subtab, check summaries locally (no Telegram API call)
+                    // This is handled by the batch endpoint in loadConversationPartners
+                    // Fallback: check summaries endpoint (still no Telegram API call)
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`);
                     const data = await response.json();
                     if (data.error) return false;
                     return data.summaries && data.summaries.length > 0;
-                } else if (subtabName === 'conversation') {
-                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`);
-                    const data = await response.json();
-                    if (data.error) return false;
-                    return data.messages && data.messages.length > 0;
                 }
                 // XSend subtab doesn't need asterisk
             } catch (error) {
@@ -2683,10 +2673,37 @@
                     
                     // Check content for each partner
                     const partnerContentChecks = {};
-                    await Promise.all(partners.map(async (partner) => {
-                        const userId = partner.user_id || partner;
-                        partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
-                    }));
+                    
+                    // For conversation subtab, use batch endpoint to avoid Telegram API flood
+                    if (subtabName === 'conversation') {
+                        const userIds = partners.map(p => p.user_id || p);
+                        try {
+                            const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-content-check`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ user_ids: userIds })
+                            });
+                            const batchData = await batchResponse.json();
+                            if (batchData.content_checks) {
+                                Object.assign(partnerContentChecks, batchData.content_checks);
+                            }
+                        } catch (error) {
+                            console.warn('Error checking conversation content batch:', error);
+                            // Fall back to individual checks if batch fails
+                            await Promise.all(partners.map(async (partner) => {
+                                const userId = partner.user_id || partner;
+                                partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
+                            }));
+                        }
+                    } else {
+                        // For other subtabs, use individual checks
+                        await Promise.all(partners.map(async (partner) => {
+                            const userId = partner.user_id || partner;
+                            partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
+                        }));
+                    }
                     
                     select.innerHTML = '<option value="">Choose a partner...</option>';
                     partners.forEach(partner => {
@@ -3058,106 +3075,6 @@
             });
         }
 
-        function loadSummaries() {
-            if (!agentName || !userId) {
-                return;
-            }
-            
-            const container = document.getElementById('summaries-container');
-            container.innerHTML = '<div class="loading">Loading summaries...</div>';
-            
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`)
-                .then(response => response.json())
-                .then(data => {
-                    const summaries = data.summaries || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewSummary(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Summary</button></div>';
-                    
-                    if (summaries.length === 0) {
-                        html += '<div class="placeholder-card">No summaries found for this conversation.</div>';
-                        container.innerHTML = html;
-                        return;
-                    }
-                    
-                    html += summaries.map(summary => `
-                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                                <div>
-                                    <strong>ID:</strong> ${summary.id || 'N/A'}<br>
-                                    <strong>Message Range:</strong> ${summary.min_message_id || 'N/A'} - ${summary.max_message_id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${summary.created || 'N/A'}
-                                </div>
-                                <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                            </div>
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; margin-bottom: 4px; font-weight: bold;">Min Message ID:</label>
-                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                    style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-                            </div>
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; margin-bottom: 4px; font-weight: bold;">Max Message ID:</label>
-                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                    style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-                            </div>
-                            <textarea 
-                                id="summary-${userId}-${summary.id}" 
-                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                            >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-                            <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
-                        </div>
-                    `).join('');
-                    container.innerHTML = html;
-                })
-                .catch(error => {
-                    if (error && error.message === 'unauthorized') {
-                        return;
-                    }
-                    container.innerHTML = `<div class="error">Error loading summaries: ${error}</div>`;
-                });
-        }
-
-        function createNewSummary(agentName, userId) {
-            if (!agentName || !userId) {
-                alert('Please select an agent and conversation partner');
-                return;
-            }
-            
-            const minId = prompt('Enter minimum message ID:');
-            const maxId = prompt('Enter maximum message ID:');
-            
-            if (!minId || !maxId) {
-                return;
-            }
-            
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    content: 'New summary entry',
-                    min_message_id: parseInt(minId),
-                    max_message_id: parseInt(maxId)
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert('Error creating summary: ' + data.error);
-                } else {
-                    loadSummaries();
-                }
-            })
-            .catch(error => {
-                if (error && error.message === 'unauthorized') {
-                    return;
-                }
-                alert('Error creating summary: ' + error);
-            });
-        }
-
         // Auto-save for summaries
         const summaryAutoSaveTimers = {};
         function scheduleSummaryAutoSave(agentName, userId, summaryId) {
@@ -3228,7 +3145,7 @@
             }, 1000);
         }
 
-        function deleteSummary(agentName, userId, summaryId) {
+        function deleteSummary(agentName, userId, summaryId, reloadConversation = true) {
             if (!confirm('Are you sure you want to delete this summary?')) {
                 return;
             }
@@ -3241,7 +3158,8 @@
                 if (data.error) {
                     alert('Error deleting summary: ' + data.error);
                 } else {
-                    loadSummaries();
+                    // Always reload conversation since Summaries subtab is removed
+                    loadConversation();
                 }
             })
             .catch(error => {
@@ -3251,6 +3169,10 @@
                 alert('Error deleting summary: ' + error);
             });
         }
+
+        let conversationMessages = [];
+        let conversationTranslations = {};
+        let showTranslation = false;
 
         function loadConversation() {
             const agentSelect = document.getElementById('conversations-agent-select');
@@ -3276,20 +3198,13 @@
                         return;
                     }
                     
+                    const summaries = data.summaries || [];
                     const messages = data.messages || [];
-                    if (messages.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No conversation history found.</div>';
-                        return;
-                    }
+                    conversationMessages = messages;
+                    conversationTranslations = {};
+                    showTranslation = false;
                     
-                    container.innerHTML = messages.map(msg => `
-                        <div style="background: ${msg.is_from_agent ? '#e3f2fd' : 'white'}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
-                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
-                                ${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}
-                            </div>
-                            <div style="white-space: pre-wrap;">${(msg.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                        </div>
-                    `).join('');
+                    renderConversation(agentName, userId, summaries, messages);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -3297,6 +3212,143 @@
                     }
                     container.innerHTML = `<div class="error">Error loading conversation: ${error}</div>`;
                 });
+        }
+
+        function renderConversation(agentName, userId, summaries, messages) {
+            const container = document.getElementById('conversation-container');
+            let html = '';
+            
+            // Display summaries at the top (editable, styled like memories)
+            if (summaries.length > 0) {
+                html += '<div style="margin-bottom: 24px;"><h3 style="margin-bottom: 12px; font-size: 18px; font-weight: bold;">Conversation Summaries</h3>';
+                html += summaries.map(summary => `
+                    <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                            <div>
+                                <strong>ID:</strong> ${summary.id || 'N/A'}<br>
+                                <strong>Messages:</strong> ${summary.min_message_id || 'N/A'} - ${summary.max_message_id || 'N/A'}<br>
+                                <strong>Created:</strong> ${summary.created || 'N/A'}
+                            </div>
+                            <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">Min Message ID:</label>
+                            <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
+                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">Max Message ID:</label>
+                            <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
+                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                        </div>
+                        <textarea 
+                            id="summary-${userId}-${summary.id}" 
+                            style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                            oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                        >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                        <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                    </div>
+                `).join('');
+                html += '</div>';
+            }
+            
+            // Display unsummarized messages
+            if (messages.length === 0 && summaries.length === 0) {
+                html += '<div class="placeholder-card">No conversation history found.</div>';
+            } else if (messages.length === 0) {
+                html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
+            } else {
+                html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
+                html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
+                html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+                html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
+                html += 'Display Translation</label>';
+                html += '</div>';
+                
+                html += messages.map(msg => {
+                    const displayText = showTranslation && conversationTranslations[msg.id] 
+                        ? conversationTranslations[msg.id] 
+                        : (msg.text || '');
+                    return `
+                        <div style="background: ${msg.is_from_agent ? '#e3f2fd' : 'white'}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                                ${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}
+                            </div>
+                            <div style="white-space: pre-wrap;">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function toggleTranslation(agentName, userId) {
+            const checkbox = document.getElementById('translation-toggle');
+            showTranslation = checkbox.checked;
+            
+            if (showTranslation && Object.keys(conversationTranslations).length === 0) {
+                // Load translations
+                const container = document.getElementById('conversation-container');
+                const loadingMsg = document.createElement('div');
+                loadingMsg.className = 'loading';
+                loadingMsg.textContent = 'Translating messages...';
+                container.appendChild(loadingMsg);
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/translate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ messages: conversationMessages })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error translating messages: ' + data.error);
+                        checkbox.checked = false;
+                        showTranslation = false;
+                        return;
+                    }
+                    conversationTranslations = data.translations || {};
+                    // Re-render conversation with translations
+                    const summaries = [];
+                    const container = document.getElementById('conversation-container');
+                    const summariesSection = container.querySelector('div[style*="margin-bottom: 24px"]');
+                    if (summariesSection) {
+                        // Extract summaries from existing HTML if needed
+                        // For now, just re-fetch
+                        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (!data.error) {
+                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                                }
+                            });
+                    } else {
+                        renderConversation(agentName, userId, [], conversationMessages);
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    alert('Error translating messages: ' + error);
+                    checkbox.checked = false;
+                    showTranslation = false;
+                });
+            } else {
+                // Just re-render with current translation state
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.error) {
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                        }
+                    });
+            }
         }
 
         // Set up conversation partner select change handlers

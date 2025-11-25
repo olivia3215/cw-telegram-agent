@@ -373,7 +373,8 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
     import agent as agent_module
 
     state_dir = tmp_path / "state"
-    monkeypatch.setattr(agent_module, "STATE_DIRECTORY", str(state_dir))
+    # Patch STATE_DIRECTORY in config module (used by AgentStorage) BEFORE creating agent
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
 
     agent_instance = agent_module.Agent(
         name="Planner",

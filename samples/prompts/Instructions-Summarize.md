@@ -1,3 +1,19 @@
+# Summarization Task
+
+You need to create or update a summary entry for the conversation history below.
+
+The messages shown below are NOT yet summarized. Create summaries that cover these messages.
+
+Each summary entry must include:
+- `content`: The summary text
+- `min_message_id`: The minimum message ID covered by this summary
+- `max_message_id`: The maximum message ID covered by this summary
+
+Optional fields:
+- `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)
+
+Each `summarize` should summarize one logical conversation. If part of the conversation is unimportant or of no interest to you, there is no need to summarize it.
+
 # Response Format: JSON Tasks
 
 - Output a JSON array (`[...]`) containing task objects in the order they should run.
@@ -17,7 +33,7 @@
   {
     "kind": "summarize",
     "id": "summary-1",
-    "content": "The user discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
+    "content": "Peter (1234) discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
     "min_message_id": 100,
     "max_message_id": 150
   }
@@ -72,8 +88,4 @@ between, or after other tasks.
 
 # Metadata
 
-Conversation turns appearing in the conversation history include metadata such as sender, message ID, and timestamps.
-This metadata is already provided in the prompt by the system; do not reproduce it in your tasks or output.
-Always exclude `⟦` and `⟧` from your responses.
-
-
+Conversation turns appearing in the conversation history include metadata such as sender, message ID, and timestamps. Only record in the summary what is necessary to make sense of it later.

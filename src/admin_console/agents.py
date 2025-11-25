@@ -22,9 +22,13 @@ except ImportError:
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
 
+import copy
+import json as json_lib
+
 from agent import Agent
 from clock import clock
 from config import STATE_DIRECTORY
+from llm.media_helper import get_media_llm
 from memory_storage import (
     MemoryStorageError,
     load_property_entries,
@@ -834,7 +838,8 @@ def api_get_conversation_partners(agent_name: str):
                                     except Exception as e:
                                         logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
                                         continue
-                                    # Try to get name from dialog.entity first (faster), then fallback
+                                    # Get name from dialog.entity (already provided by iter_dialogs)
+                                    # Avoid calling get_entity() to prevent GetContactsRequest flood
                                     user_name = None
                                     user_entity = dialog.entity
                                     
@@ -849,19 +854,9 @@ def api_get_conversation_partners(agent_name: str):
                                     if not user_name and hasattr(user_entity, "username") and user_entity.username:
                                         user_name = user_entity.username
                                     
-                                    # Fallback: try to get name directly from entity using client
-                                    if not user_name:
-                                        try:
-                                            entity = await client.get_entity(dialog.id)
-                                            if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
-                                                first_name = getattr(entity, "first_name", None) or ""
-                                                last_name = getattr(entity, "last_name", None) or ""
-                                                if first_name or last_name:
-                                                    user_name = f"{first_name} {last_name}".strip()
-                                            if not user_name and hasattr(entity, "username") and entity.username:
-                                                user_name = entity.username
-                                        except Exception as e:
-                                            pass  # Silently continue if entity fetch fails
+                                    # Note: We intentionally don't call get_entity() here to avoid GetContactsRequest flood.
+                                    # The dialog.entity from iter_dialogs() should contain sufficient information.
+                                    # If name is missing, we'll just use None (user_id will still be displayed).
                                     
                                     # Normalize empty strings to None
                                     if user_name and isinstance(user_name, str):
@@ -1331,9 +1326,87 @@ def api_create_summary(agent_name: str, user_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+def _get_highest_summarized_message_id_for_api(agent_name: str, channel_id: int) -> int | None:
+    """
+    Get the highest message ID that has been summarized (for use in Flask context).
+    
+    Everything with message ID <= this value can be assumed to be summarized.
+    Returns None if no summaries exist.
+    """
+    try:
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        
+        highest_max_id = None
+        for summary in summaries:
+            max_id = summary.get("max_message_id")
+            if max_id is not None:
+                try:
+                    max_id_int = int(max_id)
+                    if highest_max_id is None or max_id_int > highest_max_id:
+                        highest_max_id = max_id_int
+                except (ValueError, TypeError):
+                    pass
+        return highest_max_id
+    except Exception as e:
+        logger.debug(f"Failed to get highest summarized message ID for {agent_name}/{channel_id}: {e}")
+        return None
+
+
+def _has_conversation_content_local(agent_name: str, channel_id: int) -> bool:
+    """
+    Check if a conversation has content by checking local files only (no Telegram API calls).
+    
+    Returns True if summaries exist or if the summary file exists (indicating conversation data).
+    """
+    try:
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        if not summary_file.exists():
+            return False
+        
+        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        # If summaries exist, there's conversation content
+        return len(summaries) > 0
+    except Exception:
+        return False
+
+
+@agents_bp.route("/api/agents/<agent_name>/conversation-content-check", methods=["POST"])
+def api_check_conversation_content_batch(agent_name: str):
+    """
+    Batch check which partners have conversation content (local files only, no Telegram API calls).
+    
+    Request body: {"user_ids": ["user_id1", "user_id2", ...]}
+    Response: {"content_checks": {"user_id1": true, "user_id2": false, ...}}
+    """
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        data = request.json or {}
+        user_ids = data.get("user_ids", [])
+        
+        if not isinstance(user_ids, list):
+            return jsonify({"error": "user_ids must be a list"}), 400
+
+        content_checks = {}
+        for user_id_str in user_ids:
+            try:
+                channel_id = int(user_id_str)
+                content_checks[user_id_str] = _has_conversation_content_local(agent_name, channel_id)
+            except (ValueError, TypeError):
+                content_checks[user_id_str] = False
+
+        return jsonify({"content_checks": content_checks})
+    except Exception as e:
+        logger.error(f"Error checking conversation content for {agent_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>", methods=["GET"])
 def api_get_conversation(agent_name: str, user_id: str):
-    """Get conversation history (last 100 turns)."""
+    """Get conversation history (unsummarized messages only) and summaries."""
     try:
         agent = get_agent_by_name(agent_name)
         if not agent:
@@ -1346,6 +1419,14 @@ def api_get_conversation(agent_name: str, user_id: str):
             channel_id = int(user_id)
         except ValueError:
             return jsonify({"error": "Invalid user ID"}), 400
+
+        # Get summaries
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
+        
+        # Get highest summarized message ID to filter messages
+        highest_summarized_id = _get_highest_summarized_message_id_for_api(agent_name, channel_id)
 
         # Get conversation history from Telegram
         # Check if agent's event loop is accessible before creating coroutine
@@ -1368,7 +1449,12 @@ def api_get_conversation(agent_name: str, user_id: str):
                 if not entity:
                     return []
                 messages = []
-                async for message in client.iter_messages(entity, limit=100):
+                async for message in client.iter_messages(entity, limit=500):
+                    # Filter out summarized messages
+                    msg_id = int(message.id)
+                    if highest_summarized_id is not None and msg_id <= highest_summarized_id:
+                        continue  # Skip summarized messages
+                    
                     from_id = getattr(message, "from_id", None)
                     sender_id = None
                     if from_id:
@@ -1391,7 +1477,7 @@ def api_get_conversation(agent_name: str, user_id: str):
         # Use agent.execute() to run the coroutine on the agent's event loop
         try:
             messages = agent.execute(_get_messages(), timeout=30.0)
-            return jsonify({"messages": messages})
+            return jsonify({"messages": messages, "summaries": summaries})
         except RuntimeError as e:
             error_msg = str(e).lower()
             if "not authenticated" in error_msg or "not running" in error_msg:
@@ -1408,6 +1494,212 @@ def api_get_conversation(agent_name: str, user_id: str):
             return jsonify({"error": str(e)}), 500
     except Exception as e:
         logger.error(f"Error getting conversation for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Translation JSON schema for message translation
+_TRANSLATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "translations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The message ID from the input"
+                    },
+                    "translated_text": {
+                        "type": "string",
+                        "description": "The English translation of the message text"
+                    }
+                },
+                "required": ["message_id", "translated_text"],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["translations"],
+    "additionalProperties": False
+}
+
+
+@agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/translate", methods=["POST"])
+def api_translate_conversation(agent_name: str, user_id: str):
+    """Translate unsummarized messages into English using the media LLM."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        # Get messages from request
+        data = request.json
+        messages = data.get("messages", [])
+        if not messages:
+            return jsonify({"error": "No messages provided"}), 400
+
+        # Check if agent's event loop is accessible
+        try:
+            client_loop = agent._get_client_loop()
+            if not client_loop or not client_loop.is_running():
+                raise RuntimeError("Agent client event loop is not accessible or not running")
+        except Exception as e:
+            logger.warning(f"Cannot translate conversation - event loop check failed: {e}")
+            return jsonify({"error": "Agent client event loop is not available"}), 503
+
+        # Get media LLM
+        try:
+            media_llm = get_media_llm()
+        except Exception as e:
+            logger.error(f"Failed to get media LLM: {e}")
+            return jsonify({"error": "Media LLM not available"}), 503
+
+        # Build translation prompt with messages as structured JSON
+        # This avoids issues with unescaped quotes/newlines in message text
+        messages_for_prompt = []
+        for msg in messages:
+            msg_id = msg.get("id", "")
+            msg_text = msg.get("text", "")
+            if msg_text:
+                messages_for_prompt.append({
+                    "message_id": str(msg_id),
+                    "text": msg_text
+                })
+        
+        # Convert to JSON string for the prompt (properly escaped)
+        import json as json_module
+        messages_json = json_module.dumps(messages_for_prompt, ensure_ascii=False, indent=2)
+        
+        translation_prompt = f"""Translate the following conversation messages into English. 
+Preserve the message structure and return a JSON object with translations.
+
+Input messages (as JSON):
+{messages_json}
+
+Return a JSON object with this structure:
+{{
+  "translations": [
+    {{"message_id": "123", "translated_text": "English translation here"}},
+    ...
+  ]
+}}
+
+Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."""
+
+        # This is async, so we need to run it in the client's event loop
+        async def _translate_messages():
+            try:
+                # Use media LLM's query_structured with custom schema
+                # We need to modify the Gemini LLM to accept custom schemas
+                # For now, let's use a simpler approach with direct API call
+                from llm.gemini import GeminiLLM
+                import copy
+                
+                from llm.gemini import GeminiLLM
+                from google.genai.types import GenerateContentConfig
+                import asyncio
+                
+                if isinstance(media_llm, GeminiLLM):
+                    # Build contents for Gemini
+                    contents = [{
+                        "role": "user",
+                        "parts": [{"text": translation_prompt}]
+                    }]
+                    
+                    # Use internal method with custom schema
+                    client = getattr(media_llm, "client", None)
+                    if not client:
+                        raise RuntimeError("Media LLM client not initialized")
+                    
+                    config = GenerateContentConfig(
+                        system_instruction="You are a translation assistant. Translate messages into English and return JSON.",
+                        safety_settings=media_llm.safety_settings,
+                        response_mime_type="application/json",
+                        response_json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                    )
+                    
+                    response = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model=media_llm.model_name,
+                        contents=contents,
+                        config=config,
+                    )
+                    
+                    # Use the same text extraction helper as GeminiLLM for consistency
+                    from llm.gemini import _extract_response_text
+                    result_text = _extract_response_text(response)
+                    
+                    if result_text:
+                        # Parse JSON response with better error handling
+                        try:
+                            result = json_lib.loads(result_text)
+                            translations = result.get("translations", [])
+                            if isinstance(translations, list):
+                                return translations
+                            else:
+                                logger.warning(f"Translations is not a list: {type(translations)}")
+                                return []
+                        except json_lib.JSONDecodeError as e:
+                            logger.error(f"JSON decode error in translation response: {e}")
+                            logger.debug(f"Response text (first 500 chars): {result_text[:500]}")
+                            # Try to extract JSON from markdown code blocks if present
+                            import re
+                            json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    result = json_lib.loads(json_match.group(1))
+                                    return result.get("translations", [])
+                                except json_lib.JSONDecodeError:
+                                    pass
+                            # Try to find JSON object in the text (more lenient)
+                            json_match = re.search(r'\{[^{}]*"translations"[^{}]*\[.*?\]\s*\}', result_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    result = json_lib.loads(json_match.group(0))
+                                    return result.get("translations", [])
+                                except json_lib.JSONDecodeError:
+                                    pass
+                            return []
+                    
+                    return []
+                else:
+                    # For non-Gemini LLMs, use a simpler approach
+                    # This would need to be implemented based on the LLM type
+                    raise NotImplementedError(f"Translation not implemented for LLM type: {type(media_llm)}")
+            except Exception as e:
+                logger.error(f"Error translating messages: {e}")
+                return []
+
+        # Use agent.execute() to run the coroutine on the agent's event loop
+        try:
+            translations = agent.execute(_translate_messages(), timeout=60.0)
+            
+            # Convert to dict for easy lookup
+            translation_dict = {t["message_id"]: t["translated_text"] for t in translations}
+            
+            return jsonify({"translations": translation_dict})
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "not authenticated" in error_msg or "not running" in error_msg:
+                logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                return jsonify({"error": "Agent client loop is not available"}), 503
+            else:
+                logger.error(f"Error translating conversation: {e}")
+                return jsonify({"error": str(e)}), 500
+        except TimeoutError:
+            logger.warning(f"Timeout translating conversation for agent {agent_name}, user {user_id}")
+            return jsonify({"error": "Timeout translating conversation"}), 504
+        except Exception as e:
+            logger.error(f"Error translating conversation: {e}")
+            return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logger.error(f"Error translating conversation for {agent_name}/{user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
