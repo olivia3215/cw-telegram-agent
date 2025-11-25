@@ -456,6 +456,7 @@
                 <button class="tab-button active" data-subtab="curated-memories-conv">Curated Memories</button>
                 <button class="tab-button" data-subtab="conversation-llm">Conversation LLM</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
+                <button class="tab-button" data-subtab="summaries">Summaries</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
             </nav>
@@ -488,6 +489,10 @@
                 </div>
                 <div class="subtab-panel" data-subtab-panel="plans">
                     <div id="plans-container">
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="summaries">
+                    <div id="summaries-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
@@ -1895,6 +1900,8 @@
                         loadConversationLLM();
                     } else if (subtabName === 'plans') {
                         loadPlans();
+                    } else if (subtabName === 'summaries') {
+                        loadSummaries();
                     } else if (subtabName === 'conversation') {
                         loadConversation();
                     } else if (subtabName === 'xsend') {
@@ -1999,6 +2006,11 @@
                     const data = await response.json();
                     if (data.error) return false;
                     return data.plans && data.plans.length > 0;
+                } else if (subtabName === 'summaries') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.summaries && data.summaries.length > 0;
                 } else if (subtabName === 'conversation') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`);
                     const data = await response.json();
@@ -3043,6 +3055,200 @@
                     return;
                 }
                 alert('Error deleting plan: ' + error);
+            });
+        }
+
+        function loadSummaries() {
+            if (!agentName || !userId) {
+                return;
+            }
+            
+            const container = document.getElementById('summaries-container');
+            container.innerHTML = '<div class="loading">Loading summaries...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const summaries = data.summaries || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewSummary(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Summary</button></div>';
+                    
+                    if (summaries.length === 0) {
+                        html += '<div class="placeholder-card">No summaries found for this conversation.</div>';
+                        container.innerHTML = html;
+                        return;
+                    }
+                    
+                    html += summaries.map(summary => `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div>
+                                    <strong>ID:</strong> ${summary.id || 'N/A'}<br>
+                                    <strong>Message Range:</strong> ${summary.min_message_id || 'N/A'} - ${summary.max_message_id || 'N/A'}<br>
+                                    <strong>Created:</strong> ${summary.created || 'N/A'}
+                                </div>
+                                <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <label style="display: block; margin-bottom: 4px; font-weight: bold;">Min Message ID:</label>
+                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <label style="display: block; margin-bottom: 4px; font-weight: bold;">Max Message ID:</label>
+                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+                            </div>
+                            <textarea 
+                                id="summary-${userId}-${summary.id}" 
+                                style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                            >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                        </div>
+                    `).join('');
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading summaries: ${error}</div>`;
+                });
+        }
+
+        function createNewSummary(agentName, userId) {
+            if (!agentName || !userId) {
+                alert('Please select an agent and conversation partner');
+                return;
+            }
+            
+            const minId = prompt('Enter minimum message ID:');
+            const maxId = prompt('Enter maximum message ID:');
+            
+            if (!minId || !maxId) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    content: 'New summary entry',
+                    min_message_id: parseInt(minId),
+                    max_message_id: parseInt(maxId)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error creating summary: ' + data.error);
+                } else {
+                    loadSummaries();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error creating summary: ' + error);
+            });
+        }
+
+        // Auto-save for summaries
+        const summaryAutoSaveTimers = {};
+        function scheduleSummaryAutoSave(agentName, userId, summaryId) {
+            const key = `${userId}-${summaryId}`;
+            if (summaryAutoSaveTimers[key]) {
+                clearTimeout(summaryAutoSaveTimers[key]);
+            }
+            
+            const statusEl = document.getElementById(`summary-status-${userId}-${summaryId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Typing...';
+                statusEl.style.color = '#007bff';
+            }
+            
+            summaryAutoSaveTimers[key] = setTimeout(() => {
+                const textarea = document.getElementById(`summary-${userId}-${summaryId}`);
+                const minInput = document.getElementById(`summary-min-${userId}-${summaryId}`);
+                const maxInput = document.getElementById(`summary-max-${userId}-${summaryId}`);
+                
+                if (!textarea || !minInput || !maxInput) {
+                    return; // Elements no longer exist
+                }
+                
+                const content = textarea.value.trim();
+                const minMessageId = parseInt(minInput.value) || null;
+                const maxMessageId = parseInt(maxInput.value) || null;
+                
+                const statusEl = document.getElementById(`summary-status-${userId}-${summaryId}`);
+                if (statusEl) {
+                    statusEl.textContent = 'Saving...';
+                    statusEl.style.color = '#007bff';
+                }
+                
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}/${summaryId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        content: content,
+                        min_message_id: minMessageId,
+                        max_message_id: maxMessageId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById(`summary-status-${userId}-${summaryId}`);
+                    if (statusEl) {
+                        if (data.error) {
+                            statusEl.textContent = 'Error';
+                            statusEl.style.color = '#dc3545';
+                        } else {
+                            statusEl.textContent = 'Saved';
+                            statusEl.style.color = '#28a745';
+                        }
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    const statusEl = document.getElementById(`summary-status-${userId}-${summaryId}`);
+                    if (statusEl) {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = '#dc3545';
+                    }
+                });
+            }, 1000);
+        }
+
+        function deleteSummary(agentName, userId, summaryId) {
+            if (!confirm('Are you sure you want to delete this summary?')) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/summaries/${userId}/${summaryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting summary: ' + data.error);
+                } else {
+                    loadSummaries();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting summary: ' + error);
             });
         }
 

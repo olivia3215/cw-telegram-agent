@@ -1178,6 +1178,159 @@ def api_create_plan(agent_name: str, user_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+@agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>", methods=["GET"])
+def api_get_summaries(agent_name: str, user_id: str):
+    """Get summaries for a conversation."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+
+        # Sort by message ID range (oldest first)
+        summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
+
+        return jsonify({"summaries": summaries})
+    except MemoryStorageError as e:
+        logger.error(f"Error loading summaries for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logger.error(f"Error getting summaries for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>/<summary_id>", methods=["PUT"])
+def api_update_summary(agent_name: str, user_id: str, summary_id: str):
+    """Update a summary entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        data = request.json
+        content = data.get("content", "").strip()
+        min_message_id = data.get("min_message_id")
+        max_message_id = data.get("max_message_id")
+
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+
+        def update_summary(entries, payload):
+            for entry in entries:
+                if entry.get("id") == summary_id:
+                    if content is not None:
+                        entry["content"] = content
+                    if min_message_id is not None:
+                        entry["min_message_id"] = min_message_id
+                    if max_message_id is not None:
+                        entry["max_message_id"] = max_message_id
+                    break
+            return entries, payload
+
+        mutate_property_entries(
+            summary_file, "summary", default_id_prefix="summary", mutator=update_summary
+        )
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error updating summary {summary_id} for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>/<summary_id>", methods=["DELETE"])
+def api_delete_summary(agent_name: str, user_id: str, summary_id: str):
+    """Delete a summary entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+
+        def delete_summary(entries, payload):
+            entries = [e for e in entries if e.get("id") != summary_id]
+            return entries, payload
+
+        mutate_property_entries(
+            summary_file, "summary", default_id_prefix="summary", mutator=delete_summary
+        )
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting summary {summary_id} for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>", methods=["POST"])
+def api_create_summary(agent_name: str, user_id: str):
+    """Create a new summary entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        data = request.json or {}
+        content = data.get("content", "").strip()
+        min_message_id = data.get("min_message_id")
+        max_message_id = data.get("max_message_id")
+        
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+        if min_message_id is None or max_message_id is None:
+            return jsonify({"error": "min_message_id and max_message_id are required"}), 400
+
+        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        
+        import uuid
+        from time_utils import normalize_created_string
+        
+        summary_id = f"summary-{uuid.uuid4().hex[:8]}"
+        created_value = normalize_created_string(None, agent)
+        
+        new_entry = {
+            "id": summary_id,
+            "content": content,
+            "min_message_id": min_message_id,
+            "max_message_id": max_message_id,
+            "created": created_value,
+            "origin": "puppetmaster"
+        }
+
+        def create_summary(entries, payload):
+            entries.append(new_entry)
+            return entries, payload
+
+        mutate_property_entries(
+            summary_file, "summary", default_id_prefix="summary", mutator=create_summary
+        )
+
+        return jsonify({"success": True, "summary": new_entry})
+    except Exception as e:
+        logger.error(f"Error creating summary for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>", methods=["GET"])
 def api_get_conversation(agent_name: str, user_id: str):
     """Get conversation history (last 100 turns)."""

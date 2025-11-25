@@ -285,6 +285,54 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["summarize"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional summary identifier for updating or deleting an existing summary entry.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Summary text covering the specified message range. Use an empty string to delete an existing summary.",
+                    },
+                    "min_message_id": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                        ],
+                        "description": "The minimum message ID covered by this summary.",
+                    },
+                    "max_message_id": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"},
+                        ],
+                        "description": "The maximum message ID covered by this summary.",
+                    },
+                    "created": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                },
+                "required": ["kind", "content", "min_message_id", "max_message_id"],
+                "additionalProperties": False,
+                "title": "Summarize Task",
+                "description": "Create, update, or delete a conversation summary entry.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["retrieve"],
                     },
                     "urls": {

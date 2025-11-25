@@ -13,6 +13,7 @@ from . import (
     received,  # noqa: F401
     react,  # noqa: F401
     send,  # noqa: F401
+    summarize,  # noqa: F401
     xsend,  # noqa: F401
     sticker,  # noqa: F401
     think,  # noqa: F401

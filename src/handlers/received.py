@@ -38,6 +38,63 @@ from telethon.tl.types import Channel, Chat, User  # pyright: ignore[reportMissi
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
+def _get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
+    """
+    Get the highest message ID that has been summarized.
+    
+    Everything with message ID <= this value can be assumed to be summarized.
+    Returns None if no summaries exist.
+    
+    Returns:
+        Highest message ID covered by summaries, or None if no summaries exist
+    """
+    try:
+        from memory_storage import load_property_entries
+        from pathlib import Path
+        from config import STATE_DIRECTORY
+        
+        summary_file = Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        
+        highest_max_id = None
+        for summary in summaries:
+            max_id = summary.get("max_message_id")
+            if max_id is not None:
+                try:
+                    max_id_int = int(max_id)
+                    if highest_max_id is None or max_id_int > highest_max_id:
+                        highest_max_id = max_id_int
+                except (ValueError, TypeError):
+                    pass
+        return highest_max_id
+    except Exception as e:
+        logger.debug(f"[{agent.name}] Failed to get highest summarized message ID: {e}")
+        return None
+
+
+def _count_unsummarized_messages(messages, highest_summarized_id: int | None) -> int:
+    """
+    Count how many messages are not yet summarized.
+    
+    Args:
+        messages: List of Telegram messages (newest first)
+        highest_summarized_id: Highest message ID that has been summarized, or None
+    
+    Returns:
+        Number of unsummarized messages
+    """
+    if highest_summarized_id is None:
+        # No summaries exist, so all messages are unsummarized
+        return len(messages)
+    
+    count = 0
+    for msg in messages:
+        msg_id = getattr(msg, "id", None)
+        if msg_id is not None and int(msg_id) > highest_summarized_id:
+            count += 1
+    return count
+
+
 async def _fetch_url(url: str) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
@@ -1031,6 +1088,14 @@ async def _build_complete_system_prompt(
     if channel_details:
         system_prompt += f"\n\n{channel_details}\n"
 
+    # Add conversation summary last, immediately before the conversation history
+    summary_content = agent._load_summary_content(channel_id, json_format=False)
+    if summary_content:
+        system_prompt += f"\n\n# Conversation Summary\n\n{summary_content}\n"
+        logger.info(
+            f"[{agent.name}] Added conversation summary to system prompt for channel {channel_id}"
+        )
+
     return system_prompt
 
 
@@ -1365,6 +1430,134 @@ async def parse_llm_reply(
     return tasks
 
 
+async def _perform_summarization(
+    agent,
+    channel_id: int,
+    messages: list,
+    media_chain,
+    highest_summarized_id: int | None,
+    graph: TaskGraph,
+    task: TaskNode,
+):
+    """
+    Perform summarization of unsummarized messages.
+    
+    Summarizes all messages except the most recent 20 that are not already summarized.
+    """
+    # Filter to unsummarized messages, excluding the most recent 20
+    unsummarized_messages = []
+    for msg in messages:
+        msg_id = getattr(msg, "id", None)
+        if msg_id is not None:
+            msg_id_int = int(msg_id)
+            # Message is unsummarized if its ID is higher than the highest summarized ID
+            if highest_summarized_id is None or msg_id_int > highest_summarized_id:
+                unsummarized_messages.append(msg)
+    
+    # Keep only the most recent 20 unsummarized messages for the conversation
+    # The rest (n-20) will be summarized
+    messages_to_summarize = unsummarized_messages[20:] if len(unsummarized_messages) > 20 else []
+    
+    if not messages_to_summarize:
+        logger.info(f"[{agent.name}] No messages to summarize for channel {channel_id}")
+        return
+    
+    # Get conversation context
+    dialog = await agent.get_cached_entity(channel_id)
+    is_group = is_group_or_channel(dialog)
+    channel_name = await get_dialog_name(agent, channel_id)
+    
+    # Build summarization-specific instructions
+    # Include full JSON of existing summaries for editing
+    summary_json = agent._load_summary_content(channel_id, json_format=True)
+    
+    specific_instructions = "# Summarization Task\n\n"
+    specific_instructions += "You need to create or update a summary entry for the conversation history below.\n\n"
+    specific_instructions += "The messages shown below are NOT yet summarized. Create a summary that covers these messages.\n\n"
+    specific_instructions += "Each summary entry must include:\n"
+    specific_instructions += "- `content`: The summary text\n"
+    specific_instructions += "- `min_message_id`: The minimum message ID covered by this summary\n"
+    specific_instructions += "- `max_message_id`: The maximum message ID covered by this summary\n\n"
+    specific_instructions += "Optional fields:\n"
+    specific_instructions += "- `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)\n\n"
+    
+    if summary_json:
+        specific_instructions += "Current summaries (you can edit these by using their IDs):\n\n"
+        specific_instructions += "```json\n"
+        specific_instructions += summary_json
+        specific_instructions += "\n```\n\n"
+    
+    specific_instructions += "You may emit only one `summarize` task (along with any `think` tasks for reasoning).\n"
+    
+    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions)
+    
+    # Process messages to summarize
+    history_items = await _process_message_history(messages_to_summarize, agent, media_chain)
+    
+    # Get appropriate LLM instance
+    llm = _get_channel_llm(agent, channel_id)
+    
+    # Prepare history for LLM
+    combined_history = [
+        {
+            "sender": item.sender_display,
+            "sender_id": item.sender_id,
+            **({"sender_username": item.sender_username} if item.sender_username else {}),
+            "msg_id": item.message_id,
+            "is_agent": item.is_from_agent,
+            "parts": item.message_parts,
+            "reply_to_msg_id": item.reply_to_msg_id,
+            "ts_iso": item.timestamp,
+            "reactions": item.reactions,
+        }
+        for item in history_items
+    ]
+    
+    # Run LLM query
+    now_iso = clock.now(UTC).isoformat(timespec="seconds")
+    chat_type = "group" if is_group else "direct"
+    
+    try:
+        reply = await llm.query_structured(
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            history=combined_history,
+            history_size=len(combined_history),
+            timeout_s=None,
+        )
+    except Exception as e:
+        logger.exception(f"[{agent.name}] Failed to perform summarization: {e}")
+        return
+    
+    if not reply:
+        logger.info(f"[{agent.name}] LLM decided not to create summary")
+        return
+    
+    # Parse and validate response - only allow think and summarize tasks
+    try:
+        tasks = await parse_llm_reply(
+            reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent
+        )
+        
+        # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
+        summarize_tasks = [t for t in tasks if t.type == "summarize"]
+        
+        if len(summarize_tasks) > 1:
+            logger.warning(
+                f"[{agent.name}] LLM returned {len(summarize_tasks)} summarize tasks, expected 1. Using the first one."
+            )
+        
+        # Execute summarize tasks (they are immediate tasks)
+        for summarize_task in summarize_tasks[:1]:  # Only process the first one
+            await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
+            logger.info(
+                f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id}"
+            )
+    except Exception as e:
+        logger.exception(f"[{agent.name}] Failed to process summarization response: {e}")
+
+
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     """
@@ -1400,9 +1593,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     except (ValueError, TypeError):
         channel_id_int = channel_id  # Keep as-is if conversion fails
 
-    # Get appropriate LLM instance to determine history_size for fetching
+    # Get appropriate LLM instance
     llm = _get_channel_llm(agent, channel_id_int)
-    history_size = llm.history_size
 
     # Get the entity first to ensure it's resolved, then fetch messages
     # This ensures Telethon can resolve the entity properly
@@ -1410,12 +1602,36 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not entity:
         raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
 
-    # Fetch and prepare messages using the entity
-    messages = await client.get_messages(entity, limit=history_size)
+    # Check if summaries exist to determine how many messages to fetch
+    # If no summaries exist, fetch 500 messages as we may need to summarize most of them
+    # Otherwise, fetch 100 messages for normal operation
+    highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
+    message_limit = 500 if highest_summarized_id is None else 100
+    messages = await client.get_messages(entity, limit=message_limit)
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
     )
+
+    # Check if summarization is needed (highest_summarized_id already fetched above)
+    unsummarized_count = _count_unsummarized_messages(messages, highest_summarized_id)
+    
+    # If more than 50 unsummarized messages, perform summarization first
+    if unsummarized_count > 50:
+        logger.info(
+            f"[{agent.name}] {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
+        )
+        await _perform_summarization(
+            agent=agent,
+            channel_id=channel_id_int,
+            messages=messages,
+            media_chain=media_chain,
+            highest_summarized_id=highest_summarized_id,
+            graph=graph,
+            task=task,
+        )
+        # Re-fetch highest summarized ID after summarization
+        highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
 
     # Get conversation context
     is_callout = task.params.get("callout", False)
@@ -1436,11 +1652,25 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     xsend_intent = (task.params.get("xsend_intent") or "").strip()
     xsend_intent_param = xsend_intent if xsend_intent else None
 
-    # Build complete system prompt
+    # Filter messages to only include unsummarized ones (most recent 20-50)
+    # Summaries are already included in the system prompt
+    unsummarized_messages = []
+    for msg in messages:
+        msg_id = getattr(msg, "id", None)
+        if msg_id is not None:
+            msg_id_int = int(msg_id)
+            # Message is unsummarized if its ID is higher than the highest summarized ID
+            if highest_summarized_id is None or msg_id_int > highest_summarized_id:
+                unsummarized_messages.append(msg)
+    
+    # Limit to most recent 50 unsummarized messages (but keep at least 20 if available)
+    messages_for_history = unsummarized_messages[:50] if len(unsummarized_messages) > 50 else unsummarized_messages
+    
+    # Build complete system prompt (includes summaries)
     system_prompt = await _build_complete_system_prompt(
         agent,
         channel_id,
-        messages,
+        messages_for_history,  # Use filtered messages for context, but summaries are already loaded
         media_chain,
         is_group,
         channel_name,
@@ -1449,8 +1679,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         xsend_intent_param,
     )
 
-    # Process message history
-    history_items = await _process_message_history(messages, agent, media_chain)
+    # Process message history (only unsummarized messages)
+    history_items = await _process_message_history(messages_for_history, agent, media_chain)
 
     # Run LLM with retrieval augmentation
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
