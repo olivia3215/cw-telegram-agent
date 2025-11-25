@@ -17,6 +17,7 @@ def make_wait_task(
     identifier: str | None = None,
     delay_seconds: int = 0,
     preserve: bool = False,
+    online: bool = False,
     depends_on: list[str] | None = None,
 ) -> TaskNode:
     """
@@ -26,6 +27,7 @@ def make_wait_task(
         identifier: Task identifier. If None, generates a UUID-based one.
         delay_seconds: Delay to wait in seconds
         preserve: Whether this task should be preserved during replanning
+        online: Whether this task should trigger online presence indicators
         depends_on: List of task IDs this task depends on
 
     Returns:
@@ -37,6 +39,8 @@ def make_wait_task(
     params = {"delay": delay_seconds}
     if preserve:
         params["preserve"] = preserve
+    if online:
+        params["online"] = online
 
     return TaskNode(
         id=identifier,

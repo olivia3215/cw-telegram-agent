@@ -14,7 +14,7 @@ from telethon.errors.rpcerrorlist import (
     UserBannedInChannelError,
 )
 from telethon.tl.functions.messages import SetTypingRequest
-from telethon.tl.types import SendMessageTypingAction
+from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction
 
 from agent import get_agent_for_id
 from clock import clock
@@ -35,7 +35,8 @@ def is_graph_complete(graph) -> bool:
 
 async def trigger_typing_indicators():
     """
-    Check for pending wait tasks with typing=True and trigger typing indicators.
+    Check for pending wait tasks with typing=True or online=True and trigger typing indicators.
+    For typing=True tasks, only trigger if unblocked. For online=True tasks, trigger even if not ready.
     """
     clock.now(UTC)
     work_queue = WorkQueue.get_instance()
@@ -58,8 +59,13 @@ async def trigger_typing_indicators():
             if not client:
                 continue
 
-            # Look for pending wait tasks with typing=True
+            # Look for pending wait tasks with typing=True or online=True
+            # Only trigger for PENDING tasks (not DONE, FAILED, CANCELLED, or ACTIVE)
             completed_ids = graph.completed_ids()
+            
+            # First pass: check if any task should send typing indicator
+            # If so, we won't send online indicators to avoid cancelling typing
+            should_send_typing = False
             for task in graph.tasks:
                 if (
                     task.type == "wait"
@@ -67,7 +73,25 @@ async def trigger_typing_indicators():
                     and task.params.get("typing", False)
                     and task.is_unblocked(completed_ids)
                 ):
+                    should_send_typing = True
+                    break
+            
+            # Second pass: send indicators
+            for task in graph.tasks:
+                # Skip if not a wait task
+                if task.type != "wait":
+                    continue
+                
+                # Skip if task is completed (DONE, FAILED, CANCELLED) or not PENDING
+                # This ensures we never send indicators for done tasks
+                if task.status.is_completed() or task.status != TaskStatus.PENDING:
+                    continue
 
+                typing = task.params.get("typing", False)
+                online = task.params.get("online", False)
+
+                # For typing=True: send typing action if task is unblocked
+                if typing and task.is_unblocked(completed_ids):
                     try:
                         await client(
                             SetTypingRequest(
@@ -78,6 +102,21 @@ async def trigger_typing_indicators():
                         # It's okay if we can't show ourselves as typing
                         logger.debug(
                             f"Cannot send typing indicator to channel {channel_id}"
+                        )
+                
+                # For online=True: send cancel action to show online without typing indicator
+                # Only send if no typing indicators are being sent in this graph
+                if online and not should_send_typing:
+                    try:
+                        await client(
+                            SetTypingRequest(
+                                peer=channel_id, action=SendMessageCancelAction()
+                            )
+                        )
+                    except (UserBannedInChannelError, ChatWriteForbiddenError):
+                        # It's okay if we can't show ourselves as online
+                        logger.debug(
+                            f"Cannot send online status to channel {channel_id}"
                         )
 
         except Exception as e:
