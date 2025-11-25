@@ -149,6 +149,49 @@ def api_delete_memory(agent_name: str, memory_id: str):
         return jsonify({"error": str(e)}), 500
 
 
+@agents_bp.route("/api/agents/<agent_name>/memories", methods=["POST"])
+def api_create_memory(agent_name: str):
+    """Create a new memory entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        data = request.json or {}
+        content = data.get("content", "").strip()
+        
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+
+        memory_file = Path(STATE_DIRECTORY) / agent_name / "memory.json"
+        
+        import uuid
+        from time_utils import normalize_created_string
+        
+        memory_id = f"memory-{uuid.uuid4().hex[:8]}"
+        created_value = normalize_created_string(None, agent)
+        
+        new_entry = {
+            "id": memory_id,
+            "content": content,
+            "created": created_value,
+            "origin": "puppetmaster"
+        }
+
+        def create_memory(entries, payload):
+            entries.append(new_entry)
+            return entries, payload
+
+        mutate_property_entries(
+            memory_file, "memory", default_id_prefix="memory", mutator=create_memory
+        )
+
+        return jsonify({"success": True, "memory": new_entry})
+    except Exception as e:
+        logger.error(f"Error creating memory for {agent_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @agents_bp.route("/api/agents/<agent_name>/curated-memories", methods=["GET"])
 def api_get_curated_memories(agent_name: str):
     """Get curated memories for an agent (from configdir/agents/AgentName/memory/UserID.json)."""
@@ -359,6 +402,81 @@ def api_delete_curated_memory(agent_name: str, user_id: str, memory_id: str):
     except Exception as e:
         logger.error(
             f"Error deleting curated memory {memory_id} for {agent_name}/{user_id}: {e}"
+        )
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/curated-memories/<user_id>", methods=["POST"])
+def api_create_curated_memory(agent_name: str, user_id: str):
+    """Create a new curated memory entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        if not agent.config_directory:
+            return jsonify({"error": "Agent has no config directory"}), 400
+
+        data = request.json or {}
+        content = data.get("content", "").strip()
+        
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+
+        memory_file = (
+            Path(agent.config_directory)
+            / "agents"
+            / agent_name
+            / "memory"
+            / f"{user_id}.json"
+        )
+
+        # Load existing data
+        if memory_file.exists():
+            with open(memory_file, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    memories = loaded.get("memory", [])
+                    payload = {k: v for k, v in loaded.items() if k != "memory"}
+                elif isinstance(loaded, list):
+                    memories = loaded
+                    payload = None
+                else:
+                    memories = []
+                    payload = None
+        else:
+            memories = []
+            payload = None
+
+        import uuid
+        from time_utils import normalize_created_string
+        
+        memory_id = f"memory-{uuid.uuid4().hex[:8]}"
+        created_value = normalize_created_string(None, agent)
+        
+        new_entry = {
+            "id": memory_id,
+            "content": content,
+            "created": created_value,
+            "origin": "puppetmaster"
+        }
+        
+        memories.append(new_entry)
+
+        # Save back
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        if payload is not None:
+            payload["memory"] = memories
+            with open(memory_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+        else:
+            with open(memory_file, "w", encoding="utf-8") as f:
+                json.dump(memories, f, indent=2, ensure_ascii=False)
+
+        return jsonify({"success": True, "memory": new_entry})
+    except Exception as e:
+        logger.error(
+            f"Error creating curated memory for {agent_name}/{user_id}: {e}"
         )
         return jsonify({"error": str(e)}), 500
 
@@ -1009,6 +1127,54 @@ def api_delete_plan(agent_name: str, user_id: str, plan_id: str):
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error deleting plan {plan_id} for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/plans/<user_id>", methods=["POST"])
+def api_create_plan(agent_name: str, user_id: str):
+    """Create a new plan entry."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        data = request.json or {}
+        content = data.get("content", "").strip()
+        
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+
+        plan_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        
+        import uuid
+        from time_utils import normalize_created_string
+        
+        plan_id = f"plan-{uuid.uuid4().hex[:8]}"
+        created_value = normalize_created_string(None, agent)
+        
+        new_entry = {
+            "id": plan_id,
+            "content": content,
+            "created": created_value,
+            "origin": "puppetmaster"
+        }
+
+        def create_plan(entries, payload):
+            entries.append(new_entry)
+            return entries, payload
+
+        mutate_property_entries(
+            plan_file, "plan", default_id_prefix="plan", mutator=create_plan
+        )
+
+        return jsonify({"success": True, "plan": new_entry})
+    except Exception as e:
+        logger.error(f"Error creating plan for {agent_name}/{user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 

@@ -421,7 +421,6 @@
             <nav class="tab-bar" style="margin-bottom: 16px;">
                 <button class="tab-button active" data-subtab="parameters">Parameters</button>
                 <button class="tab-button" data-subtab="memories">Memories</button>
-                <button class="tab-button" data-subtab="curated-memories">Curated Memories</button>
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
             </nav>
             <div class="controls">
@@ -441,11 +440,6 @@
                 <div class="subtab-panel" data-subtab-panel="memories">
                     <div id="memories-container">
                         <div class="loading">Select an agent to view memories</div>
-                    </div>
-                </div>
-                <div class="subtab-panel" data-subtab-panel="curated-memories">
-                    <div id="curated-memories-container">
-                        <div class="loading">Select an agent to view curated memories</div>
                     </div>
                 </div>
                 <div class="subtab-panel" data-subtab-panel="intentions">
@@ -1878,8 +1872,6 @@
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
                         loadMemories(agentName);
-                    } else if (subtabName === 'curated-memories') {
-                        loadCuratedMemories(agentName);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
                     }
@@ -1973,11 +1965,6 @@
                     const data = await response.json();
                     if (data.error) return false;
                     return data.memories && data.memories.length > 0;
-                } else if (subtabName === 'curated-memories') {
-                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories`);
-                    const data = await response.json();
-                    if (data.error) return false;
-                    return data.curated_memories && data.curated_memories.length > 0;
                 } else if (subtabName === 'intentions') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions`);
                     const data = await response.json();
@@ -2112,8 +2099,6 @@
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
                         loadMemories(agentName);
-                    } else if (subtabName === 'curated-memories') {
-                        loadCuratedMemories(agentName);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
                     }
@@ -2179,12 +2164,15 @@
                     }
                     
                     const memories = data.memories || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewMemory(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    
                     if (memories.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No memories found.</div>';
+                        html += '<div class="placeholder-card">No memories found.</div>';
+                        container.innerHTML = html;
                         return;
                     }
                     
-                    container.innerHTML = memories.map(memory => `
+                    html += memories.map(memory => `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
@@ -2201,6 +2189,7 @@
                             <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
+                    container.innerHTML = html;
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -2208,6 +2197,35 @@
                     }
                     container.innerHTML = `<div class="error">Error loading memories: ${error}</div>`;
                 });
+        }
+
+        function createNewMemory(agentName) {
+            if (!agentName) {
+                alert('Please select an agent');
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: 'New memory entry' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error creating memory: ' + data.error);
+                } else {
+                    loadMemories(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error creating memory: ' + error);
+            });
         }
 
         // Auto-save for memories
@@ -2225,6 +2243,9 @@
             
             memoryAutoSaveTimers[memoryId] = setTimeout(() => {
                 const textarea = document.getElementById(`memory-${memoryId}`);
+                if (!textarea) {
+                    return; // Element no longer exists
+                }
                 const content = textarea.value.trim();
                 
                 const statusEl = document.getElementById(`memory-status-${memoryId}`);
@@ -2242,13 +2263,12 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        if (statusEl) {
+                    const statusEl = document.getElementById(`memory-status-${memoryId}`);
+                    if (statusEl) {
+                        if (data.error) {
                             statusEl.textContent = 'Error';
                             statusEl.style.color = '#dc3545';
-                        }
-                    } else {
-                        if (statusEl) {
+                        } else {
                             statusEl.textContent = 'Saved';
                             statusEl.style.color = '#28a745';
                         }
@@ -2258,6 +2278,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
+                    const statusEl = document.getElementById(`memory-status-${memoryId}`);
                     if (statusEl) {
                         statusEl.textContent = 'Error';
                         statusEl.style.color = '#dc3545';
@@ -2290,55 +2311,6 @@
             });
         }
 
-        // Load curated memories (similar structure to memories)
-        function loadCuratedMemories(agentName) {
-            const container = document.getElementById('curated-memories-container');
-            container.innerHTML = '<div class="loading">Loading curated memories...</div>';
-            
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
-                        return;
-                    }
-                    
-                    const curatedMemories = data.curated_memories || [];
-                    if (curatedMemories.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No curated memories found.</div>';
-                        return;
-                    }
-                    
-                    container.innerHTML = curatedMemories.map(({user_id, memories}) => `
-                        <div style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <h3 style="margin-top: 0;">User ID: ${user_id}</h3>
-                            ${memories.map(memory => `
-                                <div class="memory-item" style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 4px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                                        <div>
-                                            <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                            <strong>Created:</strong> ${memory.created || 'N/A'}
-                                        </div>
-                                        <button onclick="deleteCuratedMemory('${agentName}', '${user_id}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                                    </div>
-                                    <textarea 
-                                        id="curated-memory-${user_id}-${memory.id}" 
-                                        style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                        oninput="scheduleCuratedMemoryAutoSave('${agentName}', '${user_id}', '${memory.id}')"
-                                    >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-                                    <div id="curated-memory-status-${user_id}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `).join('');
-                })
-                .catch(error => {
-                    if (error && error.message === 'unauthorized') {
-                        return;
-                    }
-                    container.innerHTML = `<div class="error">Error loading curated memories: ${error}</div>`;
-                });
-        }
 
         // Auto-save for curated memories
         const curatedMemoryAutoSaveTimers = {};
@@ -2355,9 +2327,17 @@
             }
             
             curatedMemoryAutoSaveTimers[key] = setTimeout(() => {
-                const textarea = document.getElementById(`curated-memory-${userId}-${memoryId}`);
+                // Try both possible textarea ID formats (Agents tab and Conversations tab)
+                let textarea = document.getElementById(`curated-memory-${userId}-${memoryId}`);
+                if (!textarea) {
+                    textarea = document.getElementById(`curated-memory-params-${userId}-${memoryId}`);
+                }
+                if (!textarea) {
+                    return; // Element no longer exists
+                }
                 const content = textarea.value.trim();
                 
+                const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
                 if (statusEl) {
                     statusEl.textContent = 'Saving...';
                     statusEl.style.color = '#007bff';
@@ -2372,13 +2352,12 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        if (statusEl) {
+                    const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+                    if (statusEl) {
+                        if (data.error) {
                             statusEl.textContent = 'Error';
                             statusEl.style.color = '#dc3545';
-                        }
-                    } else {
-                        if (statusEl) {
+                        } else {
                             statusEl.textContent = 'Saved';
                             statusEl.style.color = '#28a745';
                         }
@@ -2388,6 +2367,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
+                    const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
                     if (statusEl) {
                         statusEl.textContent = 'Error';
                         statusEl.style.color = '#dc3545';
@@ -2409,7 +2389,7 @@
                 if (data.error) {
                     alert('Error deleting curated memory: ' + data.error);
                 } else {
-                    loadCuratedMemories(agentName);
+                    loadCuratedMemoriesForPartner();
                 }
             })
             .catch(error => {
@@ -2752,12 +2732,15 @@
                     }
                     
                     const memories = data.memories || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    
                     if (memories.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No curated memories found for this user.</div>';
+                        html += '<div class="placeholder-card">No curated memories found for this user.</div>';
+                        container.innerHTML = html;
                         return;
                     }
                     
-                    container.innerHTML = memories.map(memory => `
+                    html += memories.map(memory => `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
@@ -2774,6 +2757,7 @@
                             <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
+                    container.innerHTML = html;
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -2781,6 +2765,35 @@
                     }
                     container.innerHTML = `<div class="error">Error loading curated memories: ${error}</div>`;
                 });
+        }
+
+        function createNewCuratedMemoryForPartner(agentName, userId) {
+            if (!agentName || !userId) {
+                alert('Please select an agent and conversation partner');
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: 'New curated memory entry' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error creating curated memory: ' + data.error);
+                } else {
+                    loadCuratedMemoriesForPartner();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error creating curated memory: ' + error);
+            });
         }
 
         function loadConversationLLM() {
@@ -2885,12 +2898,15 @@
                     }
                     
                     const plans = data.plans || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewPlan(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Plan</button></div>';
+                    
                     if (plans.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No plans found for this conversation.</div>';
+                        html += '<div class="placeholder-card">No plans found for this conversation.</div>';
+                        container.innerHTML = html;
                         return;
                     }
                     
-                    container.innerHTML = plans.map(plan => `
+                    html += plans.map(plan => `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
@@ -2907,6 +2923,7 @@
                             <div id="plan-status-${userId}-${plan.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
+                    container.innerHTML = html;
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -2914,6 +2931,35 @@
                     }
                     container.innerHTML = `<div class="error">Error loading plans: ${error}</div>`;
                 });
+        }
+
+        function createNewPlan(agentName, userId) {
+            if (!agentName || !userId) {
+                alert('Please select an agent and conversation partner');
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: 'New plan entry' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error creating plan: ' + data.error);
+                } else {
+                    loadPlans();
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error creating plan: ' + error);
+            });
         }
 
         // Auto-save for plans
@@ -2932,8 +2978,12 @@
             
             planAutoSaveTimers[key] = setTimeout(() => {
                 const textarea = document.getElementById(`plan-${userId}-${planId}`);
+                if (!textarea) {
+                    return; // Element no longer exists
+                }
                 const content = textarea.value.trim();
                 
+                const statusEl = document.getElementById(`plan-status-${userId}-${planId}`);
                 if (statusEl) {
                     statusEl.textContent = 'Saving...';
                     statusEl.style.color = '#007bff';
@@ -2948,13 +2998,12 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        if (statusEl) {
+                    const statusEl = document.getElementById(`plan-status-${userId}-${planId}`);
+                    if (statusEl) {
+                        if (data.error) {
                             statusEl.textContent = 'Error';
                             statusEl.style.color = '#dc3545';
-                        }
-                    } else {
-                        if (statusEl) {
+                        } else {
                             statusEl.textContent = 'Saved';
                             statusEl.style.color = '#28a745';
                         }
@@ -2964,6 +3013,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
+                    const statusEl = document.getElementById(`plan-status-${userId}-${planId}`);
                     if (statusEl) {
                         statusEl.textContent = 'Error';
                         statusEl.style.color = '#dc3545';
