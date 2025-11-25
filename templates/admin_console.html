@@ -2174,12 +2174,25 @@
                         return;
                     }
                     
-                    html += memories.map(memory => `
+                    html += memories.map(memory => {
+                        const metadata = [];
+                        if (memory.creation_channel) {
+                            metadata.push(`<strong>Channel:</strong> ${memory.creation_channel}`);
+                        }
+                        if (memory.creation_channel_id) {
+                            metadata.push(`<strong>Channel ID:</strong> ${memory.creation_channel_id}`);
+                        }
+                        if (memory.origin) {
+                            metadata.push(`<strong>Origin:</strong> ${memory.origin}`);
+                        }
+                        const metadataHtml = metadata.length > 0 ? '<br>' + metadata.join('<br>') : '';
+                        
+                        return `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
                                     <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${memory.created || 'N/A'}
+                                    <strong>Created:</strong> ${memory.created || 'N/A'}${metadataHtml}
                                 </div>
                                 <button onclick="deleteMemory('${agentName}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
@@ -2190,7 +2203,8 @@
                             >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                             <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
-                    `).join('');
+                    `;
+                    }).join('');
                     container.innerHTML = html;
                 })
                 .catch(error => {
