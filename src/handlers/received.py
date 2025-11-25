@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, timedelta
 
 import httpx  # pyright: ignore[reportMissingImports]
 
@@ -25,7 +25,7 @@ from media.media_injector import (
     inject_media_descriptions,
 )
 from media.media_source import get_default_media_source_chain
-from task_graph import TaskGraph, TaskNode
+from task_graph import TaskGraph, TaskNode, TaskStatus
 from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
@@ -1489,6 +1489,40 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             logger.info(
                 f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
             )
+
+    # Handle online wait task: extend existing one or create new one
+    # Look for an existing online wait task in the conversation (must be pending)
+    online_wait_task = None
+    for t in graph.tasks:
+        if (
+            t.type == "wait"
+            and t.params.get("online", False)
+            and t.status == TaskStatus.PENDING
+        ):
+            online_wait_task = t
+            break
+
+    if online_wait_task:
+        # Extend expiration time to 5 minutes from now
+        now = clock.now(UTC)
+        new_expiration = now + timedelta(seconds=300)  # 5 minutes
+        online_wait_task.params["until"] = new_expiration.strftime(ISO_FORMAT)
+        # Clear delay if present so it uses the until time
+        if "delay" in online_wait_task.params:
+            del online_wait_task.params["delay"]
+        logger.info(
+            f"[{agent.name}] Extended online wait task {online_wait_task.id} expiration to {online_wait_task.params['until']}"
+        )
+    else:
+        # Create a new online wait task with 5 minute delay
+        online_wait_task = make_wait_task(
+            delay_seconds=300,  # 5 minutes
+            online=True,
+        )
+        graph.add_task(online_wait_task)
+        logger.info(
+            f"[{agent.name}] Created new online wait task {online_wait_task.id} (5 minutes)"
+        )
 
     # Mark conversation as read (use entity object, not raw channel_id)
     await client.send_read_acknowledge(entity)
