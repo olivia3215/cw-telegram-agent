@@ -11,9 +11,6 @@ from telethon.tl.types import Message, User, PeerUser
 from agent import Agent
 from task_graph import WorkQueue
 
-
-
-
 @pytest.fixture
 def mock_agent():
     """Create a mock agent for testing."""
