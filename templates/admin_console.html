@@ -1789,6 +1789,12 @@
                 loadAgents();
                 // Show first subtab
                 switchSubtab('curated-memories-conv');
+                // If an agent is already selected, load conversation partners
+                const conversationsAgentSelect = document.getElementById('conversations-agent-select');
+                const agentName = conversationsAgentSelect?.value;
+                if (agentName) {
+                    loadConversationPartners(agentName, 'conversations');
+                }
             } else if (tabName === 'media') {
                 // Media editor doesn't need agent loading
             }
@@ -1862,8 +1868,11 @@
             
             // Load data for the subtab
             if (mainTabName === 'agents') {
+                // Reload agents dropdown to update asterisks for new subtab
+                loadAgents();
+                
                 const agentSelect = document.getElementById('agents-agent-select');
-                const agentName = agentSelect?.value;
+                const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
                 if (agentName) {
                     if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
@@ -1876,11 +1885,16 @@
                     }
                 }
             } else if (mainTabName === 'conversations') {
+                // Reload conversation partners dropdown to update asterisks for new subtab
                 const agentSelect = document.getElementById('conversations-agent-select');
+                const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                if (agentName) {
+                    loadConversationPartners(agentName, 'conversations');
+                }
+                
                 const partnerSelect = document.getElementById('conversations-partner-select');
                 const userIdInput = document.getElementById('conversations-user-id');
-                const agentName = agentSelect?.value;
-                const userId = userIdInput?.value.trim() || partnerSelect?.value;
+                const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
                 
                 if (agentName && userId) {
                     if (subtabName === 'curated-memories-conv') {
@@ -1925,56 +1939,168 @@
         }, true);
 
 
+        // Helper function to strip asterisks from agent/partner names for value comparison
+        function stripAsterisk(text) {
+            return text.replace(/\s*\*$/, '');
+        }
+
+        // Helper function to get current subtab name for agents tab
+        function getCurrentAgentsSubtab() {
+            const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button.active');
+            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'parameters';
+        }
+
+        // Helper function to get current subtab name for conversations tab
+        function getCurrentConversationsSubtab() {
+            const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
+            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'curated-memories-conv';
+        }
+
+        // Helper function to check if agent has nontrivial content for a subtab
+        async function agentHasContent(agentName, subtabName) {
+            try {
+                if (subtabName === 'parameters') {
+                    // Check if agent has custom LLM or non-empty prompt
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    const defaultLLM = data.available_llms?.find(llm => llm.is_default)?.value;
+                    const hasCustomLLM = data.llm && data.llm !== defaultLLM;
+                    const hasPrompt = data.prompt && data.prompt.trim().length > 0;
+                    return hasCustomLLM || hasPrompt;
+                } else if (subtabName === 'memories') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.memories && data.memories.length > 0;
+                } else if (subtabName === 'curated-memories') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.curated_memories && data.curated_memories.length > 0;
+                } else if (subtabName === 'intentions') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.intentions && data.intentions.length > 0;
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return false;
+                }
+                console.error(`Error checking content for agent ${agentName}, subtab ${subtabName}:`, error);
+            }
+            return false;
+        }
+
+        // Helper function to check if conversation partner has nontrivial content for a subtab
+        async function partnerHasContent(agentName, userId, subtabName) {
+            try {
+                if (subtabName === 'curated-memories-conv') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.memories && data.memories.length > 0;
+                } else if (subtabName === 'conversation-llm') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    const agentDefaultLLM = data.agent_default_llm;
+                    return data.conversation_llm && data.conversation_llm !== agentDefaultLLM;
+                } else if (subtabName === 'plans') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.plans && data.plans.length > 0;
+                } else if (subtabName === 'conversation') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    return data.messages && data.messages.length > 0;
+                }
+                // XSend subtab doesn't need asterisk
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return false;
+                }
+                console.error(`Error checking content for partner ${userId}, subtab ${subtabName}:`, error);
+            }
+            return false;
+        }
+
         // Load agents list
-        function loadAgents() {
-            fetchWithAuth(`${API_BASE}/agents`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        console.error('Error loading agents:', data.error);
-                        return;
-                    }
-                    
-                    const agents = data.agents || [];
-                    
-                    // Populate all agent selects
-                    ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
-                        const select = document.getElementById(selectId);
-                        if (select) {
-                            const currentValue = select.value;
-                            select.innerHTML = '<option value="">Choose an agent...</option>';
-                            agents.forEach(agent => {
-                                const option = document.createElement('option');
-                                option.value = agent.name;
-                                // Display format: "Name (agent_id)" or just "Name" if no agent_id
-                                const displayName = agent.agent_id 
-                                    ? `${agent.name} (${agent.agent_id})` 
-                                    : agent.name;
-                                option.textContent = displayName;
-                                select.appendChild(option);
-                            });
-                            if (currentValue) {
-                                select.value = currentValue;
+        async function loadAgents() {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents`);
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error loading agents:', data.error);
+                    return;
+                }
+                
+                const agents = data.agents || [];
+                
+                // Determine which subtab to check content for
+                const agentsTabActive = document.querySelector('.tab-panel[data-tab-panel="agents"]')?.classList.contains('active');
+                const subtabName = agentsTabActive ? getCurrentAgentsSubtab() : null;
+                
+                // Check content for each agent if we're on agents tab
+                const agentContentChecks = {};
+                if (subtabName) {
+                    await Promise.all(agents.map(async (agent) => {
+                        agentContentChecks[agent.name] = await agentHasContent(agent.name, subtabName);
+                    }));
+                }
+                
+                // Populate all agent selects
+                ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
+                    const select = document.getElementById(selectId);
+                    if (select) {
+                        const currentValue = select.value;
+                        select.innerHTML = '<option value="">Choose an agent...</option>';
+                        agents.forEach(agent => {
+                            const option = document.createElement('option');
+                            option.value = agent.name;
+                            // Display format: "Name (agent_id)" or just "Name" if no agent_id
+                            let displayName = agent.agent_id 
+                                ? `${agent.name} (${agent.agent_id})` 
+                                : agent.name;
+                            // Add asterisk if agent has content for current subtab (only in agents tab)
+                            if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.name]) {
+                                displayName += ' *';
                             }
+                            option.textContent = displayName;
+                            select.appendChild(option);
+                        });
+                        // When setting value, strip asterisk if present for comparison
+                        if (currentValue) {
+                            const strippedValue = stripAsterisk(currentValue);
+                            select.value = strippedValue;
                         }
-                    });
-                })
-                .catch(error => {
-                    if (error && error.message === 'unauthorized') {
-                        return;
                     }
-                    console.error('Error loading agents:', error);
                 });
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                console.error('Error loading agents:', error);
+            }
         }
 
         // Set up agent select change handlers with synchronization
         document.getElementById('agents-agent-select')?.addEventListener('change', (e) => {
-            const agentName = e.target.value;
+            const agentName = stripAsterisk(e.target.value);
             
             // Synchronize with conversations agent select
             const conversationsSelect = document.getElementById('conversations-agent-select');
-            if (conversationsSelect && conversationsSelect.value !== agentName) {
+            const conversationsValue = conversationsSelect ? stripAsterisk(conversationsSelect.value) : '';
+            if (conversationsSelect && conversationsValue !== agentName) {
                 conversationsSelect.value = agentName;
+                // If conversations tab is active, load conversation partners
+                const conversationsTab = document.querySelector('.tab-panel[data-tab-panel="conversations"]');
+                if (conversationsTab && conversationsTab.classList.contains('active') && agentName) {
+                    loadConversationPartners(agentName, 'conversations');
+                }
             }
             
             if (agentName) {
@@ -1996,11 +2122,12 @@
         });
 
         document.getElementById('conversations-agent-select')?.addEventListener('change', (e) => {
-            const agentName = e.target.value;
+            const agentName = stripAsterisk(e.target.value);
             
             // Synchronize with agents agent select
             const agentsSelect = document.getElementById('agents-agent-select');
-            if (agentsSelect && agentsSelect.value !== agentName) {
+            const agentsValue = agentsSelect ? stripAsterisk(agentsSelect.value) : '';
+            if (agentsSelect && agentsValue !== agentName) {
                 agentsSelect.value = agentName;
             }
             
@@ -2011,13 +2138,19 @@
 
         document.getElementById('conversations-partner-select')?.addEventListener('change', (e) => {
             document.getElementById('conversations-user-id').value = '';
+            // Automatically load when partner is selected (only if non-empty)
+            const userId = stripAsterisk(e.target.value);
+            if (userId) {
+                loadConversationData();
+            }
         });
 
         function loadConversationData() {
-            const agentName = document.getElementById('conversations-agent-select')?.value;
+            const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
-            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
@@ -2541,42 +2674,56 @@
         }
 
         // Load conversation partners
-        function loadConversationPartners(agentName, subtab) {
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        console.error('Error loading conversation partners:', data.error);
-                        return;
-                    }
+        async function loadConversationPartners(agentName, subtab) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`);
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error loading conversation partners:', data.error);
+                    return;
+                }
+                
+                const partners = data.partners || [];
+                const select = document.getElementById('conversations-partner-select');
+                if (select) {
+                    const currentValue = select.value;
+                    const subtabName = getCurrentConversationsSubtab();
                     
-                    const partners = data.partners || [];
-                    const select = document.getElementById('conversations-partner-select');
-                    if (select) {
-                        const currentValue = select.value;
-                        select.innerHTML = '<option value="">Choose a partner...</option>';
-                        partners.forEach(partner => {
-                            const option = document.createElement('option');
-                            const userId = partner.user_id || partner;
-                            option.value = userId;
-                            // Display format: "Name (user_id)" or just "user_id" if no name
-                            // Check for both null/undefined and empty string
-                            const hasName = partner.name && partner.name.trim().length > 0;
-                            const displayName = hasName ? `${partner.name} (${userId})` : userId;
-                            option.textContent = displayName;
-                            select.appendChild(option);
-                        });
-                        if (currentValue) {
-                            select.value = currentValue;
+                    // Check content for each partner
+                    const partnerContentChecks = {};
+                    await Promise.all(partners.map(async (partner) => {
+                        const userId = partner.user_id || partner;
+                        partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
+                    }));
+                    
+                    select.innerHTML = '<option value="">Choose a partner...</option>';
+                    partners.forEach(partner => {
+                        const option = document.createElement('option');
+                        const userId = partner.user_id || partner;
+                        option.value = userId;
+                        // Display format: "Name (user_id)" or just "user_id" if no name
+                        // Check for both null/undefined and empty string
+                        const hasName = partner.name && partner.name.trim().length > 0;
+                        let displayName = hasName ? `${partner.name} (${userId})` : userId;
+                        // Add asterisk if partner has content for current subtab
+                        if (partnerContentChecks[userId]) {
+                            displayName += ' *';
                         }
+                        option.textContent = displayName;
+                        select.appendChild(option);
+                    });
+                    // When setting value, strip asterisk if present for comparison
+                    if (currentValue) {
+                        const strippedValue = stripAsterisk(currentValue);
+                        select.value = strippedValue;
                     }
-                })
-                .catch(error => {
-                    if (error && error.message === 'unauthorized') {
-                        return;
-                    }
-                    console.error('Error loading conversation partners:', error);
-                });
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                console.error('Error loading conversation partners:', error);
+            }
         }
 
         // Functions for Parameters subtabs
@@ -2585,8 +2732,8 @@
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
             
-            const agentName = agentSelect?.value;
-            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
@@ -2641,8 +2788,8 @@
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
             
-            const agentName = agentSelect?.value;
-            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
@@ -2718,8 +2865,8 @@
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
             
-            const agentName = agentSelect?.value;
-            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
@@ -2854,8 +3001,8 @@
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
             
-            const agentName = agentSelect?.value;
-            const userId = userIdInput?.value.trim() || partnerSelect?.value;
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
