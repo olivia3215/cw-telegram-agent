@@ -2011,6 +2011,8 @@
 
         document.getElementById('conversations-partner-select')?.addEventListener('change', (e) => {
             document.getElementById('conversations-user-id').value = '';
+            // Automatically load when partner is selected
+            loadConversationData();
         });
 
         function loadConversationData() {
