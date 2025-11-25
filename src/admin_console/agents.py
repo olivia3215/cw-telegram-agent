@@ -536,6 +536,7 @@ def api_update_agent_llm(agent_name: str):
                 
                 # Clear the client reference to prevent using it in wrong event loop
                 agent._client = None
+                agent._loop = None  # Clear cached loop when client is cleared
             
             # Create new LLM instance
             from llm.factory import create_llm_from_name
@@ -619,6 +620,7 @@ def api_update_agent_prompt(agent_name: str):
                 
                 # Clear the client reference to prevent using it in wrong event loop
                 agent._client = None
+                agent._loop = None  # Clear cached loop when client is cleared
             
             # Update agent in registry
             register_telegram_agent(
