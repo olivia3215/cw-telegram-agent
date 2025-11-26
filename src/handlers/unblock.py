@@ -23,12 +23,32 @@ async def handle_unblock(task: TaskNode, graph: TaskGraph, work_queue=None):
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
-    dialog = await agent.get_dialog(channel_id)
-    if is_group_or_channel(dialog.entity):
+    # Use get_cached_entity instead of get_dialog to get the entity directly
+    entity = await agent.get_cached_entity(channel_id)
+    if entity and is_group_or_channel(entity):
         logger.warning(
             f"Agent {agent.name} attempted to unblock a group/channel ({channel_id}). Aborting."
         )
         return
 
     logger.info(f"Agent {agent.name} is unblocking user {channel_id}.")
-    await client(UnblockRequest(id=channel_id))
+    
+    # Use get_input_entity with the cached entity to avoid GetContactsRequest flood
+    # If entity is None, get_input_entity will try to resolve it (may trigger GetContactsRequest)
+    try:
+        if entity:
+            # Use cached entity to create InputPeer directly, avoiding GetContactsRequest
+            input_entity = await client.get_input_entity(entity)
+        else:
+            # Entity not in cache, will need to resolve (may trigger GetContactsRequest)
+            # But at least we tried the cache first
+            input_entity = await client.get_input_entity(channel_id)
+        await client(UnblockRequest(id=input_entity))
+    except ValueError as e:
+        # Entity not found - user may have deleted account or we don't have access
+        logger.warning(
+            f"[{agent.name}] Cannot unblock user {channel_id}: {e}. "
+            "User may have deleted account or we don't have access."
+        )
+        # Don't retry - this is a permanent failure
+        return

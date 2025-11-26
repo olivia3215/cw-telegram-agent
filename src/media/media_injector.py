@@ -300,6 +300,7 @@ async def format_message_for_prompt(
                     "unique_id": it.unique_id,
                     "sticker_set_name": getattr(it, "sticker_set_name", None),
                     "sticker_name": getattr(it, "sticker_name", None),
+                    "is_animated": it.is_animated_sticker(),  # Flag to indicate animated stickers
                 }
             )
         else:

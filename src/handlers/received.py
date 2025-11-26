@@ -1443,8 +1443,11 @@ async def _perform_summarization(
     Perform summarization of unsummarized messages.
     
     Summarizes all messages except the most recent 20 that are not already summarized.
+    Processes messages in batches of at most 50. When there are more than 50 but fewer
+    than 100 messages, splits into two approximately equal halves.
     """
     # Filter to unsummarized messages, excluding the most recent 20
+    # Also exclude telepathic messages (those starting with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, or ⟦retrieve⟧)
     unsummarized_messages = []
     for msg in messages:
         msg_id = getattr(msg, "id", None)
@@ -1452,6 +1455,17 @@ async def _perform_summarization(
             msg_id_int = int(msg_id)
             # Message is unsummarized if its ID is higher than the highest summarized ID
             if highest_summarized_id is None or msg_id_int > highest_summarized_id:
+                # Check if this is a telepathic message and exclude it from summarization
+                message_text = getattr(msg, "text", None) or ""
+                message_text = message_text.strip()
+                
+                # Skip telepathic messages (agent's internal thoughts)
+                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧")):
+                    logger.debug(
+                        f"[{agent.name}] Excluding telepathic message from summarization: {message_text[:50]}..."
+                    )
+                    continue
+                
                 unsummarized_messages.append(msg)
     
     # Keep only the most recent 20 unsummarized messages for the conversation
@@ -1462,90 +1476,141 @@ async def _perform_summarization(
         logger.info(f"[{agent.name}] No messages to summarize for channel {channel_id}")
         return
     
-    # Get conversation context
+    # Get conversation context (only need to do this once)
     dialog = await agent.get_cached_entity(channel_id)
     is_group = is_group_or_channel(dialog)
     channel_name = await get_dialog_name(agent, channel_id)
     
-    # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
-    summary_json = agent._load_summary_content(channel_id, json_format=True)
-    
-    # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
-    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
-    
-    # Add current summaries JSON immediately before the conversation history
-    if summary_json:
-        system_prompt += "\n\n# Current Summaries\n\n"
-        system_prompt += "Current summaries (you can edit these by using their IDs):\n\n"
-        system_prompt += "```json\n"
-        system_prompt += summary_json
-        system_prompt += "\n```\n\n"
-    
-    # Process messages to summarize
-    history_items = await _process_message_history(messages_to_summarize, agent, media_chain)
-    
-    # Get appropriate LLM instance
+    # Get appropriate LLM instance (only need to do this once)
     llm = _get_channel_llm(agent, channel_id)
     
-    # Prepare history for LLM
-    combined_history = [
-        {
-            "sender": item.sender_display,
-            "sender_id": item.sender_id,
-            **({"sender_username": item.sender_username} if item.sender_username else {}),
-            "msg_id": item.message_id,
-            "is_agent": item.is_from_agent,
-            "parts": item.message_parts,
-            "reply_to_msg_id": item.reply_to_msg_id,
-            "ts_iso": item.timestamp,
-            "reactions": item.reactions,
-        }
-        for item in history_items
-    ]
+    # Split messages into batches
+    def _split_into_batches(msgs: list) -> list[list]:
+        """
+        Split messages into batches of at most 50.
+        When there are more than 50 but fewer than 100 messages, split into two approximately equal halves.
+        """
+        total = len(msgs)
+        if total <= 50:
+            return [msgs]
+        
+        if total < 100:
+            # Split into two approximately equal halves
+            mid = total // 2
+            return [msgs[:mid], msgs[mid:]]
+        
+        # Split into batches of 50
+        batches = []
+        for i in range(0, total, 50):
+            batches.append(msgs[i:i + 50])
+        return batches
     
-    # Run LLM query
-    now_iso = clock.now(UTC).isoformat(timespec="seconds")
-    chat_type = "group" if is_group else "direct"
+    batches = _split_into_batches(messages_to_summarize)
+    logger.info(
+        f"[{agent.name}] Splitting {len(messages_to_summarize)} messages into {len(batches)} batch(es) for summarization"
+    )
     
-    try:
-        reply = await llm.query_structured(
-            system_prompt=system_prompt,
-            now_iso=now_iso,
-            chat_type=chat_type,
-            history=combined_history,
-            history_size=len(combined_history),
-            timeout_s=None,
-        )
-    except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to perform summarization: {e}")
-        return
-    
-    if not reply:
-        logger.info(f"[{agent.name}] LLM decided not to create summary")
-        return
-    
-    # Parse and validate response - only allow think and summarize tasks
-    try:
-        tasks = await parse_llm_reply(
-            reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent
+    # Process each batch in a loop
+    for batch_idx, batch_messages in enumerate(batches):
+        logger.info(
+            f"[{agent.name}] Processing summarization batch {batch_idx + 1}/{len(batches)} "
+            f"({len(batch_messages)} messages) for channel {channel_id}"
         )
         
-        # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
-        summarize_tasks = [t for t in tasks if t.type == "summarize"]
+        # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
+        # Reload summaries each time since previous batches may have created new summaries
+        summary_json = agent._load_summary_content(channel_id, json_format=True)
         
-        if len(summarize_tasks) > 1:
-            logger.warning(
-                f"[{agent.name}] LLM returned {len(summarize_tasks)} summarize tasks, expected 1. Using the first one."
+        # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
+        system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
+        
+        # Add current summaries JSON immediately before the conversation history
+        if summary_json:
+            system_prompt += "\n\n# Current Summaries\n\n"
+            system_prompt += "Current summaries (you can edit these by using their IDs):\n\n"
+            system_prompt += "```json\n"
+            system_prompt += summary_json
+            system_prompt += "\n```\n\n"
+        
+        # Process messages to summarize for this batch
+        history_items = await _process_message_history(batch_messages, agent, media_chain)
+        
+        # Prepare history for LLM
+        combined_history = [
+            {
+                "sender": item.sender_display,
+                "sender_id": item.sender_id,
+                **({"sender_username": item.sender_username} if item.sender_username else {}),
+                "msg_id": item.message_id,
+                "is_agent": item.is_from_agent,
+                "parts": item.message_parts,
+                "reply_to_msg_id": item.reply_to_msg_id,
+                "ts_iso": item.timestamp,
+                "reactions": item.reactions,
+            }
+            for item in history_items
+        ]
+        
+        # Run LLM query for this batch
+        now_iso = clock.now(UTC).isoformat(timespec="seconds")
+        chat_type = "group" if is_group else "direct"
+        
+        try:
+            reply = await llm.query_structured(
+                system_prompt=system_prompt,
+                now_iso=now_iso,
+                chat_type=chat_type,
+                history=combined_history,
+                history_size=len(combined_history),
+                timeout_s=None,
             )
+        except Exception as e:
+            logger.exception(
+                f"[{agent.name}] Failed to perform summarization for batch {batch_idx + 1}: {e}"
+            )
+            # Continue with next batch even if this one fails
+            continue
         
-        # Execute summarize tasks (they are immediate tasks)
-        for summarize_task in summarize_tasks[:1]:  # Only process the first one
-            await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
+        if not reply:
             logger.info(
-                f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id}"
+                f"[{agent.name}] LLM decided not to create summary for batch {batch_idx + 1}"
             )
-    except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to process summarization response: {e}")
+            # Continue with next batch
+            continue
+        
+        # Parse and validate response - only allow think and summarize tasks
+        try:
+            tasks = await parse_llm_reply(
+                reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent
+            )
+            
+            # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
+            summarize_tasks = [t for t in tasks if t.type == "summarize"]
+            
+            if len(summarize_tasks) > 1:
+                logger.warning(
+                    f"[{agent.name}] LLM returned {len(summarize_tasks)} summarize tasks for batch {batch_idx + 1}, "
+                    f"expected 1. Using the first one."
+                )
+            
+            # Execute summarize tasks (they are immediate tasks)
+            for summarize_task in summarize_tasks[:1]:  # Only process the first one
+                await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
+                logger.info(
+                    f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id} "
+                    f"(batch {batch_idx + 1}/{len(batches)})"
+                )
+        except Exception as e:
+            logger.exception(
+                f"[{agent.name}] Failed to process summarization response for batch {batch_idx + 1}: {e}"
+            )
+            # Continue with next batch even if this one fails
+            continue
+    
+    logger.info(
+        f"[{agent.name}] Completed summarization of {len(messages_to_summarize)} messages "
+        f"in {len(batches)} batch(es) for channel {channel_id}"
+    )
 
 
 @register_task_handler("received")
