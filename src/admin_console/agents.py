@@ -20,7 +20,7 @@ except ImportError:
     asyncio = None
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
-from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissingImports]
 
 import copy
 import json as json_lib
@@ -46,6 +46,13 @@ from admin_console.helpers import (
     get_work_queue,
 )
 from register_agents import register_all_agents, all_agents as get_all_agents
+from handlers.received import _format_message_reactions
+from media.media_injector import format_message_for_prompt
+from media.media_source import get_default_media_source_chain
+from telegram_download import download_media_bytes
+from telegram_media import iter_media_parts
+from flask import Response
+from media.mime_utils import detect_mime_type_from_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -823,55 +830,59 @@ def api_get_conversation_partners(agent_name: str):
                             client = agent.client
                             # Iterate through dialogs - this runs in the client's event loop
                             async for dialog in client.iter_dialogs():
-                                # Only include DMs (users), not groups or channels
-                                if isinstance(dialog.entity, User):
-                                    # Normalize peer ID
-                                    try:
-                                        dialog_id = dialog.id
-                                        if hasattr(dialog_id, 'user_id'):
-                                            dialog_id = dialog_id.user_id
-                                        elif isinstance(dialog_id, int):
-                                            pass  # Already an int
-                                        else:
-                                            dialog_id = int(dialog_id)
-                                        user_id = str(normalize_peer_id(dialog_id))
-                                    except Exception as e:
-                                        logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
-                                        continue
-                                    # Get name from dialog.entity (already provided by iter_dialogs)
-                                    # Avoid calling get_entity() to prevent GetContactsRequest flood
-                                    user_name = None
-                                    user_entity = dialog.entity
-                                    
-                                    # Try first_name/last_name first
-                                    if hasattr(user_entity, "first_name") or hasattr(user_entity, "last_name"):
-                                        first_name = getattr(user_entity, "first_name", None) or ""
-                                        last_name = getattr(user_entity, "last_name", None) or ""
+                                # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
+                                await asyncio.sleep(0.05)
+                                
+                                # Include both users (DMs) and groups/channels
+                                dialog_name = None
+                                dialog_id = dialog.id
+                                
+                                # Normalize peer ID
+                                try:
+                                    if hasattr(dialog_id, 'user_id'):
+                                        dialog_id = dialog_id.user_id
+                                    elif isinstance(dialog_id, int):
+                                        pass  # Already an int
+                                    else:
+                                        dialog_id = int(dialog_id)
+                                    user_id = str(normalize_peer_id(dialog_id))
+                                except Exception as e:
+                                    logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
+                                    continue
+                                
+                                # Get name from dialog.entity (already provided by iter_dialogs)
+                                # Avoid calling get_entity() to prevent GetContactsRequest flood
+                                entity = dialog.entity
+                                
+                                if isinstance(entity, User):
+                                    # User (DM) - get name from first_name/last_name or username
+                                    if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
+                                        first_name = getattr(entity, "first_name", None) or ""
+                                        last_name = getattr(entity, "last_name", None) or ""
                                         if first_name or last_name:
-                                            user_name = f"{first_name} {last_name}".strip()
+                                            dialog_name = f"{first_name} {last_name}".strip()
                                     
-                                    # Try username if we don't have a name yet
-                                    if not user_name and hasattr(user_entity, "username") and user_entity.username:
-                                        user_name = user_entity.username
-                                    
-                                    # Note: We intentionally don't call get_entity() here to avoid GetContactsRequest flood.
-                                    # The dialog.entity from iter_dialogs() should contain sufficient information.
-                                    # If name is missing, we'll just use None (user_id will still be displayed).
-                                    
-                                    # Normalize empty strings to None
-                                    if user_name and isinstance(user_name, str):
-                                        user_name = user_name.strip()
-                                        if not user_name:
-                                            user_name = None
-                                    
-                                    # Get most recent message date
-                                    dialog_date = dialog.date if hasattr(dialog, 'date') and dialog.date else None
-                                    
-                                    telegram_partners.append({
-                                        "user_id": user_id,
-                                        "name": user_name,
-                                        "date": dialog_date
-                                    })
+                                    if not dialog_name and hasattr(entity, "username") and entity.username:
+                                        dialog_name = entity.username
+                                elif isinstance(entity, (Chat, Channel)):
+                                    # Group or channel - get name from title
+                                    if hasattr(entity, "title") and entity.title:
+                                        dialog_name = entity.title
+                                
+                                # Normalize empty strings to None
+                                if dialog_name and isinstance(dialog_name, str):
+                                    dialog_name = dialog_name.strip()
+                                    if not dialog_name:
+                                        dialog_name = None
+                                
+                                # Get most recent message date
+                                dialog_date = dialog.date if hasattr(dialog, 'date') and dialog.date else None
+                                
+                                telegram_partners.append({
+                                    "user_id": user_id,
+                                    "name": dialog_name,
+                                    "date": dialog_date
+                                })
                         except Exception as e:
                             logger.warning(f"Error fetching Telegram conversations: {e}")
                         return telegram_partners
@@ -1450,6 +1461,10 @@ def api_get_conversation(agent_name: str, user_id: str):
                 entity = await client.get_entity(channel_id)
                 if not entity:
                     return []
+                
+                # Get media chain for formatting media descriptions
+                media_chain = get_default_media_source_chain()
+                
                 messages = []
                 async for message in client.iter_messages(entity, limit=500):
                     # Filter out summarized messages
@@ -1464,12 +1479,50 @@ def api_get_conversation(agent_name: str, user_id: str):
                     is_from_agent = sender_id == agent.agent_id
                     text = message.text or ""
                     timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
+                    
+                    # Extract reply_to information
+                    reply_to_msg_id = None
+                    reply_to = getattr(message, "reply_to", None)
+                    if reply_to:
+                        reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
+                        if reply_to_msg_id_val is not None:
+                            reply_to_msg_id = str(reply_to_msg_id_val)
+                    
+                    # Format reactions
+                    reactions_str = await _format_message_reactions(agent, message)
+                    
+                    # Format media/stickers
+                    message_parts = await format_message_for_prompt(message, agent=agent, media_chain=media_chain)
+                    
+                    # Build message parts list (text and media)
+                    parts = []
+                    for part in message_parts:
+                        if part.get("kind") == "text":
+                            parts.append({
+                                "kind": "text",
+                                "text": part.get("text", "")
+                            })
+                        elif part.get("kind") == "media":
+                            parts.append({
+                                "kind": "media",
+                                "media_kind": part.get("media_kind"),
+                                "rendered_text": part.get("rendered_text", ""),
+                                "unique_id": part.get("unique_id"),
+                                "sticker_set_name": part.get("sticker_set_name"),
+                                "sticker_name": part.get("sticker_name"),
+                                "is_animated": part.get("is_animated", False),  # Include animated flag for stickers
+                                "message_id": str(message.id),  # Include message ID for media serving
+                            })
+                    
                     messages.append({
                         "id": str(message.id),
                         "text": text,
+                        "parts": parts,  # Include formatted parts (text + media)
                         "sender_id": str(sender_id) if sender_id else None,
                         "is_from_agent": is_from_agent,
                         "timestamp": timestamp,
+                        "reply_to_msg_id": reply_to_msg_id,
+                        "reactions": reactions_str,
                     })
                 return list(reversed(messages))  # Return in chronological order
             except Exception as e:
@@ -1619,11 +1672,19 @@ Translate all messages provided, maintaining the order and message IDs. Ensure a
                     if not client:
                         raise RuntimeError("Media LLM client not initialized")
                     
+                    # Calculate approximate max output tokens needed
+                    # Rough estimate: each translation entry ~50-100 tokens, add buffer
+                    num_messages = len(messages_for_prompt)
+                    estimated_tokens = num_messages * 150  # Conservative estimate per message
+                    # Set max_output_tokens to handle long conversations (Gemini 2.0 supports up to 8192)
+                    max_output_tokens = min(max(estimated_tokens, 4096), 8192)
+                    
                     config = GenerateContentConfig(
                         system_instruction="You are a translation assistant. Translate messages into English and return JSON.",
                         safety_settings=media_llm.safety_settings,
                         response_mime_type="application/json",
                         response_json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                        max_output_tokens=max_output_tokens,
                     )
                     
                     response = await asyncio.to_thread(
@@ -1649,7 +1710,24 @@ Translate all messages provided, maintaining the order and message IDs. Ensure a
                                 return []
                         except json_lib.JSONDecodeError as e:
                             logger.error(f"JSON decode error in translation response: {e}")
-                            logger.debug(f"Response text (first 500 chars): {result_text[:500]}")
+                            logger.debug(f"Response text length: {len(result_text)} chars")
+                            logger.debug(f"Response text (first 1000 chars): {result_text[:1000]}")
+                            logger.debug(f"Response text (last 1000 chars): {result_text[-1000:]}")
+                            
+                            # Check if response appears truncated (common with long conversations)
+                            if "Unterminated" in str(e) or "Expecting" in str(e):
+                                logger.warning(f"Translation response appears truncated. Response length: {len(result_text)} chars. This may indicate the conversation is too long for a single translation.")
+                                # Try to extract partial translations from what we have
+                                # Look for complete translation entries before the truncation
+                                import re
+                                # Try to find all complete translation entries
+                                translation_pattern = r'\{"message_id":\s*"([^"]+)",\s*"translated_text":\s*"([^"]*)"\}'
+                                matches = re.findall(translation_pattern, result_text)
+                                if matches:
+                                    partial_translations = [{"message_id": mid, "translated_text": text} for mid, text in matches]
+                                    logger.info(f"Extracted {len(partial_translations)} partial translations from truncated response")
+                                    return partial_translations
+                            
                             # Try to extract JSON from markdown code blocks if present
                             import re
                             json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
@@ -1667,6 +1745,8 @@ Translate all messages provided, maintaining the order and message IDs. Ensure a
                                     return result.get("translations", [])
                                 except json_lib.JSONDecodeError:
                                     pass
+                            
+                            logger.error(f"Failed to parse translation response. Returning empty translations.")
                             return []
                     
                     return []
@@ -1757,6 +1837,148 @@ def api_xsend(agent_name: str, user_id: str):
             return jsonify({"error": "Timeout creating xsend task"}), 504
     except Exception as e:
         logger.error(f"Error creating xsend task for {agent_name}/{user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/media/<message_id>/<unique_id>", methods=["GET"])
+def api_get_conversation_media(agent_name: str, user_id: str, message_id: str, unique_id: str):
+    """Serve media from a Telegram message."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        if not agent.client or not agent.client.is_connected():
+            return jsonify({"error": "Agent client not connected"}), 503
+
+        try:
+            channel_id = int(user_id)
+            msg_id = int(message_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID or message ID"}), 400
+
+        # Check if agent's event loop is accessible
+        try:
+            client_loop = agent._get_client_loop()
+            if not client_loop or not client_loop.is_running():
+                raise RuntimeError("Agent client event loop is not accessible or not running")
+        except Exception as e:
+            logger.warning(f"Cannot fetch media - event loop check failed: {e}")
+            return jsonify({"error": "Agent client event loop is not available"}), 503
+        
+        # This is async, so we need to run it in the client's event loop
+        async def _get_media():
+            try:
+                client = agent.client
+                entity = await client.get_entity(channel_id)
+                
+                # Get the message
+                message = await client.get_messages(entity, ids=msg_id)
+                if not message:
+                    return None, None
+                
+                # Handle case where get_messages returns a list
+                if isinstance(message, list):
+                    if len(message) == 0:
+                        return None, None
+                    message = message[0]
+                
+                # Find the media item with matching unique_id
+                media_items = iter_media_parts(message)
+                for item in media_items:
+                    if item.unique_id == unique_id:
+                        # Download media bytes
+                        media_bytes = await download_media_bytes(client, item.file_ref)
+                        # Detect MIME type
+                        mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
+                        return media_bytes, mime_type
+                
+                return None, None
+            except Exception as e:
+                logger.error(f"Error fetching media: {e}")
+                return None, None
+
+        # Use agent.execute() to run the coroutine on the agent's event loop
+        try:
+            media_bytes, mime_type = agent.execute(_get_media(), timeout=30.0)
+            if media_bytes is None:
+                return jsonify({"error": "Media not found"}), 404
+            
+            return Response(
+                media_bytes,
+                mimetype=mime_type or "application/octet-stream",
+                headers={"Content-Disposition": f"inline; filename={unique_id}"}
+            )
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "not authenticated" in error_msg or "not running" in error_msg:
+                logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                return jsonify({"error": "Agent client loop is not available"}), 503
+            else:
+                logger.error(f"Error fetching media: {e}")
+                return jsonify({"error": str(e)}), 500
+        except TimeoutError:
+            logger.warning(f"Timeout fetching media for agent {agent_name}, message {message_id}")
+            return jsonify({"error": "Timeout fetching media"}), 504
+        except Exception as e:
+            logger.error(f"Error fetching media: {e}")
+            return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logger.error(f"Error getting media for {agent_name}/{user_id}/{message_id}/{unique_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/summarize", methods=["POST"])
+def api_trigger_summarization(agent_name: str, user_id: str):
+    """Trigger summarization for a conversation by creating a received task that will cause the LLM to summarize."""
+    try:
+        agent = get_agent_by_name(agent_name)
+        if not agent:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+
+        if not agent.agent_id:
+            return jsonify({"error": "Agent not authenticated"}), 400
+
+        try:
+            channel_id = int(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user ID"}), 400
+
+        # Get work queue singleton
+        import os
+        state_path = os.path.join(STATE_DIRECTORY, "work_queue.json")
+        work_queue = WorkQueue.get_instance()
+
+        # Create a received task that will trigger summarization
+        # This is async, so we need to run it on the agent's event loop
+        async def _trigger_summarize():
+            # Insert a received task with a special flag to trigger summarization
+            # The LLM will see this as a new message and create a summarize task
+            await insert_received_task_for_conversation(
+                recipient_id=agent.agent_id,
+                channel_id=str(channel_id),
+                message_id=None,  # No specific message, just trigger summarization
+            )
+            # Save work queue back to state file
+            work_queue.save(state_path)
+
+        # Use agent.execute() to run the coroutine on the agent's event loop
+        try:
+            agent.execute(_trigger_summarize(), timeout=30.0)
+            return jsonify({"success": True, "message": "Summarization task created successfully"})
+        except RuntimeError as e:
+            error_msg = str(e).lower()
+            if "not authenticated" in error_msg or "not running" in error_msg:
+                logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                return jsonify({"error": "Agent client loop is not available"}), 503
+            else:
+                logger.error(f"Error triggering summarization: {e}")
+                return jsonify({"error": str(e)}), 500
+        except TimeoutError:
+            logger.warning(f"Timeout triggering summarization for agent {agent_name}, user {user_id}")
+            return jsonify({"error": "Timeout triggering summarization"}), 504
+    except Exception as e:
+        logger.error(f"Error triggering summarization for {agent_name}/{user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 

@@ -467,9 +467,9 @@
                     </select>
                 </div>
                 <div class="directory-selector" style="margin-top: 16px;">
-                    <label for="conversations-partner-select">Select Conversation Partner:</label><br>
+                    <label for="conversations-partner-select">Select Conversation:</label><br>
                     <select id="conversations-partner-select">
-                        <option value="">Choose a partner...</option>
+                        <option value="">Select Conversation</option>
                     </select>
                     <input type="text" id="conversations-user-id" placeholder="Or type Telegram user ID" style="margin-top: 8px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;">
                     <button onclick="loadConversationData()" style="margin-top: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Load</button>
@@ -3276,27 +3276,285 @@
             } else {
                 html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
                 html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
+                html += '<div style="display: flex; align-items: center; gap: 16px;">';
                 html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
                 html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
                 html += 'Display Translation</label>';
+                html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+                html += '</div>';
                 html += '</div>';
                 
                 html += messages.map(msg => {
-                    const displayText = showTranslation && conversationTranslations[msg.id] 
-                        ? conversationTranslations[msg.id] 
-                        : (msg.text || '');
+                    // Build content from parts if available (includes media/stickers)
+                    let contentHtml = '';
+                    let hasTextContent = false;
+                    
+                    if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
+                        // Use parts to show rich content
+                        msg.parts.forEach(part => {
+                            if (part.kind === 'text' && part.text) {
+                                hasTextContent = true;
+                                const partText = showTranslation && conversationTranslations[msg.id] 
+                                    ? conversationTranslations[msg.id] 
+                                    : part.text;
+                                contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                            } else if (part.kind === 'media') {
+                                const mediaKind = part.media_kind || 'media';
+                                const uniqueId = part.unique_id;
+                                const messageId = part.message_id || msg.id;
+                                const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/media/${messageId}/${uniqueId}`;
+                                
+                                // Render actual media based on type
+                                // Check if sticker is animated (either via media_kind or is_animated flag)
+                                const isAnimatedSticker = mediaKind === 'animated_sticker' || (mediaKind === 'sticker' && part.is_animated);
+                                
+                                if (mediaKind === 'photo' || (mediaKind === 'sticker' && !isAnimatedSticker)) {
+                                    // Static images and regular stickers
+                                    contentHtml += `<div style="margin-bottom: 4px;"><img src="${mediaUrl}" alt="${part.sticker_name || uniqueId}" style="max-width: 300px; max-height: 300px; border-radius: 8px;"></div>`;
+                                } else if (isAnimatedSticker) {
+                                    // Animated stickers (TGS) - use Lottie player like in media editor
+                                    contentHtml += `<div style="margin-bottom: 4px; position: relative; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
+                                        <div id="tgs-player-${uniqueId}" class="tgs-animation-container" data-message-id="${messageId}" data-unique-id="${uniqueId}" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                                            <div style="text-align: center; color: #666;">
+                                                <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
+                                                <div style="font-size: 12px; margin-bottom: 10px;">Loading TGS animation...</div>
+                                                <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 11px;">Download TGS</a>
+                                            </div>
+                                        </div>
+                                    </div>`;
+                                } else if (mediaKind === 'video' || mediaKind === 'animation' || mediaKind === 'gif') {
+                                    // Videos, animations, and GIFs
+                                    contentHtml += `<div style="margin-bottom: 4px;"><video controls autoplay loop muted style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video></div>`;
+                                } else if (mediaKind === 'audio') {
+                                    contentHtml += `<div style="margin-bottom: 4px;"><audio controls style="width: 100%; max-width: 400px;"><source src="${mediaUrl}"></audio></div>`;
+                                } else {
+                                    // Fallback: show description with download link
+                                    const renderedText = part.rendered_text || '';
+                                    const stickerInfo = part.sticker_set_name 
+                                        ? ` (${part.sticker_set_name}${part.sticker_name ? ` / ${part.sticker_name}` : ''})`
+                                        : '';
+                                    contentHtml += `<div style="color: #666; font-style: italic; margin-bottom: 4px;">${renderedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${stickerInfo} <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none;">[Download]</a></div>`;
+                                }
+                                
+                                // Add description text if available (below the media)
+                                if (part.rendered_text) {
+                                    contentHtml += `<div style="color: #666; font-size: 11px; margin-top: 2px; margin-bottom: 4px; font-style: italic;">${part.rendered_text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Fallback to text if no parts or if parts didn't include text
+                    if (!hasTextContent && msg.text) {
+                        const displayText = showTranslation && conversationTranslations[msg.id] 
+                            ? conversationTranslations[msg.id] 
+                            : msg.text;
+                        contentHtml = `<div style="white-space: pre-wrap;">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                    }
+                    
+                    // If still no content, show placeholder
+                    if (!contentHtml) {
+                        contentHtml = '<div style="color: #999; font-style: italic;">[No content]</div>';
+                    }
+                    
+                    // Build metadata line
+                    let metadataLine = `${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}`;
+                    if (msg.reply_to_msg_id) {
+                        metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
+                    }
+                    
+                    // Add reactions if present
+                    let reactionsHtml = '';
+                    if (msg.reactions) {
+                        reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                    }
+                    
                     return `
                         <div style="background: ${msg.is_from_agent ? '#e3f2fd' : 'white'}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
                             <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
-                                ${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}
+                                ${metadataLine}
                             </div>
-                            <div style="white-space: pre-wrap;">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                            ${contentHtml}
+                            ${reactionsHtml}
                         </div>
                     `;
                 }).join('');
             }
             
             container.innerHTML = html;
+            
+            // Load TGS animations for animated stickers in conversation (same as media editor)
+            setTimeout(() => {
+                loadTGSAnimationsForConversation(agentName, userId);
+            }, 100);
+        }
+        
+        async function loadTGSAnimationsForConversation(agentName, userId) {
+            // Find all TGS player containers in conversation view
+            const tgsContainers = document.querySelectorAll('#conversation-container [id^="tgs-player-"]');
+            console.log(`Found ${tgsContainers.length} TGS containers in conversation to load`);
+
+            for (const container of tgsContainers) {
+                const uniqueId = container.getAttribute('data-unique-id') || container.id.replace('tgs-player-', '');
+                const messageId = container.getAttribute('data-message-id');
+                
+                if (!messageId) {
+                    console.warn(`Could not find message ID for TGS ${uniqueId}, skipping`);
+                    continue;
+                }
+                
+                const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/media/${messageId}/${uniqueId}`;
+                console.log(`Loading TGS for ${uniqueId} from conversation: ${mediaUrl}`);
+
+                try {
+                    // Fetch the TGS file
+                    const response = await fetchWithAuth(mediaUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch TGS file: ${response.status}`);
+                    }
+
+                    const tgsData = await response.arrayBuffer();
+
+                    // Decompress the gzipped Lottie data
+                    let lottieJson;
+
+                    // Try pako first since DecompressionStream is unreliable
+                    if (typeof pako !== 'undefined') {
+                        try {
+                            console.log('Attempting pako decompression for conversation TGS...');
+                            const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
+                            lottieJson = JSON.parse(decompressed);
+                            console.log('Pako decompression successful for conversation TGS');
+                        } catch (pakoError) {
+                            console.error('Pako decompression failed:', pakoError);
+                            throw new Error('Failed to decompress TGS file with pako');
+                        }
+                    } else {
+                        // Fallback to DecompressionStream if pako not available
+                        try {
+                            console.log('Attempting DecompressionStream decompression for conversation TGS...');
+                            const decompressedData = await decompressGzip(tgsData);
+                            const jsonText = new TextDecoder().decode(decompressedData);
+                            lottieJson = JSON.parse(jsonText);
+                            console.log('DecompressionStream decompression successful for conversation TGS');
+                        } catch (decompError) {
+                            console.error('DecompressionStream failed:', decompError.message);
+                            throw new Error('Failed to decompress TGS file - no suitable decompression method available');
+                        }
+                    }
+
+                    // Clear the loading content and create a new container for Lottie
+                    container.innerHTML = '';
+                    const animationContainer = document.createElement('div');
+                    animationContainer.style.width = '100%';
+                    animationContainer.style.height = '100%';
+                    animationContainer.style.display = 'flex';
+                    animationContainer.style.alignItems = 'center';
+                    animationContainer.style.justifyContent = 'center';
+                    animationContainer.style.backgroundColor = '#ffffff';
+                    container.appendChild(animationContainer);
+
+                    // Initialize Lottie animation
+                    console.log('Initializing Lottie animation for conversation TGS...');
+                    const animation = lottie.loadAnimation({
+                        container: animationContainer,
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        animationData: lottieJson
+                    });
+                    console.log('Lottie animation initialized successfully for conversation TGS');
+
+                    // Handle animation errors
+                    animation.addEventListener('error', (error) => {
+                        console.error('Lottie animation error:', error);
+                        container.innerHTML = `
+                            <div style="text-align: center; color: #dc3545;">
+                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                                <div style="font-size: 11px;">Animation Error</div>
+                                <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            </div>
+                        `;
+                    });
+
+                    // Handle successful loading
+                    animation.addEventListener('DOMLoaded', () => {
+                        console.log('Lottie animation DOM loaded successfully for conversation TGS');
+                    });
+
+                } catch (error) {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    console.error(`Failed to load TGS animation for ${uniqueId} in conversation:`, error);
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #dc3545;">
+                            <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                            <div style="font-size: 11px;">Load Failed</div>
+                            <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function triggerSummarization(agentName, userId, buttonElement) {
+            if (!confirm('This will trigger summarization of the unsummarized messages. Continue?')) {
+                return;
+            }
+            
+            // Find the button's container
+            const container = buttonElement.closest('div[style*="display: flex"]');
+            
+            const statusDiv = document.createElement('div');
+            statusDiv.id = `summarize-status-${userId}`;
+            statusDiv.style.cssText = 'margin-top: 8px; font-size: 14px; color: #007bff; width: 100%;';
+            statusDiv.textContent = 'Triggering summarization...';
+            
+            // Insert status div after the container
+            if (container && container.parentElement) {
+                container.parentElement.insertBefore(statusDiv, container.nextSibling);
+            }
+            buttonElement.disabled = true;
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/summarize`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById(`summarize-status-${userId}`);
+                if (data.error) {
+                    if (statusDiv) {
+                        statusDiv.textContent = 'Error: ' + data.error;
+                        statusDiv.style.color = '#dc3545';
+                    }
+                    buttonElement.disabled = false;
+                } else {
+                    if (statusDiv) {
+                        statusDiv.textContent = 'Summarization task created! The conversation will be summarized in the next tick.';
+                        statusDiv.style.color = '#28a745';
+                    }
+                    // Reload conversation after a short delay to show updated summaries
+                    setTimeout(() => {
+                        loadConversation();
+                    }, 2000);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                const statusDiv = document.getElementById(`summarize-status-${userId}`);
+                if (statusDiv) {
+                    statusDiv.textContent = 'Error: ' + error;
+                    statusDiv.style.color = '#dc3545';
+                }
+                buttonElement.disabled = false;
+            });
         }
 
         function toggleTranslation(agentName, userId) {

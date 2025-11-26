@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import asyncio
+import hashlib
 import logging
 import os
 
@@ -157,7 +158,8 @@ async def scan_unread_messages(agent: Agent):
     client = agent.client
     agent_id = agent.agent_id
     async for dialog in client.iter_dialogs():
-        await clock.sleep(1)  # Don't poll too fast
+        # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
+        await clock.sleep(0.05)
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
@@ -366,6 +368,13 @@ async def run_telegram_loop(agent: Agent):
 
         try:
             async with client:
+                # Stagger initial scan to avoid GetContactsRequest flood when multiple agents start
+                # Add a random delay between 0-5 seconds based on agent name hash
+                agent_hash = int(hashlib.md5(agent.name.encode()).hexdigest()[:8], 16)
+                initial_delay = (agent_hash % 5000) / 1000.0  # 0-5 seconds
+                if initial_delay > 0:
+                    logger.debug(f"[{agent.name}] Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
+                    await clock.sleep(initial_delay)
                 await scan_unread_messages(agent)
                 await client.run_until_disconnected()
 
