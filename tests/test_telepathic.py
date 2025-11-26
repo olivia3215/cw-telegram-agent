@@ -579,8 +579,89 @@ class TestTelepathicMessageFiltering:
         
         with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
             with patch('handlers.received.get_channel_name', return_value="TestUser"):
-                history = await _process_message_history(messages, mock_agent, None)
-                
-                # Should only have the normal message
-                assert len(history) == 1
-                assert history[0].message_parts[0]["text"] == "Normal message"
+                with patch('handlers.received.is_telepath', return_value=False):
+                    history = await _process_message_history(messages, mock_agent, None)
+                    
+                    # Should only have the normal message
+                    assert len(history) == 1
+                    assert history[0].message_parts[0]["text"] == "Normal message"
+
+    @pytest.mark.asyncio
+    async def test_filter_summarize_telepathic_messages(self):
+        """Test that ⟦summarize⟧ messages are filtered from non-telepathic agents."""
+        from handlers.received import _process_message_history
+        from llm.base import MsgTextPart
+        
+        mock_agent = Mock()
+        mock_agent.timezone = None
+        mock_agent.agent_id = 123  # Non-telepathic agent
+        
+        # Create a mock message with ⟦summarize⟧ prefix
+        mock_message = Mock()
+        mock_message.id = 1
+        mock_message.sender_id = Mock()
+        mock_message.sender_id.user_id = 123
+        mock_message.out = True  # This is from the agent
+        mock_message.reply_to = None
+        mock_message.date = None
+        
+        # Create a normal message
+        normal_message = Mock()
+        normal_message.id = 2
+        normal_message.sender_id = Mock()
+        normal_message.sender_id.user_id = 456
+        normal_message.out = False
+        normal_message.reply_to = None
+        normal_message.date = None
+        
+        async def mock_format_message(msg, agent=None, media_chain=None):
+            if msg.id == 1:
+                return [MsgTextPart(kind="text", text="⟦summarize⟧\n{\"id\": \"summary-1\", \"content\": \"Summary text\"}")]
+            else:
+                return [MsgTextPart(kind="text", text="Normal message")]
+        
+        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received.get_channel_name', return_value="TestUser"):
+                with patch('handlers.received.is_telepath', return_value=False):
+                    history = await _process_message_history([mock_message, normal_message], mock_agent, None)
+                    
+                    # Should only have the normal message, ⟦summarize⟧ should be filtered
+                    assert len(history) == 1
+                    assert history[0].message_parts[0]["text"] == "Normal message"
+
+    @pytest.mark.asyncio
+    async def test_media_messages_not_filtered(self):
+        """Test that ⟦media⟧ messages are NOT filtered from non-telepathic agents (they're legitimate media descriptions)."""
+        from handlers.received import _process_message_history
+        from llm.base import MsgMediaPart
+        
+        mock_agent = Mock()
+        mock_agent.timezone = None
+        mock_agent.agent_id = 123  # Non-telepathic agent
+        
+        # Create a mock message with ⟦media⟧ prefix (from format_media_sentence)
+        mock_message = Mock()
+        mock_message.id = 1
+        mock_message.sender_id = Mock()
+        mock_message.sender_id.user_id = 456
+        mock_message.out = False
+        mock_message.reply_to = None
+        mock_message.date = None
+        
+        async def mock_format_message(msg, agent=None, media_chain=None):
+            # Simulate a media-only message (no text, just media with ⟦media⟧ prefix)
+            return [MsgMediaPart(
+                kind="media",
+                media_kind="photo",
+                rendered_text="⟦media⟧ ‹the photo that appears as a sunset over mountains›",
+                unique_id="test_123"
+            )]
+        
+        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received.get_channel_name', return_value="TestUser"):
+                with patch('handlers.received.is_telepath', return_value=False):
+                    history = await _process_message_history([mock_message], mock_agent, None)
+                    
+                    # Should NOT filter out the media message - it's legitimate
+                    assert len(history) == 1
+                    assert history[0].message_parts[0]["rendered_text"] == "⟦media⟧ ‹the photo that appears as a sunset over mountains›"
