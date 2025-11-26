@@ -1627,15 +1627,9 @@ async def _perform_summarization(
             
             # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
             summarize_tasks = [t for t in tasks if t.type == "summarize"]
-            
-            if len(summarize_tasks) > 1:
-                logger.warning(
-                    f"[{agent.name}] LLM returned {len(summarize_tasks)} summarize tasks for batch {batch_idx + 1}, "
-                    f"expected 1. Using the first one."
-                )
-            
+
             # Execute summarize tasks (they are immediate tasks)
-            for summarize_task in summarize_tasks
+            for summarize_task in summarize_tasks:
                 # Check if this is an update to an existing summary by checking if the ID exists
                 # in the existing summaries. We only auto-fill dates for NEW summaries.
                 # For updates, dates are preserved in storage_helpers.py if not provided.
