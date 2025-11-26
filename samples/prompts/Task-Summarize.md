@@ -16,7 +16,9 @@ When asked to summarize, emit a `summarize` task in your JSON response:
     "kind": "summarize",
     "content": "The user discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
     "min_message_id": 100,
-    "max_message_id": 150
+    "max_message_id": 150,
+    "first_message_date": "2025-01-15",
+    "last_message_date": "2025-01-20"
   }
 ]
 ```
@@ -25,13 +27,20 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 
 - `kind`: Must be "summarize"
 - `content`: The summary text covering the specified message range
-- `min_message_id`: The minimum message ID covered by this summary
-- `max_message_id`: The maximum message ID covered by this summary
+- `min_message_id`: The minimum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
+- `max_message_id`: The maximum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
+
+### Recommended Fields
+
+- `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
+- `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
 
 ### Optional Fields
 
 - `id`: A unique identifier. Use an existing ID to update a summary, or omit/use a new ID to create a new summary entry
 - `created`: Optional creation timestamp (ISO 8601 date or date-time)
+
+**Note:** When updating existing summaries, if you omit `min_message_id`, `max_message_id`, `first_message_date`, or `last_message_date`, the existing values will be preserved automatically. This allows you to update just the content without re-specifying the message range or dates.
 
 ## Summary Guidelines
 

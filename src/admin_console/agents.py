@@ -1197,6 +1197,33 @@ def api_get_summaries(agent_name: str, user_id: str):
         except ValueError:
             return jsonify({"error": "Invalid user ID"}), 400
 
+        # Trigger backfill for missing dates using agent's executor (runs in agent's thread)
+        try:
+            async def _backfill_dates():
+                try:
+                    storage = agent._storage
+                    if storage:
+                        await storage.backfill_summary_dates(channel_id, agent)
+                except Exception as e:
+                    logger.warning(f"Backfill failed for {agent_name}/{user_id}: {e}", exc_info=True)
+            
+            # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
+            executor = agent.executor
+            if executor and executor.loop and executor.loop.is_running():
+                # Schedule the coroutine without waiting for it
+                import asyncio
+                asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
+                logger.info(f"Scheduled backfill for {agent_name}/{user_id} (channel {channel_id})")
+            else:
+                logger.info(
+                    f"Agent executor not available for {agent_name}, skipping backfill. "
+                    f"executor={executor}, loop={executor.loop if executor else None}, "
+                    f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
+                )
+        except Exception as e:
+            # Don't fail the request if backfill setup fails
+            logger.warning(f"Failed to setup backfill for {agent_name}/{user_id}: {e}", exc_info=True)
+
         summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
 
@@ -1231,6 +1258,8 @@ def api_update_summary(agent_name: str, user_id: str, summary_id: str):
             content = content.strip()
         min_message_id = data.get("min_message_id")
         max_message_id = data.get("max_message_id")
+        first_message_date = data.get("first_message_date")
+        last_message_date = data.get("last_message_date")
 
         summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
 
@@ -1243,6 +1272,16 @@ def api_update_summary(agent_name: str, user_id: str, summary_id: str):
                         entry["min_message_id"] = min_message_id
                     if max_message_id is not None:
                         entry["max_message_id"] = max_message_id
+                    if first_message_date is not None:
+                        # Only update if not empty (empty strings should preserve existing value)
+                        stripped_date = first_message_date.strip() if first_message_date else ""
+                        if stripped_date:
+                            entry["first_message_date"] = stripped_date
+                    if last_message_date is not None:
+                        # Only update if not empty (empty strings should preserve existing value)
+                        stripped_date = last_message_date.strip() if last_message_date else ""
+                        if stripped_date:
+                            entry["last_message_date"] = stripped_date
                     break
             return entries, payload
 
@@ -1302,6 +1341,8 @@ def api_create_summary(agent_name: str, user_id: str):
         content = data.get("content", "").strip()
         min_message_id = data.get("min_message_id")
         max_message_id = data.get("max_message_id")
+        first_message_date = data.get("first_message_date")
+        last_message_date = data.get("last_message_date")
         
         if not content:
             return jsonify({"error": "Content is required"}), 400
@@ -1324,6 +1365,11 @@ def api_create_summary(agent_name: str, user_id: str):
             "created": created_value,
             "origin": "puppetmaster"
         }
+        
+        if first_message_date:
+            new_entry["first_message_date"] = first_message_date.strip()
+        if last_message_date:
+            new_entry["last_message_date"] = last_message_date.strip()
 
         def create_summary(entries, payload):
             entries.append(new_entry)
@@ -1437,6 +1483,33 @@ def api_get_conversation(agent_name: str, user_id: str):
         summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
+        
+        # Trigger backfill for missing dates using agent's executor (runs in agent's thread)
+        try:
+            async def _backfill_dates():
+                try:
+                    storage = agent._storage
+                    if storage:
+                        await storage.backfill_summary_dates(channel_id, agent)
+                except Exception as e:
+                    logger.warning(f"Backfill failed for {agent_name}/{user_id}: {e}", exc_info=True)
+            
+            # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
+            executor = agent.executor
+            if executor and executor.loop and executor.loop.is_running():
+                # Schedule the coroutine without waiting for it
+                import asyncio
+                asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
+                logger.info(f"Scheduled backfill for {agent_name}/{user_id} (channel {channel_id})")
+            else:
+                logger.info(
+                    f"Agent executor not available for {agent_name}, skipping backfill. "
+                    f"executor={executor}, loop={executor.loop if executor else None}, "
+                    f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
+                )
+        except Exception as e:
+            # Don't fail the request if backfill setup fails
+            logger.warning(f"Failed to setup backfill for {agent_name}/{user_id}: {e}", exc_info=True)
         
         # Get highest summarized message ID to filter messages
         highest_summarized_id = _get_highest_summarized_message_id_for_api(agent_name, channel_id)

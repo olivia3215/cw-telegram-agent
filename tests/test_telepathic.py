@@ -548,7 +548,7 @@ class TestTelepathicMessageFiltering:
         
         # Create mock messages with different telepathic prefixes
         messages = []
-        telepathic_prefixes = ["⟦think⟧", "⟦remember⟧", "⟦retrieve⟧"]
+        telepathic_prefixes = ["⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧"]
         
         for i, prefix in enumerate(telepathic_prefixes):
             mock_msg = Mock()
@@ -562,7 +562,7 @@ class TestTelepathicMessageFiltering:
         
         # Add one normal message
         normal_msg = Mock()
-        normal_msg.id = 4
+        normal_msg.id = 10  # Use a different ID to avoid conflict with telepathic messages
         normal_msg.sender_id = Mock()
         normal_msg.sender_id.user_id = 123
         normal_msg.out = False
@@ -571,7 +571,8 @@ class TestTelepathicMessageFiltering:
         messages.append(normal_msg)
         
         async def mock_format_message(msg, agent=None, media_chain=None):
-            if msg.id <= 3:
+            # Assign telepathic prefixes to all 6 telepathic messages (IDs 1-6)
+            if 1 <= msg.id <= len(telepathic_prefixes):
                 prefix = telepathic_prefixes[msg.id - 1]
                 return [MsgTextPart(kind="text", text=f"{prefix}\nSome content")]
             else:

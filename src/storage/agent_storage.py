@@ -226,6 +226,220 @@ class AgentStorage:
             )
         return ""
 
+    async def backfill_summary_dates(self, channel_id: int, agent) -> None:
+        """
+        Backfill missing first_message_date and last_message_date fields in summaries
+        by fetching messages from Telegram.
+        
+        Args:
+            channel_id: The conversation ID
+            agent: Agent instance with Telegram client access
+        """
+        logger.info(
+            f"[{self.agent_name}] backfill_summary_dates called for channel {channel_id}"
+        )
+        try:
+            from memory_storage import mutate_property_entries
+            from datetime import UTC
+            
+            summary_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
+            logger.info(
+                f"[{self.agent_name}] Loading summaries from {summary_file} for backfill"
+            )
+            summaries, payload = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+            logger.info(
+                f"[{self.agent_name}] Loaded {len(summaries)} summaries, checking for missing dates"
+            )
+            
+            # Find summaries missing dates (check for None or empty string)
+            summaries_to_backfill = [
+                s for s in summaries
+                if not s.get("first_message_date") or not s.get("last_message_date") or 
+                   s.get("first_message_date", "").strip() == "" or s.get("last_message_date", "").strip() == ""
+            ]
+            
+            logger.info(
+                f"[{self.agent_name}] Found {len(summaries_to_backfill)} summaries needing date backfill "
+                f"out of {len(summaries)} total"
+            )
+            
+            if not summaries_to_backfill:
+                logger.info(
+                    f"[{self.agent_name}] No summaries need date backfill for channel {channel_id}"
+                )
+                return
+            
+            logger.info(
+                f"[{self.agent_name}] Backfilling dates for {len(summaries_to_backfill)} summary(ies) "
+                f"in channel {channel_id}"
+            )
+            
+            # Check if client is available (don't try to connect if not)
+            if not agent.client:
+                logger.debug(
+                    f"[{self.agent_name}] Cannot backfill summary dates: agent client not initialized for channel {channel_id}"
+                )
+                return
+            
+            # Ensure client is connected
+            try:
+                client = await agent.get_client()
+                if not client.is_connected():
+                    await client.connect()
+            except RuntimeError as e:
+                logger.debug(
+                    f"[{self.agent_name}] Cannot backfill summary dates: agent client not available for channel {channel_id}: {e}"
+                )
+                return
+            except Exception as e:
+                logger.warning(
+                    f"[{self.agent_name}] Error connecting client for backfill in channel {channel_id}: {e}"
+                )
+                return
+            
+            # Get the entity for this channel
+            entity = await agent.get_cached_entity(channel_id)
+            if not entity:
+                logger.warning(
+                    f"[{self.agent_name}] Cannot backfill summary dates: entity not found for channel {channel_id}"
+                )
+                return
+            
+            updated = False
+            import asyncio
+            
+            # Limit how many summaries we backfill at once to avoid rate limiting
+            # Backfill oldest summaries first (they're more likely to be stable)
+            summaries_to_backfill_sorted = sorted(
+                summaries_to_backfill,
+                key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0))
+            )
+            
+            # Only backfill up to 5 summaries at a time to avoid rate limits
+            max_backfill_per_call = 5
+            summaries_to_process = summaries_to_backfill_sorted[:max_backfill_per_call]
+            
+            if len(summaries_to_backfill) > max_backfill_per_call:
+                logger.info(
+                    f"[{self.agent_name}] Backfilling {len(summaries_to_process)} of {len(summaries_to_backfill)} "
+                    f"summaries (will continue on next load)"
+                )
+            
+            for idx, summary in enumerate(summaries_to_process):
+                # Add a delay between requests to avoid rate limiting
+                # (except for the first request)
+                if idx > 0:
+                    await asyncio.sleep(2.0)  # 2 second delay between requests to avoid flood waits
+                
+                min_id = summary.get("min_message_id")
+                max_id = summary.get("max_message_id")
+                
+                if not min_id or not max_id:
+                    continue
+                
+                try:
+                    min_id_int = int(min_id)
+                    max_id_int = int(max_id)
+                except (ValueError, TypeError):
+                    continue
+                
+                # Fetch messages in the range
+                # Note: min_id and max_id are EXCLUSIVE boundaries in Telegram's API.
+                # To include boundary messages (min_id_int and max_id_int), we need to:
+                # - Use min_id = min_id_int - 1 (to include min_id_int)
+                # - Use max_id = max_id_int + 1 (to include max_id_int)
+                # Then filter results to only include messages in the desired range.
+                try:
+                    client = await agent.get_client()
+                    # Adjust boundaries to be inclusive
+                    adjusted_min_id = min_id_int - 1 if min_id_int > 0 else None
+                    adjusted_max_id = max_id_int + 1
+                    
+                    messages = await client.get_messages(
+                        entity,
+                        min_id=adjusted_min_id,
+                        max_id=adjusted_max_id,
+                        limit=None,  # Get all messages in range
+                    )
+                    
+                    if not messages:
+                        logger.debug(
+                            f"[{self.agent_name}] No messages found for summary range {min_id_int}-{max_id_int}"
+                        )
+                        continue
+                    
+                    # Filter to only include messages in the desired inclusive range
+                    # (exclude any messages outside min_id_int..max_id_int)
+                    filtered_messages = [
+                        msg for msg in messages
+                        if hasattr(msg, 'id') and min_id_int <= msg.id <= max_id_int
+                    ]
+                    
+                    if not filtered_messages:
+                        logger.debug(
+                            f"[{self.agent_name}] No messages in filtered range {min_id_int}-{max_id_int} "
+                            f"(fetched {len(messages)} messages with adjusted boundaries)"
+                        )
+                        continue
+                    
+                    # Extract dates from filtered messages
+                    dates = []
+                    for msg in filtered_messages:
+                        msg_date = getattr(msg, "date", None)
+                        if msg_date:
+                            try:
+                                if msg_date.tzinfo is None:
+                                    msg_date = msg_date.replace(tzinfo=UTC)
+                                utc_date = msg_date.astimezone(UTC)
+                                date_str = utc_date.strftime("%Y-%m-%d")
+                                dates.append((msg_date, date_str))
+                            except Exception:
+                                continue
+                    
+                    if dates:
+                        dates.sort(key=lambda x: x[0])
+                        first_date = dates[0][1]
+                        last_date = dates[-1][1]
+                        
+                        # Update dates if missing or empty
+                        if not summary.get("first_message_date") or not summary.get("first_message_date", "").strip():
+                            summary["first_message_date"] = first_date
+                        if not summary.get("last_message_date") or not summary.get("last_message_date", "").strip():
+                            summary["last_message_date"] = last_date
+                        updated = True
+                        
+                        logger.info(
+                            f"[{self.agent_name}] Backfilled dates for summary {summary.get('id', 'unknown')}: "
+                            f"{first_date} to {last_date}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"[{self.agent_name}] Failed to backfill dates for summary "
+                        f"{summary.get('id', 'unknown')} (range {min_id_int}-{max_id_int}): {e}"
+                    )
+                    continue
+            
+            # Save updated summaries if any were modified
+            if updated:
+                from memory_storage import write_property_entries
+                write_property_entries(
+                    summary_file,
+                    "summary",
+                    summaries,
+                    payload=payload,
+                )
+                logger.info(
+                    f"[{self.agent_name}] Saved backfilled summary dates for channel {channel_id}"
+                )
+            else:
+                logger.debug(
+                    f"[{self.agent_name}] No summaries were updated during backfill for channel {channel_id}"
+                )
+        except Exception as exc:
+            logger.warning(
+                f"[{self.agent_name}] Failed to backfill summary dates for channel {channel_id}: {exc}"
+            )
+
     def get_channel_llm_model(self, channel_id: int) -> str | None:
         """
         Get the LLM model name for a specific channel from the channel memory file.

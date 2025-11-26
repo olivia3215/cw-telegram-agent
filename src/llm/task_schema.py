@@ -300,14 +300,22 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                             {"type": "integer"},
                             {"type": "string"},
                         ],
-                        "description": "The minimum message ID covered by this summary.",
+                        "description": (
+                            "The minimum message ID covered by this summary. "
+                            "Required for new summaries. When updating existing summaries, "
+                            "this value is preserved if not provided, allowing content-only updates."
+                        ),
                     },
                     "max_message_id": {
                         "anyOf": [
                             {"type": "integer"},
                             {"type": "string"},
                         ],
-                        "description": "The maximum message ID covered by this summary.",
+                        "description": (
+                            "The maximum message ID covered by this summary. "
+                            "Required for new summaries. When updating existing summaries, "
+                            "this value is preserved if not provided, allowing content-only updates."
+                        ),
                     },
                     "created": {
                         "anyOf": [
@@ -321,6 +329,32 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                             },
                         ],
                         "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                    "first_message_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": (
+                            "Optional date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). "
+                            "If omitted for new summaries, dates are auto-extracted from message timestamps. "
+                            "When updating existing summaries, dates are preserved if not provided."
+                        ),
+                    },
+                    "last_message_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": (
+                            "Optional date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). "
+                            "If omitted for new summaries, dates are auto-extracted from message timestamps. "
+                            "When updating existing summaries, dates are preserved if not provided."
+                        ),
                     },
                 },
                 "required": ["kind", "content", "min_message_id", "max_message_id"],

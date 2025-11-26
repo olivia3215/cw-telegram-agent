@@ -102,6 +102,22 @@ async def process_property_entry_task(
                 if created_value:
                     new_entry["created"] = created_value
 
+            # For summaries: preserve message IDs and dates when updating if not provided.
+            # Dates are auto-filled for new summaries during summarization (see _perform_summarization
+            # in received.py), but should be preserved when editing existing summaries to avoid data loss.
+            # Message IDs are required for new summaries but preserved when updating to allow content-only edits.
+            # The JSON schema marks dates as optional to allow the LLM to omit them, relying on auto-fill
+            # for new summaries and preservation for updates.
+            if property_name == "summary" and existing_entry is not None:
+                # Preserve message IDs if not provided (allows content-only updates)
+                for id_field in ("min_message_id", "max_message_id"):
+                    if id_field not in new_entry and id_field in existing_entry:
+                        new_entry[id_field] = existing_entry[id_field]
+                # Preserve dates if not provided (auto-filled for new summaries)
+                for date_field in ("first_message_date", "last_message_date"):
+                    if date_field not in new_entry and date_field in existing_entry:
+                        new_entry[date_field] = existing_entry[date_field]
+
             # If updating and we have an entry mutator, preserve channel info if not overridden
             if existing_entry is not None and entry_mutator:
                 for field in ("creation_channel", "creation_channel_id", "creation_channel_username"):

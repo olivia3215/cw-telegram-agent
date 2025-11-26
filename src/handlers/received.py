@@ -95,6 +95,41 @@ def _count_unsummarized_messages(messages, highest_summarized_id: int | None) ->
     return count
 
 
+def _extract_message_dates(messages) -> tuple[str | None, str | None]:
+    """
+    Extract the first and last message dates from a list of Telegram messages.
+    
+    Args:
+        messages: List of Telegram messages (may be in any order)
+    
+    Returns:
+        Tuple of (first_date, last_date) as ISO 8601 date strings (YYYY-MM-DD), or (None, None) if no dates found
+    """
+    dates = []
+    for msg in messages:
+        msg_date = getattr(msg, "date", None)
+        if msg_date:
+            try:
+                if msg_date.tzinfo is None:
+                    msg_date = msg_date.replace(tzinfo=UTC)
+                # Convert to UTC and format as YYYY-MM-DD
+                utc_date = msg_date.astimezone(UTC)
+                date_str = utc_date.strftime("%Y-%m-%d")
+                dates.append((msg_date, date_str))
+            except Exception:
+                continue
+    
+    if not dates:
+        return (None, None)
+    
+    # Sort by datetime to find first and last
+    dates.sort(key=lambda x: x[0])
+    first_date = dates[0][1]
+    last_date = dates[-1][1]
+    
+    return (first_date, last_date)
+
+
 async def _fetch_url(url: str) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
@@ -1089,7 +1124,7 @@ async def _build_complete_system_prompt(
         system_prompt += f"\n\n{channel_details}\n"
 
     # Add conversation summary last, immediately before the conversation history
-    summary_content = agent._load_summary_content(channel_id, json_format=False)
+    summary_content = await agent._load_summary_content(channel_id, json_format=False)
     if summary_content:
         system_prompt += f"\n\n# Conversation Summary\n\n{summary_content}\n"
         logger.info(
@@ -1466,7 +1501,7 @@ async def _perform_summarization(
                 message_text = message_text.strip()
                 
                 # Skip telepathic messages (agent's internal thoughts)
-                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧")):
+                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")):
                     logger.debug(
                         f"[{agent.name}] Excluding telepathic message from summarization: {message_text[:50]}..."
                     )
@@ -1525,7 +1560,7 @@ async def _perform_summarization(
         
         # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
         # Reload summaries each time since previous batches may have created new summaries
-        summary_json = agent._load_summary_content(channel_id, json_format=True)
+        summary_json = await agent._load_summary_content(channel_id, json_format=True)
         
         # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
         system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
@@ -1592,15 +1627,35 @@ async def _perform_summarization(
             
             # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
             summarize_tasks = [t for t in tasks if t.type == "summarize"]
-            
-            if len(summarize_tasks) > 1:
-                logger.warning(
-                    f"[{agent.name}] LLM returned {len(summarize_tasks)} summarize tasks for batch {batch_idx + 1}, "
-                    f"expected 1. Using the first one."
-                )
-            
+
             # Execute summarize tasks (they are immediate tasks)
-            for summarize_task in summarize_tasks[:1]:  # Only process the first one
+            for summarize_task in summarize_tasks:
+                # Check if this is an update to an existing summary by checking if the ID exists
+                # in the existing summaries. We only auto-fill dates for NEW summaries.
+                # For updates, dates are preserved in storage_helpers.py if not provided.
+                is_existing_summary = False
+                if summary_json and summarize_task.id:
+                    try:
+                        existing_summaries = json.loads(summary_json)
+                        if isinstance(existing_summaries, list):
+                            is_existing_summary = any(
+                                s.get("id") == summarize_task.id for s in existing_summaries
+                            )
+                    except (json.JSONDecodeError, AttributeError):
+                        # If parsing fails, assume it's a new summary to be safe
+                        pass
+                
+                # Auto-fill first and last message dates from batch_messages if not already set.
+                # Only do this for NEW summaries. For existing summaries, dates are preserved
+                # in storage_helpers.py if not provided, so we shouldn't overwrite them here.
+                if not is_existing_summary:
+                    if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
+                        first_date, last_date = _extract_message_dates(batch_messages)
+                        if first_date and not summarize_task.params.get("first_message_date"):
+                            summarize_task.params["first_message_date"] = first_date
+                        if last_date and not summarize_task.params.get("last_message_date"):
+                            summarize_task.params["last_message_date"] = last_date
+                
                 await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
                 logger.info(
                     f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id} "
