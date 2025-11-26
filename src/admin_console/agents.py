@@ -1215,7 +1215,9 @@ def api_update_summary(agent_name: str, user_id: str, summary_id: str):
             return jsonify({"error": "Invalid user ID"}), 400
 
         data = request.json or {}
-        content = data.get("content", "").strip()
+        content = data.get("content")
+        if content is not None:
+            content = content.strip()
         min_message_id = data.get("min_message_id")
         max_message_id = data.get("max_message_id")
 

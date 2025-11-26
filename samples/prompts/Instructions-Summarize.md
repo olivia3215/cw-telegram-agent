@@ -42,7 +42,7 @@ Each `summarize` should summarize one logical conversation. If part of the conve
 
 ## Task Identifiers and Revisions
 
-- `id` values are optional, but recommended. Any string is allowed.
+- `id` values are optional. Any string is allowed.
 - Reuse the same `id` to replace a previous task. When the runtime sees a new task
   with an existing `id`, it removes the earlier task before adding the new one.
 - To cancel a task, emit a `think` task with the same `id`. The runtime removes the
