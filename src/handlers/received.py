@@ -1636,7 +1636,9 @@ async def _perform_summarization(
             
             # Execute summarize tasks (they are immediate tasks)
             for summarize_task in summarize_tasks[:1]:  # Only process the first one
-                # Extract first and last message dates from batch_messages if not already set
+                # Auto-fill first and last message dates from batch_messages if not already set.
+                # This ensures new summaries always have dates even if the LLM omits them.
+                # When updating existing summaries, dates are preserved in storage_helpers.py if not provided.
                 if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
                     first_date, last_date = _extract_message_dates(batch_messages)
                     if first_date and not summarize_task.params.get("first_message_date"):

@@ -6,13 +6,17 @@ The messages shown below are NOT yet summarized. Create summaries that cover the
 
 Each summary entry must include:
 - `content`: The summary text
-- `min_message_id`: The minimum message ID covered by this summary
-- `max_message_id`: The maximum message ID covered by this summary
-- `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
-- `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
+- `min_message_id`: The minimum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
+- `max_message_id`: The maximum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
+
+Recommended fields (will be auto-extracted if omitted for new summaries):
+- `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps.
+- `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps.
 
 Optional fields:
 - `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)
+
+**Note:** When updating existing summaries, if you omit `min_message_id`, `max_message_id`, `first_message_date`, or `last_message_date`, the existing values will be preserved automatically. This allows you to update just the content without re-specifying the message range or dates.
 
 Each `summarize` should summarize one logical conversation. If part of the conversation is unimportant or of no interest to you, there is no need to summarize it.
 
@@ -67,12 +71,12 @@ you do not need to supply them.
 - Fields:
   - `id`: Optional summary identifier for updating or deleting an existing summary entry.
   - `content`: Summary text covering the specified message range. Use an empty string to delete an existing summary.
-  - `min_message_id`: The minimum message ID covered by this summary (required).
-  - `max_message_id`: The maximum message ID covered by this summary (required).
-  - `first_message_date`: The date of the first message covered by this summary (required, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
-  - `last_message_date`: The date of the last message covered by this summary (required, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
+  - `min_message_id`: The minimum message ID covered by this summary (required for new summaries; preserved when updating if not provided).
+  - `max_message_id`: The maximum message ID covered by this summary (required for new summaries; preserved when updating if not provided).
+  - `first_message_date`: The date of the first message covered by this summary (recommended, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
+  - `last_message_date`: The date of the last message covered by this summary (recommended, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
 - Each summary entry covers a range of message IDs. You can create new summaries or update existing ones by using their ID.
-- Always include the dates of the first and last messages covered by extracting them from the message timestamps in the conversation history.
+- When creating new summaries, include the message IDs and dates of the first and last messages covered by extracting them from the message timestamps in the conversation history. If you omit dates, the system will auto-extract them. When updating existing summaries, message IDs and dates are preserved if not provided, allowing content-only updates.
 
 # Thinking Instructions
 
