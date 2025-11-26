@@ -8,6 +8,8 @@ Each summary entry must include:
 - `content`: The summary text
 - `min_message_id`: The minimum message ID covered by this summary
 - `max_message_id`: The maximum message ID covered by this summary
+- `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
+- `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
 
 Optional fields:
 - `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)
@@ -35,7 +37,9 @@ Each `summarize` should summarize one logical conversation. If part of the conve
     "id": "summary-1",
     "content": "Peter (1234) discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
     "min_message_id": 100,
-    "max_message_id": 150
+    "max_message_id": 150,
+    "first_message_date": "2025-01-15",
+    "last_message_date": "2025-01-20"
   }
 ]
 ```
@@ -65,7 +69,10 @@ you do not need to supply them.
   - `content`: Summary text covering the specified message range. Use an empty string to delete an existing summary.
   - `min_message_id`: The minimum message ID covered by this summary (required).
   - `max_message_id`: The maximum message ID covered by this summary (required).
+  - `first_message_date`: The date of the first message covered by this summary (required, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
+  - `last_message_date`: The date of the last message covered by this summary (required, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
 - Each summary entry covers a range of message IDs. You can create new summaries or update existing ones by using their ID.
+- Always include the dates of the first and last messages covered by extracting them from the message timestamps in the conversation history.
 
 # Thinking Instructions
 

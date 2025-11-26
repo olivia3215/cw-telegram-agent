@@ -16,7 +16,9 @@ When asked to summarize, emit a `summarize` task in your JSON response:
     "kind": "summarize",
     "content": "The user discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
     "min_message_id": 100,
-    "max_message_id": 150
+    "max_message_id": 150,
+    "first_message_date": "2025-01-15",
+    "last_message_date": "2025-01-20"
   }
 ]
 ```
@@ -27,6 +29,8 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 - `content`: The summary text covering the specified message range
 - `min_message_id`: The minimum message ID covered by this summary
 - `max_message_id`: The maximum message ID covered by this summary
+- `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
+- `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history.
 
 ### Optional Fields
 

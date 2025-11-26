@@ -65,8 +65,27 @@ class AgentStorageMixin:
         """Load channel-specific plan content from state directory."""
         return self._storage.load_plan_content(channel_id)
 
-    def _load_summary_content(self, channel_id: int, json_format: bool = False) -> str:
-        """Load channel-specific summary content from state directory."""
+    async def _load_summary_content(self, channel_id: int, json_format: bool = False) -> str:
+        """
+        Load channel-specific summary content from state directory.
+        
+        Also backfills missing dates in summaries if agent access is available.
+        """
+        # Backfill missing dates asynchronously (non-blocking, fire-and-forget)
+        # We do this before loading to ensure dates are available on next load
+        try:
+            if hasattr(self, 'client') and self.client and hasattr(self.client, 'is_connected'):
+                # Only trigger backfill if client is connected (during normal agent operations)
+                # Skip in admin panel context where client may not be properly initialized
+                try:
+                    import asyncio
+                    # Create task but don't await - let it run in background
+                    asyncio.create_task(self._storage.backfill_summary_dates(channel_id, self))
+                except Exception as e:
+                    logger.debug(f"[{self.name}] Failed to create backfill task: {e}")
+        except Exception as e:
+            logger.debug(f"[{self.name}] Failed to trigger backfill during load: {e}")
+        
         return self._storage.load_summary_content(channel_id, json_format=json_format)
 
     def get_channel_llm_model(self, channel_id: int) -> str | None:

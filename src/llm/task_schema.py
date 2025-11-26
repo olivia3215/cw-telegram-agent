@@ -322,6 +322,24 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                         ],
                         "description": "Optional creation timestamp (ISO 8601 date or date-time).",
                     },
+                    "first_message_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD).",
+                    },
+                    "last_message_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD).",
+                    },
                 },
                 "required": ["kind", "content", "min_message_id", "max_message_id"],
                 "additionalProperties": False,
