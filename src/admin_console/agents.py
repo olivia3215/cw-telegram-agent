@@ -49,6 +49,7 @@ from admin_console.helpers import (
 )
 from register_agents import register_all_agents, all_agents as get_all_agents
 from handlers.received import _format_message_reactions, trigger_summarization_directly
+from telepathic import TELEPATHIC_PREFIXES
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from telegram_download import download_media_bytes
@@ -2184,9 +2185,6 @@ def api_delete_telepathic_messages(agent_name: str, user_id: str):
                 entity: The channel/group/user entity
                 client_name: Name for logging
             """
-            # Telepathic message prefixes
-            telepathic_prefixes = ("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")
-            
             # Collect message IDs to delete
             message_ids_to_delete = []
             
@@ -2204,7 +2202,7 @@ def api_delete_telepathic_messages(agent_name: str, user_id: str):
                 
                 # Check if message starts with a telepathic prefix (regardless of sender)
                 message_text_stripped = message_text.strip()
-                if message_text_stripped.startswith(telepathic_prefixes):
+                if message_text_stripped.startswith(TELEPATHIC_PREFIXES):
                     message_ids_to_delete.append(message.id)
             
             logger.info(f"[{client_name}] Found {len(message_ids_to_delete)} telepathic message(s) to delete from channel {entity.id}")

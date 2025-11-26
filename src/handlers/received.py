@@ -29,7 +29,7 @@ from task_graph import TaskGraph, TaskNode, TaskStatus
 from task_graph_helpers import make_wait_task
 from telegram_media import get_unique_id
 from telegram_util import get_channel_name, get_dialog_name, is_group_or_channel
-from telepathic import is_telepath
+from telepathic import is_telepath, TELEPATHIC_PREFIXES
 from telethon.tl.functions.channels import GetFullChannelRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
@@ -1170,8 +1170,7 @@ async def _process_message_history(
         
         # Check if message starts with a telepathic prefix (explicit list, not regex, to avoid matching ⟦media⟧)
         message_text_stripped = message_text.strip()
-        telepathic_prefixes = ("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")
-        is_telepathic_message = message_text_stripped.startswith(telepathic_prefixes)
+        is_telepathic_message = message_text_stripped.startswith(TELEPATHIC_PREFIXES)
         
         if not is_telepath(agent.agent_id) and is_telepathic_message:
             logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text_stripped[:50]}...")
@@ -1515,7 +1514,7 @@ async def _perform_summarization(
                 message_text = message_text.strip()
                 
                 # Skip telepathic messages (agent's internal thoughts)
-                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")):
+                if message_text.startswith(TELEPATHIC_PREFIXES):
                     logger.debug(
                         f"[{agent.name}] Excluding telepathic message from summarization: {message_text[:50]}..."
                     )
