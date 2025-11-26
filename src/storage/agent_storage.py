@@ -204,6 +204,8 @@ class AgentStorage:
             summary_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
             summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
             if summaries:
+                # Sort by message ID range (oldest first) - consistent with API endpoints
+                summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
                 if json_format:
                     return json.dumps(summaries, indent=2, ensure_ascii=False)
                 else:
