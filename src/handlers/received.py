@@ -5,6 +5,7 @@
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, timedelta
@@ -1124,7 +1125,7 @@ async def _process_message_history(
             continue
 
         # Filter out telepathic messages from agent's view
-        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, ⟦retrieve⟧, or ⟦summarize⟧)
+        # Check if this is a telepathic message (starts with ⟦...⟧ where ... is any word)
         message_text = ""
         for part in message_parts:
             if part.get("kind") == "text":
@@ -1132,8 +1133,12 @@ async def _process_message_history(
             elif part.get("kind") == "media":
                 message_text += part.get("rendered_text", "")
         
-        if not is_telepath(agent.agent_id) and message_text.strip().startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")):
-            logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text[:50]}...")
+        # Match messages that start with ⟦...⟧ (any telepathic message type)
+        message_text_stripped = message_text.strip()
+        is_telepathic_message = re.match(r"^⟦[^⟧]*⟧", message_text_stripped) is not None
+        
+        if not is_telepath(agent.agent_id) and is_telepathic_message:
+            logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text_stripped[:50]}...")
             continue
 
         # Get sender information
