@@ -23,8 +23,17 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     client = agent.client
 
     # Safety check: ensure this is a one-on-one conversation
-    # Use get_cached_entity instead of get_dialog to get the entity directly
+    # Try cached entity first to avoid GetContactsRequest flood
     entity = await agent.get_cached_entity(channel_id)
+    
+    # If entity not in cache, fetch it via get_dialog for safety check
+    # (safety check is critical, so we need the entity even if it triggers GetContactsRequest)
+    if entity is None:
+        dialog = await agent.get_dialog(channel_id)
+        if dialog:
+            entity = dialog.entity
+    
+    # Perform safety check now that we have the entity (or confirmed it's None)
     if entity and is_group_or_channel(entity):
         logger.warning(
             f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting."
