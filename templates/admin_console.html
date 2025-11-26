@@ -3280,6 +3280,7 @@
                 html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
                 html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
                 html += 'Display Translation</label>';
+                html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                 html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                 html += '</div>';
                 html += '</div>';
@@ -3554,6 +3555,63 @@
                     statusDiv.style.color = '#dc3545';
                 }
                 buttonElement.disabled = false;
+            });
+        }
+
+        function deleteTelepathicMessages(agentName, userId, buttonElement) {
+            if (!confirm('Are you sure you want to delete all telepathic messages (⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, ⟦retrieve⟧, ⟦summarize⟧) from this channel? This action cannot be undone.')) {
+                return;
+            }
+            
+            // Disable button and show status
+            buttonElement.disabled = true;
+            const originalText = buttonElement.textContent;
+            buttonElement.textContent = 'Deleting...';
+            
+            // Create or update status div
+            let statusDiv = document.getElementById(`delete-telepathic-status-${userId}`);
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = `delete-telepathic-status-${userId}`;
+                statusDiv.style.marginTop = '8px';
+                statusDiv.style.fontSize = '14px';
+                buttonElement.parentElement.appendChild(statusDiv);
+            }
+            statusDiv.textContent = 'Deleting telepathic messages...';
+            statusDiv.style.color = '#007bff';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/delete-telepathic-messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusDiv.textContent = 'Error: ' + data.error;
+                    statusDiv.style.color = '#dc3545';
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = originalText;
+                } else {
+                    statusDiv.textContent = data.message || `Successfully deleted ${data.deleted_count || 0} telepathic message(s)`;
+                    statusDiv.style.color = '#28a745';
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = originalText;
+                    // Reload conversation after a short delay to show updated messages
+                    setTimeout(() => {
+                        loadConversation();
+                    }, 1000);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                statusDiv.textContent = 'Error: ' + error;
+                statusDiv.style.color = '#dc3545';
+                buttonElement.disabled = false;
+                buttonElement.textContent = originalText;
             });
         }
 
