@@ -4,7 +4,7 @@ You have the ability to create and manage conversation summaries to help maintai
 
 ## When Summarization is Needed
 
-The system will automatically request summarization when there are more than 50 unsummarized messages in a conversation. When this happens, you will be asked to create or update a summary entry covering messages that are not yet summarized (excluding the most recent 20 messages, which remain in full detail).
+The system will automatically request summarization when there are more than 50 unsummarized messages in a conversation. When this happens, you will be asked to create or update a summary entry covering messages that are not yet summarized. Do not summarize the most recent 20 or so messages.
 
 ## How to Use Summarization
 
@@ -14,7 +14,6 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 [
   {
     "kind": "summarize",
-    "id": "summary-1234abcd",
     "content": "The user discussed their vacation plans, mentioned wanting to visit Japan, and asked about travel recommendations.",
     "min_message_id": 100,
     "max_message_id": 150
