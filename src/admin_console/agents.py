@@ -10,6 +10,8 @@ Agent management routes for the admin console.
 import json
 import logging
 import os
+import random
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -58,6 +60,54 @@ logger = logging.getLogger(__name__)
 
 # Create agents blueprint
 agents_bp = Blueprint("agents", __name__)
+
+# Cache for conversation partner recency: {(agent_name, user_id): (timestamp, ttl_seconds, data)}
+# TTL: 5 minutes + random 0-1 minute (stored per entry to ensure consistent expiration)
+_partner_recency_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
+
+
+def _get_partner_recency_cache_key(agent_name: str, user_id: str) -> tuple[str, str]:
+    """Generate cache key for partner recency."""
+    return (agent_name, user_id)
+
+
+def _is_partner_recency_cache_valid(cache_entry: tuple[float, float, dict]) -> bool:
+    """Check if cache entry is still valid."""
+    cached_time, ttl_seconds, _ = cache_entry
+    return (time.time() - cached_time) < ttl_seconds
+
+
+def _get_cached_partner_recency(agent_name: str) -> dict[str, dict] | None:
+    """Get cached partner recency data for an agent if still valid."""
+    cached_partners = {}
+    current_time = time.time()
+    
+    # Collect valid cache entries for this agent
+    for (cached_agent_name, user_id), (cached_time, ttl_seconds, data) in list(_partner_recency_cache.items()):
+        if cached_agent_name == agent_name:
+            if (current_time - cached_time) < ttl_seconds:
+                cached_partners[user_id] = data
+            else:
+                # Remove expired entry
+                del _partner_recency_cache[(cached_agent_name, user_id)]
+    
+    return cached_partners if cached_partners else None
+
+
+def _cache_partner_recency(agent_name: str, partners: list[dict]):
+    """Cache partner recency data for an agent.
+    
+    Each entry gets a TTL of 5 minutes + random 0-1 minute (per entry) to avoid thundering herd.
+    """
+    current_time = time.time()
+    # Base TTL: 5 minutes (300 seconds)
+    
+    for partner in partners:
+        user_id = partner["user_id"]
+        cache_key = _get_partner_recency_cache_key(agent_name, user_id)
+        # Random jitter: 0-60 seconds (calculated per entry to spread expiration times)
+        ttl_seconds = 300 + random.uniform(0, 60)
+        _partner_recency_cache[cache_key] = (current_time, ttl_seconds, partner)
 
 @agents_bp.route("/api/agents", methods=["GET"])
 def api_agents():
@@ -801,112 +851,128 @@ def api_get_conversation_partners(agent_name: str):
                     partners_dict[user_id] = {"name": None, "date": None}
 
         # 3. From existing Telegram conversations (if agent has client)
-        # Use the agent's own Telegram client and event loop
-        client = agent.client
+        # Check cache first to avoid unnecessary GetHistoryRequest calls
+        cached_telegram_partners = _get_cached_partner_recency(agent_name)
         
-        if not client:
-            logger.info(f"Agent {agent_name} has no client - skipping Telegram conversation fetch")
-        elif not client.is_connected():
-            logger.info(f"Agent {agent_name} client is not connected - skipping Telegram conversation fetch")
+        if cached_telegram_partners is not None:
+            logger.info(f"Using cached partner recency for agent {agent_name} ({len(cached_telegram_partners)} partners)")
+            telegram_partners = list(cached_telegram_partners.values())
         else:
-            logger.info(f"Fetching Telegram conversations for agent {agent_name} using agent's client")
-            telegram_partners = []  # Initialize before try block
-            try:
-                # Check if agent's event loop is accessible before creating coroutine
-                # This prevents RuntimeWarning about unawaited coroutines if execute() fails
-                try:
-                    client_loop = agent._get_client_loop()
-                    if not client_loop or not client_loop.is_running():
-                        raise RuntimeError("Agent client event loop is not accessible or not running")
-                except Exception as e:
-                    logger.warning(f"Cannot fetch Telegram conversations - event loop check failed: {e}")
-                    telegram_partners = []
-                else:
-                    async def _fetch_telegram_conversations():
-                        """Fetch Telegram conversations - runs in agent's event loop via agent.execute()."""
-                        telegram_partners = []
-                        try:
-                            # Use agent.client to get the client (already checked to be available and connected)
-                            client = agent.client
-                            # Iterate through dialogs - this runs in the client's event loop
-                            async for dialog in client.iter_dialogs():
-                                # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
-                                await asyncio.sleep(0.05)
-                                
-                                # Include both users (DMs) and groups/channels
-                                dialog_name = None
-                                dialog_id = dialog.id
-                                
-                                # Normalize peer ID
-                                try:
-                                    if hasattr(dialog_id, 'user_id'):
-                                        dialog_id = dialog_id.user_id
-                                    elif isinstance(dialog_id, int):
-                                        pass  # Already an int
-                                    else:
-                                        dialog_id = int(dialog_id)
-                                    user_id = str(normalize_peer_id(dialog_id))
-                                except Exception as e:
-                                    logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
-                                    continue
-                                
-                                # Get name from dialog.entity (already provided by iter_dialogs)
-                                # Avoid calling get_entity() to prevent GetContactsRequest flood
-                                entity = dialog.entity
-                                
-                                if isinstance(entity, User):
-                                    # User (DM) - get name from first_name/last_name or username
-                                    if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
-                                        first_name = getattr(entity, "first_name", None) or ""
-                                        last_name = getattr(entity, "last_name", None) or ""
-                                        if first_name or last_name:
-                                            dialog_name = f"{first_name} {last_name}".strip()
-                                    
-                                    if not dialog_name and hasattr(entity, "username") and entity.username:
-                                        dialog_name = entity.username
-                                elif isinstance(entity, (Chat, Channel)):
-                                    # Group or channel - get name from title
-                                    if hasattr(entity, "title") and entity.title:
-                                        dialog_name = entity.title
-                                
-                                # Normalize empty strings to None
-                                if dialog_name and isinstance(dialog_name, str):
-                                    dialog_name = dialog_name.strip()
-                                    if not dialog_name:
-                                        dialog_name = None
-                                
-                                # Get most recent message date
-                                dialog_date = dialog.date if hasattr(dialog, 'date') and dialog.date else None
-                                
-                                telegram_partners.append({
-                                    "user_id": user_id,
-                                    "name": dialog_name,
-                                    "date": dialog_date
-                                })
-                        except Exception as e:
-                            logger.warning(f"Error fetching Telegram conversations: {e}")
-                        return telegram_partners
-
-                    # Use agent.execute() to run the coroutine on the agent's event loop
-                    telegram_partners = agent.execute(_fetch_telegram_conversations(), timeout=30.0)
-                logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_name}")
-            except RuntimeError as e:
-                error_msg = str(e).lower()
-                if "event loop" in error_msg or "no current event loop" in error_msg or "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Cannot fetch Telegram conversations: {e}")
-                    telegram_partners = []
-                else:
-                    logger.warning(f"RuntimeError fetching Telegram conversations: {e}", exc_info=True)
-                    telegram_partners = []
-            except TimeoutError as e:
-                logger.warning(f"Timeout fetching Telegram conversations for agent {agent_name}: {e}")
-                telegram_partners = []
-            except Exception as e:
-                logger.warning(f"Error fetching Telegram conversations: {e}", exc_info=True)
-                telegram_partners = []
+            # Cache miss or expired - fetch from Telegram
+            # Use the agent's own Telegram client and event loop
+            client = agent.client
             
-            # Merge with existing partners (always runs, regardless of success or failure)
-            for partner in telegram_partners:
+            if not client:
+                logger.info(f"Agent {agent_name} has no client - skipping Telegram conversation fetch")
+                telegram_partners = []
+            elif not client.is_connected():
+                logger.info(f"Agent {agent_name} client is not connected - skipping Telegram conversation fetch")
+                telegram_partners = []
+            else:
+                logger.info(f"Fetching Telegram conversations for agent {agent_name} using agent's client (cache miss)")
+                telegram_partners = []  # Initialize before try block
+                try:
+                    # Check if agent's event loop is accessible before creating coroutine
+                    # This prevents RuntimeWarning about unawaited coroutines if execute() fails
+                    try:
+                        client_loop = agent._get_client_loop()
+                        if not client_loop or not client_loop.is_running():
+                            raise RuntimeError("Agent client event loop is not accessible or not running")
+                    except Exception as e:
+                        logger.warning(f"Cannot fetch Telegram conversations - event loop check failed: {e}")
+                        telegram_partners = []
+                    else:
+                        async def _fetch_telegram_conversations():
+                            """Fetch Telegram conversations - runs in agent's event loop via agent.execute()."""
+                            telegram_partners = []
+                            try:
+                                # Use agent.client to get the client (already checked to be available and connected)
+                                client = agent.client
+                                # Iterate through dialogs - this runs in the client's event loop
+                                async for dialog in client.iter_dialogs():
+                                    # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
+                                    await asyncio.sleep(0.05)
+                                    
+                                    # Include both users (DMs) and groups/channels
+                                    dialog_name = None
+                                    dialog_id = dialog.id
+                                    
+                                    # Normalize peer ID
+                                    try:
+                                        if hasattr(dialog_id, 'user_id'):
+                                            dialog_id = dialog_id.user_id
+                                        elif isinstance(dialog_id, int):
+                                            pass  # Already an int
+                                        else:
+                                            dialog_id = int(dialog_id)
+                                        user_id = str(normalize_peer_id(dialog_id))
+                                    except Exception as e:
+                                        logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
+                                        continue
+                                    
+                                    # Get name from dialog.entity (already provided by iter_dialogs)
+                                    # Avoid calling get_entity() to prevent GetContactsRequest flood
+                                    entity = dialog.entity
+                                    
+                                    if isinstance(entity, User):
+                                        # User (DM) - get name from first_name/last_name or username
+                                        if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
+                                            first_name = getattr(entity, "first_name", None) or ""
+                                            last_name = getattr(entity, "last_name", None) or ""
+                                            if first_name or last_name:
+                                                dialog_name = f"{first_name} {last_name}".strip()
+                                        
+                                        if not dialog_name and hasattr(entity, "username") and entity.username:
+                                            dialog_name = entity.username
+                                    elif isinstance(entity, (Chat, Channel)):
+                                        # Group or channel - get name from title
+                                        if hasattr(entity, "title") and entity.title:
+                                            dialog_name = entity.title
+                                    
+                                    # Normalize empty strings to None
+                                    if dialog_name and isinstance(dialog_name, str):
+                                        dialog_name = dialog_name.strip()
+                                        if not dialog_name:
+                                            dialog_name = None
+                                    
+                                    # Get most recent message date
+                                    dialog_date = dialog.date if hasattr(dialog, 'date') and dialog.date else None
+                                    
+                                    telegram_partners.append({
+                                        "user_id": user_id,
+                                        "name": dialog_name,
+                                        "date": dialog_date
+                                    })
+                            except Exception as e:
+                                logger.warning(f"Error fetching Telegram conversations: {e}")
+                            return telegram_partners
+
+                        # Use agent.execute() to run the coroutine on the agent's event loop
+                        telegram_partners = agent.execute(_fetch_telegram_conversations(), timeout=30.0)
+                        
+                        # Cache the fetched partners
+                        if telegram_partners:
+                            _cache_partner_recency(agent_name, telegram_partners)
+                            logger.info(f"Cached partner recency for agent {agent_name} ({len(telegram_partners)} partners)")
+                    
+                    logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_name}")
+                except RuntimeError as e:
+                    error_msg = str(e).lower()
+                    if "event loop" in error_msg or "no current event loop" in error_msg or "not authenticated" in error_msg or "not running" in error_msg:
+                        logger.warning(f"Cannot fetch Telegram conversations: {e}")
+                        telegram_partners = []
+                    else:
+                        logger.warning(f"RuntimeError fetching Telegram conversations: {e}", exc_info=True)
+                        telegram_partners = []
+                except TimeoutError as e:
+                    logger.warning(f"Timeout fetching Telegram conversations for agent {agent_name}: {e}")
+                    telegram_partners = []
+                except Exception as e:
+                    logger.warning(f"Error fetching Telegram conversations: {e}", exc_info=True)
+                    telegram_partners = []
+        
+        # Merge with existing partners (always runs, regardless of success or failure)
+        for partner in telegram_partners:
                 user_id = partner["user_id"]
                 partner_name = partner.get("name")
                 # Only use name if it's a non-empty string
