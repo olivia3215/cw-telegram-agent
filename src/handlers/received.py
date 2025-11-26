@@ -1501,7 +1501,7 @@ async def _perform_summarization(
                 message_text = message_text.strip()
                 
                 # Skip telepathic messages (agent's internal thoughts)
-                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧")):
+                if message_text.startswith(("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")):
                     logger.debug(
                         f"[{agent.name}] Excluding telepathic message from summarization: {message_text[:50]}..."
                     )
@@ -1635,7 +1635,7 @@ async def _perform_summarization(
                 )
             
             # Execute summarize tasks (they are immediate tasks)
-            for summarize_task in summarize_tasks[:1]:  # Only process the first one
+            for summarize_task in summarize_tasks
                 # Check if this is an update to an existing summary by checking if the ID exists
                 # in the existing summaries. We only auto-fill dates for NEW summaries.
                 # For updates, dates are preserved in storage_helpers.py if not provided.

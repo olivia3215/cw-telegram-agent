@@ -548,7 +548,7 @@ class TestTelepathicMessageFiltering:
         
         # Create mock messages with different telepathic prefixes
         messages = []
-        telepathic_prefixes = ["⟦think⟧", "⟦remember⟧", "⟦retrieve⟧"]
+        telepathic_prefixes = ["⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧"]
         
         for i, prefix in enumerate(telepathic_prefixes):
             mock_msg = Mock()
