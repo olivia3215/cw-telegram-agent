@@ -18,7 +18,7 @@ async def handle_immediate_think(task: TaskNode, *, agent, channel_id: int) -> b
 
     # Check if this think task should be silent (no telepathic messages)
     # Tasks from summarization prepass or admin panel should not send telepathic messages
-    is_silent = task.params.get("silent", False)
+    is_silent = task.params.get("silent", False) if task.params else False
     
     if agent and thought_str and not is_silent:
         await telepathic.maybe_send_telepathic_message(agent, channel_id, "think", thought_str)

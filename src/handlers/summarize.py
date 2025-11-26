@@ -46,7 +46,7 @@ async def handle_immediate_summarize(task: TaskNode, *, agent, channel_id: int) 
 
     # Check if this summarize task should be silent (no telepathic messages)
     # Tasks from summarization prepass or admin panel should not send telepathic messages
-    is_silent = task.params.get("silent", False)
+    is_silent = task.params.get("silent", False) if task.params else False
     
     if not is_silent:
         telepathy_payload = {"id": task.id}
