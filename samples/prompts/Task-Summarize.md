@@ -56,4 +56,4 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 - Summaries can overlap or be adjacent - the system manages them automatically
 - When creating a new summary, ensure the message ID range accurately reflects which messages are covered
 - You can edit existing summaries by using their ID and providing updated content
-
+- You can delete existing summaries by using their ID and an empty content string.

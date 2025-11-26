@@ -6,17 +6,15 @@ The messages shown below are NOT yet summarized. Create summaries that cover the
 
 Each summary entry must include:
 - `content`: The summary text
-- `min_message_id`: The minimum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
-- `max_message_id`: The maximum message ID covered by this summary (required for new summaries; preserved when updating if not provided)
+- `min_message_id`: The minimum message ID covered by this summary (required)
+- `max_message_id`: The maximum message ID covered by this summary (required)
 
 Recommended fields (will be auto-extracted if omitted for new summaries):
 - `first_message_date`: The date of the first message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps.
 - `last_message_date`: The date of the last message covered by this summary (ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps.
 
 Optional fields:
-- `id`: A unique identifier (use an existing ID to update an existing summary, or omit to create a new one)
-
-**Note:** When updating existing summaries, if you omit `min_message_id`, `max_message_id`, `first_message_date`, or `last_message_date`, the existing values will be preserved automatically. This allows you to update just the content without re-specifying the message range or dates.
+- `id`: A unique identifier
 
 Each `summarize` should summarize one logical conversation. If part of the conversation is unimportant or of no interest to you, there is no need to summarize it.
 
@@ -48,18 +46,7 @@ Each `summarize` should summarize one logical conversation. If part of the conve
 ]
 ```
 
-## Task Identifiers and Revisions
-
-- `id` values are optional. Any string is allowed.
-- Reuse the same `id` to replace a previous task. When the runtime sees a new task
-  with an existing `id`, it removes the earlier task before adding the new one.
-- To cancel a task, emit a `think` task with the same `id`. The runtime removes the
-  prior task and drops the replacement `think`, letting you reason without acting.
-
 ## Supported Task Types
-
-All tasks automatically receive `agent_id` and `channel_id` context when executed;
-you do not need to supply them.
 
 ### `think`
 - Purpose: internal reasoning. The content is never shown to the user.
@@ -69,14 +56,13 @@ you do not need to supply them.
 ### `summarize`
 - Creates or updates a conversation summary entry.
 - Fields:
-  - `id`: Optional summary identifier for updating or deleting an existing summary entry.
   - `content`: Summary text covering the specified message range. Use an empty string to delete an existing summary.
   - `min_message_id`: The minimum message ID covered by this summary (required for new summaries; preserved when updating if not provided).
   - `max_message_id`: The maximum message ID covered by this summary (required for new summaries; preserved when updating if not provided).
   - `first_message_date`: The date of the first message covered by this summary (recommended, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
   - `last_message_date`: The date of the last message covered by this summary (recommended, ISO 8601 date format: YYYY-MM-DD). Extract from message timestamps in the conversation history. If omitted, the system will auto-extract dates from message timestamps for new summaries.
-- Each summary entry covers a range of message IDs. You can create new summaries or update existing ones by using their ID.
-- When creating new summaries, include the message IDs and dates of the first and last messages covered by extracting them from the message timestamps in the conversation history. If you omit dates, the system will auto-extract them. When updating existing summaries, message IDs and dates are preserved if not provided, allowing content-only updates.
+- Each summary entry covers a range of message IDs.
+- When creating summaries, include the message IDs and dates of the first and last messages covered by extracting them from the message timestamps in the conversation history.
 
 # Thinking Instructions
 
@@ -94,8 +80,8 @@ between, or after other tasks.
 - Create concise but comprehensive summaries that capture key points and context.
 - Focus on important information that will be useful for future conversations.
 - Include relevant details about topics discussed, decisions made, and context established.
-- When updating an existing summary, you can modify it to incorporate new information or correct inaccuracies.
 - Ensure the message ID range accurately reflects which messages are covered by the summary.
+- Summarize only information that is relevant to you. Exclude smalltalk, greetings, etc.
 
 # Metadata
 

@@ -2031,6 +2031,7 @@ def api_trigger_summarization(agent_name: str, user_id: str):
                 recipient_id=agent.agent_id,
                 channel_id=str(channel_id),
                 message_id=None,  # No specific message, just trigger summarization
+                summarization_mode=True,  # Mark as summarization mode to silence telepathic messages
             )
             # Save work queue back to state file
             work_queue.save(state_path)

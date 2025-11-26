@@ -44,11 +44,17 @@ async def handle_immediate_summarize(task: TaskNode, *, agent, channel_id: int) 
         logger.warning("[summarize] Missing agent context; deferring summarize task")
         return False
 
-    telepathy_payload = {"id": task.id}
-    telepathy_payload.update(task.params or {})
+    # Check if this summarize task should be silent (no telepathic messages)
+    # Tasks from summarization prepass or admin panel should not send telepathic messages
+    is_silent = task.params.get("silent", False)
+    
+    if not is_silent:
+        telepathy_payload = {"id": task.id}
+        telepathy_payload.update(task.params or {})
 
-    body = json.dumps(telepathy_payload, ensure_ascii=False)
-    await telepathic.maybe_send_telepathic_message(agent, channel_id, "summarize", body)
+        body = json.dumps(telepathy_payload, ensure_ascii=False)
+        await telepathic.maybe_send_telepathic_message(agent, channel_id, "summarize", body)
+    
     await _process_summarize_task(agent, channel_id, task)
     return True
 

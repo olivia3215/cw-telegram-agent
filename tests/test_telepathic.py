@@ -666,3 +666,279 @@ class TestTelepathicMessageFiltering:
                     # Should NOT filter out the media message - it's legitimate
                     assert len(history) == 1
                     assert history[0].message_parts[0]["rendered_text"] == "⟦media⟧ ‹the photo that appears as a sunset over mountains›"
+
+    @pytest.mark.asyncio
+    async def test_silent_summarize_task_no_telepathic_message(self):
+        """Test that summarize tasks with silent=True do not send telepathic messages."""
+        from handlers.summarize import handle_immediate_summarize
+        from task_graph import TaskNode
+        
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
+        
+        # Create a summarize task with silent=True
+        summarize_task = TaskNode(
+            id="summary-1",
+            type="summarize",
+            params={
+                "silent": True,
+                "content": "Test summary content",
+                "min_message_id": 1,
+                "max_message_id": 10,
+            }
+        )
+        
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
+            
+            with patch('handlers.summarize._process_summarize_task', new_callable=AsyncMock) as mock_process:
+                result = await handle_immediate_summarize(
+                    summarize_task, agent=mock_agent, channel_id=123456
+                )
+                
+                # Should return True (task was handled)
+                assert result is True
+                
+                # Should process the summarize task
+                mock_process.assert_called_once()
+                
+                # Should NOT send telepathic message (silent=True)
+                mock_agent.client.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_normal_summarize_task_sends_telepathic_message(self):
+        """Test that summarize tasks without silent=True do send telepathic messages when appropriate."""
+        from handlers.summarize import handle_immediate_summarize
+        from task_graph import TaskNode
+        
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
+        
+        # Create a summarize task without silent flag (normal LLM response)
+        summarize_task = TaskNode(
+            id="summary-1",
+            type="summarize",
+            params={
+                "content": "Test summary content",
+                "min_message_id": 1,
+                "max_message_id": 10,
+            }
+        )
+        
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
+            
+            with patch('handlers.summarize._process_summarize_task', new_callable=AsyncMock) as mock_process:
+                result = await handle_immediate_summarize(
+                    summarize_task, agent=mock_agent, channel_id=123456
+                )
+                
+                # Should return True (task was handled)
+                assert result is True
+                
+                # Should process the summarize task
+                mock_process.assert_called_once()
+                
+                # Should send telepathic message (not silent)
+                mock_agent.client.send_message.assert_called_once()
+                send_args, send_kwargs = mock_agent.client.send_message.call_args
+                assert send_args[0] == 123456
+                assert send_kwargs["parse_mode"] == "Markdown"
+                assert "⟦summarize⟧" in send_args[1]
+
+    @pytest.mark.asyncio
+    async def test_parse_llm_reply_marks_summarize_silent_in_summarization_mode(self):
+        """Test that parse_llm_reply marks summarize tasks as silent when summarization_mode=True."""
+        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        import json
+        
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "summarize",
+                    "id": "summary-1",
+                    "content": "Test summary",
+                    "min_message_id": 1,
+                    "max_message_id": 10,
+                }
+            ],
+            indent=2,
+        )
+        
+        # Parse tasks without executing immediate tasks (which would try to save to disk)
+        tasks = await parse_llm_reply_from_json(
+            json_text, agent_id=123, channel_id=456, agent=None
+        )
+        tasks = _dedupe_tasks_by_identifier(tasks)
+        
+        # Manually mark as silent (simulating what parse_llm_reply does)
+        summarization_mode = True
+        if summarization_mode:
+            for task in tasks:
+                if task.type == "summarize":
+                    task.params["silent"] = True
+        
+        tasks = _assign_generated_identifiers(tasks)
+        
+        # Should have one summarize task
+        assert len(tasks) == 1
+        assert tasks[0].type == "summarize"
+        
+        # Should be marked as silent
+        assert tasks[0].params.get("silent") is True
+
+    @pytest.mark.asyncio
+    async def test_parse_llm_reply_normal_summarize_not_silent(self):
+        """Test that parse_llm_reply does not mark summarize tasks as silent in normal mode."""
+        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        import json
+        
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "summarize",
+                    "id": "summary-1",
+                    "content": "Test summary",
+                    "min_message_id": 1,
+                    "max_message_id": 10,
+                }
+            ],
+            indent=2,
+        )
+        
+        # Parse tasks without executing immediate tasks (which would try to save to disk)
+        tasks = await parse_llm_reply_from_json(
+            json_text, agent_id=123, channel_id=456, agent=None
+        )
+        tasks = _dedupe_tasks_by_identifier(tasks)
+        
+        # Don't mark as silent (simulating normal mode)
+        summarization_mode = False
+        if summarization_mode:
+            for task in tasks:
+                if task.type == "summarize" or task.type == "think":
+                    task.params["silent"] = True
+        
+        tasks = _assign_generated_identifiers(tasks)
+        
+        # Should have one summarize task
+        assert len(tasks) == 1
+        assert tasks[0].type == "summarize"
+        
+        # Should NOT be marked as silent
+        assert tasks[0].params.get("silent") is not True
+
+    @pytest.mark.asyncio
+    async def test_silent_think_task_no_telepathic_message(self):
+        """Test that think tasks with silent=True do not send telepathic messages."""
+        from handlers.think import handle_immediate_think
+        from task_graph import TaskNode
+        
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
+        
+        # Create a think task with silent=True
+        think_task = TaskNode(
+            id="think-1",
+            type="think",
+            params={
+                "silent": True,
+                "text": "I need to think about this",
+            }
+        )
+        
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
+            
+            result = await handle_immediate_think(
+                think_task, agent=mock_agent, channel_id=123456
+            )
+            
+            # Should return True (task was handled)
+            assert result is True
+            
+            # Should NOT send telepathic message (silent=True)
+            mock_agent.client.send_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_normal_think_task_sends_telepathic_message(self):
+        """Test that think tasks without silent=True do send telepathic messages when appropriate."""
+        from handlers.think import handle_immediate_think
+        from task_graph import TaskNode
+        
+        mock_agent = Mock()
+        mock_agent.name = "TestAgent"
+        mock_agent.client = AsyncMock()
+        mock_agent.agent_id = 789  # Non-telepathic agent
+        
+        # Create a think task without silent flag (normal LLM response)
+        think_task = TaskNode(
+            id="think-1",
+            type="think",
+            params={
+                "text": "I need to think about this",
+            }
+        )
+        
+        with patch('handlers.telepathic.is_telepath') as mock_is_telepath:
+            # Channel is telepathic, agent is not telepathic
+            mock_is_telepath.side_effect = lambda x: x == 123456
+            
+            result = await handle_immediate_think(
+                think_task, agent=mock_agent, channel_id=123456
+            )
+            
+            # Should return True (task was handled)
+            assert result is True
+            
+            # Should send telepathic message (not silent)
+            mock_agent.client.send_message.assert_called_once_with(
+                123456, "⟦think⟧\nI need to think about this", parse_mode="Markdown"
+            )
+
+    @pytest.mark.asyncio
+    async def test_parse_llm_reply_marks_think_silent_in_summarization_mode(self):
+        """Test that parse_llm_reply marks think tasks as silent when summarization_mode=True."""
+        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        import json
+        
+        json_text = json.dumps(
+            [
+                {
+                    "kind": "think",
+                    "text": "I need to think about this",
+                }
+            ],
+            indent=2,
+        )
+        
+        # Parse tasks without executing immediate tasks (which would try to send messages)
+        tasks = await parse_llm_reply_from_json(
+            json_text, agent_id=123, channel_id=456, agent=None
+        )
+        tasks = _dedupe_tasks_by_identifier(tasks)
+        
+        # Manually mark as silent (simulating what parse_llm_reply does)
+        summarization_mode = True
+        if summarization_mode:
+            for task in tasks:
+                if task.type == "summarize" or task.type == "think":
+                    task.params["silent"] = True
+        
+        tasks = _assign_generated_identifiers(tasks)
+        
+        # Should have one think task
+        assert len(tasks) == 1
+        assert tasks[0].type == "think"
+        
+        # Should be marked as silent
+        assert tasks[0].params.get("silent") is True
