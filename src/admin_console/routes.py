@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, render_template, send_file  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import scan_media_directories
+from telepathic import TELEPATHIC_PREFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ _available_directories: list[dict[str, str]] = []
 @routes_bp.route("/")
 def index():
     """Main page with directory selection and media browser."""
-    return render_template("admin_console.html", directories=_available_directories)
+    return render_template("admin_console.html", directories=_available_directories, telepathic_prefixes=TELEPATHIC_PREFIXES)
 
 
 @routes_bp.route("/favicon.ico")

@@ -11,6 +11,9 @@ from config import CONFIG_DIRECTORIES
 
 logger = logging.getLogger(__name__)
 
+# Telepathic message prefixes - messages starting with these prefixes are considered telepathic
+TELEPATHIC_PREFIXES = ("⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧")
+
 # Cache for telepathic channel IDs
 _telepathic_channels: Set[int] = set()
 _telepathic_cache_loaded = False

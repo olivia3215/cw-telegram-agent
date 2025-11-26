@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels
+from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels, TELEPATHIC_PREFIXES
 from task_graph import TaskGraph, TaskNode
 
 
@@ -548,7 +548,7 @@ class TestTelepathicMessageFiltering:
         
         # Create mock messages with different telepathic prefixes
         messages = []
-        telepathic_prefixes = ["⟦think⟧", "⟦remember⟧", "⟦intend⟧", "⟦plan⟧", "⟦retrieve⟧", "⟦summarize⟧"]
+        telepathic_prefixes = list(TELEPATHIC_PREFIXES)
         
         for i, prefix in enumerate(telepathic_prefixes):
             mock_msg = Mock()
