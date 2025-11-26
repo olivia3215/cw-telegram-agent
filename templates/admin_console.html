@@ -3271,19 +3271,27 @@
             // Display unsummarized messages
             if (messages.length === 0 && summaries.length === 0) {
                 html += '<div class="placeholder-card">No conversation history found.</div>';
-            } else if (messages.length === 0) {
-                html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
             } else {
-                html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
-                html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
-                html += '<div style="display: flex; align-items: center; gap: 16px;">';
-                html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
-                html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
-                html += 'Display Translation</label>';
-                html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
-                html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
-                html += '</div>';
-                html += '</div>';
+                // Show "Delete Telepathic Messages" button whenever there's conversation history
+                if (messages.length === 0) {
+                    // All messages summarized - show placeholder and delete button
+                    html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
+                    html += '<div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; margin-bottom: 12px;">';
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += '</div>';
+                } else {
+                    // Has unsummarized messages - show header with all controls
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
+                    html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
+                    html += '<div style="display: flex; align-items: center; gap: 16px;">';
+                    html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+                    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
+                    html += 'Display Translation</label>';
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+                    html += '</div>';
+                    html += '</div>';
+                }
                 
                 html += messages.map(msg => {
                     // Build content from parts if available (includes media/stickers)
