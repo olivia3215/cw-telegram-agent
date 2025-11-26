@@ -2063,73 +2063,96 @@ def api_delete_telepathic_messages(agent_name: str, user_id: str):
             
             return {"deleted_count": deleted_count, "message": f"Deleted {deleted_count} telepathic message(s)"}
 
-        # This is async, so we need to run it in the client's event loop
-        async def _delete_telepathic_messages():
-            try:
-                # First, determine if this is a DM or group/channel
-                agent_client = agent.client
-                if not agent_client or not agent_client.is_connected():
-                    raise RuntimeError("Agent client not connected")
-                
-                # Get entity using agent's client to determine type
-                entity_from_agent = await agent_client.get_entity(channel_id)
-                
-                # Import is_dm to check if this is a DM
-                from telegram_util import is_dm
-                
-                is_direct_message = is_dm(entity_from_agent)
-                
-                # Choose the appropriate client: agent for DMs, puppetmaster for groups
-                if is_direct_message:
-                    # Use agent's client for DMs
-                    client = agent_client
-                    client_name = f"agent {agent_name}"
-                    return await _find_and_delete_telepathic_messages(client, entity_from_agent, client_name)
-                else:
-                    # Use puppetmaster's client for groups/channels
-                    # Important: Get entity using puppetmaster's client to avoid "Invalid channel object" error
-                    from admin_console.puppet_master import (
-                        PuppetMasterNotConfigured,
-                        PuppetMasterUnavailable,
-                        get_puppet_master_manager,
-                    )
-                    
-                    try:
-                        puppet_manager = get_puppet_master_manager()
-                        puppet_manager.ensure_ready()
-                        
-                        # Use puppetmaster's run method to execute the deletion
-                        # Get entity using puppetmaster's client to ensure compatibility
-                        def _delete_with_puppetmaster_factory(puppet_client):
-                            async def _delete_with_puppetmaster():
-                                # Get entity using puppetmaster's client to avoid "Invalid channel object" error
-                                entity = await puppet_client.get_entity(channel_id)
-                                return await _find_and_delete_telepathic_messages(puppet_client, entity, "puppetmaster")
-                            return _delete_with_puppetmaster()
-                        
-                        result = puppet_manager.run(_delete_with_puppetmaster_factory, timeout=60.0)
-                        return result
-                    except (PuppetMasterNotConfigured, PuppetMasterUnavailable) as e:
-                        raise RuntimeError(f"Puppet master not available for group deletion: {e}")
-            except Exception as e:
-                logger.error(f"Error deleting telepathic messages: {e}")
-                raise
+        # First, determine if this is a DM or group/channel
+        # We need to do this BEFORE entering the async function to avoid blocking the event loop
+        async def _check_if_dm():
+            agent_client = agent.client
+            if not agent_client or not agent_client.is_connected():
+                raise RuntimeError("Agent client not connected")
+            
+            # Get entity using agent's client to determine type
+            entity_from_agent = await agent_client.get_entity(channel_id)
+            
+            # Import is_dm to check if this is a DM
+            from telegram_util import is_dm
+            
+            is_direct_message = is_dm(entity_from_agent)
+            return is_direct_message, entity_from_agent
 
-        # Use agent.execute() to run the coroutine on the agent's event loop
+        # Check if DM or group (runs on agent's event loop, but quickly)
         try:
-            result = agent.execute(_delete_telepathic_messages(), timeout=60.0)
-            return jsonify({"success": True, **result})
+            is_direct_message, entity_from_agent = agent.execute(_check_if_dm(), timeout=10.0)
         except RuntimeError as e:
             error_msg = str(e).lower()
             if "not authenticated" in error_msg or "not running" in error_msg:
                 logger.warning(f"Agent {agent_name} client loop issue: {e}")
                 return jsonify({"error": "Agent client loop is not available"}), 503
             else:
-                logger.error(f"Error deleting telepathic messages: {e}")
+                logger.error(f"Error checking channel type: {e}")
                 return jsonify({"error": str(e)}), 500
         except TimeoutError:
-            logger.warning(f"Timeout deleting telepathic messages for agent {agent_name}, user {user_id}")
-            return jsonify({"error": "Timeout deleting telepathic messages"}), 504
+            logger.warning(f"Timeout checking channel type for agent {agent_name}, user {user_id}")
+            return jsonify({"error": "Timeout checking channel type"}), 504
+
+        # Choose the appropriate client: agent for DMs, puppetmaster for groups
+        if is_direct_message:
+            # Use agent's client for DMs - run async function on agent's event loop
+            async def _delete_telepathic_messages_dm():
+                try:
+                    agent_client = agent.client
+                    if not agent_client or not agent_client.is_connected():
+                        raise RuntimeError("Agent client not connected")
+                    client_name = f"agent {agent_name}"
+                    return await _find_and_delete_telepathic_messages(agent_client, entity_from_agent, client_name)
+                except Exception as e:
+                    logger.error(f"Error deleting telepathic messages: {e}")
+                    raise
+
+            try:
+                result = agent.execute(_delete_telepathic_messages_dm(), timeout=60.0)
+                return jsonify({"success": True, **result})
+            except RuntimeError as e:
+                error_msg = str(e).lower()
+                if "not authenticated" in error_msg or "not running" in error_msg:
+                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    return jsonify({"error": "Agent client loop is not available"}), 503
+                else:
+                    logger.error(f"Error deleting telepathic messages: {e}")
+                    return jsonify({"error": str(e)}), 500
+            except TimeoutError:
+                logger.warning(f"Timeout deleting telepathic messages for agent {agent_name}, user {user_id}")
+                return jsonify({"error": "Timeout deleting telepathic messages"}), 504
+        else:
+            # Use puppetmaster's client for groups/channels
+            # IMPORTANT: Call puppet_manager.run() from synchronous context to avoid blocking agent's event loop
+            from admin_console.puppet_master import (
+                PuppetMasterNotConfigured,
+                PuppetMasterUnavailable,
+                get_puppet_master_manager,
+            )
+            
+            try:
+                puppet_manager = get_puppet_master_manager()
+                puppet_manager.ensure_ready()
+                
+                # Use puppetmaster's run method to execute the deletion
+                # Get entity using puppetmaster's client to ensure compatibility
+                def _delete_with_puppetmaster_factory(puppet_client):
+                    async def _delete_with_puppetmaster():
+                        # Get entity using puppetmaster's client to avoid "Invalid channel object" error
+                        entity = await puppet_client.get_entity(channel_id)
+                        return await _find_and_delete_telepathic_messages(puppet_client, entity, "puppetmaster")
+                    return _delete_with_puppetmaster()
+                
+                # Call from synchronous context - this blocks the Flask thread, not the agent's event loop
+                result = puppet_manager.run(_delete_with_puppetmaster_factory, timeout=60.0)
+                return jsonify({"success": True, **result})
+            except (PuppetMasterNotConfigured, PuppetMasterUnavailable) as e:
+                logger.error(f"Puppet master not available for group deletion: {e}")
+                return jsonify({"error": f"Puppet master not available for group deletion: {e}"}), 503
+            except Exception as e:
+                logger.error(f"Error deleting telepathic messages: {e}")
+                return jsonify({"error": str(e)}), 500
     except Exception as e:
         logger.error(f"Error deleting telepathic messages for {agent_name}/{user_id}: {e}")
         return jsonify({"error": str(e)}), 500
