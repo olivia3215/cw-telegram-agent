@@ -4,10 +4,13 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import logging
+from pathlib import Path
 
 from telethon.tl.functions.messages import DeleteHistoryRequest
 
 from agent import Agent, get_agent_for_id
+from config import STATE_DIRECTORY
+from memory_storage import mutate_property_entries
 from task_graph import TaskGraph, TaskNode
 from telegram_util import get_channel_name, is_dm
 from handlers.registry import register_task_handler
@@ -50,6 +53,31 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
         logger.info(
             f"[{agent.name}] Successfully cleared conversation with [{channel_name}]"
         )
+        
+        # Clear summaries and plans if agent has ResetContextOnFirstMessage role prompt
+        if "ResetContextOnFirstMessage" in agent.role_prompt_names:
+            logger.info(
+                f"[{agent.name}] Agent has ResetContextOnFirstMessage role, clearing summaries and plans for channel [{channel_name}]"
+            )
+            memory_file = Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+            
+            # Clear summaries
+            def clear_summaries(entries, payload):
+                return [], payload
+            mutate_property_entries(
+                memory_file, "summary", default_id_prefix="summary", mutator=clear_summaries
+            )
+            
+            # Clear plans
+            def clear_plans(entries, payload):
+                return [], payload
+            mutate_property_entries(
+                memory_file, "plan", default_id_prefix="plan", mutator=clear_plans
+            )
+            
+            logger.info(
+                f"[{agent.name}] Cleared summaries and plans for channel [{channel_name}]"
+            )
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to clear conversation with [{channel_name}]: {e}"
