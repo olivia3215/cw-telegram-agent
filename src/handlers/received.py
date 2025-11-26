@@ -1486,8 +1486,6 @@ async def _perform_summarization(
     messages: list,
     media_chain,
     highest_summarized_id: int | None,
-    graph: TaskGraph | None = None,
-    task: TaskNode | None = None,
 ):
     """
     Perform summarization of unsummarized messages.
@@ -1502,8 +1500,6 @@ async def _perform_summarization(
         messages: List of Telegram messages (newest first)
         media_chain: Media source chain for fetching media descriptions
         highest_summarized_id: Highest message ID that has been summarized (or None)
-        graph: Optional TaskGraph (not used, kept for backward compatibility)
-        task: Optional TaskNode (not used, kept for backward compatibility)
     """
     # Filter to unsummarized messages, excluding the most recent 20
     # Also exclude telepathic messages (those starting with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, or ⟦retrieve⟧)
@@ -1731,15 +1727,13 @@ async def trigger_summarization_directly(agent, channel_id: int):
     # Get highest summarized ID
     highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id)
     
-    # Perform summarization directly (graph and task are optional and not used)
+    # Perform summarization directly
     await _perform_summarization(
         agent=agent,
         channel_id=channel_id,
         messages=messages,
         media_chain=media_chain,
         highest_summarized_id=highest_summarized_id,
-        graph=None,
-        task=None,
     )
 
 
@@ -1812,8 +1806,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             messages=messages,
             media_chain=media_chain,
             highest_summarized_id=highest_summarized_id,
-            graph=graph,
-            task=task,
         )
         # Re-fetch highest summarized ID after summarization
         highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
