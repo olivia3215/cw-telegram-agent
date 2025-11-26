@@ -44,6 +44,8 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 
 ## Summary Guidelines
 
+- Summaries should cover all but the most recent 20-70 messages
+- Only summarize earlier messages if they are not yet summarized
 - Be concise but comprehensive - capture the key points and context
 - Focus on important information that will be useful for future conversations
 - Include relevant details about topics discussed, decisions made, and context established
@@ -55,5 +57,11 @@ When asked to summarize, emit a `summarize` task in your JSON response:
 - Each summary entry covers a range of message IDs
 - Summaries can overlap or be adjacent - the system manages them automatically
 - When creating a new summary, ensure the message ID range accurately reflects which messages are covered
-- You can edit existing summaries by using their ID and providing updated content
 
+## Consolidating summaries
+
+From time to time you will be asked to **consolidate summaries**. You do this by editing existing summaries, or by deleting several summaries and adding a new one to replace the deleted content. When consolidating summaries, do not summarize conversation content that appears outside the summaries. Only revise what is already summarized.
+
+- You can edit existing summaries by using their ID and providing updated content
+- You can delete existing summaries by using their ID and an empty content string.
+- You can create new summaries by using a new ID or omitting the ID.

@@ -95,6 +95,7 @@ async def insert_received_task_for_conversation(
     message_id: int | None = None,
     is_callout: bool = False,
     xsend_intent: str | None = None,
+    summarization_mode: bool = False,
 ):
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
@@ -171,6 +172,8 @@ async def insert_received_task_for_conversation(
         task_params["callout"] = True
     if xsend_intent is not None:
         task_params["xsend_intent"] = xsend_intent
+    if summarization_mode:
+        task_params["summarization_mode"] = True
 
     assert recipient_id
     recipient_name = await get_channel_name(agent, recipient_id)

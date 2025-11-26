@@ -1367,9 +1367,11 @@ async def _run_llm_with_retrieval(
     logger.debug(f"[{agent.name}] LLM reply: {reply}")
 
     # Parse the tasks
+    # Check if this is a summarization mode request (from admin panel)
+    summarization_mode = task.params.get("summarization_mode", False)
     try:
         tasks = await parse_llm_reply(
-            reply, agent_id=agent_id, channel_id=channel_id, agent=agent
+            reply, agent_id=agent_id, channel_id=channel_id, agent=agent, summarization_mode=summarization_mode
         )
     except TransientLLMResponseError as e:
         logger.warning(
@@ -1458,12 +1460,19 @@ async def _schedule_tasks(
 
 
 async def parse_llm_reply(
-    text: str, *, agent_id, channel_id, agent=None
+    text: str, *, agent_id, channel_id, agent=None, summarization_mode: bool = False
 ) -> list[TaskNode]:
     tasks = await parse_llm_reply_from_json(
         text, agent_id=agent_id, channel_id=channel_id, agent=agent
     )
     tasks = _dedupe_tasks_by_identifier(tasks)
+    
+    # Mark summarize and think tasks as silent if in summarization mode (admin panel triggered)
+    if summarization_mode:
+        for task in tasks:
+            if task.type == "summarize" or task.type == "think":
+                task.params["silent"] = True
+    
     tasks = await _execute_immediate_tasks(
         tasks, agent=agent, channel_id=channel_id
     )
@@ -1477,8 +1486,6 @@ async def _perform_summarization(
     messages: list,
     media_chain,
     highest_summarized_id: int | None,
-    graph: TaskGraph,
-    task: TaskNode,
 ):
     """
     Perform summarization of unsummarized messages.
@@ -1486,6 +1493,13 @@ async def _perform_summarization(
     Summarizes all messages except the most recent 20 that are not already summarized.
     Processes messages in batches of at most 50. When there are more than 50 but fewer
     than 100 messages, splits into two approximately equal halves.
+    
+    Args:
+        agent: Agent instance
+        channel_id: Channel ID to summarize
+        messages: List of Telegram messages (newest first)
+        media_chain: Media source chain for fetching media descriptions
+        highest_summarized_id: Highest message ID that has been summarized (or None)
     """
     # Filter to unsummarized messages, excluding the most recent 20
     # Also exclude telepathic messages (those starting with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, or ⟦retrieve⟧)
@@ -1621,15 +1635,19 @@ async def _perform_summarization(
         
         # Parse and validate response - only allow think and summarize tasks
         try:
+            # Parse with summarization_mode=True to mark think and summarize tasks as silent
             tasks = await parse_llm_reply(
-                reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent
+                reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent, summarization_mode=True
             )
             
             # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
             summarize_tasks = [t for t in tasks if t.type == "summarize"]
 
             # Execute summarize tasks (they are immediate tasks)
+            # Note: think tasks were already executed by _execute_immediate_tasks in parse_llm_reply,
+            # and they were marked as silent via summarization_mode=True
             for summarize_task in summarize_tasks:
+                
                 # Check if this is an update to an existing summary by checking if the ID exists
                 # in the existing summaries. We only auto-fill dates for NEW summaries.
                 # For updates, dates are preserved in storage_helpers.py if not provided.
@@ -1671,6 +1689,51 @@ async def _perform_summarization(
     logger.info(
         f"[{agent.name}] Completed summarization of {len(messages_to_summarize)} messages "
         f"in {len(batches)} batch(es) for channel {channel_id}"
+    )
+
+
+async def trigger_summarization_directly(agent, channel_id: int):
+    """
+    Trigger summarization directly without going through the task graph.
+    
+    This function can be called from the admin console to trigger summarization
+    without interfering with an active conversation in progress.
+    
+    Args:
+        agent: Agent instance
+        channel_id: Channel ID to summarize (int)
+    
+    Raises:
+        RuntimeError: If agent client is not connected or entity cannot be resolved
+    """
+    client = agent.client
+    if not client or not client.is_connected():
+        raise RuntimeError("Agent client is not connected")
+    
+    # Get the entity first to ensure it's resolved
+    entity = await agent.get_cached_entity(channel_id)
+    if not entity:
+        raise ValueError(f"Cannot resolve entity for channel_id {channel_id}")
+    
+    # Fetch messages (use 500 limit to ensure we get enough messages to summarize)
+    messages = await client.get_messages(entity, limit=500)
+    
+    # Get media chain and inject media descriptions
+    media_chain = get_default_media_source_chain()
+    messages = await inject_media_descriptions(
+        messages, agent=agent, peer_id=channel_id
+    )
+    
+    # Get highest summarized ID
+    highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id)
+    
+    # Perform summarization directly
+    await _perform_summarization(
+        agent=agent,
+        channel_id=channel_id,
+        messages=messages,
+        media_chain=media_chain,
+        highest_summarized_id=highest_summarized_id,
     )
 
 
@@ -1743,8 +1806,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             messages=messages,
             media_chain=media_chain,
             highest_summarized_id=highest_summarized_id,
-            graph=graph,
-            task=task,
         )
         # Re-fetch highest summarized ID after summarization
         highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
