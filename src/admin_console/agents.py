@@ -1538,12 +1538,26 @@ def api_get_conversation(agent_name: str, user_id: str):
                 # Get media chain for formatting media descriptions
                 media_chain = get_default_media_source_chain()
                 
+                # Use min_id to only fetch unsummarized messages (avoid fetching messages we'll filter out)
+                # This prevents unnecessary API calls and flood waits
+                iter_kwargs = {"limit": 500}
+                if highest_summarized_id is not None:
+                    iter_kwargs["min_id"] = highest_summarized_id
+                
                 messages = []
-                async for message in client.iter_messages(entity, limit=500):
-                    # Filter out summarized messages
+                total_fetched = 0
+                async for message in client.iter_messages(entity, **iter_kwargs):
+                    total_fetched += 1
+                    # All messages fetched should be unsummarized (min_id filters them)
+                    # But double-check just in case
                     msg_id = int(message.id)
                     if highest_summarized_id is not None and msg_id <= highest_summarized_id:
-                        continue  # Skip summarized messages
+                        # This shouldn't happen if min_id is working correctly, but log if it does
+                        logger.warning(
+                            f"[{agent_name}] Unexpected: message {msg_id} <= highest_summarized_id {highest_summarized_id} "
+                            f"despite min_id filter"
+                        )
+                        continue
                     
                     from_id = getattr(message, "from_id", None)
                     sender_id = None
@@ -1597,9 +1611,13 @@ def api_get_conversation(agent_name: str, user_id: str):
                         "reply_to_msg_id": reply_to_msg_id,
                         "reactions": reactions_str,
                     })
+                logger.info(
+                    f"[{agent_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "
+                    f"(highest_summarized_id={highest_summarized_id}, using min_id filter)"
+                )
                 return list(reversed(messages))  # Return in chronological order
             except Exception as e:
-                logger.error(f"Error fetching messages: {e}")
+                logger.error(f"Error fetching messages for {agent_name}/{channel_id}: {e}", exc_info=True)
                 return []
 
         # Use agent.execute() to run the coroutine on the agent's event loop
