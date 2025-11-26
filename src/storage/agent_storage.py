@@ -344,12 +344,21 @@ class AgentStorage:
                     continue
                 
                 # Fetch messages in the range
+                # Note: min_id and max_id are EXCLUSIVE boundaries in Telegram's API.
+                # To include boundary messages (min_id_int and max_id_int), we need to:
+                # - Use min_id = min_id_int - 1 (to include min_id_int)
+                # - Use max_id = max_id_int + 1 (to include max_id_int)
+                # Then filter results to only include messages in the desired range.
                 try:
                     client = await agent.get_client()
+                    # Adjust boundaries to be inclusive
+                    adjusted_min_id = min_id_int - 1 if min_id_int > 0 else None
+                    adjusted_max_id = max_id_int + 1
+                    
                     messages = await client.get_messages(
                         entity,
-                        min_id=min_id_int,
-                        max_id=max_id_int,
+                        min_id=adjusted_min_id,
+                        max_id=adjusted_max_id,
                         limit=None,  # Get all messages in range
                     )
                     
@@ -359,9 +368,23 @@ class AgentStorage:
                         )
                         continue
                     
-                    # Extract dates from messages
+                    # Filter to only include messages in the desired inclusive range
+                    # (exclude any messages outside min_id_int..max_id_int)
+                    filtered_messages = [
+                        msg for msg in messages
+                        if hasattr(msg, 'id') and min_id_int <= msg.id <= max_id_int
+                    ]
+                    
+                    if not filtered_messages:
+                        logger.debug(
+                            f"[{self.agent_name}] No messages in filtered range {min_id_int}-{max_id_int} "
+                            f"(fetched {len(messages)} messages with adjusted boundaries)"
+                        )
+                        continue
+                    
+                    # Extract dates from filtered messages
                     dates = []
-                    for msg in messages:
+                    for msg in filtered_messages:
                         msg_date = getattr(msg, "date", None)
                         if msg_date:
                             try:
