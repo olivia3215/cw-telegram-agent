@@ -61,8 +61,10 @@ logger = logging.getLogger(__name__)
 # Create agents blueprint
 agents_bp = Blueprint("agents", __name__)
 
-# Cache for conversation partner recency: {(agent_name, user_id): (timestamp, ttl_seconds, data)}
+# Cache for conversation partner recency: {(agent_name, user_id): (timestamp, ttl_seconds, partner_dict)}
 # TTL: 5 minutes + random 0-1 minute (stored per entry to ensure consistent expiration)
+# partner_dict contains: {"user_id": str, "name": str|None, "date": datetime|None}
+# The "date" field is the recency data (most recent message date from dialog.date)
 _partner_recency_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
 
 
@@ -78,7 +80,15 @@ def _is_partner_recency_cache_valid(cache_entry: tuple[float, float, dict]) -> b
 
 
 def _get_cached_partner_recency(agent_name: str) -> dict[str, dict] | None:
-    """Get cached partner recency data for an agent if still valid."""
+    """Get cached partner recency data for an agent if still valid.
+    
+    Returns:
+        dict mapping user_id to partner dict, or None if cache is empty/invalid.
+        Each partner dict contains:
+            - "user_id": str - The partner's user/channel ID
+            - "name": str | None - The partner's display name  
+            - "date": datetime | None - The recency data (most recent message date)
+    """
     cached_partners = {}
     current_time = time.time()
     
@@ -86,6 +96,7 @@ def _get_cached_partner_recency(agent_name: str) -> dict[str, dict] | None:
     for (cached_agent_name, user_id), (cached_time, ttl_seconds, data) in list(_partner_recency_cache.items()):
         if cached_agent_name == agent_name:
             if (current_time - cached_time) < ttl_seconds:
+                # data is the partner dict containing "date" field with recency
                 cached_partners[user_id] = data
             else:
                 # Remove expired entry
@@ -98,6 +109,16 @@ def _cache_partner_recency(agent_name: str, partners: list[dict]):
     """Cache partner recency data for an agent.
     
     Each entry gets a TTL of 5 minutes + random 0-1 minute (per entry) to avoid thundering herd.
+    
+    Args:
+        partners: List of partner dicts, each containing:
+            - "user_id": str - The partner's user/channel ID
+            - "name": str | None - The partner's display name
+            - "date": datetime | None - The recency data (most recent message date from dialog.date)
+    
+    The recency data is stored in partner["date"], which comes from dialog.date when
+    fetching conversations via iter_dialogs(). This avoids repeated GetHistoryRequest
+    calls to determine message recency for sorting the conversation partner list.
     """
     current_time = time.time()
     # Base TTL: 5 minutes (300 seconds)
@@ -107,6 +128,8 @@ def _cache_partner_recency(agent_name: str, partners: list[dict]):
         cache_key = _get_partner_recency_cache_key(agent_name, user_id)
         # Random jitter: 0-60 seconds (calculated per entry to spread expiration times)
         ttl_seconds = 300 + random.uniform(0, 60)
+        # Cache structure: (timestamp, ttl_seconds, partner_dict)
+        # partner_dict contains "date" field with the recency (most recent message date)
         _partner_recency_cache[cache_key] = (current_time, ttl_seconds, partner)
 
 @agents_bp.route("/api/agents", methods=["GET"])
