@@ -1273,9 +1273,15 @@ def api_update_summary(agent_name: str, user_id: str, summary_id: str):
                     if max_message_id is not None:
                         entry["max_message_id"] = max_message_id
                     if first_message_date is not None:
-                        entry["first_message_date"] = first_message_date.strip() if first_message_date else None
+                        # Only update if not empty (empty strings should preserve existing value)
+                        stripped_date = first_message_date.strip() if first_message_date else ""
+                        if stripped_date:
+                            entry["first_message_date"] = stripped_date
                     if last_message_date is not None:
-                        entry["last_message_date"] = last_message_date.strip() if last_message_date else None
+                        # Only update if not empty (empty strings should preserve existing value)
+                        stripped_date = last_message_date.strip() if last_message_date else ""
+                        if stripped_date:
+                            entry["last_message_date"] = stripped_date
                     break
             return entries, payload
 
