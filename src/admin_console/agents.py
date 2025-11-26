@@ -48,7 +48,7 @@ from admin_console.helpers import (
     get_work_queue,
 )
 from register_agents import register_all_agents, all_agents as get_all_agents
-from handlers.received import _format_message_reactions
+from handlers.received import _format_message_reactions, trigger_summarization_directly
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from telegram_download import download_media_bytes
@@ -2110,7 +2110,7 @@ def api_get_conversation_media(agent_name: str, user_id: str, message_id: str, u
 
 @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/summarize", methods=["POST"])
 def api_trigger_summarization(agent_name: str, user_id: str):
-    """Trigger summarization for a conversation by creating a received task that will cause the LLM to summarize."""
+    """Trigger summarization for a conversation directly without going through the task graph."""
     try:
         agent = get_agent_by_name(agent_name)
         if not agent:
@@ -2124,29 +2124,18 @@ def api_trigger_summarization(agent_name: str, user_id: str):
         except ValueError:
             return jsonify({"error": "Invalid user ID"}), 400
 
-        # Get work queue singleton
-        import os
-        state_path = os.path.join(STATE_DIRECTORY, "work_queue.json")
-        work_queue = WorkQueue.get_instance()
+        if not agent.client or not agent.client.is_connected():
+            return jsonify({"error": "Agent client not connected"}), 503
 
-        # Create a received task that will trigger summarization
+        # Trigger summarization directly (without going through task graph)
         # This is async, so we need to run it on the agent's event loop
         async def _trigger_summarize():
-            # Insert a received task with a special flag to trigger summarization
-            # The LLM will see this as a new message and create a summarize task
-            await insert_received_task_for_conversation(
-                recipient_id=agent.agent_id,
-                channel_id=str(channel_id),
-                message_id=None,  # No specific message, just trigger summarization
-                summarization_mode=True,  # Mark as summarization mode to silence telepathic messages
-            )
-            # Save work queue back to state file
-            work_queue.save(state_path)
+            await trigger_summarization_directly(agent, channel_id)
 
         # Use agent.execute() to run the coroutine on the agent's event loop
         try:
-            agent.execute(_trigger_summarize(), timeout=30.0)
-            return jsonify({"success": True, "message": "Summarization task created successfully"})
+            agent.execute(_trigger_summarize(), timeout=60.0)  # Increased timeout for summarization
+            return jsonify({"success": True, "message": "Summarization completed successfully"})
         except RuntimeError as e:
             error_msg = str(e).lower()
             if "not authenticated" in error_msg or "not running" in error_msg:
