@@ -1636,15 +1636,31 @@ async def _perform_summarization(
             
             # Execute summarize tasks (they are immediate tasks)
             for summarize_task in summarize_tasks[:1]:  # Only process the first one
+                # Check if this is an update to an existing summary by checking if the ID exists
+                # in the existing summaries. We only auto-fill dates for NEW summaries.
+                # For updates, dates are preserved in storage_helpers.py if not provided.
+                is_existing_summary = False
+                if summary_json and summarize_task.id:
+                    try:
+                        existing_summaries = json.loads(summary_json)
+                        if isinstance(existing_summaries, list):
+                            is_existing_summary = any(
+                                s.get("id") == summarize_task.id for s in existing_summaries
+                            )
+                    except (json.JSONDecodeError, AttributeError):
+                        # If parsing fails, assume it's a new summary to be safe
+                        pass
+                
                 # Auto-fill first and last message dates from batch_messages if not already set.
-                # This ensures new summaries always have dates even if the LLM omits them.
-                # When updating existing summaries, dates are preserved in storage_helpers.py if not provided.
-                if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
-                    first_date, last_date = _extract_message_dates(batch_messages)
-                    if first_date and not summarize_task.params.get("first_message_date"):
-                        summarize_task.params["first_message_date"] = first_date
-                    if last_date and not summarize_task.params.get("last_message_date"):
-                        summarize_task.params["last_message_date"] = last_date
+                # Only do this for NEW summaries. For existing summaries, dates are preserved
+                # in storage_helpers.py if not provided, so we shouldn't overwrite them here.
+                if not is_existing_summary:
+                    if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
+                        first_date, last_date = _extract_message_dates(batch_messages)
+                        if first_date and not summarize_task.params.get("first_message_date"):
+                            summarize_task.params["first_message_date"] = first_date
+                        if last_date and not summarize_task.params.get("last_message_date"):
+                            summarize_task.params["last_message_date"] = last_date
                 
                 await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
                 logger.info(
