@@ -9,8 +9,7 @@ from typing import Any
 from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
 from telegram_util import get_channel_name
-from time_utils import normalize_created_string
-from utils import coerce_to_str, format_username
+from utils import coerce_to_str, format_username, normalize_created_string
 
 logger = logging.getLogger(__name__)
 

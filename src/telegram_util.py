@@ -8,11 +8,12 @@ import os
 
 from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
 
-from agent import Agent
 from config import STATE_DIRECTORY, TELEGRAM_API_HASH, TELEGRAM_API_ID, PUPPET_MASTER_PHONE
-from id_utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
+
+# Re-export utilities from utils.telegram for backward compatibility
+from utils.telegram import get_channel_name, get_dialog_name, is_group_or_channel, is_dm
 
 
 def get_telegram_client(agent_name: str, phone_number: str) -> TelegramClient:
@@ -67,68 +68,3 @@ def get_puppet_master_client() -> TelegramClient:
     client = TelegramClient(session_path, int(api_id), api_hash)
     client.session_user_phone = PUPPET_MASTER_PHONE
     return client
-
-
-async def get_channel_name(agent: Agent, channel_id: int):
-    """
-    Fetches the display name for any channel (user, group, or channel).
-    Accepts Agent-like objects (e.g., test doubles) too.
-    """
-    channel_id = normalize_peer_id(channel_id)
-    try:
-        # get_entity can fetch users, chats, or channels
-        entity = await agent.get_cached_entity(channel_id)
-        if not entity:
-            return f"Unknown ({channel_id})"
-
-        # 1. Check for a 'title' (for groups and channels)
-        if hasattr(entity, "title") and entity.title:
-            return entity.title
-
-        # 2. Check for user attributes
-        if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
-            first_name = getattr(entity, "first_name", None)
-            last_name = getattr(entity, "last_name", None)
-
-            if first_name and last_name:
-                return f"{first_name} {last_name}"
-            if first_name:
-                return first_name
-            if last_name:
-                return last_name
-
-        # 3. Fallback to username if available
-        if hasattr(entity, "username") and entity.username:
-            return entity.username
-
-        # 4. Final fallback if no name can be determined
-        return f"Entity ({entity.id})"
-
-    except Exception as e:
-        # If the entity can't be fetched, return a default identifier
-        logger.exception(f"Could not fetch entity for {channel_id}: {e}")
-        return f"Unknown ({channel_id})"
-
-
-async def get_dialog_name(agent, channel_id):
-    return await get_channel_name(agent, channel_id)
-
-
-def is_group_or_channel(entity) -> bool:
-    """
-    Returns True if the entity is a group or channel (has a title attribute).
-    Returns False if the entity is a user/DM, or if entity is None.
-    """
-    if entity is None:
-        return False
-    return hasattr(entity, "title")
-
-
-def is_dm(entity) -> bool:
-    """
-    Returns True if the entity is a direct message with a user.
-    Returns False if the entity is a group or channel, or if entity is None.
-    """
-    if entity is None:
-        return False
-    return not hasattr(entity, "title")

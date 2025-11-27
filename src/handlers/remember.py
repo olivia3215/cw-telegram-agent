@@ -11,8 +11,7 @@ from handlers.storage_helpers import process_property_entry_task
 import handlers.telepathic as telepathic
 from task_graph import TaskNode
 from telegram_util import get_channel_name
-from time_utils import memory_sort_key
-from utils import format_username
+from utils import format_username, memory_sort_key
 
 logger = logging.getLogger(__name__)
 

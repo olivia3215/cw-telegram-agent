@@ -40,7 +40,7 @@ from memory_storage import (
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telegram_util import get_channel_name
-from id_utils import normalize_peer_id
+from utils import normalize_peer_id
 from admin_console.helpers import (
     get_agent_by_name,
     get_default_llm,

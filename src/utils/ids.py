@@ -1,8 +1,6 @@
-# id_utils.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
-# Licensed under the MIT License. See LICENSE.md for details.
-
+# utils/ids.py
+#
+# ID normalization and extraction utilities.
 
 def normalize_peer_id(value):
     """
@@ -97,3 +95,4 @@ def extract_user_id_from_peer(peer_id) -> int | None:
             return user_id
             
     return None
+
