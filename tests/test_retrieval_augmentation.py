@@ -4,6 +4,8 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import json
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -233,3 +235,143 @@ async def test_fetch_url_connection_error():
         assert url == "https://unreachable.com"
         assert "Error:" in content
         assert "ConnectError" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_agent_specific():
+    """Test fetching a file: URL from agent-specific docs directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        agent_name = "TestAgent"
+        agent_docs_dir = config_dir / "agents" / agent_name / "docs"
+        agent_docs_dir.mkdir(parents=True)
+        
+        test_file = agent_docs_dir / "Friends.md"
+        test_file.write_text("These are my friends: Alice, Bob, Charlie")
+        
+        mock_agent = MagicMock()
+        mock_agent.name = agent_name
+        
+        with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
+            url, content = await _fetch_url("file:Friends.md", agent=mock_agent)
+        
+        assert url == "file:Friends.md"
+        assert content == "These are my friends: Alice, Bob, Charlie"
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_shared_docs():
+    """Test fetching a file: URL from shared docs directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        shared_docs_dir = config_dir / "docs"
+        shared_docs_dir.mkdir(parents=True)
+        
+        test_file = shared_docs_dir / "Wendy.md"
+        test_file.write_text("Wendy is a character in the simulated world.")
+        
+        mock_agent = MagicMock()
+        mock_agent.name = "TestAgent"
+        
+        with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
+            url, content = await _fetch_url("file:Wendy.md", agent=mock_agent)
+        
+        assert url == "file:Wendy.md"
+        assert content == "Wendy is a character in the simulated world."
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_priority_agent_over_shared():
+    """Test that agent-specific docs take priority over shared docs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        agent_name = "TestAgent"
+        agent_docs_dir = config_dir / "agents" / agent_name / "docs"
+        agent_docs_dir.mkdir(parents=True)
+        shared_docs_dir = config_dir / "docs"
+        shared_docs_dir.mkdir(parents=True)
+        
+        # Create file with same name in both locations
+        agent_file = agent_docs_dir / "Family.md"
+        agent_file.write_text("Agent-specific family info")
+        shared_file = shared_docs_dir / "Family.md"
+        shared_file.write_text("Shared family info")
+        
+        mock_agent = MagicMock()
+        mock_agent.name = agent_name
+        
+        with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
+            url, content = await _fetch_url("file:Family.md", agent=mock_agent)
+        
+        assert url == "file:Family.md"
+        assert content == "Agent-specific family info"
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_not_found():
+    """Test fetching a file: URL that doesn't exist."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        
+        mock_agent = MagicMock()
+        mock_agent.name = "TestAgent"
+        
+        with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
+            url, content = await _fetch_url("file:Nonexistent.md", agent=mock_agent)
+        
+        assert url == "file:Nonexistent.md"
+        assert content == "No file `Nonexistent.md` was found."
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_invalid_filename():
+    """Test that file: URLs with slashes are rejected."""
+    mock_agent = MagicMock()
+    mock_agent.name = "TestAgent"
+    
+    url, content = await _fetch_url("file:../secrets.txt", agent=mock_agent)
+    
+    assert url == "file:../secrets.txt"
+    assert "Invalid file URL" in content
+    assert "/" in content or "empty" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_no_agent():
+    """Test fetching a file: URL without an agent (should still search shared docs)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_dir = Path(tmpdir)
+        shared_docs_dir = config_dir / "docs"
+        shared_docs_dir.mkdir(parents=True)
+        
+        test_file = shared_docs_dir / "Shared.md"
+        test_file.write_text("Shared content")
+        
+        with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
+            url, content = await _fetch_url("file:Shared.md", agent=None)
+        
+        assert url == "file:Shared.md"
+        assert content == "Shared content"
+
+
+@pytest.mark.asyncio
+async def test_parse_retrieve_task_with_file_url():
+    """Test parsing a retrieve task with file: URLs."""
+    payload = json.dumps(
+        [
+            {
+                "kind": "retrieve",
+                "urls": [
+                    "file:Friends.md",
+                    "https://example.com/page",
+                ],
+            }
+        ],
+        indent=2,
+    )
+    tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
+    
+    assert len(tasks) == 1
+    assert tasks[0].type == "retrieve"
+    assert "file:Friends.md" in tasks[0].params["urls"]
+    assert "https://example.com/page" in tasks[0].params["urls"]

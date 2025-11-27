@@ -13,9 +13,10 @@ import httpx  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from clock import clock
-from config import FETCHED_RESOURCE_LIFETIME_SECONDS
+from config import CONFIG_DIRECTORIES, FETCHED_RESOURCE_LIFETIME_SECONDS
 import handlers.telepathic as telepathic
 from handlers.registry import dispatch_immediate_task, register_task_handler
+from pathlib import Path
 from utils import coerce_to_int, coerce_to_str, format_username
 from id_utils import extract_user_id_from_peer, extract_sticker_name_from_document, get_custom_emoji_name
 from llm.base import MsgPart, MsgTextPart
@@ -130,21 +131,102 @@ def _extract_message_dates(messages) -> tuple[str | None, str | None]:
     return (first_date, last_date)
 
 
-async def _fetch_url(url: str) -> tuple[str, str]:
+def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
+    """
+    Search for a file in the docs directories.
+    
+    Search order:
+    1. {configdir}/agents/{agent_name}/docs/{filename} (agent-specific)
+    2. {configdir}/docs/{filename} (shared)
+    
+    Searches through all config directories in CONFIG_DIRECTORIES order.
+    
+    Args:
+        filename: The filename to search for (must not contain '/')
+        agent_name: The agent name for agent-specific search, or None
+        
+    Returns:
+        Path to the file if found, None otherwise
+    """
+    # Security: prevent directory traversal
+    if "/" in filename or not filename:
+        return None
+    
+    for config_dir in CONFIG_DIRECTORIES:
+        config_path = Path(config_dir)
+        if not config_path.exists() or not config_path.is_dir():
+            continue
+        
+        # First priority: agent-specific docs
+        if agent_name:
+            agent_docs_path = config_path / "agents" / agent_name / "docs" / filename
+            if agent_docs_path.exists() and agent_docs_path.is_file():
+                return agent_docs_path
+        
+        # Second priority: shared docs
+        shared_docs_path = config_path / "docs" / filename
+        if shared_docs_path.exists() and shared_docs_path.is_file():
+            return shared_docs_path
+    
+    return None
+
+
+async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
+    
+    Supports both HTTP/HTTPS URLs and file: URLs for local documentation files.
 
     Args:
-        url: The URL to fetch
+        url: The URL to fetch (http://, https://, or file:)
+        agent: Optional agent object (required for file: URLs to determine search paths)
 
     Returns:
         Tuple of (url, content) where content is:
-        - The HTML content (truncated to 40k) if successful and content-type is HTML
+        - For HTTP/HTTPS: The HTML content (truncated to 40k) if successful and content-type is HTML
+        - For file: URLs: The file contents (UTF-8) if found
         - Error message describing the failure if request failed
         - Note about content type if non-HTML
+        - "No file `{filename}` was found." if file: URL not found
 
-    Follows redirects, uses 10 second timeout.
+    Follows redirects for HTTP URLs, uses 10 second timeout.
     """
+    # Handle file: URLs
+    if url.startswith("file:"):
+        filename = url[5:]  # Remove "file:" prefix
+        
+        # Security: validate filename doesn't contain slashes
+        if "/" in filename or not filename:
+            return (
+                url,
+                f"Invalid file URL: filename must not contain '/' and must not be empty",
+            )
+        
+        agent_name = agent.name if agent else None
+        file_path = _find_file_in_docs(filename, agent_name)
+        
+        if file_path is None:
+            return (url, f"No file `{filename}` was found.")
+        
+        try:
+            # Read file as UTF-8
+            content = file_path.read_text(encoding="utf-8")
+            return (url, content)
+        except UnicodeDecodeError as e:
+            logger.exception(f"Error reading file {file_path}: {e}")
+            return (
+                url,
+                f"Error reading file `{filename}`: invalid UTF-8 encoding",
+            )
+        except Exception as e:
+            logger.exception(f"Error reading file {file_path}: {e}")
+            error_type = type(e).__name__
+            return (
+                url,
+                f"Error reading file `{filename}`: {error_type}: {str(e)}",
+            )
+    
+    # Handle HTTP/HTTPS URLs
     try:
         # Fetch with 10 second timeout, follow redirects, headers optimized for no-JS
         headers = {
@@ -597,7 +679,7 @@ async def _process_retrieve_tasks(
 
         urls: list[str] = []
         for url in _normalize_list(task.params.get("urls")):
-            if url.startswith("http://") or url.startswith("https://"):
+            if url.startswith("http://") or url.startswith("https://") or url.startswith("file:"):
                 urls.append(url)
 
         if not urls:
@@ -662,7 +744,7 @@ async def _process_retrieve_tasks(
         f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
     )
     for url in urls_to_fetch:
-        fetched_url, content = await _fetch_url(url)
+        fetched_url, content = await _fetch_url(url, agent=agent)
         retrieved_urls.add(fetched_url)
         retrieved_contents.append((fetched_url, content))
         logger.info(

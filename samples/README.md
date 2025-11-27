@@ -69,8 +69,8 @@ Layer these on top of a core prompt when you want to unlock extra behavior:
 
 - `Person` – encourages everyday, human-like small talk and life details
 - `Memory` – teaches the agent how and when to record long-term memories
-- `Retrieve` – allows web retrieval tasks for fresh, external information
-- `XSend` – enables cross-channel intents to the agent’s future self
+- `Retrieve` – allows web retrieval tasks for fresh, external information and local file retrieval
+- `XSend` – enables cross-channel intents to the agent's future self
 
 ### Prompt Loading
 
@@ -369,3 +369,79 @@ For detailed information about the memory system architecture, file formats, and
 ### Global Curated Memories
 
 Anything that you want your agent to remember during all conversations should be placed in the agent's instructions.
+
+## File Retrieval System
+
+Agents with the `Retrieve` role prompt can load local documentation files using `file:` URLs in retrieve tasks. This enables you to simplify agent instructions by offloading content into separate documents that can be loaded on demand.
+
+### Enabling File Retrieval
+
+To enable file retrieval, add the `Retrieve` role prompt to your agent's configuration:
+
+```markdown
+# Role Prompt
+Chatbot
+Retrieve
+```
+
+### File Search Locations
+
+When an agent requests a file using `file:filename`, the system searches in the following locations (in priority order):
+
+1. **Agent-specific docs**: `{configdir}/agents/{AgentName}/docs/{filename}`
+2. **Shared docs**: `{configdir}/docs/{filename}`
+
+The system searches through all configuration directories (from `CINDY_AGENT_CONFIG_PATH`) in order, with earlier directories taking precedence.
+
+### File Naming Rules
+
+- Filenames must not contain the `/` character (prevents directory traversal)
+- Filenames can have any extension (`.md`, `.txt`, etc.) or no extension
+- Filename matching is case-sensitive
+
+### Directory Structure
+
+Organize your documentation files like this:
+
+```
+samples/
+├── agents/
+│   └── AgentName/
+│       └── docs/
+│           ├── Friends.md      # Agent-specific documentation
+│           └── Family.md
+└── docs/
+    ├── Wendy.md                # Shared documentation
+    └── Cindy.md
+```
+
+### Usage Example
+
+Agents can use retrieve tasks to load both web URLs and local files:
+
+```json
+{
+  "kind": "retrieve",
+  "urls": [
+    "file:Friends.md",
+    "file:Family.md",
+    "https://example.com/page"
+  ]
+}
+```
+
+The system will:
+1. Load `Friends.md` from the docs directories (agent-specific first, then shared)
+2. Load `Family.md` from the docs directories
+3. Fetch the web URL normally
+
+### Error Handling
+
+If a file is not found, the system returns: `"No file `{filename}` was found."`
+
+### Benefits
+
+- **Simplified instructions**: Break long agent instructions into manageable, focused documents
+- **Shared content**: Store common information (like character descriptions) in shared docs
+- **Agent-specific content**: Keep agent-specific information in agent-specific docs
+- **On-demand loading**: Files are only loaded when the agent requests them via retrieve tasks

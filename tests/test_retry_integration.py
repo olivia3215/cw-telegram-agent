@@ -253,7 +253,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     mock_agent.get_system_prompt = MagicMock(return_value="System prompt")
 
     # Mock URL fetching to return content
-    async def mock_fetch_url(url):
+    async def mock_fetch_url(url, agent=None):
         return (url, f"<html>Content from {url}</html>")
 
     # Patch necessary functions
