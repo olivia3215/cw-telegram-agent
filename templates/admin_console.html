@@ -1227,7 +1227,7 @@
                         } else if (lowerMediaFile.endsWith('.flac')) {
                             audioMimeType = 'audio/flac';
                         } else {
-                            audioMimeType = effectiveMime || 'audio/mpeg'; // Default to mp3 or use effectiveMime if available
+                            audioMimeType = 'audio/mpeg'; // Default to mp3 since effectiveMime is not a valid audio type
                         }
                     } else {
                         audioMimeType = effectiveMime;
