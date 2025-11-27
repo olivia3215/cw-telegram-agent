@@ -1089,7 +1089,7 @@ async def _build_complete_system_prompt(
         global_intent=None,  # TODO: implement global intent
         xsend_intent=xsend_intent,
     )
-    system_prompt = agent.get_system_prompt(channel_name, specific_instructions)
+    system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
@@ -1123,13 +1123,17 @@ async def _build_complete_system_prompt(
     if channel_details:
         system_prompt += f"\n\n{channel_details}\n"
 
-    # Add conversation summary last, immediately before the conversation history
+    # Add conversation summary immediately before the conversation history
     summary_content = await agent._load_summary_content(channel_id, json_format=False)
     if summary_content:
         system_prompt += f"\n\n# Conversation Summary\n\n{summary_content}\n"
         logger.info(
             f"[{agent.name}] Added conversation summary to system prompt for channel {channel_id}"
         )
+
+    # Repeat specific instructions at the end, after the conversation summary
+    if specific_instructions:
+        system_prompt += f"\n\n{specific_instructions}\n"
 
     return system_prompt
 

@@ -424,13 +424,21 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
     assert "Confirm the agenda with Olivia before Friday." in plan_content
 
     memory_content = agent_instance._load_memory_content(12345)
-    assert "# Channel Plan" in memory_content
+    assert "# Channel Plan" not in memory_content  # Plans are now in intentions section, not memory
     assert "# Global Memories" in memory_content
 
     system_prompt = agent_instance.get_system_prompt(
         channel_name="Olivia",
         specific_instructions="Focus on actionable commitments.",
+        channel_id=12345,
     )
+    assert "# Channel Plan" in system_prompt  # Plans should be in system prompt
+    assert "Confirm the agenda with Olivia before Friday." in system_prompt
     assert "# Intentions" in system_prompt
     assert "Prepare a weekly summary for Olivia." in system_prompt
+    
+    # Verify plans come before intentions
+    plan_index = system_prompt.find("# Channel Plan")
+    intentions_index = system_prompt.find("# Intentions")
+    assert plan_index < intentions_index, "Channel Plan should come before Intentions"
 

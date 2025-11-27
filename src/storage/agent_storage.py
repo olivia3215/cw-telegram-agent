@@ -67,6 +67,9 @@ class AgentStorage:
         regardless of which user the memory is about. This provides the agent with
         comprehensive context from all conversations.
         
+        Note: Channel plans are no longer included here - they are now part of the
+        intentions section in the system prompt.
+        
         Args:
             channel_id: The conversation ID (Telegram channel/user ID) - used for logging only
         
@@ -82,9 +85,7 @@ class AgentStorage:
             if config_memory:
                 memory_parts.append("# Curated Memories\n\n```json\n" + config_memory + "\n```")
 
-            channel_plan = self.load_plan_content(channel_id)
-            if channel_plan:
-                memory_parts.append("# Channel Plan\n\n```json\n" + channel_plan + "\n```")
+            # Channel plans are now loaded in the intentions section, not here
 
             # Load state memory (agent-specific global episodic memories)
             state_memory = self.load_state_memory()

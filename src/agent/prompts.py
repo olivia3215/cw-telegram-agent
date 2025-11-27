@@ -22,13 +22,14 @@ if TYPE_CHECKING:
 class AgentPromptMixin:
     """Mixin providing system prompt building capabilities."""
 
-    def _build_system_prompt(self, channel_name, specific_instructions, for_summarization: bool = False):
+    def _build_system_prompt(self, channel_name, specific_instructions, channel_id: int | None = None, for_summarization: bool = False):
         """
         Private helper to build the system prompt.
         
         Args:
             channel_name: The human/user display name used for template substitution.
             specific_instructions: Paragraph injected into the LLM prompt.
+            channel_id: Optional channel ID for loading channel-specific plans.
             for_summarization: If True, use Instructions-Summarize.md and filter Task-* prompts.
         
         Returns:
@@ -44,9 +45,23 @@ class AgentPromptMixin:
         if for_summarization:
             llm_prompt = load_system_prompt("Instructions-Summarize")
         else:
+            # Build intentions section with plans (if any) before intentions
+            intention_parts = []
+            
+            # Load channel plans first (before intentions)
+            if channel_id is not None:
+                plan_content = self._load_plan_content(channel_id)
+                if plan_content:
+                    intention_parts.append("# Channel Plan\n\n```json\n" + plan_content + "\n```")
+            
+            # Load intentions
             intention_content = self._load_intention_content()
             if intention_content:
-                prompt_parts.append("# Intentions\n\n```json\n" + intention_content + "\n```")
+                intention_parts.append("# Intentions\n\n```json\n" + intention_content + "\n```")
+            
+            # Add intentions section if we have any content
+            if intention_parts:
+                prompt_parts.append("\n\n".join(intention_parts))
 
             llm_prompt = load_system_prompt(self.llm.prompt_name)
         prompt_parts.append(llm_prompt)
@@ -80,15 +95,17 @@ class AgentPromptMixin:
         final_prompt = substitute_templates(final_prompt, self.name, channel_name)
         return final_prompt
 
-    def get_system_prompt(self, channel_name, specific_instructions):
+    def get_system_prompt(self, channel_name, specific_instructions, channel_id: int | None = None):
         """
         Get the base system prompt for this agent (core prompt components only).
 
         This includes:
         1. Specific instructions for the current turn
-        1. Instructions prompt (Instructions.md) - shared across all LLMs
-        2. All role prompts (in order)
-        3. Agent instructions
+        2. Channel Plan (if channel_id provided)
+        3. Intentions (if any)
+        4. Instructions prompt (Instructions.md) - shared across all LLMs
+        5. All role prompts (in order)
+        6. Agent instructions
 
         Note: Memory content is added later in the prompt construction process,
         positioned after stickers and before current time.
@@ -96,11 +113,12 @@ class AgentPromptMixin:
         Args:
             channel_name: The human/user display name used for template substitution.
             specific_instructions: Paragraph injected into the LLM prompt before .
+            channel_id: Optional channel ID for loading channel-specific plans.
 
         Returns:
             Base system prompt string
         """
-        return self._build_system_prompt(channel_name, specific_instructions, for_summarization=False)
+        return self._build_system_prompt(channel_name, specific_instructions, channel_id=channel_id, for_summarization=False)
 
     def get_system_prompt_for_summarization(self, channel_name, specific_instructions):
         """
