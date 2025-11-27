@@ -37,6 +37,10 @@ from handlers.received_helpers.message_processing import (
     _format_message_reactions,
     process_message_history as _process_message_history,
 )
+from handlers.received_helpers.llm_query import (
+    get_channel_llm as _get_channel_llm,
+    run_llm_with_retrieval as _run_llm_with_retrieval,
+)
 from handlers.received_helpers.prompt_builder import (
     build_complete_system_prompt as _build_complete_system_prompt,
     build_specific_instructions as _specific_instructions,
@@ -455,176 +459,7 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
 # Prompt building functions moved to handlers.received_helpers.prompt_builder
 
 
-# Message processing functions moved to handlers.received_helpers.message_processing
-
-
-def _get_channel_llm(agent, channel_id: int):
-    """
-    Get the appropriate LLM instance for a channel, using channel-specific override if available.
-    
-    Args:
-        agent: The agent instance
-        channel_id: Conversation ID
-        
-    Returns:
-        LLM instance (channel-specific if configured, otherwise default)
-    """
-    channel_llm_model = agent.get_channel_llm_model(channel_id)
-    if channel_llm_model:
-        # Create LLM instance with channel-specific model
-        from llm.factory import create_llm_from_name
-        try:
-            llm = create_llm_from_name(channel_llm_model)
-            logger.debug(f"[{agent.name}] Using channel-specific LLM model: {channel_llm_model}")
-            return llm
-        except Exception as e:
-            logger.warning(
-                f"[{agent.name}] Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
-            )
-            return agent.llm
-    else:
-        return agent.llm
-
-
-async def _run_llm_with_retrieval(
-    agent,
-    system_prompt: str,
-    history_items: list[ProcessedMessage],
-    now_iso: str,
-    chat_type: str,
-    agent_id: int,
-    channel_id: int,
-    task: TaskNode,
-    graph: TaskGraph,
-) -> list[TaskNode]:
-    """
-    Run LLM query with retrieval augmentation support.
-
-    Args:
-        agent: The agent instance
-        system_prompt: Base system prompt
-        history_items: Processed message history
-        now_iso: Current time in ISO format
-        chat_type: "group" or "direct"
-        agent_id: Agent's Telegram user ID
-        channel_id: Conversation ID
-        task: The received task being processed
-        graph: Task graph for error handling
-
-    Returns:
-        List of TaskNode objects parsed from the LLM response.
-    """
-    # Get appropriate LLM instance (channel-specific if configured)
-    llm = _get_channel_llm(agent, channel_id)
-
-    # Get existing fetched resources from graph context
-    existing_resources = graph.context.get("fetched_resources", {})
-
-    # Prepare retrieved content for injection into history
-    retrieved_urls: set[str] = set(
-        existing_resources.keys()
-    )  # Track which URLs we've already retrieved
-    retrieved_contents: list[tuple[str, str]] = list(
-        existing_resources.items()
-    )  # Content to inject into history
-
-    # Inject retrieved content as system messages (attributed to model/agent)
-    retrieval_history_items = []
-    for url, content in retrieved_contents:
-        retrieval_history_items.append(
-            {
-                "sender": "",
-                "sender_id": "system",
-                "msg_id": "",
-                "is_agent": True,
-                "parts": [
-                    MsgTextPart(kind="text", text=f"Retrieved from {url}:"),
-                    MsgTextPart(kind="text", text=content),
-                ],
-                "reply_to_msg_id": None,
-                "ts_iso": None,
-            }
-        )
-
-    # Combine retrieval items with regular history
-    combined_history = list(retrieval_history_items) + [
-        {
-            "sender": item.sender_display,
-            "sender_id": item.sender_id,
-            **({"sender_username": item.sender_username} if item.sender_username else {}),
-            "msg_id": item.message_id,
-            "is_agent": item.is_from_agent,
-            "parts": item.message_parts,
-            "reply_to_msg_id": item.reply_to_msg_id,
-            "ts_iso": item.timestamp,
-            "reactions": item.reactions,
-        }
-        for item in history_items
-    ]
-
-    # Query LLM
-    try:
-        reply = await llm.query_structured(
-            system_prompt=system_prompt,
-            now_iso=now_iso,
-            chat_type=chat_type,
-            history=combined_history,
-            history_size=llm.history_size,
-            timeout_s=None,
-        )
-    except Exception as e:
-        if is_retryable_llm_error(e):
-            logger.warning(f"[{agent.name}] LLM temporary failure, will retry: {e}")
-            several = 15
-            wait_task = task.insert_delay(graph, several)
-            logger.info(
-            f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
-            )
-            raise
-        else:
-            logger.error(f"[{agent.name}] LLM permanent failure: {e}")
-            return []
-
-    if reply == "":
-        logger.info(f"[{agent.name}] LLM decided not to reply")
-        return []
-
-    logger.debug(f"[{agent.name}] LLM reply: {reply}")
-
-    # Parse the tasks
-    # Check if this is a summarization mode request (from admin panel)
-    summarization_mode = task.params.get("summarization_mode", False)
-    try:
-        tasks = await parse_llm_reply(
-            reply, agent_id=agent_id, channel_id=channel_id, agent=agent, summarization_mode=summarization_mode
-        )
-    except TransientLLMResponseError as e:
-        logger.warning(
-            f"[{agent.name}] LLM produced malformed task response; scheduling retry: {e}"
-        )
-        retry_delay = 10
-        wait_task = task.insert_delay(graph, retry_delay)
-        logger.info(
-            f"[{agent.name}] Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
-        )
-        raise Exception("Temporary error: malformed LLM response - will retry") from e
-    except ValueError as e:
-        logger.exception(
-            f"[{agent.name}] Failed to parse LLM response '{reply}': {e}"
-        )
-        return []
-
-    tasks = await _process_retrieve_tasks(
-        tasks,
-        agent=agent,
-        channel_id=channel_id,
-        graph=graph,
-        retrieved_urls=retrieved_urls,
-        retrieved_contents=retrieved_contents,
-        fetch_url_fn=_fetch_url,
-    )
-
-    return tasks
+# LLM query functions moved to handlers.received_helpers.llm_query
 
 
 async def _schedule_tasks(
@@ -1089,6 +924,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
+    # Create a wrapper that includes fetch_url_fn
+    async def process_retrieve_with_fetch(tasks, *, agent, channel_id, graph, retrieved_urls, retrieved_contents, fetch_url_fn):
+        return await _process_retrieve_tasks(
+            tasks,
+            agent=agent,
+            channel_id=channel_id,
+            graph=graph,
+            retrieved_urls=retrieved_urls,
+            retrieved_contents=retrieved_contents,
+            fetch_url_fn=_fetch_url,
+        )
+    
     tasks = await _run_llm_with_retrieval(
         agent,
         system_prompt,
@@ -1099,6 +946,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         channel_id,
         task,
         graph,
+        parse_llm_reply_fn=parse_llm_reply,
+        process_retrieve_tasks_fn=process_retrieve_with_fetch,
+        is_retryable_llm_error_fn=is_retryable_llm_error,
     )
 
     # Schedule output tasks
