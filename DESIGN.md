@@ -463,6 +463,128 @@ The system supports multiple LLM providers (Gemini and Grok) using a structured 
 
 **Rationale:** System instructions are not part of the Telegram conversation and should be kept separate from message content.
 
+### System Prompt Assembly Order
+
+The system prompt is built in `handlers/received.py` via `_build_complete_system_prompt()`, which calls `agent.get_system_prompt()` and then appends additional sections. The complete assembly order is:
+
+1. **Specific Instructions** (`_specific_instructions`)
+   - Context-specific instructions based on the current situation:
+     - Cross-channel trigger (`xsend` intent) - if present
+     - Global intent/planning (`intend`) - if present (currently not implemented)
+     - New conversation indicator - if this is the start of a conversation
+     - Target message instruction - if responding to a specific message
+     - Conversation continuation - default fallback
+   - Location: `handlers/received.py` lines 1084-1091, function `_specific_instructions()` (lines 696-786)
+
+2. **Base System Prompt** (`agent.get_system_prompt()`)
+   - Implemented in `agent/prompts.py` `_build_system_prompt()` (lines 25-81)
+   - Assembled in this order:
+     - **2a. Specific Instructions** (from step 1, passed as parameter)
+     - **2b. Intentions Section** (combines Channel Plan + Intentions):
+       - **Channel Plan** (`# Channel Plan`) - comes first
+         - This is where `plan` task contents go
+         - Loaded from `state/{AgentName}/memory/{channel_id}.json` (property: `plan`)
+         - Contains plan entries created via `plan` tasks
+         - Processed by `handlers/plan.py` → stored via `process_property_entry_task()` with `property_name="plan"`
+         - Formatted as JSON code block
+         - Only included if `channel_id` is provided to `get_system_prompt()`
+       - **Intentions** (`# Intentions`) - comes after plans
+         - Loaded via `_load_intention_content()`
+         - Formatted as JSON in a code block
+     - **2c. LLM-Specific Prompt**
+       - Loaded via `load_system_prompt(self.llm.prompt_name)`
+       - Typically `Instructions.md` (or `Instructions-Summarize.md` for summarization)
+       - Contains shared instructions across all LLMs
+     - **2d. Agent Instructions**
+       - From `self.instructions` (agent-specific behavior instructions)
+       - Added under `# Agent Instructions`
+     - **2e. Role Prompts**
+       - All role prompts from `self.role_prompt_names` (in order)
+       - Each loaded via `load_system_prompt(role_prompt_name)`
+       - Combined with double newlines (`\n\n`)
+   - Template substitution is applied across the entire assembled base prompt using `substitute_templates()`
+
+3. **Sticker List**
+   - Built via `_build_sticker_list()` (lines 330-406)
+   - Lists available stickers with descriptions
+   - Includes note about sending stickers seen in chat
+   - Location: `handlers/received.py` lines 1094-1098
+
+4. **Memory Content**
+   - Loaded via `agent._load_memory_content(channel_id)`
+   - Contains persistent memory entries for the channel
+   - Structure (`storage/agent_storage.py` `load_memory_content()`):
+     - **Curated Memories** (`# Curated Memories`)
+       - Loaded from `configdir/agents/{AgentName}/memory/{user_id}.json`
+       - Manually curated memories for the specific user
+       - Formatted as JSON code block
+     - **Global Memories** (`# Global Memories`)
+       - Loaded from `state/{AgentName}/memory.json`
+       - Agent-specific global episodic memories (visible across all conversations)
+       - Formatted as JSON code block
+   - **Note:** Channel plans are no longer included in memory content. They are now part of the intentions section (step 2b) and appear before intentions.
+   - Location: `handlers/received.py` lines 1100-1108
+
+5. **Current Time**
+   - Formatted as: `# Current Time\n\nThe current time is: {formatted_time}`
+   - Uses agent's timezone via `agent.get_current_time()`
+   - Format: `%A %B %d, %Y at %I:%M %p %Z`
+   - Location: `handlers/received.py` lines 1110-1114
+
+6. **Channel Details**
+   - Details about the conversation partner/channel:
+     - For Users: Type, ID, name, username, profile photo, bio, birthday, phone
+     - For Groups: Type, ID, title, username, participant count, profile photo, description
+     - For Channels: Type, ID, title, username, participant count, admin count, slow mode, linked chat, forum status, profile photo, description
+   - Location: `handlers/received.py` lines 1116-1124, function `_build_channel_details_section()` (lines 1012-1053)
+
+7. **Conversation Summary**
+   - Loaded via `agent._load_summary_content(channel_id, json_format=False)`
+   - Contains summaries of past conversation segments
+   - Positioned immediately before the conversation history
+   - Location: `handlers/received.py` lines 1127-1132
+
+8. **Specific Instructions (Repeated)**
+   - Same content as step 1 (Specific Instructions)
+   - Repeated at the end of the system prompt, after the conversation summary
+   - Ensures context-aware instructions are fresh in the LLM's attention at the end of the prompt
+   - Location: `handlers/received.py` lines 1134-1136
+
+After the system prompt, the conversation history is added (processed messages in chronological order).
+
+### Plan Task Processing Flow
+
+**Question:** Where do the contents of `plan` tasks go?
+
+**Answer:** Plan task contents are stored in channel memory files and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
+
+**Storage Location:**
+- **File:** `state/{AgentName}/memory/{channel_id}.json`
+- **Property:** `plan` (array of plan entries)
+- **Storage:** Via `handlers/plan.py` → `_process_plan_task()` → `process_property_entry_task()` with `property_name="plan"`
+
+**Processing Flow:**
+1. LLM generates a `plan` task in its response
+2. Task is parsed and identified as type `"plan"`
+3. `handle_immediate_plan()` (registered as immediate task handler) processes it:
+   - Sends telepathic message with prefix `⟦plan⟧` (if appropriate)
+   - Calls `_process_plan_task()` to persist the plan entry
+4. Plan entry is stored in `state/{AgentName}/memory/{channel_id}.json` under the `plan` property
+5. On subsequent system prompt builds, `_build_system_prompt()` calls `_load_plan_content()` which loads plans from the file
+6. Plans are formatted as JSON and included in the intentions section under `# Channel Plan`, positioned before `# Intentions`
+
+**Plan Entry Format:**
+Each plan entry typically contains:
+- `id`: Unique identifier (e.g., `"plan-{uuid}"`)
+- `content`: The plan text content
+- `created`: Timestamp when created
+- Other fields as specified by the task parameters
+
+**Access:**
+- Plans can be viewed/edited via the admin console (`/api/agents/{agent_name}/plans/{user_id}`)
+- Plans are automatically included in every system prompt for that channel
+- Plans persist across agent restarts (stored in JSON files)
+
 ### Role Prompts Architecture
 
 The system supports multiple role prompts that are combined to create complex agent personalities:
@@ -741,16 +863,13 @@ The `remember` task is processed immediately during LLM response parsing and doe
 
 ### Memory Integration in Prompts
 
-Memory content is integrated into the system prompt in a specific position within the complete prompt structure:
+Memory content is integrated into the system prompt as part of the complete prompt structure. See the **System Prompt Assembly Order** section above for the complete ordering. Memory content appears in step 4 of the assembly order, after stickers and before current time.
 
-1. **Instructions prompt** (`Instructions.md`) - shared across all LLMs
-2. **Role prompts** (in the order specified in the agent configuration)
-3. **Agent instructions** (the specific behavior instructions for this agent)
-4. **Stickers section** (available stickers for the agent to send)
-5. **Memory content** (curated and global memories)
-6. **Current Time** (timestamp of the conversation)
-7. **Chat Type** (direct or group chat)
-8. **Message history** (conversation messages)
+The memory content section includes:
+- **Curated Memories** - manually curated memories for the specific user
+- **Global Memories** - agent-specific global episodic memories (visible across all conversations)
+
+**Note:** Channel plans are no longer included in memory content. They are now part of the intentions section (step 2b) and appear before intentions.
 
 **Memory Loading Logic:**
 - For direct messages: Uses the channel ID as the user ID
