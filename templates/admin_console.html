@@ -272,6 +272,8 @@
         .media-preview audio {
             width: 100%;
             height: auto;
+            min-height: 48px;
+            display: block;
         }
         .media-info {
             flex: 1;
@@ -1185,6 +1187,20 @@
             }
             effectiveMime = (effectiveMime || '').toLowerCase();
 
+            // Check for audio files first (before other media types to ensure proper detection)
+            const isAudioFile = (
+                effectiveMime.startsWith('audio') ||
+                media.kind === 'audio' ||
+                (!effectiveMime.startsWith('video') && lowerMediaFile && (
+                    lowerMediaFile.endsWith('.mp3') || 
+                    lowerMediaFile.endsWith('.m4a') || 
+                    lowerMediaFile.endsWith('.wav') || 
+                    lowerMediaFile.endsWith('.ogg') ||
+                    lowerMediaFile.endsWith('.opus') ||
+                    lowerMediaFile.endsWith('.flac')
+                ))
+            );
+
             if (effectiveMime.includes('tgs') || media.kind === 'animated_sticker') {
                     // TGS files - Lottie animations, convert and display
                     mediaElement = `<div style="position: relative; width: 100%; height: 200px; display: flex; align-items: center; justify-content: center;">
@@ -1196,6 +1212,30 @@
                             </div>
                         </div>
                     </div>`;
+            } else if (isAudioFile) {
+                    // Audio files - Audio controls
+                    // Determine audio MIME type for the source tag
+                    let audioMimeType;
+                    if (!effectiveMime || !effectiveMime.startsWith('audio/')) {
+                        // Fallback: determine from file extension
+                        if (lowerMediaFile.endsWith('.ogg') || lowerMediaFile.endsWith('.opus')) {
+                            audioMimeType = 'audio/ogg';
+                        } else if (lowerMediaFile.endsWith('.m4a')) {
+                            audioMimeType = 'audio/mp4';
+                        } else if (lowerMediaFile.endsWith('.wav')) {
+                            audioMimeType = 'audio/wav';
+                        } else if (lowerMediaFile.endsWith('.flac')) {
+                            audioMimeType = 'audio/flac';
+                        } else {
+                            audioMimeType = 'audio/mpeg'; // Default to mp3 since effectiveMime is not a valid audio type
+                        }
+                    } else {
+                        audioMimeType = effectiveMime;
+                    }
+                    mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto; min-height: 48px;">
+                        <source src="${mediaUrl}" type="${audioMimeType}">
+                        Your browser does not support the audio tag.
+                    </audio>`;
             } else if (effectiveMime.startsWith('video') || effectiveMime === 'image/gif') {
                     // Video content (mp4/webm/gif)
                     const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
@@ -1203,16 +1243,6 @@
                         <source src="${mediaUrl}" type="${effectiveMime || 'video/mp4'}">
                         Your browser does not support the video tag.
                     </video>`;
-            } else if (
-                effectiveMime.startsWith('audio') ||
-                media.kind === 'audio' ||
-                (media.media_file && (media.media_file.endsWith('.mp3') || media.media_file.endsWith('.m4a') || media.media_file.endsWith('.wav') || media.media_file.endsWith('.ogg')))
-            ) {
-                    // Audio files - Audio controls
-                    mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto;">
-                        <source src="${mediaUrl}" type="${effectiveMime || 'audio/mpeg'}">
-                        Your browser does not support the audio tag.
-                    </audio>`;
             } else if (mediaUrl) {
                     mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
             } else {
