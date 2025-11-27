@@ -507,19 +507,19 @@ class TestTelepathicMessageFiltering:
         # Create mock messages
         mock_message1 = Mock()
         mock_message1.id = 1
-        mock_message1.sender_id = Mock()
-        mock_message1.sender_id.user_id = 123
+        mock_message1.sender_id = 123  # Use integer directly
         mock_message1.out = False
         mock_message1.reply_to = None
         mock_message1.date = None
+        mock_message1.sender = None
         
         mock_message2 = Mock()
         mock_message2.id = 2
-        mock_message2.sender_id = Mock()
-        mock_message2.sender_id.user_id = 123
+        mock_message2.sender_id = 123  # Use integer directly
         mock_message2.out = True  # This is from the agent
         mock_message2.reply_to = None
         mock_message2.date = None
+        mock_message2.sender = None
         
         # Mock format_message_for_prompt to return different content
         async def mock_format_message(msg, agent=None, media_chain=None):
@@ -529,8 +529,11 @@ class TestTelepathicMessageFiltering:
                 return [MsgTextPart(kind="text", text="⟦think⟧\nI need to think about this")]
             return []
         
-        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
-            with patch('handlers.received.get_channel_name', return_value="TestUser"):
+        mock_agent.agent_id = 999  # Set agent_id for telepathic check
+        mock_agent.get_cached_entity = AsyncMock(return_value=None)
+        
+        with patch('handlers.received_helpers.message_processing.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received_helpers.message_processing.get_channel_name', return_value="TestUser"):
                 history = await _process_message_history([mock_message1, mock_message2], mock_agent, None)
                 
                 # Should only have one message (the non-telepathic one)
@@ -553,21 +556,21 @@ class TestTelepathicMessageFiltering:
         for i, prefix in enumerate(telepathic_prefixes):
             mock_msg = Mock()
             mock_msg.id = i + 1
-            mock_msg.sender_id = Mock()
-            mock_msg.sender_id.user_id = 123
+            mock_msg.sender_id = 123  # Use integer directly
             mock_msg.out = True
             mock_msg.reply_to = None
             mock_msg.date = None
+            mock_msg.sender = None
             messages.append(mock_msg)
         
         # Add one normal message
         normal_msg = Mock()
         normal_msg.id = 10  # Use a different ID to avoid conflict with telepathic messages
-        normal_msg.sender_id = Mock()
-        normal_msg.sender_id.user_id = 123
+        normal_msg.sender_id = 123  # Use integer directly
         normal_msg.out = False
         normal_msg.reply_to = None
         normal_msg.date = None
+        normal_msg.sender = None
         messages.append(normal_msg)
         
         async def mock_format_message(msg, agent=None, media_chain=None):
@@ -578,14 +581,14 @@ class TestTelepathicMessageFiltering:
             else:
                 return [MsgTextPart(kind="text", text="Normal message")]
         
-        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
-            with patch('handlers.received.get_channel_name', return_value="TestUser"):
-                with patch('handlers.received.is_telepath', return_value=False):
-                    history = await _process_message_history(messages, mock_agent, None)
-                    
-                    # Should only have the normal message
-                    assert len(history) == 1
-                    assert history[0].message_parts[0]["text"] == "Normal message"
+        mock_agent.get_cached_entity = AsyncMock(return_value=None)
+        with patch('handlers.received_helpers.message_processing.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received_helpers.message_processing.get_channel_name', return_value="TestUser"):
+                history = await _process_message_history(messages, mock_agent, None)
+                
+                # Should only have the normal message
+                assert len(history) == 1
+                assert history[0].message_parts[0]["text"] == "Normal message"
 
     @pytest.mark.asyncio
     async def test_filter_summarize_telepathic_messages(self):
@@ -595,25 +598,25 @@ class TestTelepathicMessageFiltering:
         
         mock_agent = Mock()
         mock_agent.timezone = None
-        mock_agent.agent_id = 123  # Non-telepathic agent
+        mock_agent.agent_id = 999  # Non-telepathic agent (different from sender_id)
         
         # Create a mock message with ⟦summarize⟧ prefix
         mock_message = Mock()
         mock_message.id = 1
-        mock_message.sender_id = Mock()
-        mock_message.sender_id.user_id = 123
+        mock_message.sender_id = 123  # Use integer directly
         mock_message.out = True  # This is from the agent
         mock_message.reply_to = None
         mock_message.date = None
+        mock_message.sender = None
         
         # Create a normal message
         normal_message = Mock()
         normal_message.id = 2
-        normal_message.sender_id = Mock()
-        normal_message.sender_id.user_id = 456
+        normal_message.sender_id = 456  # Use integer directly
         normal_message.out = False
         normal_message.reply_to = None
         normal_message.date = None
+        normal_message.sender = None
         
         async def mock_format_message(msg, agent=None, media_chain=None):
             if msg.id == 1:
@@ -621,14 +624,14 @@ class TestTelepathicMessageFiltering:
             else:
                 return [MsgTextPart(kind="text", text="Normal message")]
         
-        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
-            with patch('handlers.received.get_channel_name', return_value="TestUser"):
-                with patch('handlers.received.is_telepath', return_value=False):
-                    history = await _process_message_history([mock_message, normal_message], mock_agent, None)
-                    
-                    # Should only have the normal message, ⟦summarize⟧ should be filtered
-                    assert len(history) == 1
-                    assert history[0].message_parts[0]["text"] == "Normal message"
+        mock_agent.get_cached_entity = AsyncMock(return_value=None)
+        with patch('handlers.received_helpers.message_processing.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received_helpers.message_processing.get_channel_name', return_value="TestUser"):
+                history = await _process_message_history([mock_message, normal_message], mock_agent, None)
+                
+                # Should only have the normal message, ⟦summarize⟧ should be filtered
+                assert len(history) == 1
+                assert history[0].message_parts[0]["text"] == "Normal message"
 
     @pytest.mark.asyncio
     async def test_media_messages_not_filtered(self):
@@ -638,16 +641,17 @@ class TestTelepathicMessageFiltering:
         
         mock_agent = Mock()
         mock_agent.timezone = None
-        mock_agent.agent_id = 123  # Non-telepathic agent
+        mock_agent.agent_id = 999  # Non-telepathic agent
+        mock_agent.get_cached_entity = AsyncMock(return_value=None)
         
         # Create a mock message with ⟦media⟧ prefix (from format_media_sentence)
         mock_message = Mock()
         mock_message.id = 1
-        mock_message.sender_id = Mock()
-        mock_message.sender_id.user_id = 456
+        mock_message.sender_id = 456  # Use integer directly
         mock_message.out = False
         mock_message.reply_to = None
         mock_message.date = None
+        mock_message.sender = None
         
         async def mock_format_message(msg, agent=None, media_chain=None):
             # Simulate a media-only message (no text, just media with ⟦media⟧ prefix)
@@ -658,14 +662,13 @@ class TestTelepathicMessageFiltering:
                 unique_id="test_123"
             )]
         
-        with patch('handlers.received.format_message_for_prompt', side_effect=mock_format_message):
-            with patch('handlers.received.get_channel_name', return_value="TestUser"):
-                with patch('handlers.received.is_telepath', return_value=False):
-                    history = await _process_message_history([mock_message], mock_agent, None)
-                    
-                    # Should NOT filter out the media message - it's legitimate
-                    assert len(history) == 1
-                    assert history[0].message_parts[0]["rendered_text"] == "⟦media⟧ ‹the photo that appears as a sunset over mountains›"
+        with patch('handlers.received_helpers.message_processing.format_message_for_prompt', side_effect=mock_format_message):
+            with patch('handlers.received_helpers.message_processing.get_channel_name', return_value="TestUser"):
+                history = await _process_message_history([mock_message], mock_agent, None)
+                
+                # Should NOT filter out the media message - it's legitimate
+                assert len(history) == 1
+                assert history[0].message_parts[0]["rendered_text"] == "⟦media⟧ ‹the photo that appears as a sunset over mountains›"
 
     @pytest.mark.asyncio
     async def test_silent_summarize_task_no_telepathic_message(self):

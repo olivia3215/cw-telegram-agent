@@ -32,9 +32,14 @@ from utils import (
 )
 from llm.base import MsgPart, MsgTextPart
 from handlers.received_helpers.channel_details import _build_channel_details_section
+from handlers.received_helpers.message_processing import (
+    ProcessedMessage,
+    _format_message_reactions,
+    process_message_history as _process_message_history,
+)
 
-# Re-export for backward compatibility (for tests)
-# The function is imported above and will be available as received._build_channel_details_section
+# Re-export for backward compatibility (for admin_console and tests)
+# These functions are imported above and will be available as received._format_message_reactions, etc.
 from media.media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
@@ -291,77 +296,7 @@ async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
         )
 
 
-@dataclass
-class ProcessedMessage:
-    """Represents a processed message with all its components for LLM history."""
-
-    message_parts: list[MsgPart]
-    sender_display: str
-    sender_id: str
-    sender_username: str | None
-    message_id: str
-    is_from_agent: bool
-    reply_to_msg_id: str | None = None
-    timestamp: str | None = None  # Agent-local timestamp string
-    reactions: str | None = None  # Formatted reactions string
-
-
-async def _format_message_reactions(agent, message) -> str | None:
-    """
-    Format reactions for a message.
-    
-    Args:
-        agent: The agent instance
-        message: Telegram message object
-        
-    Returns:
-        Formatted reactions string like '"Wendy"(1234)=❤️, "Cindy"(5678)=👍' or None if no reactions
-    """
-    try:
-        reactions_obj = getattr(message, 'reactions', None)
-        if not reactions_obj:
-            return None
-            
-        # Get recent reactions if available
-        recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
-        if not recent_reactions:
-            return None
-            
-        reaction_parts = []
-        for reaction in recent_reactions:
-            # Get user info
-            peer_id = getattr(reaction, 'peer_id', None)
-            if not peer_id:
-                continue
-                
-            # Get user ID from peer
-            user_id = extract_user_id_from_peer(peer_id)
-            if user_id is None:
-                continue
-                
-            # Get user name
-            user_name = await get_channel_name(agent, user_id)
-                
-            # Get reaction emoji
-            reaction_obj = getattr(reaction, 'reaction', None)
-            if not reaction_obj:
-                continue
-                
-            emoji = None
-            if hasattr(reaction_obj, 'emoticon'):
-                emoji = reaction_obj.emoticon
-            elif hasattr(reaction_obj, 'document_id'):
-                # Custom emoji - get the sticker name
-                emoji = await get_custom_emoji_name(agent, reaction_obj.document_id)
-                
-            if emoji:
-                reaction_parts.append(f'"{user_name}"({user_id})={emoji}')
-                
-        return ', '.join(reaction_parts) if reaction_parts else None
-        
-    except Exception as e:
-        logger.debug(f"Error formatting reactions for message {getattr(message, 'id', 'unknown')}: {e}")
-        return None
+# ProcessedMessage and message processing functions moved to handlers.received_helpers.message_processing
 
 
 def is_retryable_llm_error(error: Exception) -> bool:
@@ -938,102 +873,7 @@ async def _build_complete_system_prompt(
     return system_prompt
 
 
-async def _process_message_history(
-    messages, agent, media_chain
-) -> list[ProcessedMessage]:
-    """
-    Convert Telegram messages to ProcessedMessage objects.
-
-    Args:
-        messages: List of Telegram messages (newest first)
-        agent: The agent instance
-        media_chain: Media source chain for formatting
-
-    Returns:
-        List of ProcessedMessage objects in chronological order (oldest first)
-    """
-    history_rendered_items: list[ProcessedMessage] = []
-    chronological = list(reversed(messages))  # oldest → newest
-
-    for m in chronological:
-        message_parts = await format_message_for_prompt(
-            m, agent=agent, media_chain=media_chain
-        )
-        if not message_parts:
-            continue
-
-        # Filter out telepathic messages from agent's view
-        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, ⟦retrieve⟧, or ⟦summarize⟧)
-        # Note: ⟦media⟧ is NOT a telepathic prefix - it's used for legitimate media descriptions
-        message_text = ""
-        for part in message_parts:
-            if part.get("kind") == "text":
-                message_text += part.get("text", "")
-            elif part.get("kind") == "media":
-                message_text += part.get("rendered_text", "")
-        
-        # Check if message starts with a telepathic prefix (explicit list, not regex, to avoid matching ⟦media⟧)
-        message_text_stripped = message_text.strip()
-        is_telepathic_message = message_text_stripped.startswith(TELEPATHIC_PREFIXES)
-        
-        if not is_telepath(agent.agent_id) and is_telepathic_message:
-            logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text_stripped[:50]}...")
-            continue
-
-        # Get sender information
-        sender_id_val = getattr(m, "sender_id", None)
-        sender_id = str(sender_id_val) if sender_id_val is not None else "unknown"
-        sender_display = (
-            await get_channel_name(agent, sender_id_val) if sender_id_val else "unknown"
-        )
-        sender_username = None
-        sender_entity = getattr(m, "sender", None)
-        if sender_entity is None and sender_id_val is not None:
-            try:
-                sender_entity = await agent.get_cached_entity(sender_id_val)
-            except Exception:
-                sender_entity = None
-        if sender_entity is not None:
-            sender_username = format_username(sender_entity)
- 
-        message_id = str(getattr(m, "id", ""))
-        is_from_agent = bool(getattr(m, "out", False))
-
-        # Extract reply_to information
-        reply_to_msg_id = None
-        reply_to = getattr(m, "reply_to", None)
-        if reply_to:
-            reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
-            if reply_to_msg_id_val is not None:
-                reply_to_msg_id = str(reply_to_msg_id_val)
-
-        # Extract and format timestamp
-        timestamp_str = None
-        msg_date = getattr(m, "date", None)
-        if msg_date:
-            if msg_date.tzinfo is None:
-                msg_date = msg_date.replace(tzinfo=UTC)
-            local_time = msg_date.astimezone(agent.timezone)
-            timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-        # Format reactions
-        reactions_str = await _format_message_reactions(agent, m)
-
-        history_rendered_items.append(
-            ProcessedMessage(
-                message_parts=message_parts,
-                sender_display=sender_display,
-                sender_id=sender_id,
-                sender_username=sender_username,
-                message_id=message_id,
-                is_from_agent=is_from_agent,
-                reply_to_msg_id=reply_to_msg_id,
-                timestamp=timestamp_str,
-                reactions=reactions_str,
-            )
-        )
-
-    return history_rendered_items
+# Message processing functions moved to handlers.received_helpers.message_processing
 
 
 def _get_channel_llm(agent, channel_id: int):
