@@ -424,6 +424,7 @@ class TestTelepathicMessageHandling:
                             graph=graph,
                             retrieved_urls=set(),
                             retrieved_contents=[],
+                            fetch_url_fn=hr._fetch_url,
                         )
 
             mock_agent.client.send_message.assert_called_once_with(
