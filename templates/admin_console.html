@@ -1191,7 +1191,7 @@
             const isAudioFile = (
                 effectiveMime.startsWith('audio') ||
                 media.kind === 'audio' ||
-                (lowerMediaFile && (
+                (!effectiveMime.startsWith('video') && lowerMediaFile && (
                     lowerMediaFile.endsWith('.mp3') || 
                     lowerMediaFile.endsWith('.m4a') || 
                     lowerMediaFile.endsWith('.wav') || 
@@ -1215,8 +1215,8 @@
             } else if (isAudioFile) {
                     // Audio files - Audio controls
                     // Determine audio MIME type for the source tag
-                    let audioMimeType = effectiveMime || 'audio/mpeg';
-                    if (!audioMimeType.startsWith('audio/')) {
+                    let audioMimeType;
+                    if (!effectiveMime || !effectiveMime.startsWith('audio/')) {
                         // Fallback: determine from file extension
                         if (lowerMediaFile.endsWith('.ogg') || lowerMediaFile.endsWith('.opus')) {
                             audioMimeType = 'audio/ogg';
@@ -1227,8 +1227,10 @@
                         } else if (lowerMediaFile.endsWith('.flac')) {
                             audioMimeType = 'audio/flac';
                         } else {
-                            audioMimeType = 'audio/mpeg'; // Default to mp3
+                            audioMimeType = effectiveMime || 'audio/mpeg'; // Default to mp3 or use effectiveMime if available
                         }
+                    } else {
+                        audioMimeType = effectiveMime;
                     }
                     mediaElement = `<audio controls preload="metadata" style="width: 100%; height: auto; min-height: 48px;">
                         <source src="${mediaUrl}" type="${audioMimeType}">
