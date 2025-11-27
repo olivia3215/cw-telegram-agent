@@ -1089,75 +1089,81 @@ class AIChainMediaSource(MediaSource):
             if record:
                 break
 
-        # 4. Store if we got a new record and it's not another temporary failure
+        # 4. Download and store media file if needed (even when budget exhausted)
+        # We always want to store the media file so we can describe it later without re-downloading
+        media_bytes = None
+        file_extension = None
+
+        if record and not record.get("_on_disk", False):
+            # Check if we need to download and store the media file
+            # Only download if we don't already have the media file on disk
+            media_file_exists = False
+            if isinstance(self.cache_source, DirectoryMediaSource):
+                # Check if media file already exists
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    media_file = self.cache_source.directory / f"{unique_id}{ext}"
+                    if media_file.exists():
+                        media_file_exists = True
+                        break
+
+            # Download media if we have a doc and media file doesn't exist
+            # Always attempt download if we have doc, regardless of budget status
+            logger.info(
+                f"AIChainMediaSource: checking download for {unique_id}: media_file_exists={media_file_exists}, doc={doc is not None}, agent={agent is not None}"
+            )
+            if doc is not None:
+                logger.info(
+                    f"AIChainMediaSource: doc type for {unique_id}: {type(doc)}, has mime_type: {hasattr(doc, 'mime_type')}"
+                )
+            if not media_file_exists and doc is not None and agent is not None:
+                try:
+                    logger.debug(
+                        f"AIChainMediaSource: downloading media for {unique_id}"
+                    )
+                    media_bytes = await download_media_bytes(agent.client, doc)
+
+                    # Get file extension from MIME type
+                    mime_type = getattr(doc, "mime_type", None)
+                    if mime_type:
+                        file_extension = get_file_extension_for_mime_type(mime_type)
+                        if file_extension:
+                            file_extension = f".{file_extension}"
+                    else:
+                        # For Photo objects, detect MIME type from downloaded bytes
+                        detected_mime_type = detect_mime_type_from_bytes(
+                            media_bytes
+                        )
+                        file_extension = get_file_extension_for_mime_type(
+                            detected_mime_type
+                        )
+                        if file_extension:
+                            file_extension = f".{file_extension}"
+
+                    logger.debug(
+                        f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"AIChainMediaSource: failed to download media for {unique_id}: {e}"
+                    )
+                    # Continue without media file - metadata is still valuable
+
+        # 5. Store metadata record if we got a new record and it's not another temporary failure
+        # Exception: always store if we downloaded the media file (even if replacing temporary failure)
         if record and not record.get("_on_disk", False):
             should_store = True
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
+            # UNLESS we downloaded the media file (in which case we want to preserve it)
             if (
                 cached_record
                 and MediaStatus.is_temporary_failure(cached_record.get("status"))
                 and MediaStatus.is_temporary_failure(record.get("status"))
+                and media_bytes is None  # Only skip if we didn't download media
             ):
                 should_store = False
 
             if should_store:
-                # Check if we need to download and store the media file
-                media_bytes = None
-                file_extension = None
-
-                # Only download if we don't already have the media file on disk
-                media_file_exists = False
-                if isinstance(self.cache_source, DirectoryMediaSource):
-                    # Check if media file already exists
-                    for ext in MEDIA_FILE_EXTENSIONS:
-                        media_file = self.cache_source.directory / f"{unique_id}{ext}"
-                        if media_file.exists():
-                            media_file_exists = True
-                            break
-
-                # Download media if we have a doc and media file doesn't exist
-                # Always attempt download if we have doc, regardless of budget status
-                logger.info(
-                    f"AIChainMediaSource: checking download for {unique_id}: media_file_exists={media_file_exists}, doc={doc is not None}, agent={agent is not None}"
-                )
-                if doc is not None:
-                    logger.info(
-                        f"AIChainMediaSource: doc type for {unique_id}: {type(doc)}, has mime_type: {hasattr(doc, 'mime_type')}"
-                    )
-                if not media_file_exists and doc is not None and agent is not None:
-                    try:
-                        logger.debug(
-                            f"AIChainMediaSource: downloading media for {unique_id}"
-                        )
-                        media_bytes = await download_media_bytes(agent.client, doc)
-
-                        # Get file extension from MIME type
-                        mime_type = getattr(doc, "mime_type", None)
-                        if mime_type:
-                            file_extension = get_file_extension_for_mime_type(mime_type)
-                            if file_extension:
-                                file_extension = f".{file_extension}"
-                        else:
-                            # For Photo objects, detect MIME type from downloaded bytes
-                            detected_mime_type = detect_mime_type_from_bytes(
-                                media_bytes
-                            )
-                            file_extension = get_file_extension_for_mime_type(
-                                detected_mime_type
-                            )
-                            if file_extension:
-                                file_extension = f".{file_extension}"
-
-                        logger.debug(
-                            f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"AIChainMediaSource: failed to download media for {unique_id}: {e}"
-                        )
-                        # Continue without media file - metadata is still valuable
-
                 # Store record with optional media file
                 self.cache_source.put(unique_id, record, media_bytes, file_extension)
 

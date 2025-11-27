@@ -277,3 +277,81 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     cached_record = ai_cache_source._mem_cache["test-uid-123"]
     assert cached_record["description"] == "generated description"
     assert cached_record["status"] == MediaStatus.GENERATED.value
+
+
+@pytest.mark.asyncio
+async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
+    """
+    When budget is exhausted, we should still download and store the media file
+    so it can be described later without re-downloading.
+    """
+    # Arrange
+    llm = FakeLLM("should not be called")
+    client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
+
+    # Track download calls
+    download_calls = []
+
+    async def _fake_download_media_bytes(client, doc):
+        download_calls.append(doc)
+        return b"\x89PNG..."
+
+    import media.media_source as media_source
+
+    monkeypatch.setattr(
+        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
+    )
+
+    # Create AI cache directory and sources
+    ai_cache_dir = tmp_path / "media"
+    ai_cache_dir.mkdir()
+
+    # Create DirectoryMediaSource for AI cache
+    ai_cache_source = DirectoryMediaSource(ai_cache_dir)
+
+    # Create AIChainMediaSource that handles caching
+    ai_chain = AIChainMediaSource(
+        cache_source=ai_cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=BudgetExhaustedMediaSource(),
+        ai_source=AIGeneratingMediaSource(cache_directory=ai_cache_dir),
+    )
+
+    # Budget = 0 (exhausted)
+    reset_description_budget(0)
+
+    # Mock get_media_llm to return our fake LLM
+    with patch("media.media_source.get_media_llm", return_value=llm):
+        # Act: Try to get description when budget is exhausted
+        doc = SimpleNamespace(uid="budget-exhausted-uid", mime_type="image/png")
+        result = await ai_chain.get(
+            unique_id="budget-exhausted-uid",
+            agent=agent,
+            doc=doc,
+            kind="photo",
+        )
+
+        # Assert: Budget exhausted record is returned
+        assert result["unique_id"] == "budget-exhausted-uid"
+        assert result["description"] is None
+        assert result["status"] == MediaStatus.BUDGET_EXHAUSTED.value
+
+        # Assert: Media file was downloaded despite budget exhaustion
+        assert len(download_calls) == 1
+        assert download_calls[0] == doc
+
+        # Assert: Record was stored to disk
+        cache_file = ai_cache_dir / "budget-exhausted-uid.json"
+        assert cache_file.exists()
+
+        # Assert: Media file was stored
+        media_file = ai_cache_dir / "budget-exhausted-uid.png"
+        assert media_file.exists()
+        assert media_file.read_bytes() == b"\x89PNG..."
+
+        # Assert: In-memory cache was updated
+        assert "budget-exhausted-uid" in ai_cache_source._mem_cache
+        cached_record = ai_cache_source._mem_cache["budget-exhausted-uid"]
+        assert cached_record["status"] == MediaStatus.BUDGET_EXHAUSTED.value
+        assert cached_record.get("media_file") == "budget-exhausted-uid.png"
