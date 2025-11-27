@@ -325,7 +325,7 @@ async def test_fetch_file_url_not_found():
 
 @pytest.mark.asyncio
 async def test_fetch_file_url_invalid_filename():
-    """Test that file: URLs with slashes are rejected."""
+    """Test that file: URLs with forward slashes are rejected."""
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
     
@@ -334,6 +334,19 @@ async def test_fetch_file_url_invalid_filename():
     assert url == "file:../secrets.txt"
     assert "Invalid file URL" in content
     assert "/" in content or "empty" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_invalid_filename_backslash():
+    """Test that file: URLs with backslashes are rejected (Windows path traversal prevention)."""
+    mock_agent = MagicMock()
+    mock_agent.name = "TestAgent"
+    
+    url, content = await _fetch_url("file:..\\secrets.txt", agent=mock_agent)
+    
+    assert url == "file:..\\secrets.txt"
+    assert "Invalid file URL" in content
+    assert "\\" in content or "empty" in content
 
 
 @pytest.mark.asyncio

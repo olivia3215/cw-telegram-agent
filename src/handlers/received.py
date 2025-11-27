@@ -142,14 +142,14 @@ def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
     Searches through all config directories in CONFIG_DIRECTORIES order.
     
     Args:
-        filename: The filename to search for (must not contain '/')
+        filename: The filename to search for (must not contain '/' or '\')
         agent_name: The agent name for agent-specific search, or None
         
     Returns:
         Path to the file if found, None otherwise
     """
-    # Security: prevent directory traversal
-    if "/" in filename or not filename:
+    # Security: prevent directory traversal (reject both forward and backslashes)
+    if "/" in filename or "\\" in filename or not filename:
         return None
     
     for config_dir in CONFIG_DIRECTORIES:
@@ -195,11 +195,11 @@ async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
     if url.startswith("file:"):
         filename = url[5:]  # Remove "file:" prefix
         
-        # Security: validate filename doesn't contain slashes
-        if "/" in filename or not filename:
+        # Security: validate filename doesn't contain slashes (reject both forward and backslashes)
+        if "/" in filename or "\\" in filename or not filename:
             return (
                 url,
-                f"Invalid file URL: filename must not contain '/' and must not be empty",
+                f"Invalid file URL: filename must not contain '/' or '\\' and must not be empty",
             )
         
         agent_name = agent.name if agent else None
