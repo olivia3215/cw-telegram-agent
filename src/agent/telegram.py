@@ -36,7 +36,8 @@ class AgentTelegramMixin:
             TelegramEntityCache instance, or None if no client available
         """
         if self._entity_cache_obj is None and self.client:
-            self._entity_cache_obj = TelegramEntityCache(self.client, name=self.name)
+            # Pass self (the agent) so cache can use agent's reconnection logic
+            self._entity_cache_obj = TelegramEntityCache(self.client, name=self.name, agent=self)
         return self._entity_cache_obj
 
     @property
@@ -48,7 +49,8 @@ class AgentTelegramMixin:
             TelegramAPICache instance, or None if no client available
         """
         if self._api_cache_obj is None and self.client:
-            self._api_cache_obj = TelegramAPICache(self.client, name=self.name)
+            # Pass self (the agent) so cache can use agent's reconnection logic
+            self._api_cache_obj = TelegramAPICache(self.client, name=self.name, agent=self)
         return self._api_cache_obj
 
     def clear_entity_cache(self):
