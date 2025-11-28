@@ -14,7 +14,7 @@ from telethon.tl.types import InputStickerSetID
 from llm.base import MsgPart
 from telegram_media import iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
-from id_utils import extract_user_id_from_peer
+from utils import extract_user_id_from_peer
 
 # MediaCache removed - using MediaSource architecture instead
 from .media_format import (

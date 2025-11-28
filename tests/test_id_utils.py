@@ -1,6 +1,6 @@
 import pytest
 
-from id_utils import normalize_peer_id
+from utils import normalize_peer_id
 
 
 @pytest.mark.parametrize(

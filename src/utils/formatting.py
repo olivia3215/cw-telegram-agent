@@ -1,12 +1,6 @@
-# message_logging.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
-# Licensed under the MIT License. See LICENSE.md for details.
-
-"""
-Helper functions for formatting Telegram messages for logging purposes.
-"""
-
+# utils/formatting.py
+#
+# Formatting utilities for messages, JSON, and other content.
 
 def format_message_content_for_logging(message) -> str:
     """
@@ -64,3 +58,44 @@ def format_message_content_for_logging(message) -> str:
         return " ".join(media_parts)
     else:
         return "‹media›"
+
+
+def strip_json_fence(text: str) -> str:
+    """
+    Remove JSON code fence markers (```json ... ```) from text.
+    
+    Args:
+        text: Text that may contain JSON code fences
+        
+    Returns:
+        Text with JSON fences removed
+    """
+    text = text.strip()
+    if text.startswith("```json"):
+        text = text[7:]  # Remove ```json
+    elif text.startswith("```"):
+        text = text[3:]  # Remove ```
+    text = text.strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    return text
+
+
+def normalize_list(value) -> list[str]:
+    """
+    Normalize a value to a list of strings.
+    
+    Args:
+        value: Can be None, a string, or a list
+        
+    Returns:
+        List of strings (empty list if value is None or empty)
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+

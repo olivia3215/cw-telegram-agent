@@ -32,6 +32,7 @@ async def test_parse_retrieve_task_single_url():
         graph=graph,
         retrieved_urls={"https://example.com/page1"},
         retrieved_contents=[],
+        fetch_url_fn=hr._fetch_url,
     )
 
     assert len(tasks) == 1
@@ -69,6 +70,7 @@ async def test_parse_retrieve_task_multiple_urls():
             "https://example.com/page3",
         },
         retrieved_contents=[],
+        fetch_url_fn=hr._fetch_url,
     )
 
     assert len(tasks) == 1
@@ -97,6 +99,7 @@ async def test_parse_retrieve_task_empty():
         graph=graph,
         retrieved_urls=set(),
         retrieved_contents=[],
+        fetch_url_fn=hr._fetch_url,
     )
 
     # Empty retrieve task should be discarded
@@ -127,6 +130,7 @@ async def test_parse_mixed_tasks_with_retrieve():
         graph=graph,
         retrieved_urls={"https://www.google.com/search?q=test"},
         retrieved_contents=[],
+        fetch_url_fn=hr._fetch_url,
     )
 
     # Think task is discarded, so we should have retrieve and send

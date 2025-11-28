@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from handlers.received import parse_llm_reply
-from markdown_utils import flatten_node_text
+from utils import flatten_node_text
 
 
 def test_flatten_text_node():

@@ -24,7 +24,7 @@ from agent import (
 )
 from clock import clock
 from exceptions import ShutdownException
-from message_logging import format_message_content_for_logging
+from utils import format_message_content_for_logging
 from register_agents import register_all_agents
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation

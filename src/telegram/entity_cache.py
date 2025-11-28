@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, timedelta
 
 from clock import clock
-from id_utils import normalize_peer_id
+from utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
 

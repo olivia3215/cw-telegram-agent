@@ -1,8 +1,6 @@
-# markdown_utils.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
-# Licensed under the MIT License. See LICENSE.md for details.
-
+# utils/markdown.py
+#
+# Markdown processing utilities.
 
 def flatten_node_text(node):
     """
@@ -19,3 +17,4 @@ def flatten_node_text(node):
             lines.extend(flatten_node_text(child))
         return lines
     return []
+
