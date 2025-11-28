@@ -23,7 +23,7 @@ class TelegramEntityCache:
     Entities are cached for a configurable TTL (default 5 minutes).
     """
 
-    def __init__(self, client, ttl_seconds=300, name=None):
+    def __init__(self, client, ttl_seconds=300, name=None, agent=None):
         """
         Initialize the entity cache.
         
@@ -31,8 +31,10 @@ class TelegramEntityCache:
             client: The Telegram client to use for fetching entities
             ttl_seconds: Time-to-live for cached entities in seconds (default: 300 = 5 minutes)
             name: Optional name for logging/debugging
+            agent: Optional agent instance for reconnection handling
         """
         self.client = client
+        self.agent = agent
         self.ttl_seconds = ttl_seconds
         self.name = name or "entity_cache"
         self._cache = {}  # {entity_id: (entity, expiration_time)}
@@ -58,14 +60,15 @@ class TelegramEntityCache:
             return None
 
         try:
+            if self.agent:
+                await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
-            # Cache for the configured TTL
-            self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
-            return entity
         except Exception as e:
             logger.exception(f"[{self.name}] get_cached_entity failed for ID {entity_id}: {e}")
-            # On error, return None and don't cache
             return None
+
+        self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
+        return entity
 
     def clear(self):
         """Clear all cached entities."""

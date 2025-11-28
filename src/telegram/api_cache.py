@@ -27,15 +27,17 @@ class TelegramAPICache:
     - Blocklist (global, 60-second TTL)
     """
 
-    def __init__(self, client, name=None):
+    def __init__(self, client, name=None, agent=None):
         """
         Initialize the API cache.
         
         Args:
             client: The Telegram client to use for API calls
             name: Optional name for logging/debugging
+            agent: Optional agent instance for reconnection handling
         """
         self.client = client
+        self.agent = agent
         self.name = name or "api_cache"
         self._mute_cache = {}  # {peer_id: (is_muted, expiration_time)}
         self._blocklist_cache = None
@@ -58,28 +60,28 @@ class TelegramAPICache:
         if cached and cached[1] > now:
             return cached[0]
 
-        try:
-            settings = await self.client(GetNotifySettingsRequest(peer=peer_id))
-            mute_until = getattr(settings, "mute_until", None)
-
-            is_currently_muted = False
-            if isinstance(mute_until, datetime):
-                is_currently_muted = mute_until > now
-            elif isinstance(mute_until, int):
-                is_currently_muted = mute_until > now.timestamp()
-
-            # Cache for the specified TTL
-            self._mute_cache[peer_id] = (
-                is_currently_muted,
-                now + timedelta(seconds=ttl_seconds),
-            )
-            return is_currently_muted
-
-        except Exception as e:
-            logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
-            # In case of error, assume not muted and cache for a shorter time
+        if not self.client:
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
+
+        try:
+            if self.agent:
+                await self.agent.ensure_client_connected()
+            settings = await self.client(GetNotifySettingsRequest(peer=peer_id))
+        except Exception as e:
+            logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
+
+        mute_until = getattr(settings, "mute_until", None)
+        is_currently_muted = False
+        if isinstance(mute_until, datetime):
+            is_currently_muted = mute_until > now
+        elif isinstance(mute_until, int):
+            is_currently_muted = mute_until > now.timestamp()
+
+        self._mute_cache[peer_id] = (is_currently_muted, now + timedelta(seconds=ttl_seconds))
+        return is_currently_muted
 
     async def is_blocked(self, user_id: int, ttl_seconds=60) -> bool:
         """
@@ -98,18 +100,24 @@ class TelegramAPICache:
             self._blocklist_last_updated
             and (now - self._blocklist_last_updated) > timedelta(seconds=ttl_seconds)
         ):
+            if not self.client:
+                if self._blocklist_cache is None:
+                    self._blocklist_cache = set()
+                return user_id in self._blocklist_cache
+
             try:
+                if self.agent:
+                    await self.agent.ensure_client_connected()
                 result = await self.client(GetBlockedRequest(offset=0, limit=100))
-                # Store a set of user IDs for fast lookups
-                self._blocklist_cache = {
-                    item.peer_id.user_id for item in result.blocked
-                }
-                self._blocklist_last_updated = now
-                logger.info(f"[{self.name}] Updated blocklist cache.")
             except Exception as e:
                 logger.exception(f"[{self.name}] Failed to update blocklist: {e}")
-                # In case of error, use an empty set and try again later
-                self._blocklist_cache = set()
+                if self._blocklist_cache is None:
+                    self._blocklist_cache = set()
+                return user_id in self._blocklist_cache
+
+            self._blocklist_cache = {item.peer_id.user_id for item in result.blocked}
+            self._blocklist_last_updated = now
+            logger.info(f"[{self.name}] Updated blocklist cache.")
 
         return user_id in self._blocklist_cache
 

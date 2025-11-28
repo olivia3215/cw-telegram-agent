@@ -131,6 +131,34 @@ class Agent(
         """Get the Telegram client. Returns None if not authenticated."""
         return self._client
 
+    async def ensure_client_connected(self):
+        """
+        Ensure the Telegram client is connected. Attempts to reconnect if disconnected.
+        
+        Returns:
+            True if connected (or successfully reconnected), False otherwise
+        """
+        client = self.client
+        if client is None:
+            return False
+        
+        if client.is_connected():
+            return True
+        
+        # Try to reconnect
+        try:
+            logger.info(f"[{self.name}] Client disconnected, attempting to reconnect...")
+            await client.connect()
+            if client.is_connected():
+                logger.info(f"[{self.name}] Successfully reconnected")
+                return True
+            else:
+                logger.warning(f"[{self.name}] Reconnection attempt failed - client still disconnected")
+                return False
+        except Exception as e:
+            logger.warning(f"[{self.name}] Failed to reconnect: {e}")
+            return False
+
     async def get_client(self):
         """Get the Telegram client, ensuring it's connected. Raises RuntimeError if not authenticated."""
         client = self.client
@@ -138,7 +166,8 @@ class Agent(
             raise RuntimeError(
                 f"Agent '{self.name}' is not authenticated. No client available."
             )
-        if not client.is_connected():
-            await client.connect()
-        logger.info(f"Connected client for agent '{self.name}'")
+        if not await self.ensure_client_connected():
+            raise RuntimeError(
+                f"Agent '{self.name}' client is not connected and reconnection failed."
+            )
         return client
