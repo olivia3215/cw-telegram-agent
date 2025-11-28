@@ -24,6 +24,7 @@ from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telegram_download import download_media_bytes
 from telegram_media import iter_media_parts
+from telegram_util import get_channel_name
 from telepathic import TELEPATHIC_PREFIXES
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,16 @@ def register_conversation_routes(agents_bp: Blueprint):
                         if from_id:
                             sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
                         is_from_agent = sender_id == agent.agent_id
+                        
+                        # Get sender name
+                        sender_name = None
+                        if sender_id and isinstance(sender_id, int):
+                            try:
+                                sender_name = await get_channel_name(agent, sender_id)
+                            except Exception as e:
+                                logger.debug(f"Failed to get sender name for {sender_id}: {e}")
+                                sender_name = None
+                        
                         text = message.text or ""
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
                         
@@ -278,6 +289,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                             "text": text,
                             "parts": parts,  # Include formatted parts (text + media)
                             "sender_id": str(sender_id) if sender_id else None,
+                            "sender_name": sender_name,
                             "is_from_agent": is_from_agent,
                             "timestamp": timestamp,
                             "reply_to_msg_id": reply_to_msg_id,

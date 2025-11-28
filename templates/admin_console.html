@@ -3276,35 +3276,33 @@
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                             <div>
                                 <strong>ID:</strong> ${summary.id || 'N/A'}<br>
-                                <strong>Messages:</strong> ${summary.min_message_id || 'N/A'} - ${summary.max_message_id || 'N/A'}<br>
-                                <strong>Dates:</strong> ${summary.first_message_date || 'N/A'} to ${summary.last_message_date || 'N/A'}<br>
                                 <strong>Created:</strong> ${summary.created || 'N/A'}
                             </div>
                             <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                         </div>
                         <div style="margin-bottom: 8px;">
-                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">Min Message ID:</label>
-                            <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
-                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Message IDs:</span>
+                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                                <span style="color: #666; font-size: 12px;">-</span>
+                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                            </div>
                         </div>
                         <div style="margin-bottom: 8px;">
-                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">Max Message ID:</label>
-                            <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
-                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">First Message Date:</label>
-                            <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date || ''}" 
-                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <label style="display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px;">Last Message Date:</label>
-                            <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date || ''}" 
-                                oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
+                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                                <span style="color: #666; font-size: 12px;">to</span>
+                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date || ''}" 
+                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
+                            </div>
                         </div>
                         <textarea 
                             id="summary-${userId}-${summary.id}" 
@@ -3415,8 +3413,16 @@
                         contentHtml = '<div style="color: #999; font-style: italic;">[No content]</div>';
                     }
                     
-                    // Build metadata line
-                    let metadataLine = `${msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>'} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}`;
+                    // Build metadata line with sender name and ID
+                    let senderDisplay = '';
+                    if (msg.sender_name && msg.sender_id) {
+                        senderDisplay = `<strong>${(msg.sender_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong> (${msg.sender_id})`;
+                    } else if (msg.sender_id) {
+                        senderDisplay = `<strong>${msg.sender_id}</strong>`;
+                    } else {
+                        senderDisplay = msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>';
+                    }
+                    let metadataLine = `${senderDisplay} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}`;
                     if (msg.reply_to_msg_id) {
                         metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
                     }
