@@ -20,6 +20,8 @@ def mock_agent():
     agent.client = AsyncMock()
     agent.is_muted = AsyncMock(return_value=False)
     agent.is_blocked = AsyncMock(return_value=False)
+    # Mock dialog_cache to return None (no cache) so tests use iter_dialogs()
+    agent.dialog_cache = None
     return agent
 
 
