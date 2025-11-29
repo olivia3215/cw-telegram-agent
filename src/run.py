@@ -400,7 +400,7 @@ async def run_telegram_loop(agent: Agent):
                         # This is the agent's message - create a received task
                         await insert_received_task_for_conversation(
                             recipient_id=agent.agent_id,
-                            channel_id=str(chat_id),
+                            channel_id=chat_id,
                             is_callout=True,  # Reactions are treated as callouts
                         )
                 except Exception as e:
