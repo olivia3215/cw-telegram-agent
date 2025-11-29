@@ -26,12 +26,14 @@ async def handle_unblock(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Try cached entity first to avoid GetContactsRequest flood
     entity = await agent.get_cached_entity(channel_id)
     
-    # If entity not in cache, fetch it via get_dialog for safety check
+    # If entity not in cache, fetch it directly (more efficient than get_dialog which calls iter_dialogs())
     # (safety check is critical, so we need the entity even if it triggers GetContactsRequest)
     if entity is None:
-        dialog = await agent.get_dialog(channel_id)
-        if dialog:
-            entity = dialog.entity
+        try:
+            entity = await client.get_entity(channel_id)
+        except Exception as e:
+            logger.debug(f"[{agent.name}] Could not fetch entity for {channel_id}: {e}")
+            entity = None
     
     # Perform safety check now that we have the entity (or confirmed it's None)
     if entity and is_group_or_channel(entity):
