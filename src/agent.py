@@ -102,6 +102,7 @@ class Agent(
         self._executor = None  # EventLoopExecutor
         self._entity_cache_obj = None  # TelegramEntityCache
         self._api_cache_obj = None  # TelegramAPICache
+        self._dialog_cache_obj = None  # TelegramDialogCache
         self._storage_obj = None  # AgentStorage
 
         # Tracks which sticker set short names have been loaded into caches

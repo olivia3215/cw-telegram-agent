@@ -14,6 +14,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
+    UpdateMessageReactions,
     UpdateUserTyping,
 )
 
@@ -73,6 +74,7 @@ async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bo
     
     try:
         # First, get the agent's last message
+        logger.debug(f"[{agent.name}] has_unread_reactions_on_agent_last_message() calling get_messages() for dialog {dialog.id}")
         messages = await client.get_messages(dialog.id, limit=5)
         agent_last_message = None
         
@@ -115,7 +117,23 @@ def load_work_queue():
 async def handle_incoming_message(agent: Agent, event):
     client = agent.client
     await event.get_sender()
-    dialog = await agent.get_dialog(event.chat_id)
+    
+    # Try to get dialog from cache first (avoids iter_dialogs() call)
+    # If not in cache, try to get entity instead (send_read_acknowledge accepts entity)
+    dialog = None
+    entity = None
+    dialog_cache = agent.dialog_cache
+    if dialog_cache:
+        dialog = await dialog_cache.get(event.chat_id)
+    
+    if not dialog:
+        # Try cached entity - send_read_acknowledge can accept entity
+        entity = await agent.get_cached_entity(event.chat_id)
+        # Only call get_dialog() if we really need the dialog object
+        # (currently we don't, since send_read_acknowledge accepts entity)
+        # But keep the call for now in case dialog is needed elsewhere
+        # dialog = await agent.get_dialog(event.chat_id)
+    
     muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
 
@@ -151,15 +169,66 @@ async def handle_incoming_message(agent: Agent, event):
             message_id=event.message.id,
             is_callout=is_callout,
         )
-        await client.send_read_acknowledge(dialog, clear_mentions=True, clear_reactions=True)
+        # Use entity if available (from cache), otherwise use dialog, otherwise use chat_id
+        if entity:
+            await client.send_read_acknowledge(entity, clear_mentions=True, clear_reactions=True)
+        elif dialog:
+            await client.send_read_acknowledge(dialog, clear_mentions=True, clear_reactions=True)
+        else:
+            # Fallback: use chat_id directly (Telethon should handle this)
+            await client.send_read_acknowledge(event.chat_id, clear_mentions=True, clear_reactions=True)
 
 
 async def scan_unread_messages(agent: Agent):
     client = agent.client
     agent_id = agent.agent_id
-    async for dialog in client.iter_dialogs():
-        # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
-        await clock.sleep(0.05)
+    
+    # Populate dialog cache during iteration to avoid repeated iter_dialogs() calls
+    # This allows get_dialog() to use cached results instead of calling iter_dialogs() again
+    dialog_cache = agent.dialog_cache
+    
+    # Check if cache is fresh (updated within last 30 seconds)
+    # If so, use cached dialogs instead of calling iter_dialogs() to avoid flood waits
+    use_cached_dialogs = False
+    cached_dialogs = []
+    if dialog_cache and dialog_cache._last_update:
+        from datetime import UTC
+        now = clock.now(UTC)
+        time_since_update = (now - dialog_cache._last_update).total_seconds()
+        if time_since_update < 30:  # Cache updated within last 30 seconds
+            cached_dialogs = dialog_cache.get_all_cached_dialogs()
+            if cached_dialogs:
+                use_cached_dialogs = True
+                logger.debug(f"[{agent.name}] Using {len(cached_dialogs)} cached dialogs (updated {time_since_update:.1f}s ago) - avoiding iter_dialogs()")
+    
+    # Use cached dialogs if available, otherwise iterate from API
+    if use_cached_dialogs:
+        dialogs_to_scan = cached_dialogs
+    else:
+        # Need to fetch from API - this will trigger GetHistoryRequest
+        logger.debug(f"[{agent.name}] Calling iter_dialogs() in scan_unread_messages() - will trigger GetHistoryRequest")
+        dialogs_to_scan = []
+        async for dialog in client.iter_dialogs():
+            dialogs_to_scan.append(dialog)
+            # Update cache as we iterate
+            if dialog_cache:
+                from utils import normalize_peer_id
+                from datetime import UTC, timedelta
+                dialog_id = normalize_peer_id(dialog.id)
+                now = clock.now(UTC)
+                expiration = now + timedelta(seconds=dialog_cache.ttl_seconds)
+                dialog_cache._cache[dialog_id] = (dialog, expiration)
+                if dialog_cache._last_update is None:
+                    dialog_cache._last_update = now
+        logger.debug(f"[{agent.name}] Finished iter_dialogs() in scan_unread_messages() - cached {len(dialogs_to_scan)} dialogs")
+    
+    # Process dialogs (whether from cache or API)
+    for dialog in dialogs_to_scan:
+        # Only sleep if we're iterating from API (not from cache)
+        if not use_cached_dialogs:
+            # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
+            await clock.sleep(0.05)
+        
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
@@ -167,6 +236,7 @@ async def scan_unread_messages(agent: Agent):
         # If there are mentions, we must check if they are from a non-blocked user.
         is_callout = False
         if has_mentions:
+            logger.debug(f"[{agent.name}] scan_unread_messages() calling iter_messages() for dialog {dialog.id} to check mentions")
             async for message in client.iter_messages(
                 dialog.id, limit=5
             ):
@@ -178,7 +248,13 @@ async def scan_unread_messages(agent: Agent):
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
         # Check if unread reactions are on the agent's last message
-        has_reactions_on_agent_message = await has_unread_reactions_on_agent_last_message(agent, dialog)
+        # Only check if dialog indicates there are unread reactions (avoids expensive get_messages() call)
+        # Note: dialog.unread_reactions_count may not be available in all Telethon versions
+        unread_reactions_count = getattr(dialog, "unread_reactions_count", 0)
+        has_reactions_on_agent_message = False
+        if unread_reactions_count > 0:
+            # Only check if there are actually unread reactions indicated
+            has_reactions_on_agent_message = await has_unread_reactions_on_agent_last_message(agent, dialog)
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
@@ -352,6 +428,53 @@ async def run_telegram_loop(agent: Agent):
             # For DMs, we track the user_id as the partner who is typing.
             mark_partner_typing(agent.agent_id, user_id)
 
+        @client.on(events.Raw(UpdateMessageReactions))
+        async def handle_message_reactions(update):
+            """
+            Handle reaction updates event-driven instead of scanning.
+            When a reaction is added to a message, Telegram sends this update.
+            This avoids the need to scan all dialogs for reactions.
+            """
+            try:
+                peer_id = getattr(update, "peer", None)
+                if not peer_id:
+                    return
+                
+                # Get the chat_id from the peer
+                if hasattr(peer_id, "channel_id"):
+                    chat_id = peer_id.channel_id
+                elif hasattr(peer_id, "chat_id"):
+                    chat_id = peer_id.chat_id
+                elif hasattr(peer_id, "user_id"):
+                    chat_id = peer_id.user_id
+                else:
+                    return
+                
+                # Check if this is a reaction to the agent's message
+                msg_id = getattr(update, "msg_id", None)
+                if not msg_id:
+                    return
+                
+                # Check if the message is from the agent by checking the update's actor_id
+                # If actor_id matches agent_id, this is a reaction TO the agent's message
+                # Actually, we need to check if the message itself is from the agent
+                # Use get_messages with single ID - this is lightweight and won't trigger GetHistoryRequest
+                # (get_messages with ids= is different from iterating)
+                try:
+                    message = await client.get_messages(chat_id, ids=msg_id)
+                    if message and getattr(message, "out", False):
+                        # This is the agent's message - create a received task
+                        logger.debug(f"[{agent.name}] Received reaction update on agent's message {msg_id} in chat {chat_id} - creating received task")
+                        await insert_received_task_for_conversation(
+                            recipient_id=agent.agent_id,
+                            channel_id=str(chat_id),
+                            is_callout=True,  # Reactions are treated as callouts
+                        )
+                except Exception as e:
+                    logger.debug(f"[{agent.name}] Error handling reaction update: {e}")
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Error processing UpdateMessageReactions: {e}")
+
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):
             """
@@ -362,6 +485,7 @@ async def run_telegram_loop(agent: Agent):
             logger.info(
                 f"[{agent.name}] Detected a dialog filter update. Triggering a scan."
             )
+            logger.debug(f"[{agent.name}] handle_dialog_update() calling scan_unread_messages()")
             # We don't need to inspect the event further; its existence is the trigger.
             # We call the existing scan function to check for the unread mark.
             await scan_unread_messages(agent)
@@ -375,6 +499,7 @@ async def run_telegram_loop(agent: Agent):
                 if initial_delay > 0:
                     logger.debug(f"[{agent.name}] Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
                     await clock.sleep(initial_delay)
+                logger.debug(f"[{agent.name}] Initial scan in run_telegram_loop() calling scan_unread_messages()")
                 await scan_unread_messages(agent)
                 await client.run_until_disconnected()
 
@@ -398,6 +523,14 @@ async def periodic_scan(agents, interval_sec):
         for agent in agents:
             if agent.client:  # Only scan if the client is connected
                 try:
+                    # Stagger scans between agents to avoid simultaneous GetHistoryRequest calls
+                    # Use agent name hash to create consistent but distributed delays
+                    # Increased stagger to 0-5 seconds to better spread out API calls
+                    agent_hash = int(hashlib.md5(agent.name.encode()).hexdigest()[:8], 16)
+                    stagger_delay = (agent_hash % 5000) / 1000.0  # 0-5 seconds
+                    if stagger_delay > 0:
+                        await clock.sleep(stagger_delay)
+                    logger.debug(f"[{agent.name}] periodic_scan() calling scan_unread_messages()")
                     await scan_unread_messages(agent)
                 except Exception as e:
                     logger.exception(

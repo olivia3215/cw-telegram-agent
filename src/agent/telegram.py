@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from telegram.api_cache import TelegramAPICache
+from telegram.dialog_cache import TelegramDialogCache
 from telegram.entity_cache import TelegramEntityCache
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class AgentTelegramMixin:
     name: str
     _entity_cache_obj: TelegramEntityCache | None
     _api_cache_obj: TelegramAPICache | None
+    _dialog_cache_obj: TelegramDialogCache | None
 
     @property
     def entity_cache(self):
@@ -52,6 +54,19 @@ class AgentTelegramMixin:
             # Pass self (the agent) so cache can use agent's reconnection logic
             self._api_cache_obj = TelegramAPICache(self.client, name=self.name, agent=self)
         return self._api_cache_obj
+
+    @property
+    def dialog_cache(self):
+        """
+        Get or create the TelegramDialogCache for this agent.
+        
+        Returns:
+            TelegramDialogCache instance, or None if no client available
+        """
+        if self._dialog_cache_obj is None and self.client:
+            # Pass self (the agent) so cache can use agent's reconnection logic
+            self._dialog_cache_obj = TelegramDialogCache(self.client, name=self.name, agent=self)
+        return self._dialog_cache_obj
 
     def clear_entity_cache(self):
         """Clears the entity cache for this agent."""
@@ -93,10 +108,31 @@ class AgentTelegramMixin:
 
     async def get_dialog(self, chat_id: int):
         """
-        Finds a dialog, preferring the agent's entity cache.
+        Finds a dialog, preferring the agent's dialog cache.
+        
+        This method first checks the dialog cache. If the cache is stale or the
+        dialog is not found, it falls back to iterating all dialogs (which will
+        trigger GetHistoryRequest calls and may cause flood waits).
+        
+        For better performance, ensure the dialog cache is populated by calling
+        dialog_cache.update_from_iter_dialogs() periodically (e.g., during
+        scan_unread_messages).
         """
+        # Try cache first
+        dialog_cache = self.dialog_cache
+        if dialog_cache:
+            cached_dialog = await dialog_cache.get(chat_id)
+            if cached_dialog:
+                logger.debug(f"[{self.name}] get_dialog({chat_id}) found in cache - avoiding iter_dialogs()")
+                return cached_dialog
+        
+        # Cache miss or no cache - fall back to iterating (expensive!)
+        # This will trigger GetHistoryRequest calls
+        logger.debug(f"[{self.name}] get_dialog({chat_id}) cache miss - calling iter_dialogs() - will trigger GetHistoryRequest")
         async for dialog in self.client.iter_dialogs():
             if dialog.id == chat_id:
+                logger.debug(f"[{self.name}] get_dialog({chat_id}) found via iter_dialogs()")
                 return dialog
+        logger.debug(f"[{self.name}] get_dialog({chat_id}) not found via iter_dialogs()")
         return None
 

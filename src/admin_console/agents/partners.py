@@ -162,6 +162,7 @@ def register_partner_routes(agents_bp: Blueprint):
                                     # Use agent.client to get the client (already checked to be available and connected)
                                     client = agent.client
                                     # Iterate through dialogs - this runs in the client's event loop
+                                    logger.debug(f"[{agent.name}] admin_console partners API calling iter_dialogs() - will trigger GetHistoryRequest")
                                     async for dialog in client.iter_dialogs():
                                         # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
                                         await asyncio.sleep(0.05)
