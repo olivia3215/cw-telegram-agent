@@ -91,15 +91,3 @@ class AgentTelegramMixin:
             return False
         return await api_cache.is_blocked(user_id)
 
-    async def get_dialog(self, chat_id: int):
-        """
-        Finds a dialog by iterating through all dialogs.
-        
-        Note: This will trigger GetHistoryRequest calls and may cause flood waits.
-        Consider using event-driven approaches or caching where possible.
-        """
-        async for dialog in self.client.iter_dialogs():
-            if dialog.id == chat_id:
-                return dialog
-        return None
-
