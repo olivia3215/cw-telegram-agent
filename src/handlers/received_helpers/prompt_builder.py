@@ -72,21 +72,21 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    # Add reaction message instruction if this is a reaction-triggered task
-    if reaction_msg is not None and getattr(reaction_msg, "id", ""):
-        instructions += (
-            "## Reaction Received\n\n"
-            f"Someone reacted to your message with message_id {reaction_msg.id}.\n"
-            "Consider responding to acknowledge the reaction or continue the conversation.\n"
-        )
-        any_instruction = True
-    # Add target message instruction if provided (and not a reaction)
-    elif target_msg is not None and getattr(target_msg, "id", ""):
+    # Add target message instruction if provided (new messages take priority over reactions)
+    if target_msg is not None and getattr(target_msg, "id", ""):
         instructions += (
             "## Target Message\n\n"
             "You are looking at this conversation because the messsage "
             f"with message_id {target_msg.id} was newly received.\n"
             "React to it if appropriate.\n"
+        )
+        any_instruction = True
+    # Add reaction message instruction if this is a reaction-triggered task (and no new message)
+    elif reaction_msg is not None and getattr(reaction_msg, "id", ""):
+        instructions += (
+            "## Reaction Received\n\n"
+            f"Someone reacted to your message with message_id {reaction_msg.id}.\n"
+            "Consider responding to acknowledge the reaction or continue the conversation.\n"
         )
         any_instruction = True
 
