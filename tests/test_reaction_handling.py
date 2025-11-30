@@ -32,9 +32,9 @@ def mock_dialog():
     dialog.id = 67890
     dialog.unread_count = 0
     dialog.unread_mentions_count = 0
-    dialog.unread_reactions_count = 1
     dialog.dialog = MagicMock()
     dialog.dialog.unread_mark = False
+    dialog.dialog.unread_reactions_count = 1
     return dialog
 
 
@@ -233,7 +233,7 @@ async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dial
     mock_agent.client.iter_dialogs = mock_iter_dialogs
     
     # Mock dialog with no unread reactions
-    mock_dialog.unread_reactions_count = 0
+    mock_dialog.dialog.unread_reactions_count = 0
     
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
