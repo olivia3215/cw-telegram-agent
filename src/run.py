@@ -59,16 +59,16 @@ def _env_flag(name: str, default: bool) -> bool:
     return default
 
 
-async def has_unread_reactions_on_agent_messages(agent: Agent, dialog) -> bool:
+async def get_agent_message_with_reactions(agent: Agent, dialog):
     """
-    Check if any agent message in a dialog has unread reactions.
+    Find an agent message in a dialog that has unread reactions.
     
     Args:
         agent: The agent instance
         dialog: Telegram dialog object
         
     Returns:
-        True if any agent message has unread reactions, False otherwise
+        Message ID of an agent message with unread reactions, or None if none found
     """
     client = agent.client
     
@@ -90,13 +90,13 @@ async def has_unread_reactions_on_agent_messages(agent: Agent, dialog) -> bool:
                 # Check if this message is from the agent
                 if bool(getattr(message, "out", False)):
                     logger.info(f"[{agent.name}] Found unread reactions on agent message {message.id} in dialog {dialog.id}")
-                    return True
+                    return message.id
         
-        return False
+        return None
         
     except Exception as e:
         logger.debug(f"[{agent.name}] Error checking unread reactions on agent messages in dialog {dialog.id}: {e}")
-        return False
+        return None
 
 
 def load_work_queue():
@@ -179,10 +179,12 @@ async def scan_unread_messages(agent: Agent):
         # Ensure it's an integer (MagicMock returns a mock object if attribute doesn't exist)
         if not isinstance(unread_reactions_count, int):
             unread_reactions_count = 0
-        has_reactions_on_agent_message = False
+        reaction_message_id = None
         if unread_reactions_count > 0:
             # Only check if there are actually unread reactions indicated
-            has_reactions_on_agent_message = await has_unread_reactions_on_agent_messages(agent, dialog)
+            reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
+
+        has_reactions_on_agent_message = reaction_message_id is not None
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
@@ -195,6 +197,7 @@ async def scan_unread_messages(agent: Agent):
                 recipient_id=agent_id,
                 channel_id=dialog.id,
                 is_callout=is_callout or is_marked_unread,
+                reaction_message_id=reaction_message_id,
             )
 
 
@@ -390,6 +393,7 @@ async def run_telegram_loop(agent: Agent):
                             recipient_id=agent.agent_id,
                             channel_id=chat_id,
                             is_callout=True,  # Reactions are treated as callouts
+                            reaction_message_id=msg_id,
                         )
                         # Clear reactions to prevent duplicate tasks when periodic scan runs
                         await client.send_read_acknowledge(chat_id, clear_reactions=True)

@@ -16,6 +16,7 @@ async def build_specific_instructions(
     messages,
     target_msg,
     xsend_intent: str | None = None,
+    reaction_msg=None,
 ) -> str:
     """
     Compute the specific instructions for the system prompt based on context.
@@ -82,8 +83,16 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    # Add target message instruction if provided
-    if target_msg is not None and getattr(target_msg, "id", ""):
+    # Add reaction message instruction if this is a reaction-triggered task
+    if reaction_msg is not None and getattr(reaction_msg, "id", ""):
+        instructions += (
+            "## Reaction Received\n\n"
+            f"Someone reacted to your message with message_id {reaction_msg.id}.\n"
+            "Consider responding to acknowledge the reaction or continue the conversation.\n"
+        )
+        any_instruction = True
+    # Add target message instruction if provided (and not a reaction)
+    elif target_msg is not None and getattr(target_msg, "id", ""):
         instructions += (
             "## Target Message\n\n"
             "You are looking at this conversation because the messsage "
@@ -112,6 +121,7 @@ async def build_complete_system_prompt(
     dialog,
     target_msg,
     xsend_intent: str | None = None,
+    reaction_msg=None,
 ) -> str:
     """
     Build the complete system prompt with all sections.
@@ -138,6 +148,7 @@ async def build_complete_system_prompt(
         messages=messages,
         target_msg=target_msg,
         xsend_intent=xsend_intent,
+        reaction_msg=reaction_msg,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
 

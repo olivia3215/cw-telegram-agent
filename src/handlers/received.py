@@ -556,6 +556,15 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 target_msg = m
                 break
 
+    # Find reaction message if this is a reaction-triggered task
+    reaction_message_id_param = task.params.get("reaction_message_id", None)
+    reaction_msg = None
+    if reaction_message_id_param is not None:
+        for m in messages:
+            if getattr(m, "id", None) == reaction_message_id_param:
+                reaction_msg = m
+                break
+
     # Check for xsend_intent before building prompt so we can customize instructions
     xsend_intent = (task.params.get("xsend_intent") or "").strip()
     xsend_intent_param = xsend_intent if xsend_intent else None
@@ -585,6 +594,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         dialog,
         target_msg,
         xsend_intent_param,
+        reaction_msg=reaction_msg,
     )
 
     # Process message history (only unsummarized messages)
