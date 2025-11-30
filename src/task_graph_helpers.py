@@ -96,6 +96,7 @@ async def insert_received_task_for_conversation(
     is_callout: bool = False,
     xsend_intent: str | None = None,
     summarization_mode: bool = False,
+    reaction_message_id: int | None = None,
 ):
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
@@ -122,6 +123,8 @@ async def insert_received_task_for_conversation(
                     task.params["message_id"] = message_id
                 if xsend_intent is not None:
                     task.params["xsend_intent"] = xsend_intent
+                if reaction_message_id is not None:
+                    task.params["reaction_message_id"] = reaction_message_id
                 logger.info(
                     f"[{recipient_id}] Skipping received task creation - active received task {task.id} already exists for conversation {channel_id}"
                 )
@@ -174,6 +177,8 @@ async def insert_received_task_for_conversation(
         task_params["xsend_intent"] = xsend_intent
     if summarization_mode:
         task_params["summarization_mode"] = True
+    if reaction_message_id is not None:
+        task_params["reaction_message_id"] = reaction_message_id
 
     assert recipient_id
     recipient_name = await get_channel_name(agent, recipient_id)
