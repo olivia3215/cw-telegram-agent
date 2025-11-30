@@ -59,52 +59,43 @@ def _env_flag(name: str, default: bool) -> bool:
     return default
 
 
-async def has_unread_reactions_on_agent_last_message(agent: Agent, dialog) -> bool:
+async def has_unread_reactions_on_agent_messages(agent: Agent, dialog) -> bool:
     """
-    Check if the agent's last message in a dialog has unread reactions.
+    Check if any agent message in a dialog has unread reactions.
     
     Args:
         agent: The agent instance
         dialog: Telegram dialog object
         
     Returns:
-        True if the agent's last message has unread reactions, False otherwise
+        True if any agent message has unread reactions, False otherwise
     """
     client = agent.client
     
     try:
-        # First, get the agent's last message
-        messages = await client.get_messages(dialog.id, limit=5)
-        agent_last_message = None
+        # Get messages with unread reactions (up to 100 most recent)
+        # Using offset_id=0 starts from the most recent messages
+        unread_reactions_result = await client(GetUnreadReactionsRequest(
+            peer=dialog.id,
+            offset_id=0,  # Start from most recent
+            add_offset=0,
+            limit=100,  # Check up to 100 messages with unread reactions
+            max_id=0,  # No upper limit
+            min_id=0   # No lower limit
+        ))
         
-        for msg in messages:
-            if bool(getattr(msg, "out", False)):
-                agent_last_message = msg
-                break
-        
-        # If we found the agent's last message, check if it has unread reactions
-        if agent_last_message:
-            # Check if this specific message has unread reactions
-            unread_reactions_result = await client(GetUnreadReactionsRequest(
-                peer=dialog.id,
-                offset_id=agent_last_message.id,
-                add_offset=0,
-                limit=1,  # Only need to check this one message
-                max_id=agent_last_message.id,
-                min_id=agent_last_message.id
-            ))
-            
-            # If we got a result and it contains our message, it has unread reactions
-            if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
-                for message in unread_reactions_result.messages:
-                    if message.id == agent_last_message.id:
-                        logger.info(f"[{agent.name}] Found unread reactions on agent's last message {agent_last_message.id} in dialog {dialog.id}")
-                        return True
+        # Check if any of the messages with unread reactions are from the agent
+        if unread_reactions_result and hasattr(unread_reactions_result, 'messages'):
+            for message in unread_reactions_result.messages:
+                # Check if this message is from the agent
+                if bool(getattr(message, "out", False)):
+                    logger.info(f"[{agent.name}] Found unread reactions on agent message {message.id} in dialog {dialog.id}")
+                    return True
         
         return False
         
     except Exception as e:
-        logger.debug(f"[{agent.name}] Error checking unread reactions on agent's last message in dialog {dialog.id}: {e}")
+        logger.debug(f"[{agent.name}] Error checking unread reactions on agent messages in dialog {dialog.id}: {e}")
         return False
 
 
@@ -181,8 +172,8 @@ async def scan_unread_messages(agent: Agent):
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
-        # Check if unread reactions are on the agent's last message
-        # Only check if dialog indicates there are unread reactions (avoids expensive get_messages() call)
+        # Check if unread reactions are on any agent message
+        # Only check if dialog indicates there are unread reactions (avoids expensive API call)
         # Note: dialog.dialog.unread_reactions_count may not be available in all Telethon versions
         unread_reactions_count = getattr(dialog.dialog, "unread_reactions_count", 0)
         # Ensure it's an integer (MagicMock returns a mock object if attribute doesn't exist)
@@ -191,7 +182,7 @@ async def scan_unread_messages(agent: Agent):
         has_reactions_on_agent_message = False
         if unread_reactions_count > 0:
             # Only check if there are actually unread reactions indicated
-            has_reactions_on_agent_message = await has_unread_reactions_on_agent_last_message(agent, dialog)
+            has_reactions_on_agent_message = await has_unread_reactions_on_agent_messages(agent, dialog)
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, dialog.id)
