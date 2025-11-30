@@ -183,8 +183,8 @@ async def scan_unread_messages(agent: Agent):
 
         # Check if unread reactions are on the agent's last message
         # Only check if dialog indicates there are unread reactions (avoids expensive get_messages() call)
-        # Note: dialog.unread_reactions_count may not be available in all Telethon versions
-        unread_reactions_count = getattr(dialog, "unread_reactions_count", 0)
+        # Note: dialog.dialog.unread_reactions_count may not be available in all Telethon versions
+        unread_reactions_count = getattr(dialog.dialog, "unread_reactions_count", 0)
         has_reactions_on_agent_message = False
         if unread_reactions_count > 0:
             # Only check if there are actually unread reactions indicated

@@ -26,7 +26,7 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Try cached entity first to avoid GetContactsRequest flood
     entity = await agent.get_cached_entity(channel_id)
     
-    # If entity not in cache, fetch it directly (more efficient than get_dialog which calls iter_dialogs())
+    # If entity not in cache, fetch it directly using get_entity()
     # (safety check is critical, so we need the entity even if it triggers GetContactsRequest)
     if entity is None:
         try:
@@ -49,13 +49,8 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Use get_input_entity with the cached entity to avoid GetContactsRequest flood
     # If entity is None, get_input_entity will try to resolve it (may trigger GetContactsRequest)
     try:
-        if entity:
-            # Use cached entity to create InputPeer directly, avoiding GetContactsRequest
-            input_entity = await client.get_input_entity(entity)
-        else:
-            # Entity not in cache, will need to resolve (may trigger GetContactsRequest)
-            # But at least we tried the cache first
-            input_entity = await client.get_input_entity(channel_id)
+        # Use cached entity if available, otherwise resolve by channel_id
+        input_entity = await client.get_input_entity(entity or channel_id)
         await client(BlockRequest(id=input_entity))
     except ValueError as e:
         # Entity not found - user may have deleted account or we don't have access
