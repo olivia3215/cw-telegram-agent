@@ -64,17 +64,6 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    global_intent = None  # TODO: implement global intent
-    if global_intent:
-        instructions += (
-            "## Global Intent/Planning (`intend`)\n\n"
-            "Begin your response with a `think` task, and react to the following intent.\n\n"
-            "```\n"
-            f"{global_intent}\n"
-            "```\n"
-        )
-        any_instruction = True
-
     if is_conversation_start and not any_instruction:
         instructions += (
             "## New Conversation\n\n"
