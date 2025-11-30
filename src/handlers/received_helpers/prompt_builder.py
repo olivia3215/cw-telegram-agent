@@ -16,6 +16,7 @@ async def build_specific_instructions(
     messages,
     target_msg,
     xsend_intent: str | None = None,
+    reaction_msg=None,
 ) -> str:
     """
     Compute the specific instructions for the system prompt based on context.
@@ -63,17 +64,6 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    global_intent = None  # TODO: implement global intent
-    if global_intent:
-        instructions += (
-            "## Global Intent/Planning (`intend`)\n\n"
-            "Begin your response with a `think` task, and react to the following intent.\n\n"
-            "```\n"
-            f"{global_intent}\n"
-            "```\n"
-        )
-        any_instruction = True
-
     if is_conversation_start and not any_instruction:
         instructions += (
             "## New Conversation\n\n"
@@ -82,13 +72,21 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    # Add target message instruction if provided
+    # Add target message instruction if provided (new messages take priority over reactions)
     if target_msg is not None and getattr(target_msg, "id", ""):
         instructions += (
             "## Target Message\n\n"
             "You are looking at this conversation because the messsage "
             f"with message_id {target_msg.id} was newly received.\n"
             "React to it if appropriate.\n"
+        )
+        any_instruction = True
+    # Add reaction message instruction if this is a reaction-triggered task (and no new message)
+    elif reaction_msg is not None and getattr(reaction_msg, "id", ""):
+        instructions += (
+            "## Reaction Received\n\n"
+            f"Someone reacted to your message with message_id {reaction_msg.id}.\n"
+            "Consider responding to acknowledge the reaction or continue the conversation.\n"
         )
         any_instruction = True
 
@@ -112,6 +110,7 @@ async def build_complete_system_prompt(
     dialog,
     target_msg,
     xsend_intent: str | None = None,
+    reaction_msg=None,
 ) -> str:
     """
     Build the complete system prompt with all sections.
@@ -138,6 +137,7 @@ async def build_complete_system_prompt(
         messages=messages,
         target_msg=target_msg,
         xsend_intent=xsend_intent,
+        reaction_msg=reaction_msg,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
 

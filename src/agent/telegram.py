@@ -91,12 +91,3 @@ class AgentTelegramMixin:
             return False
         return await api_cache.is_blocked(user_id)
 
-    async def get_dialog(self, chat_id: int):
-        """
-        Finds a dialog, preferring the agent's entity cache.
-        """
-        async for dialog in self.client.iter_dialogs():
-            if dialog.id == chat_id:
-                return dialog
-        return None
-
