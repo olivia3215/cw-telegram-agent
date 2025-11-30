@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 
-from telethon import events  # pyright: ignore[reportMissingImports]
+from telethon import events, utils  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
@@ -374,15 +374,9 @@ async def run_telegram_loop(agent: Agent):
                 if not peer_id:
                     return
                 
-                # Get the chat_id from the peer
-                if hasattr(peer_id, "channel_id"):
-                    chat_id = peer_id.channel_id
-                elif hasattr(peer_id, "chat_id"):
-                    chat_id = peer_id.chat_id
-                elif hasattr(peer_id, "user_id"):
-                    chat_id = peer_id.user_id
-                else:
-                    return
+                # Convert peer object to marked ID format (consistent with rest of codebase)
+                # This handles the conversion: channels -> -100<id>, chats -> -<id>, users -> <id>
+                chat_id = utils.get_peer_id(peer_id)
                 
                 # Check if this is a reaction to the agent's message
                 msg_id = getattr(update, "msg_id", None)
@@ -403,6 +397,8 @@ async def run_telegram_loop(agent: Agent):
                             channel_id=chat_id,
                             is_callout=True,  # Reactions are treated as callouts
                         )
+                        # Clear reactions to prevent duplicate tasks when periodic scan runs
+                        await client.send_read_acknowledge(chat_id, clear_reactions=True)
                 except Exception as e:
                     logger.debug(f"[{agent.name}] Error handling reaction update: {e}")
             except Exception as e:
