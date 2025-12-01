@@ -128,7 +128,7 @@ Agents specify their LLM via the `LLM` field in their configuration file.
 
 **Builder: `_build_gemini_contents(...)`**
 
-Emits:
+Located in `llm/gemini.py`. Emits:
 
 1. **Chronological history** (user/model turns with ordered parts)
 2. System instructions are passed separately via `system_instruction` parameter
@@ -137,10 +137,14 @@ Emits:
 
 **Call path: `GeminiLLM.query_structured(...)`**
 
-* Builds contents using `_build_gemini_contents()`
+* Builds contents using `_build_gemini_contents()` (in `llm/gemini.py`)
 * Sends `system_instruction` via Gemini model config; **contents** contain only `user` and `model` turns.
 * Remaps `assistant → model` to satisfy stricter Gemini families.
 * Uses compact rendered media text in parts to keep prompts small.
+
+**System Prompt Building:**
+
+The complete system prompt is built in `handlers/received_helpers/prompt_builder.py` via `build_complete_system_prompt()`, which assembles all components including specific instructions, base system prompt, sticker list, memory content, current time, channel details, conversation summary, and repeated specific instructions.
 
 **Roles:**
 * **user**: all non-agent speakers (group chats may contain many).

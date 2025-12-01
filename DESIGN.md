@@ -7,7 +7,7 @@ This document describes the high-level architecture of the Telegram agent, with 
 1. **Inbound message (Telegram)** → `handlers/received.py`
 2. **Media description injection** (stickers/photos/etc.) → `media_injector.py`
 3. **Conversation assembly** → normalized `ChatMsg` records (one per original message), each with ordered `parts`
-4. **Prompt build** → `build_gemini_contents(...)` (in `llm/prompt_builder.py`)
+4. **Prompt build** → `build_gemini_contents(...)` (in `llm/gemini.py`)
 5. **Gemini call** → `GeminiLLM.query_structured(...)`
 6. **Agent reply** → parse markdown task blocks → schedule tasks in the graph → send via Telegram
 
@@ -465,16 +465,17 @@ The system supports multiple LLM providers (Gemini and Grok) using a structured 
 
 ### System Prompt Assembly Order
 
-The system prompt is built in `handlers/received.py` via `_build_complete_system_prompt()`, which calls `agent.get_system_prompt()` and then appends additional sections. The complete assembly order is:
+The system prompt is built in `handlers/received_helpers/prompt_builder.py` via `build_complete_system_prompt()`, which calls `agent.get_system_prompt()` and then appends additional sections. The complete assembly order is:
 
-1. **Specific Instructions** (`_specific_instructions`)
+1. **Specific Instructions** (`build_specific_instructions()`)
    - Context-specific instructions based on the current situation:
      - Cross-channel trigger (`xsend` intent) - if present
      - Global intent/planning (`intend`) - if present (currently not implemented)
      - New conversation indicator - if this is the start of a conversation
      - Target message instruction - if responding to a specific message
+     - Reaction message instruction - if triggered by a reaction
      - Conversation continuation - default fallback
-   - Location: `handlers/received.py` lines 1084-1091, function `_specific_instructions()` (lines 696-786)
+   - Location: `handlers/received_helpers/prompt_builder.py` function `build_specific_instructions()` (lines 13-100)
 
 2. **Base System Prompt** (`agent.get_system_prompt()`)
    - Implemented in `agent/prompts.py` `_build_system_prompt()` (lines 25-81)
@@ -505,10 +506,10 @@ The system prompt is built in `handlers/received.py` via `_build_complete_system
    - Template substitution is applied across the entire assembled base prompt using `substitute_templates()`
 
 3. **Sticker List**
-   - Built via `_build_sticker_list()` (lines 330-406)
+   - Built via `_build_sticker_list()` (imported from `handlers/received.py`)
    - Lists available stickers with descriptions
    - Includes note about sending stickers seen in chat
-   - Location: `handlers/received.py` lines 1094-1098
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 144-148
 
 4. **Memory Content**
    - Loaded via `agent._load_memory_content(channel_id)`
@@ -523,32 +524,32 @@ The system prompt is built in `handlers/received.py` via `_build_complete_system
        - Agent-specific global episodic memories (visible across all conversations)
        - Formatted as JSON code block
    - **Note:** Channel plans are no longer included in memory content. They are now part of the intentions section (step 2b) and appear before intentions.
-   - Location: `handlers/received.py` lines 1100-1108
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 150-158
 
 5. **Current Time**
    - Formatted as: `# Current Time\n\nThe current time is: {formatted_time}`
    - Uses agent's timezone via `agent.get_current_time()`
    - Format: `%A %B %d, %Y at %I:%M %p %Z`
-   - Location: `handlers/received.py` lines 1110-1114
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 160-164
 
 6. **Channel Details**
    - Details about the conversation partner/channel:
      - For Users: Type, ID, name, username, profile photo, bio, birthday, phone
      - For Groups: Type, ID, title, username, participant count, profile photo, description
      - For Channels: Type, ID, title, username, participant count, admin count, slow mode, linked chat, forum status, profile photo, description
-   - Location: `handlers/received.py` lines 1116-1124, function `_build_channel_details_section()` (lines 1012-1053)
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 166-174, function `_build_channel_details_section()` (imported from `handlers/received_helpers/channel_details.py`)
 
 7. **Conversation Summary**
    - Loaded via `agent._load_summary_content(channel_id, json_format=False)`
    - Contains summaries of past conversation segments
    - Positioned immediately before the conversation history
-   - Location: `handlers/received.py` lines 1127-1132
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 176-182
 
 8. **Specific Instructions (Repeated)**
    - Same content as step 1 (Specific Instructions)
    - Repeated at the end of the system prompt, after the conversation summary
    - Ensures context-aware instructions are fresh in the LLM's attention at the end of the prompt
-   - Location: `handlers/received.py` lines 1134-1136
+   - Location: `handlers/received_helpers/prompt_builder.py` lines 184-186
 
 After the system prompt, the conversation history is added (processed messages in chronological order).
 
