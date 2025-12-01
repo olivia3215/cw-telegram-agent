@@ -40,51 +40,33 @@ Start the agent with your normal workflow (`./run.sh`), then open `http://HOST:P
 
 ## Tabs
 
-- **Media Editor** — The full sticker/media management experience (details below).
-- **xsend** *(coming soon)* — Placeholder for future xsend tooling.
-- **Global Memories**, **Local Memories** *(coming soon)* — Planned memory management views.
-- **Plans**, **Intents**, **Conversations** *(coming soon)* — Planned operational dashboards.
+The admin console provides three main tabs:
 
-Only the Media Editor tab is implemented today; the placeholders ensure navigation is in place for future work.
+- **Media Editor** — The full sticker/media management experience (details below).
+- **Agents** — Agent management with subtabs:
+  - **Parameters** — View and manage agent configuration parameters
+  - **Memories** — View and manage global agent memories (visible across all conversations)
+  - **Intentions** — View and manage agent intentions
+- **Conversations** — Conversation management with subtabs:
+  - **Curated Memories** — View and manage per-user curated memories for specific conversation partners
+  - **Conversation LLM** — Override LLM model for specific conversations
+  - **Plans** — View and manage channel-specific plans
+  - **Conversation** — View conversation history, edit summaries, trigger summarization, and delete telepathic messages (messages starting with `⟦think⟧`, `⟦remember⟧`, `⟦intend⟧`, `⟦plan⟧`, `⟦retrieve⟧`, `⟦summarize⟧`)
+  - **XSend** — Trigger agent action in a conversation with specific instructions
 
 ---
 
 ## Media Editor Tab
 
-The Media Editor provides:
+The Media Editor provides visual browsing, editing, and management of media descriptions across all agents and directories. It includes:
 
-- Visual browsing of curated and cached media across directories
-- Real-time editing of descriptions with autosave and status updates
-- AI regeneration (via the same Gemini-powered pipeline as the agent)
-- Importing entire sticker sets from Telegram
-- Moving or deleting media across directories
-- TGS previews, GIF/video playback, and audio players
+- Visual browsing of curated and cached media
+- Real-time editing with autosave
+- AI-powered description generation
+- Sticker set import from Telegram
+- Media organization (move/delete)
 
-### Directory Types
-
-The dropdown enumerates locations yielded by `CINDY_AGENT_CONFIG_PATH` (`{config_dir}/media/`) and the AI cache (`CINDY_AGENT_STATE_DIR/media`). Because the admin console shares the same in-memory `DirectoryMediaSource` objects as the agent, updates via the UI are immediately visible to running workers.
-
-### Editing Workflow
-
-1. Select a directory.
-2. Pick an item and edit the description textarea.
-3. Autosave triggers after 1s of inactivity; status transitions `Saved → Saving… → Saved` (or error).
-4. Edits mark the item as `curated` and clear previous failure reasons.
-5. Use **Refresh from AI** to trigger on-demand regeneration (consumes description budget).
-
-### Moving / Deleting
-
-- **Move to…** uses shared media sources to relocate JSON + media to the chosen directory.
-- **Delete** removes both JSON and associated media assets, flushing caches across the app.
-
-### Sticker Set Import
-
-1. Choose a destination directory.
-2. Enter a sticker-set short name (e.g. `WendyDancer`).
-3. Click **Import Set** — the console downloads each sticker, persists files, and caches metadata.
-4. Errors or skipped entries are reported inline; imported items appear in the grid once finished.
-
-> The import flow leverages Telegram sessions configured for your agent; run `./telegram_login.sh` ahead of time for any new accounts.
+**See [MEDIA_EDITOR.md](MEDIA_EDITOR.md) for comprehensive Media Editor documentation.**
 
 ---
 

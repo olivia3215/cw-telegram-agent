@@ -249,7 +249,7 @@ Curated descriptions are provided at the global level:
 
 ### Admin Console
 
-The Admin Console serves administrative tooling (currently the Media Editor tab, with additional tabs ready for future features). It runs alongside the main agent so edits appear immediately in live conversations.
+The Admin Console serves administrative tooling with multiple tabs for managing agents, conversations, and media. It runs alongside the main agent so edits appear immediately in live conversations.
 
 **Key environment variables**
 
@@ -281,15 +281,28 @@ The Admin Console serves administrative tooling (currently the Media Editor tab,
    open http://localhost:5001/admin
    ```
 
-On first visit to the console you’ll be prompted to send a six-digit verification code. Click “Send verification code” to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
+On first visit to the console you'll be prompted to send a six-digit verification code. Click "Send verification code" to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
-The Media Editor tab continues to provide:
+The Admin Console provides three main tabs:
 
-- **Browsing and editing** media descriptions across all agents and directories
-- **Importing sticker sets** from Telegram with automatic AI-generated descriptions
-- **Curating descriptions** by manually editing AI-generated content
-- **Managing media** by moving items between directories or deleting unwanted content
-- **Refreshing descriptions** using the AI pipeline to generate new versions
+- **Media Editor** — Browse, edit, import, and manage media descriptions:
+  - Browse and edit media descriptions across all agents and directories
+  - Import sticker sets from Telegram with automatic AI-generated descriptions
+  - Curate descriptions by manually editing AI-generated content
+  - Move items between directories or delete unwanted content
+  - Refresh descriptions using the AI pipeline to generate new versions
+
+- **Agents** — Manage agent configuration and data:
+  - View and manage agent parameters
+  - View and manage global agent memories (visible across all conversations)
+  - View and manage agent intentions
+
+- **Conversations** — Manage conversation-specific data:
+  - View and manage per-user curated memories for specific conversation partners
+  - Override LLM model for specific conversations
+  - View and manage channel-specific plans
+  - View conversation history, edit summaries, trigger summarization, and delete telepathic messages (internal agent messages visible in telepathic channels)
+  - Trigger agent action in a conversation with specific instructions
 
 **See [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md) for comprehensive documentation.**
 
