@@ -261,6 +261,38 @@ class WorkQueue:
             for i in range(len(self._task_graphs)):
                 index = (start + i) % len(self._task_graphs)
                 graph = self._task_graphs[index]
+                
+                # Skip graphs for agents that are asleep (responsiveness 0)
+                # Exception: xsend tasks bypass schedule delays and are processed immediately
+                agent_id = graph.context.get("agent_id")
+                if agent_id:
+                    try:
+                        from agent import get_agent_for_id
+                        from schedule import get_responsiveness
+                        agent = get_agent_for_id(agent_id)
+                        if agent and agent.daily_schedule_description:
+                            schedule = agent._load_schedule()
+                            responsiveness = get_responsiveness(schedule, now)
+                            if responsiveness <= 0:
+                                # Check if there are any xsend-triggered received tasks
+                                # xsend tasks bypass schedule delays and should be processed immediately
+                                has_xsend_task = False
+                                for task in graph.tasks:
+                                    if (
+                                        task.type == "received"
+                                        and not task.status.is_completed()
+                                        and task.params.get("xsend_intent")
+                                    ):
+                                        has_xsend_task = True
+                                        break
+                                
+                                if not has_xsend_task:
+                                    # Agent is asleep and no xsend tasks, skip this graph
+                                    continue
+                    except Exception:
+                        # If we can't check responsiveness, proceed normally
+                        pass
+                
                 tasks = graph.pending_tasks(now)
                 if tasks:
                     self._last_index = (index + 1) % len(self._task_graphs)

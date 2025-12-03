@@ -7,55 +7,12 @@
 Agent management routes for the admin console.
 """
 
-import json
 import logging
-import os
-import random
-import time
-from datetime import UTC, datetime
 from pathlib import Path
 
-# Import asyncio only when needed to avoid event loop issues in Flask threads
-try:
-    import asyncio
-except ImportError:
-    asyncio = None
+from flask import Blueprint, jsonify  # pyright: ignore[reportMissingImports]
 
-from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
-from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissingImports]
-
-import copy
-import json as json_lib
-
-from agent import Agent
-from clock import clock
-from config import STATE_DIRECTORY
-from llm.media_helper import get_media_llm
-from memory_storage import (
-    MemoryStorageError,
-    load_property_entries,
-    mutate_property_entries,
-    write_property_entries,
-)
-from task_graph import WorkQueue
-from task_graph_helpers import insert_received_task_for_conversation
-from telegram_util import get_channel_name
-from utils import normalize_peer_id
-from admin_console.helpers import (
-    get_agent_by_name,
-    get_default_llm,
-    get_available_llms,
-    get_work_queue,
-)
 from register_agents import register_all_agents, all_agents as get_all_agents
-from handlers.received import _format_message_reactions, trigger_summarization_directly
-from telepathic import TELEPATHIC_PREFIXES
-from media.media_injector import format_message_for_prompt
-from media.media_source import get_default_media_source_chain
-from telegram_download import download_media_bytes
-from telegram_media import iter_media_parts
-from flask import Response
-from media.mime_utils import detect_mime_type_from_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +22,6 @@ agents_bp = Blueprint("agents", __name__)
 # Import and register submodule routes
 # Use importlib to load from agents/ subdirectory (avoiding conflict with agents.py module name)
 import importlib.util
-from pathlib import Path
 
 def _load_submodule(module_name: str):
     """Load a submodule from agents/ subdirectory."""

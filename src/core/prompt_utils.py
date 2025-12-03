@@ -13,7 +13,7 @@ def substitute_templates(text: str, agent_name: str, channel_name: str) -> str:
     Apply template substitutions to text.
     
     Replaces common template variables:
-    - {{AGENT_NAME}}, {{character}}, {character}, {{char}}, {char} → agent_name
+    - {{AGENT_NAME}}, {AGENT_NAME}, {{character}}, {character}, {{char}}, {char} → agent_name
     - {{user}}, {user} → channel_name
     
     Args:
@@ -26,6 +26,7 @@ def substitute_templates(text: str, agent_name: str, channel_name: str) -> str:
     """
     # Agent name substitutions
     text = text.replace("{{AGENT_NAME}}", agent_name)
+    text = text.replace("{AGENT_NAME}", agent_name)
     text = text.replace("{{character}}", agent_name)
     text = text.replace("{character}", agent_name)
     text = text.replace("{{char}}", agent_name)

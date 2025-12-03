@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels, TELEPATHIC_PREFIXES
+from telepathic import is_telepath, reload_telepathic_channels, load_telepathic_channels, TELEPATHIC_PREFIXES
 from task_graph import TaskGraph, TaskNode
 
 
@@ -19,7 +19,7 @@ class TestTelepathicConfiguration:
     def test_load_telepathic_channels_empty_config(self):
         """Test loading when no config directories exist."""
         with patch('telepathic.CONFIG_DIRECTORIES', []):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == set()
 
     def test_load_telepathic_channels_no_telepaths_file(self, tmp_path):
@@ -28,7 +28,7 @@ class TestTelepathicConfiguration:
         config_dir.mkdir()
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == set()
 
     def test_load_telepathic_channels_valid_file(self, tmp_path):
@@ -50,7 +50,7 @@ Some other content that should be ignored.
         """)
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == {123456789, -987654321, 555666777}
 
     def test_load_telepathic_channels_multiple_config_dirs(self, tmp_path):
@@ -66,7 +66,7 @@ Some other content that should be ignored.
         telepaths2.write_text("- 333\n- 444")
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config1), str(config2)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == {111, 222, 333, 444}
 
     def test_load_telepathic_channels_invalid_numbers(self, tmp_path):
@@ -84,7 +84,7 @@ Some other content that should be ignored.
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
             with patch('telepathic.logger') as mock_logger:
-                channels = _load_telepathic_channels()
+                channels = load_telepathic_channels()
                 assert channels == {123, 456, -789}
                 # Should log warning about invalid number
                 mock_logger.warning.assert_called()
@@ -206,7 +206,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -246,7 +246,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -297,7 +297,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
 
-        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+        with patch("telepathic.is_telepath") as mock_is_telepath, patch(
             "handlers.telepathic.is_telepath"
         ) as mock_telepath:
             mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
@@ -340,7 +340,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
 
-        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+        with patch("telepathic.is_telepath") as mock_is_telepath, patch(
             "handlers.telepathic.is_telepath"
         ) as mock_telepath:
             mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
@@ -386,7 +386,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -409,7 +409,7 @@ class TestTelepathicMessageHandling:
             graph = TaskGraph(id="g1", context={}, tasks=[])
 
             with patch(
-                "handlers.received._fetch_url",
+                    "handlers.received.fetch_url",
                 new=AsyncMock(return_value=("https://example.com/page1", "<html>1</html>")),
             ):
                 with patch(
@@ -417,14 +417,14 @@ class TestTelepathicMessageHandling:
                     return_value=TaskNode(id="wait-1", type="wait", params={}, depends_on=[]),
                 ):
                     with pytest.raises(Exception):
-                        await hr._process_retrieve_tasks(
+                        await hr.process_retrieve_tasks(
                             tasks,
                             agent=mock_agent,
                             channel_id=456,
                             graph=graph,
                             retrieved_urls=set(),
                             retrieved_contents=[],
-                            fetch_url_fn=hr._fetch_url,
+                            fetch_url_fn=hr.fetch_url,
                         )
 
             mock_agent.client.send_message.assert_called_once_with(
@@ -448,7 +448,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath', return_value=False), patch(
+        with patch('telepathic.is_telepath', return_value=False), patch(
             'handlers.telepathic.is_telepath', return_value=False
         ):
             tasks = await parse_llm_reply(
@@ -476,7 +476,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Both channel and agent are telepathic
@@ -499,7 +499,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_telepathic_messages_from_history(self):
         """Test that telepathic messages are filtered from message history."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -544,7 +544,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_multiple_telepathic_message_types(self):
         """Test filtering of different types of telepathic messages."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -594,7 +594,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_summarize_telepathic_messages(self):
         """Test that ⟦summarize⟧ messages are filtered from non-telepathic agents."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -637,7 +637,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_media_messages_not_filtered(self):
         """Test that ⟦media⟧ messages are NOT filtered from non-telepathic agents (they're legitimate media descriptions)."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgMediaPart
         
         mock_agent = Mock()
@@ -759,7 +759,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_marks_summarize_silent_in_summarization_mode(self):
         """Test that parse_llm_reply marks summarize tasks as silent when summarization_mode=True."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(
@@ -800,7 +804,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_normal_summarize_not_silent(self):
         """Test that parse_llm_reply does not mark summarize tasks as silent in normal mode."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(
@@ -912,7 +920,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_marks_think_silent_in_summarization_mode(self):
         """Test that parse_llm_reply marks think tasks as silent when summarization_mode=True."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(

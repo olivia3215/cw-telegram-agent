@@ -5,7 +5,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import TypedDict
+from typing import Any, TypedDict
 
 # --- Type definitions for message parts and chat messages ---
 
@@ -59,6 +59,45 @@ class ChatMsg(TypedDict, total=False):
     is_agent: bool
     msg_id: str | None
     ts_iso: str | None
+
+
+# --- Utility functions ---
+
+
+def extract_gemini_response_text(response: Any) -> str:
+    """
+    Extract text from a Gemini response object, handling various response structures.
+    
+    This function handles different Gemini API response formats:
+    - Direct text attribute: response.text
+    - Candidates with text: response.candidates[0].text
+    - Candidates with content parts: response.candidates[0].content.parts[0].text
+    
+    Args:
+        response: Gemini API response object
+        
+    Returns:
+        Extracted text string, or empty string if no text can be extracted
+    """
+    if response is None:
+        return ""
+    
+    if hasattr(response, "text") and isinstance(response.text, str):
+        return response.text
+    
+    if hasattr(response, "candidates") and response.candidates:
+        cand = response.candidates[0]
+        t = getattr(cand, "text", None)
+        if isinstance(t, str):
+            return t or ""
+        else:
+            content = getattr(cand, "content", None)
+            if content and getattr(content, "parts", None):
+                first_part = content.parts[0]
+                if isinstance(first_part, dict) and "text" in first_part:
+                    return str(first_part["text"] or "")
+    
+    return ""
 
 
 # --- Base LLM class ---
@@ -153,5 +192,34 @@ class LLM(ABC):
             mime_type: Optional MIME type of the audio
             duration: Audio duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
+        """
+        ...
+
+    @abstractmethod
+    async def query_with_json_schema(
+        self,
+        *,
+        system_prompt: str,
+        json_schema: dict,
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Query the LLM with a JSON schema constraint on the response.
+        
+        This method sends a system prompt and expects a JSON response that matches
+        the provided JSON schema. The response is returned as a JSON string.
+        
+        Args:
+            system_prompt: The system prompt/instruction to send to the LLM
+            json_schema: JSON schema dictionary that constrains the response format
+            model: Optional model name override
+            timeout_s: Optional timeout in seconds for the request
+        
+        Returns:
+            JSON string response that matches the schema
+        
+        Raises:
+            RuntimeError: If the LLM doesn't support JSON schema or returns invalid response
         """
         ...

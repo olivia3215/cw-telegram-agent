@@ -19,7 +19,7 @@ _telepathic_channels: Set[int] = set()
 _telepathic_cache_loaded = False
 
 
-def _load_telepathic_channels() -> Set[int]:
+def load_telepathic_channels() -> Set[int]:
     """
     Load telepathic channel IDs from all configuration directories.
     
@@ -78,7 +78,7 @@ def is_telepath(channel_id: int) -> bool:
     global _telepathic_channels, _telepathic_cache_loaded
     
     if not _telepathic_cache_loaded:
-        _telepathic_channels = _load_telepathic_channels()
+        _telepathic_channels = load_telepathic_channels()
         _telepathic_cache_loaded = True
         
     return channel_id in _telepathic_channels
@@ -91,6 +91,6 @@ def reload_telepathic_channels():
     """
     global _telepathic_channels, _telepathic_cache_loaded
     
-    _telepathic_channels = _load_telepathic_channels()
+    _telepathic_channels = load_telepathic_channels()
     _telepathic_cache_loaded = True
     logger.info("Reloaded telepathic channels configuration")

@@ -7,6 +7,7 @@
 Memory and storage loading for Agent.
 """
 
+import copy
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -91,4 +92,74 @@ class AgentStorageMixin:
     def get_channel_llm_model(self, channel_id: int) -> str | None:
         """Get the LLM model name for a specific channel from the channel memory file."""
         return self._storage.get_channel_llm_model(channel_id)
+
+    def _load_schedule(self) -> dict | None:
+        """
+        Load agent's schedule from state directory with caching.
+        
+        The schedule is cached in memory and only reloaded if:
+        - Cache is empty (first load)
+        - Schedule file modification time has changed
+        - Cache was explicitly invalidated
+        
+        Returns a deep copy of the schedule to prevent cache mutation.
+        If _save_schedule() fails, the cache remains unchanged and will be
+        reloaded from disk on the next access.
+        
+        Returns:
+            Deep copy of schedule dictionary or None if schedule doesn't exist
+        """
+        from pathlib import Path
+        from config import STATE_DIRECTORY
+        
+        schedule_file = Path(STATE_DIRECTORY) / self.name / "schedule.json"
+        
+        # Check if file exists
+        if not schedule_file.exists():
+            self._schedule_cache = None
+            self._schedule_cache_mtime = None
+            return None
+        
+        # Get file modification time
+        try:
+            current_mtime = schedule_file.stat().st_mtime
+        except OSError:
+            # File doesn't exist or can't be accessed
+            self._schedule_cache = None
+            self._schedule_cache_mtime = None
+            return None
+        
+        # Check if cache is valid
+        if (
+            self._schedule_cache is not None
+            and self._schedule_cache_mtime is not None
+            and self._schedule_cache_mtime == current_mtime
+        ):
+            # Cache is valid, return a deep copy to prevent cache mutation
+            # If _save_schedule() fails, the cache remains unchanged
+            return copy.deepcopy(self._schedule_cache)
+        
+        # Load from disk
+        schedule = self._storage.load_schedule()
+        
+        # Update cache
+        self._schedule_cache = schedule
+        self._schedule_cache_mtime = current_mtime
+        
+        # Return a deep copy to prevent cache mutation
+        # If _save_schedule() fails, the cache remains unchanged
+        return copy.deepcopy(schedule) if schedule is not None else None
+
+    def _save_schedule(self, schedule: dict) -> None:
+        """
+        Save agent's schedule to state directory and invalidate cache.
+        
+        Args:
+            schedule: Schedule dictionary to save
+        """
+        self._storage.save_schedule(schedule)
+        
+        # Invalidate cache - it will be reloaded on next access
+        self._schedule_cache = None
+        self._schedule_cache_mtime = None
 

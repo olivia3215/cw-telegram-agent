@@ -49,30 +49,8 @@ _TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 from .utils import format_string_for_logging as _format_string_for_logging
 
 
-def _extract_response_text(response: Any) -> str:
-    """
-    Extract text from a Gemini response object, handling various response structures.
-    Returns empty string if no text can be extracted.
-    """
-    if response is None:
-        return ""
-    
-    if hasattr(response, "text") and isinstance(response.text, str):
-        return response.text
-    
-    if hasattr(response, "candidates") and response.candidates:
-        cand = response.candidates[0]
-        t = getattr(cand, "text", None)
-        if isinstance(t, str):
-            return t or ""
-        else:
-            content = getattr(cand, "content", None)
-            if content and getattr(content, "parts", None):
-                first_part = content.parts[0]
-                if isinstance(first_part, dict) and "text" in first_part:
-                    return str(first_part["text"] or "")
-    
-    return ""
+# Import shared utility function
+from llm.base import extract_gemini_response_text as _extract_response_text
 
 
 class GeminiLLM(LLM):
@@ -785,12 +763,22 @@ class GeminiLLM(LLM):
                 contents.append({"role": role, "parts": parts})
                 last_message = m  # Track the last message that had parts
 
-        # Ensure the last message is a user turn to comply with Gemini's requirements
-        if last_message is None or bool(last_message.get("is_agent")):
+        # Ensure the last message is a user turn to comply with Gemini's requirements.
+        # Gemini's generate_content API requires conversations to end with a user turn.
+        # If history is empty or ends with an agent turn, add a user turn.
+        # Use ⟦special⟧ prefix so agent prompts know this is not actual user input.
+        if last_message is None:
+            # Empty history - add a user turn requesting action
+            contents.append({
+                "role": "user",
+                "parts": [self._mk_text_part("⟦special⟧ Please respond to the instructions provided.")]
+            })
+        elif bool(last_message.get("is_agent")):
+            # Last message was from agent - add a continuation prompt
             contents.append({
                 "role": "user",
                 "parts": [self._mk_text_part("⟦special⟧ The last turn was an agent turn.")]
-                })
+            })
 
         return contents
 
@@ -827,3 +815,95 @@ class GeminiLLM(LLM):
             timeout_s=timeout_s,
             system_instruction=system_prompt,
         )
+
+    async def query_with_json_schema(
+        self,
+        *,
+        system_prompt: str,
+        json_schema: dict,
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Query Gemini with a JSON schema constraint on the response.
+        
+        Args:
+            system_prompt: The system prompt/instruction to send to Gemini
+            json_schema: JSON schema dictionary that constrains the response format
+            model: Optional model name override
+            timeout_s: Optional timeout in seconds for the request
+        
+        Returns:
+            JSON string response that matches the schema
+        """
+        try:
+            client = getattr(self, "client", None)
+            if client is None:
+                raise RuntimeError("Gemini client not initialized")
+
+            model_name = model or self.model_name
+            config = GenerateContentConfig(
+                system_instruction=system_prompt,
+                safety_settings=self.safety_settings,
+                response_mime_type="application/json",
+                response_json_schema=copy.deepcopy(json_schema),
+            )
+
+            # Optional comprehensive logging for debugging
+            if GEMINI_DEBUG_LOGGING:
+                logger.info("=== GEMINI_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
+                logger.info(f"Model: {model_name}")
+                logger.info(f"System Prompt:\n{_format_string_for_logging(system_prompt)}")
+                logger.info(f"JSON Schema:\n{json.dumps(json_schema, indent=2)}")
+                logger.info("=== END GEMINI_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
+
+            # Gemini's generate_content API requires conversations to end with a user turn.
+            # Since we're not passing any conversation history, add a special user turn
+            # (same pattern as _build_gemini_contents when history is empty).
+            contents = [{
+                "role": "user",
+                "parts": [{"text": "⟦special⟧ Please respond to the instructions provided."}]
+            }]
+
+            import asyncio
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
+                contents=contents,
+                config=config,
+            )
+
+            # Check for prohibited content
+            if (
+                response is not None
+                and hasattr(response, "candidates")
+                and response.candidates
+            ):
+                cand = response.candidates[0]
+                if hasattr(cand, "finish_reason") and cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                    logger.warning("Gemini returned prohibited content for JSON schema query")
+                    raise Exception("Temporary error: prohibited content - will retry")
+
+            # Extract text from response
+            text = _extract_response_text(response)
+
+            # Optional comprehensive logging for debugging
+            if GEMINI_DEBUG_LOGGING:
+                logger.info("=== GEMINI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
+                if response is not None:
+                    try:
+                        logger.info(f"Response JSON: {json.dumps(response, indent=2, default=str)}")
+                    except Exception as e:
+                        logger.info(f"Failed to serialize response to JSON: {e}")
+                        logger.info(f"Response object: {response}")
+                    formatted_text = _format_string_for_logging(text)
+                    logger.info(f"Response string:\n{formatted_text}")
+                logger.info("=== END GEMINI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
+
+            if text and not text.startswith("⟦"):
+                return text
+
+            raise RuntimeError("No valid response from Gemini")
+        except Exception as e:
+            logger.error("Gemini JSON schema query exception: %s", e)
+            raise

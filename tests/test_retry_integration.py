@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from google.genai.types import FinishReason
-from handlers.received import _run_llm_with_retrieval
+from handlers.received_helpers.llm_query import run_llm_with_retrieval as _run_llm_with_retrieval
 from llm.gemini import GeminiLLM
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from tick import run_one_tick
@@ -148,6 +148,10 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
+    # Set daily_schedule_description to None to prevent responsiveness delays in tests
+    mock_agent.daily_schedule_description = None
+    # Mock _load_schedule to return None (no schedule)
+    mock_agent._load_schedule = MagicMock(return_value=None)
     # Make get_cached_entity async and return the mock entity
     mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
@@ -162,11 +166,11 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
     )
     monkeypatch.setattr("handlers.received.is_group_or_channel", lambda x: False)
     monkeypatch.setattr(
-        "handlers.received._build_complete_system_prompt",
+        "handlers.received.build_complete_system_prompt",
         AsyncMock(return_value="System prompt"),
     )
     monkeypatch.setattr(
-        "handlers.received._process_message_history",
+        "handlers.received.process_message_history",
         AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
@@ -245,6 +249,10 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
+    # Set daily_schedule_description to None to prevent responsiveness delays in tests
+    mock_agent.daily_schedule_description = None
+    # Mock _load_schedule to return None (no schedule)
+    mock_agent._load_schedule = MagicMock(return_value=None)
     # Make get_cached_entity async and return the mock entity
     mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
@@ -263,18 +271,18 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
     )
     monkeypatch.setattr("handlers.received.is_group_or_channel", lambda x: False)
     monkeypatch.setattr(
-        "handlers.received._build_complete_system_prompt",
+        "handlers.received.build_complete_system_prompt",
         AsyncMock(return_value="System prompt"),
     )
     monkeypatch.setattr(
-        "handlers.received._process_message_history",
+        "handlers.received.process_message_history",
         AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         "handlers.received._schedule_tasks",
         AsyncMock(),
     )
-    monkeypatch.setattr("handlers.received._fetch_url", mock_fetch_url)
+    monkeypatch.setattr("handlers.received.fetch_url", mock_fetch_url)
 
     # Run one tick - should fetch URLs, store them, and trigger retry
     await run_one_tick()
@@ -377,6 +385,10 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
+    # Set daily_schedule_description to None to prevent responsiveness delays in tests
+    mock_agent.daily_schedule_description = None
+    # Mock _load_schedule to return None (no schedule)
+    mock_agent._load_schedule = MagicMock(return_value=None)
     # Make get_cached_entity async and return the mock entity
     mock_agent.get_cached_entity = AsyncMock(return_value=mock_entity)
     # Mock get_channel_llm_model to return None (no channel-specific model)
@@ -401,11 +413,11 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
     )
     monkeypatch.setattr("handlers.received.is_group_or_channel", lambda x: False)
     monkeypatch.setattr(
-        "handlers.received._build_complete_system_prompt",
+        "handlers.received.build_complete_system_prompt",
         AsyncMock(return_value="System prompt"),
     )
     monkeypatch.setattr(
-        "handlers.received._process_message_history",
+        "handlers.received.process_message_history",
         AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(

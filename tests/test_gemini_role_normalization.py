@@ -139,8 +139,8 @@ async def test_empty_conversation_ends_with_user_role():
     assert len(sent_contents) == 1
     assert sent_contents[0]["role"] == "user"
 
-    # The content should be the special message
+    # The content should be the special message (empty history case)
     parts = sent_contents[0]["parts"]
     assert len(parts) == 1
     assert parts[0]["text"].startswith("⟦special⟧")
-    assert "The last turn was an agent turn" in parts[0]["text"]
+    assert "Please respond to the instructions provided" in parts[0]["text"]

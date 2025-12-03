@@ -9,7 +9,7 @@ from telethon.tl.functions.messages import GetFullChatRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import Birthday, Channel, Chat, ChatPhotoEmpty, User
 
-from handlers import received
+from handlers.received_helpers.channel_details import build_channel_details_section
 
 
 class FakeMediaChain:
@@ -53,7 +53,7 @@ async def test_channel_details_user():
 
     media_chain = FakeMediaChain({"photo123": "a smiling portrait"})
 
-    section = await received._build_channel_details_section(
+    section = await build_channel_details_section(
         agent=agent,
         channel_id=555,
         dialog=user,
@@ -98,7 +98,7 @@ async def test_channel_details_group():
 
     agent = SimpleNamespace(client=client)
 
-    section = await received._build_channel_details_section(
+    section = await build_channel_details_section(
         agent=agent,
         channel_id=202,
         dialog=chat,
@@ -148,7 +148,7 @@ async def test_channel_details_supergroup():
 
     agent = SimpleNamespace(client=client)
 
-    section = await received._build_channel_details_section(
+    section = await build_channel_details_section(
         agent=agent,
         channel_id=303,
         dialog=channel,

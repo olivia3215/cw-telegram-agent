@@ -5,8 +5,6 @@
 
 import json
 import logging
-import uuid
-from dataclasses import dataclass
 from datetime import UTC, timedelta
 
 import httpx  # pyright: ignore[reportMissingImports]
@@ -14,64 +12,42 @@ import httpx  # pyright: ignore[reportMissingImports]
 from agent import get_agent_for_id
 from clock import clock
 from config import CONFIG_DIRECTORIES, FETCHED_RESOURCE_LIFETIME_SECONDS
-import handlers.telepathic as telepathic
-from handlers.registry import dispatch_immediate_task, register_task_handler
+from handlers.registry import register_task_handler
 from pathlib import Path
+from schedule import get_responsiveness, get_wake_time, days_remaining
+from schedule_extension import extend_schedule
 from utils import (
-    coerce_to_int,
-    coerce_to_str,
-    format_username,
-    get_channel_name,
     get_dialog_name,
     is_group_or_channel,
-    extract_user_id_from_peer,
-    extract_sticker_name_from_document,
-    get_custom_emoji_name,
-    strip_json_fence,
-    normalize_list,
 )
-from llm.base import MsgPart, MsgTextPart
-from handlers.received_helpers.channel_details import _build_channel_details_section
 from handlers.received_helpers.message_processing import (
-    ProcessedMessage,
-    _format_message_reactions,
-    process_message_history as _process_message_history,
+    process_message_history,
 )
 from handlers.received_helpers.llm_query import (
-    get_channel_llm as _get_channel_llm,
-    run_llm_with_retrieval as _run_llm_with_retrieval,
+    get_channel_llm,
+    run_llm_with_retrieval,
 )
 from handlers.received_helpers.prompt_builder import (
-    build_complete_system_prompt as _build_complete_system_prompt,
-    build_specific_instructions as _specific_instructions,
+    build_complete_system_prompt,
 )
 from handlers.received_helpers.summarization import (
-    get_highest_summarized_message_id as _get_highest_summarized_message_id,
-    count_unsummarized_messages as _count_unsummarized_messages,
-    extract_message_dates as _extract_message_dates,
-    perform_summarization as _perform_summarization,
-    trigger_summarization_directly as _trigger_summarization_directly,
+    get_highest_summarized_message_id,
+    count_unsummarized_messages,
+    perform_summarization,
 )
 from handlers.received_helpers.task_parsing import (
-    TransientLLMResponseError,
     parse_llm_reply_from_json,
-    dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
-    assign_generated_identifiers as _assign_generated_identifiers,
-    execute_immediate_tasks as _execute_immediate_tasks,
-    process_retrieve_tasks as _process_retrieve_tasks,
+    dedupe_tasks_by_identifier,
+    assign_generated_identifiers,
+    execute_immediate_tasks,
+    process_retrieve_tasks,
 )
-
-# Re-export for backward compatibility (for admin_console and tests)
-# These functions are imported above and will be available as received._format_message_reactions, etc.
 from media.media_injector import (
-    format_message_for_prompt,
     inject_media_descriptions,
 )
 from media.media_source import get_default_media_source_chain
 from task_graph import TaskGraph, TaskNode, TaskStatus
 from task_graph_helpers import make_wait_task
-from telegram_media import get_unique_id
-from telepathic import is_telepath, TELEPATHIC_PREFIXES
 # Telegram type imports moved to handlers.received_helpers.channel_details
 
 logger = logging.getLogger(__name__)
@@ -120,7 +96,7 @@ def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
     return None
 
 
-async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
+async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
     
@@ -151,6 +127,27 @@ async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
                 f"Invalid file URL: filename must not contain '/' or '\\' and must not be empty",
             )
         
+        # Special handling for schedule.json
+        if filename == "schedule.json":
+            if not agent:
+                return (url, "No agent available to retrieve schedule.")
+            if not agent.daily_schedule_description:
+                return (url, "Agent does not have a daily schedule configured.")
+            try:
+                schedule = agent._load_schedule()
+                if schedule is None:
+                    return (url, "No schedule found. The schedule may not have been created yet.")
+                content = json.dumps(schedule, indent=2, ensure_ascii=False)
+                return (url, content)
+            except Exception as e:
+                logger.exception(f"Error reading schedule: {e}")
+                error_type = type(e).__name__
+                return (
+                    url,
+                    f"Error reading schedule: {error_type}: {str(e)}",
+                )
+        
+        # Handle other file: URLs (docs files)
         agent_name = agent.name if agent else None
         file_path = _find_file_in_docs(filename, agent_name)
         
@@ -257,118 +254,6 @@ def is_retryable_llm_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in retryable_indicators)
 
 
-async def _is_sticker_sendable(agent, doc) -> bool:
-    """
-    Test if a sticker can be sent by checking for premium requirements.
-
-    According to Telegram API documentation, premium stickers are identified by
-    the presence of a videoSize of type=f in the sticker's main document.
-
-    Args:
-        agent: Agent instance
-        doc: Sticker document from Telegram API
-
-    Returns:
-        True if sticker can be sent, False if it requires premium
-    """
-    try:
-        # Check for premium indicator: videoSize with type=f
-        video_thumbs = getattr(doc, "video_thumbs", None)
-        if video_thumbs:
-            for video_size in video_thumbs:
-                video_type = getattr(video_size, "type", None)
-                if video_type == "f":
-                    return False
-
-        # No premium indicators found
-        return True
-
-    except Exception as e:
-        logger.exception(f"Error checking sticker sendability: {e}")
-        return True
-
-
-async def _build_sticker_list(agent, media_chain) -> str | None:
-    """
-    Build a formatted list of available stickers with descriptions.
-    Filters out premium stickers that the agent cannot send.
-
-    Args:
-        agent: Agent instance with configured stickers
-        media_chain: Media source chain for description lookups
-
-    Returns:
-        Formatted sticker list string or None if no stickers available
-    """
-    if not agent.stickers:
-        return None
-
-    lines: list[str] = []
-    filtered_count = 0
-
-    # Check if premium filtering is enabled (based on agent's premium status)
-    filter_premium = getattr(agent, "filter_premium_stickers", True)
-
-    if filter_premium:
-        logger.debug("Premium sticker filtering enabled for non-premium agent")
-    else:
-        logger.debug("Premium sticker filtering disabled for premium agent")
-
-    try:
-        for set_short, name in sorted(agent.stickers.keys()):
-            try:
-                if set_short == "AnimatedEmojies":
-                    # Don't describe these - they are just animated emojis
-                    desc = None
-                else:
-                    # Get the document from the configured stickers
-                    doc = agent.stickers.get((set_short, name))
-                    if doc:
-                        # Check if sticker is sendable (not premium) if filtering is enabled
-                        if filter_premium and not await _is_sticker_sendable(
-                            agent, doc
-                        ):
-                            filtered_count += 1
-                            continue
-
-                        # Get unique_id from document
-                        _uid = get_unique_id(doc)
-
-                        # Use agent's media source chain
-                        cache_record = await media_chain.get(
-                            unique_id=_uid,
-                            agent=agent,
-                            doc=doc,
-                            kind="sticker",
-                            sticker_set_name=set_short,
-                            sticker_name=name,
-                        )
-                        desc = cache_record.get("description") if cache_record else None
-                    else:
-                        desc = None
-            except Exception as e:
-                logger.exception(f"Failed to process sticker {set_short}::{name}: {e}")
-                desc = None
-            if desc:
-                lines.append(f"- {set_short} :: {name} - {desc}")
-            else:
-                lines.append(f"- {set_short} :: {name}")
-
-        if filtered_count > 0:
-            logger.debug(f"Filtered out {filtered_count} premium stickers")
-
-    except Exception as e:
-        # If anything unexpected occurs, fall back to names-only list
-        logger.warning(
-            f"Failed to build sticker descriptions, falling back to names-only: {e}"
-        )
-        lines = [f"- {s} :: {n}" for (s, n) in sorted(agent.stickers.keys())]
-
-    return "\n".join(lines) if lines else None
-
-
-# _strip_json_fence and _normalize_list moved to utils.formatting
-# Imported above as strip_json_fence and normalize_list
 
 
 # Task parsing functions moved to handlers.received_helpers.task_parsing
@@ -378,6 +263,43 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
 
 
 # LLM query functions moved to handlers.received_helpers.llm_query
+
+
+def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
+    """
+    Calculate the responsiveness-based delay in seconds based on the agent's schedule.
+    
+    Uses linear interpolation: 4 seconds at responsiveness 100, 120 seconds (2 minutes) at responsiveness 1.
+    
+    Args:
+        agent: Agent instance
+        schedule: Schedule dictionary
+        
+    Returns:
+        Delay in seconds (0 if no delay needed)
+    """
+    responsiveness = get_responsiveness(schedule)
+    wake_time = get_wake_time(schedule)
+    
+    if responsiveness <= 0 and wake_time:
+        # Agent is asleep, delay until wake time
+        now = clock.now(UTC)
+        delay_seconds = max(0, int((wake_time - now).total_seconds()))
+        if delay_seconds > 0:
+            logger.info(
+                f"[{agent.name}] Agent is asleep, delaying received task by {delay_seconds}s until wake time"
+            )
+        return delay_seconds
+    
+    # Linear interpolation: 4 seconds at responsiveness 100, 120 seconds at responsiveness 1
+    # Formula: delay = 4 + (100 - responsiveness) * (120 - 4) / (100 - 1)
+    # Simplified: delay = 4 + (100 - responsiveness) * 116 / 99
+    delay_seconds = max(4, int(4 + (100 - responsiveness) * 116 / 99))
+    
+    logger.debug(
+        f"[{agent.name}] Agent responsiveness {responsiveness}, delaying {delay_seconds}s"
+    )
+    return delay_seconds
 
 
 async def _schedule_tasks(
@@ -444,7 +366,7 @@ async def parse_llm_reply(
     tasks = await parse_llm_reply_from_json(
         text, agent_id=agent_id, channel_id=channel_id, agent=agent
     )
-    tasks = _dedupe_tasks_by_identifier(tasks)
+    tasks = dedupe_tasks_by_identifier(tasks)
     
     # Mark summarize and think tasks as silent if in summarization mode (admin panel triggered)
     if summarization_mode:
@@ -452,19 +374,14 @@ async def parse_llm_reply(
             if task.type == "summarize" or task.type == "think":
                 task.params["silent"] = True
     
-    tasks = await _execute_immediate_tasks(
+    tasks = await execute_immediate_tasks(
         tasks, agent=agent, channel_id=channel_id
     )
-    tasks = _assign_generated_identifiers(tasks)
+    tasks = assign_generated_identifiers(tasks)
     return tasks
 
 
 # Summarization functions moved to handlers.received_helpers.summarization
-
-# Re-export for backward compatibility (for admin_console)
-async def trigger_summarization_directly(agent, channel_id: int):
-    """Re-export wrapper that passes parse_llm_reply function."""
-    return await _trigger_summarization_directly(agent, channel_id, parse_llm_reply_fn=parse_llm_reply)
 
 
 @register_task_handler("received")
@@ -496,6 +413,122 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
+    # Check if we're waiting for a responsiveness delay task to complete
+    # This must be checked FIRST before any processing, so the task isn't marked as DONE
+    # Use completed_ids to match the selection logic used by is_unblocked
+    responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
+    responsiveness_delay_task = None  # Initialize to avoid UnboundLocalError
+    if responsiveness_delay_task_id:
+        completed_ids = graph.completed_ids()
+        if responsiveness_delay_task_id not in completed_ids:
+            # Delay task not complete yet - reset status to PENDING so task isn't marked as DONE
+            # The task already depends on the delay task, so it shouldn't be selected again until
+            # the delay completes (via is_ready check). If it was selected, there's a bug in is_unblocked.
+            task.status = TaskStatus.PENDING
+            logger.warning(
+                f"[{agent.name}] Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
+                f"is not complete (completed_ids: {completed_ids}, depends_on: {task.depends_on}). "
+                f"Resetting to PENDING. This suggests is_unblocked is not working correctly."
+            )
+            return
+    
+    # Check if agent was already online (before we create any new tasks)
+    # Look for an existing online wait task in the conversation (must be pending)
+    online_wait_task = None
+    for t in graph.tasks:
+        if (
+            t.type == "wait"
+            and t.params.get("online", False)
+            and t.status == TaskStatus.PENDING
+        ):
+            online_wait_task = t
+            break
+
+    # Check if agent was already online BEFORE we create/extend the task
+    was_already_online = online_wait_task is not None
+
+    # Apply responsiveness-based delay (unless this is an xsend task or agent was already online)
+    # xsend tasks bypass schedule delays
+    # If agent was already online, skip responsiveness delay
+    # Delays are handled by creating wait tasks, not by blocking the handler
+    is_xsend = bool(task.params.get("xsend_intent"))
+    
+    # Create responsiveness delay wait task if needed
+    # Only create if we don't already have one (either pending or completed)
+    if not is_xsend and not was_already_online and agent.daily_schedule_description:
+        # Check if we already have a responsiveness delay task
+        existing_delay_task_id = task.params.get("responsiveness_delay_task_id")
+        if not existing_delay_task_id:
+            # No existing delay task, create one if needed
+            try:
+                schedule = agent._load_schedule()
+                if schedule:
+                    delay_seconds = _calculate_responsiveness_delay(agent, schedule)
+                    
+                    if delay_seconds > 0:
+                        # Create a wait task for the responsiveness delay
+                        responsiveness_delay_task = make_wait_task(delay_seconds=delay_seconds)
+                        graph.add_task(responsiveness_delay_task)
+                        # Make the received task depend on the delay task
+                        task.depends_on.append(responsiveness_delay_task.id)
+                        # Store the delay task ID so we can check it on next handler call
+                        task.params["responsiveness_delay_task_id"] = responsiveness_delay_task.id
+                        logger.debug(
+                            f"[{agent.name}] Created responsiveness delay wait task {responsiveness_delay_task.id} ({delay_seconds}s)"
+                        )
+                        # Reset status to PENDING and return early - task won't be marked as DONE
+                        # It will remain PENDING and be re-selected when the delay task completes
+                        task.status = TaskStatus.PENDING
+                        return
+            except Exception as e:
+                logger.warning(f"[{agent.name}] Failed to apply schedule delay: {e}")
+
+    # Handle online wait task AFTER responsiveness delay is handled
+    # If there was a responsiveness delay, we'll create the online wait task after read acknowledge
+    # (so it only appears online after the delay completes)
+    # If there was no responsiveness delay, create/extend it now
+    if not responsiveness_delay_task_id:
+        # No responsiveness delay, so we can create/extend online wait task now
+        if online_wait_task:
+            # Agent was already online - no responsiveness delay, so just extend the existing task
+            # Clear any existing until time so delay-based expiration is used
+            if "until" in online_wait_task.params:
+                del online_wait_task.params["until"]
+            # Ensure it has a delay (will be extended after read acknowledge)
+            if "delay" not in online_wait_task.params:
+                online_wait_task.params["delay"] = 300  # 5 minutes
+            logger.debug(
+                f"[{agent.name}] Extended online wait task {online_wait_task.id}"
+            )
+        else:
+            # Create a new online wait task (no responsiveness delay, so no dependency needed)
+            online_wait_task = make_wait_task(
+                delay_seconds=300,  # 5 minutes - expiration computed when task becomes ready
+                online=True,
+            )
+            graph.add_task(online_wait_task)
+            logger.debug(
+                f"[{agent.name}] Created online wait task {online_wait_task.id}"
+            )
+    # If responsiveness_delay_task_id exists, we'll create the online wait task after read acknowledge
+    
+    # Check and extend schedule if needed (only for active agents processing received tasks)
+    if agent.daily_schedule_description:
+        try:
+            schedule = agent._load_schedule()
+            days_rem = days_remaining(schedule)
+            
+            if days_rem < 2:
+                logger.info(
+                    f"[{agent.name}] Schedule has {days_rem:.1f} days remaining, extending by 1 day..."
+                )
+                try:
+                    await extend_schedule(agent)
+                except Exception as e:
+                    logger.error(f"[{agent.name}] Failed to extend schedule: {e}")
+        except Exception as e:
+            logger.debug(f"[{agent.name}] Failed to check/extend schedule: {e}")
+
     # Convert channel_id to integer if it's a string
     try:
         channel_id_int = int(channel_id)
@@ -503,7 +536,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         channel_id_int = channel_id  # Keep as-is if conversion fails
 
     # Get appropriate LLM instance
-    llm = _get_channel_llm(agent, channel_id_int)
+    llm = get_channel_llm(agent, channel_id_int)
 
     # Get the entity first to ensure it's resolved, then fetch messages
     # This ensures Telethon can resolve the entity properly
@@ -514,7 +547,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Check if summaries exist to determine how many messages to fetch
     # If no summaries exist, fetch 500 messages as we may need to summarize most of them
     # Otherwise, fetch 100 messages for normal operation
-    highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
+    highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
     message_limit = 500 if highest_summarized_id is None else 100
     messages = await client.get_messages(entity, limit=message_limit)
     media_chain = get_default_media_source_chain()
@@ -523,14 +556,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Check if summarization is needed (highest_summarized_id already fetched above)
-    unsummarized_count = _count_unsummarized_messages(messages, highest_summarized_id)
+    unsummarized_count = count_unsummarized_messages(messages, highest_summarized_id)
     
     # If more than 50 unsummarized messages, perform summarization first
     if unsummarized_count > 50:
         logger.info(
             f"[{agent.name}] {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
         )
-        await _perform_summarization(
+        await perform_summarization(
             agent=agent,
             channel_id=channel_id_int,
             messages=messages,
@@ -539,7 +572,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             parse_llm_reply_fn=parse_llm_reply,
         )
         # Re-fetch highest summarized ID after summarization
-        highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
+        highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
 
     # Get conversation context
     is_callout = task.params.get("callout", False)
@@ -584,7 +617,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     messages_for_history = unsummarized_messages[:50] if len(unsummarized_messages) > 50 else unsummarized_messages
     
     # Build complete system prompt (includes summaries)
-    system_prompt = await _build_complete_system_prompt(
+    system_prompt = await build_complete_system_prompt(
         agent,
         channel_id,
         messages_for_history,  # Use filtered messages for context, but summaries are already loaded
@@ -598,25 +631,26 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Process message history (only unsummarized messages)
-    history_items = await _process_message_history(messages_for_history, agent, media_chain)
+    history_items = await process_message_history(messages_for_history, agent, media_chain)
 
     # Run LLM with retrieval augmentation
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
-    # Create a wrapper that includes fetch_url_fn
+    # Create a simple wrapper that injects fetch_url from closure
     async def process_retrieve_with_fetch(tasks, *, agent, channel_id, graph, retrieved_urls, retrieved_contents, fetch_url_fn):
-        return await _process_retrieve_tasks(
+        # Always use fetch_url from closure (fetch_url_fn parameter is for testability only)
+        return await process_retrieve_tasks(
             tasks,
             agent=agent,
             channel_id=channel_id,
             graph=graph,
             retrieved_urls=retrieved_urls,
             retrieved_contents=retrieved_contents,
-            fetch_url_fn=_fetch_url,
+            fetch_url_fn=fetch_url,
         )
     
-    tasks = await _run_llm_with_retrieval(
+    tasks = await run_llm_with_retrieval(
         agent,
         system_prompt,
         history_items,
@@ -653,8 +687,29 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
             )
 
-    # Handle online wait task: extend existing one or create new one
-    # Look for an existing online wait task in the conversation (must be pending)
+    # Mark conversation as read (moved from scan_unread_messages)
+    # This happens after processing, AFTER responsiveness delay has completed
+    # Double-check that responsiveness delay is complete before marking as read
+    final_responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
+    if final_responsiveness_delay_task_id:
+        final_completed_ids = graph.completed_ids()
+        if final_responsiveness_delay_task_id not in final_completed_ids:
+            # Responsiveness delay not complete - should not have reached here
+            logger.error(
+                f"[{agent.name}] Received task {task.id} reached read acknowledge but responsiveness delay "
+                f"{final_responsiveness_delay_task_id} is not complete. This should not happen."
+            )
+            # Don't mark as read yet - reset to PENDING and return
+            task.status = TaskStatus.PENDING
+            return
+    
+    # Clear mentions/reactions if requested (these flags were set during message scanning)
+    clear_mentions = task.params.get("clear_mentions", False)
+    clear_reactions = task.params.get("clear_reactions", False)
+    await client.send_read_acknowledge(entity, clear_mentions=clear_mentions, clear_reactions=clear_reactions)
+    
+    # After marking as read, create/extend online wait task to 5 minutes from now
+    # Find the online wait task (it may have been created earlier if there was no responsiveness delay)
     online_wait_task = None
     for t in graph.tasks:
         if (
@@ -664,9 +719,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         ):
             online_wait_task = t
             break
-
+    
     if online_wait_task:
-        # Extend expiration time to 5 minutes from now
+        # Extend expiration time to 5 minutes from now (after read acknowledge)
         now = clock.now(UTC)
         new_expiration = now + timedelta(seconds=300)  # 5 minutes
         online_wait_task.params["until"] = new_expiration.strftime(ISO_FORMAT)
@@ -674,18 +729,16 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         if "delay" in online_wait_task.params:
             del online_wait_task.params["delay"]
         logger.info(
-            f"[{agent.name}] Extended online wait task {online_wait_task.id} expiration to {online_wait_task.params['until']}"
+            f"[{agent.name}] Extended online wait task {online_wait_task.id} to 5 minutes after read acknowledge"
         )
     else:
-        # Create a new online wait task with 5 minute delay
+        # Create online wait task now (after responsiveness delay completed and read acknowledge)
+        # This happens if there was a responsiveness delay (online wait task wasn't created earlier)
         online_wait_task = make_wait_task(
             delay_seconds=300,  # 5 minutes
             online=True,
         )
         graph.add_task(online_wait_task)
         logger.info(
-            f"[{agent.name}] Created new online wait task {online_wait_task.id} (5 minutes)"
+            f"[{agent.name}] Created online wait task {online_wait_task.id} after read acknowledge"
         )
-
-    # Mark conversation as read (use entity object, not raw channel_id)
-    await client.send_read_acknowledge(entity)

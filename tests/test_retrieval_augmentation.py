@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from handlers import received as hr
-from handlers.received import _fetch_url, parse_llm_reply
+from handlers.received import fetch_url, parse_llm_reply
 from task_graph import TaskGraph
 
 
@@ -25,14 +25,14 @@ async def test_parse_retrieve_task_single_url():
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
     graph = TaskGraph(id="g", context={}, tasks=[])
-    await hr._process_retrieve_tasks(
+    await hr.process_retrieve_tasks(
         tasks,
         agent=None,
         channel_id=456,
         graph=graph,
         retrieved_urls={"https://example.com/page1"},
         retrieved_contents=[],
-        fetch_url_fn=hr._fetch_url,
+        fetch_url_fn=hr.fetch_url,
     )
 
     assert len(tasks) == 1
@@ -59,7 +59,7 @@ async def test_parse_retrieve_task_multiple_urls():
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
     graph = TaskGraph(id="g", context={}, tasks=[])
-    tasks = await hr._process_retrieve_tasks(
+    tasks = await hr.process_retrieve_tasks(
         tasks,
         agent=None,
         channel_id=456,
@@ -70,7 +70,7 @@ async def test_parse_retrieve_task_multiple_urls():
             "https://example.com/page3",
         },
         retrieved_contents=[],
-        fetch_url_fn=hr._fetch_url,
+        fetch_url_fn=hr.fetch_url,
     )
 
     assert len(tasks) == 1
@@ -92,14 +92,14 @@ async def test_parse_retrieve_task_empty():
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
     graph = TaskGraph(id="g", context={}, tasks=[])
-    await hr._process_retrieve_tasks(
+    await hr.process_retrieve_tasks(
         tasks,
         agent=None,
         channel_id=456,
         graph=graph,
         retrieved_urls=set(),
         retrieved_contents=[],
-        fetch_url_fn=hr._fetch_url,
+        fetch_url_fn=hr.fetch_url,
     )
 
     # Empty retrieve task should be discarded
@@ -123,14 +123,14 @@ async def test_parse_mixed_tasks_with_retrieve():
     tasks = await parse_llm_reply(payload, agent_id=123, channel_id=456)
 
     graph = TaskGraph(id="g", context={}, tasks=[])
-    await hr._process_retrieve_tasks(
+    await hr.process_retrieve_tasks(
         tasks,
         agent=None,
         channel_id=456,
         graph=graph,
         retrieved_urls={"https://www.google.com/search?q=test"},
         retrieved_contents=[],
-        fetch_url_fn=hr._fetch_url,
+        fetch_url_fn=hr.fetch_url,
     )
 
     # Think task is discarded, so we should have retrieve and send
@@ -155,7 +155,7 @@ async def test_fetch_url_success():
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
     with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
-        url, content = await _fetch_url("https://example.com")
+        url, content = await fetch_url("https://example.com")
 
         assert url == "https://example.com"
         assert content == "<html><body>Test content</body></html>"
@@ -179,7 +179,7 @@ async def test_fetch_url_non_html():
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
     with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
-        url, content = await _fetch_url("https://example.com/doc.pdf")
+        url, content = await fetch_url("https://example.com/doc.pdf")
 
         assert url == "https://example.com/doc.pdf"
         assert "application/pdf" in content
@@ -197,7 +197,7 @@ async def test_fetch_url_timeout():
     )
 
     with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
-        url, content = await _fetch_url("https://slow-site.com")
+        url, content = await fetch_url("https://slow-site.com")
 
         assert url == "https://slow-site.com"
         assert "Request Timeout" in content
@@ -216,7 +216,7 @@ async def test_fetch_url_truncation():
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
     with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
-        url, content = await _fetch_url("https://example.com")
+        url, content = await fetch_url("https://example.com")
 
         assert url == "https://example.com"
         assert len(content) <= 40100  # 40000 + truncation message
@@ -234,7 +234,7 @@ async def test_fetch_url_connection_error():
     )
 
     with patch("handlers.received.httpx.AsyncClient", return_value=mock_client):
-        url, content = await _fetch_url("https://unreachable.com")
+        url, content = await fetch_url("https://unreachable.com")
 
         assert url == "https://unreachable.com"
         assert "Error:" in content
@@ -257,7 +257,7 @@ async def test_fetch_file_url_agent_specific():
         mock_agent.name = agent_name
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
-            url, content = await _fetch_url("file:Friends.md", agent=mock_agent)
+            url, content = await fetch_url("file:Friends.md", agent=mock_agent)
         
         assert url == "file:Friends.md"
         assert content == "These are my friends: Alice, Bob, Charlie"
@@ -278,7 +278,7 @@ async def test_fetch_file_url_shared_docs():
         mock_agent.name = "TestAgent"
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
-            url, content = await _fetch_url("file:Wendy.md", agent=mock_agent)
+            url, content = await fetch_url("file:Wendy.md", agent=mock_agent)
         
         assert url == "file:Wendy.md"
         assert content == "Wendy is a character in the simulated world."
@@ -305,7 +305,7 @@ async def test_fetch_file_url_priority_agent_over_shared():
         mock_agent.name = agent_name
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
-            url, content = await _fetch_url("file:Family.md", agent=mock_agent)
+            url, content = await fetch_url("file:Family.md", agent=mock_agent)
         
         assert url == "file:Family.md"
         assert content == "Agent-specific family info"
@@ -321,7 +321,7 @@ async def test_fetch_file_url_not_found():
         mock_agent.name = "TestAgent"
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
-            url, content = await _fetch_url("file:Nonexistent.md", agent=mock_agent)
+            url, content = await fetch_url("file:Nonexistent.md", agent=mock_agent)
         
         assert url == "file:Nonexistent.md"
         assert content == "No file `Nonexistent.md` was found."
@@ -333,7 +333,7 @@ async def test_fetch_file_url_invalid_filename():
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
     
-    url, content = await _fetch_url("file:../secrets.txt", agent=mock_agent)
+    url, content = await fetch_url("file:../secrets.txt", agent=mock_agent)
     
     assert url == "file:../secrets.txt"
     assert "Invalid file URL" in content
@@ -346,7 +346,7 @@ async def test_fetch_file_url_invalid_filename_backslash():
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
     
-    url, content = await _fetch_url("file:..\\secrets.txt", agent=mock_agent)
+    url, content = await fetch_url("file:..\\secrets.txt", agent=mock_agent)
     
     assert url == "file:..\\secrets.txt"
     assert "Invalid file URL" in content
@@ -365,7 +365,7 @@ async def test_fetch_file_url_no_agent():
         test_file.write_text("Shared content")
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
-            url, content = await _fetch_url("file:Shared.md", agent=None)
+            url, content = await fetch_url("file:Shared.md", agent=None)
         
         assert url == "file:Shared.md"
         assert content == "Shared content"

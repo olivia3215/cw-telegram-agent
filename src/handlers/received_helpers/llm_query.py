@@ -174,7 +174,7 @@ async def run_llm_with_retrieval(
         )
         return []
 
-    # Process retrieve tasks - fetch_url_fn is passed via closure in the wrapper function
+    # Process retrieve tasks - fetch_url_fn will be provided by the wrapper function via closure
     tasks = await process_retrieve_tasks_fn(
         tasks,
         agent=agent,
@@ -182,7 +182,7 @@ async def run_llm_with_retrieval(
         graph=graph,
         retrieved_urls=retrieved_urls,
         retrieved_contents=retrieved_contents,
-        fetch_url_fn=None,  # Passed via closure in wrapper
+        fetch_url_fn=None,  # Wrapper will inject the actual fetch function from closure
     )
 
     return tasks
