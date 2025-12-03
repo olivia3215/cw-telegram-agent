@@ -7,6 +7,7 @@
 Memory and storage loading for Agent.
 """
 
+import copy
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -101,8 +102,12 @@ class AgentStorageMixin:
         - Schedule file modification time has changed
         - Cache was explicitly invalidated
         
+        Returns a deep copy of the schedule to prevent cache mutation.
+        If _save_schedule() fails, the cache remains unchanged and will be
+        reloaded from disk on the next access.
+        
         Returns:
-            Schedule dictionary or None if schedule doesn't exist
+            Deep copy of schedule dictionary or None if schedule doesn't exist
         """
         from pathlib import Path
         from config import STATE_DIRECTORY
@@ -130,8 +135,9 @@ class AgentStorageMixin:
             and self._schedule_cache_mtime is not None
             and self._schedule_cache_mtime == current_mtime
         ):
-            # Cache is valid, return cached schedule
-            return self._schedule_cache
+            # Cache is valid, return a deep copy to prevent cache mutation
+            # If _save_schedule() fails, the cache remains unchanged
+            return copy.deepcopy(self._schedule_cache)
         
         # Load from disk
         schedule = self._storage.load_schedule()
@@ -140,7 +146,9 @@ class AgentStorageMixin:
         self._schedule_cache = schedule
         self._schedule_cache_mtime = current_mtime
         
-        return schedule
+        # Return a deep copy to prevent cache mutation
+        # If _save_schedule() fails, the cache remains unchanged
+        return copy.deepcopy(schedule) if schedule is not None else None
 
     def _save_schedule(self, schedule: dict) -> None:
         """
