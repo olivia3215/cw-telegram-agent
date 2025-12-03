@@ -115,8 +115,9 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
             if handled:
                 schedule_count += 1
         elif task.type == "think":
-            # Execute think tasks to log reasoning
-            await dispatch_immediate_task(task, agent=agent, channel_id=0)
+            # Think tasks are executed above via dispatch_immediate_task
+            # They don't need any special handling here
+            pass
         else:
             # Log unexpected task types (should only be schedule/think for schedule extension)
             logger.warning(

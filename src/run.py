@@ -397,12 +397,6 @@ async def run_telegram_loop(agent: Agent):
                     message = await client.get_messages(chat_id, ids=msg_id)
                     if message and getattr(message, "out", False):
                         # This is the agent's message - create a received task
-                        await insert_received_task_for_conversation(
-                            recipient_id=agent.agent_id,
-                            channel_id=chat_id,
-                            is_callout=True,  # Reactions are treated as callouts
-                            reaction_message_id=msg_id,
-                        )
                         # Read receipts are now handled in handle_received with responsiveness delays
                         # Pass clear_reactions flag so reactions can be cleared when marking as read
                         await insert_received_task_for_conversation(
