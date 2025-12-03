@@ -222,7 +222,7 @@ async def test_depends_on_translates_to_generated_ids(monkeypatch):
     def fake_uuid4():
         return SimpleNamespace(hex=next(hex_values))
 
-    monkeypatch.setattr("handlers.received.uuid.uuid4", fake_uuid4)
+    monkeypatch.setattr("handlers.received_helpers.task_parsing.uuid.uuid4", fake_uuid4)
 
     payload = _dump_tasks(
         [

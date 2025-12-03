@@ -49,30 +49,8 @@ _TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 from .utils import format_string_for_logging as _format_string_for_logging
 
 
-def _extract_response_text(response: Any) -> str:
-    """
-    Extract text from a Gemini response object, handling various response structures.
-    Returns empty string if no text can be extracted.
-    """
-    if response is None:
-        return ""
-    
-    if hasattr(response, "text") and isinstance(response.text, str):
-        return response.text
-    
-    if hasattr(response, "candidates") and response.candidates:
-        cand = response.candidates[0]
-        t = getattr(cand, "text", None)
-        if isinstance(t, str):
-            return t or ""
-        else:
-            content = getattr(cand, "content", None)
-            if content and getattr(content, "parts", None):
-                first_part = content.parts[0]
-                if isinstance(first_part, dict) and "text" in first_part:
-                    return str(first_part["text"] or "")
-    
-    return ""
+# Import shared utility function
+from llm.base import extract_gemini_response_text as _extract_response_text
 
 
 class GeminiLLM(LLM):

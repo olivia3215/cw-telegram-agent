@@ -14,7 +14,7 @@ from flask import Blueprint, Response, jsonify, request  # pyright: ignore[repor
 
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY
-from handlers.received_helpers.message_processing import _format_message_reactions
+from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
 from llm.media_helper import get_media_llm
@@ -261,7 +261,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 reply_to_msg_id = str(reply_to_msg_id_val)
                         
                         # Format reactions
-                        reactions_str = await _format_message_reactions(agent, message)
+                        reactions_str = await format_message_reactions(agent, message)
                         
                         # Format media/stickers
                         message_parts = await format_message_for_prompt(message, agent=agent, media_chain=media_chain)
@@ -379,120 +379,90 @@ def register_conversation_routes(agents_bp: Blueprint):
             import json as json_module
             messages_json = json_module.dumps(messages_for_prompt, ensure_ascii=False, indent=2)
             
-            translation_prompt = f"""Translate the following conversation messages into English. 
-Preserve the message structure and return a JSON object with translations.
-
-Input messages (as JSON):
-{messages_json}
-
-Return a JSON object with this structure:
-{{
-  "translations": [
-    {{"message_id": "123", "translated_text": "English translation here"}},
-    ...
-  ]
-}}
-
-Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."""
+            translation_prompt = (
+                "Translate the conversation messages into English.\n"
+                "Preserve the message structure and return a JSON object with translations.\n"
+                "\n"
+                "Return a JSON object with this structure:\n"
+                "{\n"
+                "  \"translations\": [\n"
+                "    {\"message_id\": \"123\", \"translated_text\": \"English translation here\"},\n"
+                "    ...\n"
+                "  ]\n"
+                "}\n"
+                "\n"
+                "Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."
+                "\n"
+                "Input messages (as JSON):\n"
+                f"{messages_json}\n"
+            )
 
             # This is async, so we need to run it in the client's event loop
             async def _translate_messages():
                 try:
-                    from llm.gemini import GeminiLLM
-                    from google.genai.types import GenerateContentConfig
+                    # Use the shared query_with_json_schema API for LLM-agnostic translation
+                    system_prompt = (
+                        "You are a translation assistant. Translate messages into English and return JSON.\n\n"
+                        f"{translation_prompt}"
+                    )
                     
-                    if isinstance(media_llm, GeminiLLM):
-                        # Build contents for Gemini
-                        contents = [{
-                            "role": "user",
-                            "parts": [{"text": translation_prompt}]
-                        }]
-                        
-                        # Use internal method with custom schema
-                        client = getattr(media_llm, "client", None)
-                        if not client:
-                            raise RuntimeError("Media LLM client not initialized")
-                        
-                        # Calculate approximate max output tokens needed
-                        # Rough estimate: each translation entry ~50-100 tokens, add buffer
-                        num_messages = len(messages_for_prompt)
-                        estimated_tokens = num_messages * 150  # Conservative estimate per message
-                        # Set max_output_tokens to handle long conversations (Gemini 2.0 supports up to 8192)
-                        max_output_tokens = min(max(estimated_tokens, 4096), 8192)
-                        
-                        config = GenerateContentConfig(
-                            system_instruction="You are a translation assistant. Translate messages into English and return JSON.",
-                            safety_settings=media_llm.safety_settings,
-                            response_mime_type="application/json",
-                            response_json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
-                            max_output_tokens=max_output_tokens,
-                        )
-                        
-                        response = await asyncio.to_thread(
-                            client.models.generate_content,
-                            model=media_llm.model_name,
-                            contents=contents,
-                            config=config,
-                        )
-                        
-                        # Use the same text extraction helper as GeminiLLM for consistency
-                        from llm.gemini import _extract_response_text
-                        result_text = _extract_response_text(response)
-                        
-                        if result_text:
-                            # Parse JSON response with better error handling
-                            try:
-                                result = json_lib.loads(result_text)
-                                translations = result.get("translations", [])
-                                if isinstance(translations, list):
-                                    return translations
-                                else:
-                                    logger.warning(f"Translations is not a list: {type(translations)}")
-                                    return []
-                            except json_lib.JSONDecodeError as e:
-                                logger.error(f"JSON decode error in translation response: {e}")
-                                logger.debug(f"Response text length: {len(result_text)} chars")
-                                logger.debug(f"Response text (first 1000 chars): {result_text[:1000]}")
-                                logger.debug(f"Response text (last 1000 chars): {result_text[-1000:]}")
-                                
-                                # Check if response appears truncated (common with long conversations)
-                                if "Unterminated" in str(e) or "Expecting" in str(e):
-                                    logger.warning(f"Translation response appears truncated. Response length: {len(result_text)} chars. This may indicate the conversation is too long for a single translation.")
-                                    # Try to extract partial translations from what we have
-                                    # Look for complete translation entries before the truncation
-                                    # Try to find all complete translation entries
-                                    translation_pattern = r'\{"message_id":\s*"([^"]+)",\s*"translated_text":\s*"([^"]*)"\}'
-                                    matches = re.findall(translation_pattern, result_text)
-                                    if matches:
-                                        partial_translations = [{"message_id": mid, "translated_text": text} for mid, text in matches]
-                                        logger.info(f"Extracted {len(partial_translations)} partial translations from truncated response")
-                                        return partial_translations
-                                
-                                # Try to extract JSON from markdown code blocks if present
-                                json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
-                                if json_match:
-                                    try:
-                                        result = json_lib.loads(json_match.group(1))
-                                        return result.get("translations", [])
-                                    except json_lib.JSONDecodeError:
-                                        pass
-                                # Try to find JSON object in the text (more lenient)
-                                json_match = re.search(r'\{[^{}]*"translations"[^{}]*\[.*?\]\s*\}', result_text, re.DOTALL)
-                                if json_match:
-                                    try:
-                                        result = json_lib.loads(json_match.group(0))
-                                        return result.get("translations", [])
-                                    except json_lib.JSONDecodeError:
-                                        pass
-                                
-                                logger.error(f"Failed to parse translation response. Returning empty translations.")
+                    result_text = await media_llm.query_with_json_schema(
+                        system_prompt=system_prompt,
+                        json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                        model=None,  # Use default model
+                        timeout_s=None,  # Use default timeout
+                    )
+                    
+                    if result_text:
+                        # Parse JSON response with better error handling
+                        try:
+                            result = json_lib.loads(result_text)
+                            translations = result.get("translations", [])
+                            if isinstance(translations, list):
+                                return translations
+                            else:
+                                logger.warning(f"Translations is not a list: {type(translations)}")
                                 return []
-                        
-                        return []
-                    else:
-                        # For non-Gemini LLMs, use a simpler approach
-                        # This would need to be implemented based on the LLM type
-                        raise NotImplementedError(f"Translation not implemented for LLM type: {type(media_llm)}")
+                        except json_lib.JSONDecodeError as e:
+                            logger.error(f"JSON decode error in translation response: {e}")
+                            logger.debug(f"Response text length: {len(result_text)} chars")
+                            logger.debug(f"Response text (first 1000 chars): {result_text[:1000]}")
+                            logger.debug(f"Response text (last 1000 chars): {result_text[-1000:]}")
+                            
+                            # Check if response appears truncated (common with long conversations)
+                            if "Unterminated" in str(e) or "Expecting" in str(e):
+                                logger.warning(f"Translation response appears truncated. Response length: {len(result_text)} chars. This may indicate the conversation is too long for a single translation.")
+                                # Try to extract partial translations from what we have
+                                # Look for complete translation entries before the truncation
+                                # Try to find all complete translation entries
+                                translation_pattern = r'\{"message_id":\s*"([^"]+)",\s*"translated_text":\s*"([^"]*)"\}'
+                                matches = re.findall(translation_pattern, result_text)
+                                if matches:
+                                    partial_translations = [{"message_id": mid, "translated_text": text} for mid, text in matches]
+                                    logger.info(f"Extracted {len(partial_translations)} partial translations from truncated response")
+                                    return partial_translations
+                            
+                            # Try to extract JSON from markdown code blocks if present
+                            json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    result = json_lib.loads(json_match.group(1))
+                                    return result.get("translations", [])
+                                except json_lib.JSONDecodeError:
+                                    pass
+                            # Try to find JSON object in the text (more lenient)
+                            json_match = re.search(r'\{[^{}]*"translations"[^{}]*\[.*?\]\s*\}', result_text, re.DOTALL)
+                            if json_match:
+                                try:
+                                    result = json_lib.loads(json_match.group(0))
+                                    return result.get("translations", [])
+                                except json_lib.JSONDecodeError:
+                                    pass
+                            
+                            logger.error(f"Failed to parse translation response. Returning empty translations.")
+                            return []
+                    
+                    return []
                 except Exception as e:
                     logger.error(f"Error translating messages: {e}")
                     return []

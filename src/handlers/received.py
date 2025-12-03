@@ -5,8 +5,6 @@
 
 import json
 import logging
-import uuid
-from dataclasses import dataclass
 from datetime import UTC, timedelta
 
 import httpx  # pyright: ignore[reportMissingImports]
@@ -14,60 +12,42 @@ import httpx  # pyright: ignore[reportMissingImports]
 from agent import get_agent_for_id
 from clock import clock
 from config import CONFIG_DIRECTORIES, FETCHED_RESOURCE_LIFETIME_SECONDS
-import handlers.telepathic as telepathic
-from handlers.registry import dispatch_immediate_task, register_task_handler
+from handlers.registry import register_task_handler
 from pathlib import Path
-from schedule import get_current_activity, get_responsiveness, get_wake_time, days_remaining
+from schedule import get_responsiveness, get_wake_time, days_remaining
 from schedule_extension import extend_schedule
 from utils import (
-    coerce_to_int,
-    coerce_to_str,
-    format_username,
-    get_channel_name,
     get_dialog_name,
     is_group_or_channel,
-    get_custom_emoji_name,
-    strip_json_fence,
-    normalize_list,
 )
-from llm.base import MsgPart, MsgTextPart
-from handlers.received_helpers.channel_details import _build_channel_details_section
 from handlers.received_helpers.message_processing import (
-    ProcessedMessage,
-    _format_message_reactions,
-    process_message_history as _process_message_history,
+    process_message_history,
 )
 from handlers.received_helpers.llm_query import (
-    get_channel_llm as _get_channel_llm,
-    run_llm_with_retrieval as _run_llm_with_retrieval,
+    get_channel_llm,
+    run_llm_with_retrieval,
 )
 from handlers.received_helpers.prompt_builder import (
-    build_complete_system_prompt as _build_complete_system_prompt,
-    build_specific_instructions as _specific_instructions,
+    build_complete_system_prompt,
 )
 from handlers.received_helpers.summarization import (
-    get_highest_summarized_message_id as _get_highest_summarized_message_id,
-    count_unsummarized_messages as _count_unsummarized_messages,
-    extract_message_dates as _extract_message_dates,
-    perform_summarization as _perform_summarization,
+    get_highest_summarized_message_id,
+    count_unsummarized_messages,
+    perform_summarization,
 )
 from handlers.received_helpers.task_parsing import (
-    TransientLLMResponseError,
     parse_llm_reply_from_json,
-    dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
-    assign_generated_identifiers as _assign_generated_identifiers,
-    execute_immediate_tasks as _execute_immediate_tasks,
-    process_retrieve_tasks as _process_retrieve_tasks,
+    dedupe_tasks_by_identifier,
+    assign_generated_identifiers,
+    execute_immediate_tasks,
+    process_retrieve_tasks,
 )
-
 from media.media_injector import (
-    format_message_for_prompt,
     inject_media_descriptions,
 )
 from media.media_source import get_default_media_source_chain
 from task_graph import TaskGraph, TaskNode, TaskStatus
 from task_graph_helpers import make_wait_task
-from telepathic import is_telepath, TELEPATHIC_PREFIXES
 # Telegram type imports moved to handlers.received_helpers.channel_details
 
 logger = logging.getLogger(__name__)
@@ -116,7 +96,7 @@ def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
     return None
 
 
-async def _fetch_url(url: str, agent=None) -> tuple[str, str]:
+async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
     
@@ -274,8 +254,6 @@ def is_retryable_llm_error(error: Exception) -> bool:
     return any(indicator in error_str for indicator in retryable_indicators)
 
 
-# _strip_json_fence and _normalize_list moved to utils.formatting
-# Imported above as strip_json_fence and normalize_list
 
 
 # Task parsing functions moved to handlers.received_helpers.task_parsing
@@ -407,7 +385,7 @@ async def parse_llm_reply(
     tasks = await parse_llm_reply_from_json(
         text, agent_id=agent_id, channel_id=channel_id, agent=agent
     )
-    tasks = _dedupe_tasks_by_identifier(tasks)
+    tasks = dedupe_tasks_by_identifier(tasks)
     
     # Mark summarize and think tasks as silent if in summarization mode (admin panel triggered)
     if summarization_mode:
@@ -415,10 +393,10 @@ async def parse_llm_reply(
             if task.type == "summarize" or task.type == "think":
                 task.params["silent"] = True
     
-    tasks = await _execute_immediate_tasks(
+    tasks = await execute_immediate_tasks(
         tasks, agent=agent, channel_id=channel_id
     )
-    tasks = _assign_generated_identifiers(tasks)
+    tasks = assign_generated_identifiers(tasks)
     return tasks
 
 
@@ -577,7 +555,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         channel_id_int = channel_id  # Keep as-is if conversion fails
 
     # Get appropriate LLM instance
-    llm = _get_channel_llm(agent, channel_id_int)
+    llm = get_channel_llm(agent, channel_id_int)
 
     # Get the entity first to ensure it's resolved, then fetch messages
     # This ensures Telethon can resolve the entity properly
@@ -588,7 +566,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Check if summaries exist to determine how many messages to fetch
     # If no summaries exist, fetch 500 messages as we may need to summarize most of them
     # Otherwise, fetch 100 messages for normal operation
-    highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
+    highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
     message_limit = 500 if highest_summarized_id is None else 100
     messages = await client.get_messages(entity, limit=message_limit)
     media_chain = get_default_media_source_chain()
@@ -597,14 +575,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Check if summarization is needed (highest_summarized_id already fetched above)
-    unsummarized_count = _count_unsummarized_messages(messages, highest_summarized_id)
+    unsummarized_count = count_unsummarized_messages(messages, highest_summarized_id)
     
     # If more than 50 unsummarized messages, perform summarization first
     if unsummarized_count > 50:
         logger.info(
             f"[{agent.name}] {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
         )
-        await _perform_summarization(
+        await perform_summarization(
             agent=agent,
             channel_id=channel_id_int,
             messages=messages,
@@ -613,7 +591,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             parse_llm_reply_fn=parse_llm_reply,
         )
         # Re-fetch highest summarized ID after summarization
-        highest_summarized_id = _get_highest_summarized_message_id(agent, channel_id_int)
+        highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
 
     # Get conversation context
     is_callout = task.params.get("callout", False)
@@ -658,7 +636,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     messages_for_history = unsummarized_messages[:50] if len(unsummarized_messages) > 50 else unsummarized_messages
     
     # Build complete system prompt (includes summaries)
-    system_prompt = await _build_complete_system_prompt(
+    system_prompt = await build_complete_system_prompt(
         agent,
         channel_id,
         messages_for_history,  # Use filtered messages for context, but summaries are already loaded
@@ -672,26 +650,26 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Process message history (only unsummarized messages)
-    history_items = await _process_message_history(messages_for_history, agent, media_chain)
+    history_items = await process_message_history(messages_for_history, agent, media_chain)
 
     # Run LLM with retrieval augmentation
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
 
-    # Create a simple wrapper that injects _fetch_url from closure
+    # Create a simple wrapper that injects fetch_url from closure
     async def process_retrieve_with_fetch(tasks, *, agent, channel_id, graph, retrieved_urls, retrieved_contents, fetch_url_fn):
-        # Always use _fetch_url from closure (fetch_url_fn parameter is for testability only)
-        return await _process_retrieve_tasks(
+        # Always use fetch_url from closure (fetch_url_fn parameter is for testability only)
+        return await process_retrieve_tasks(
             tasks,
             agent=agent,
             channel_id=channel_id,
             graph=graph,
             retrieved_urls=retrieved_urls,
             retrieved_contents=retrieved_contents,
-            fetch_url_fn=_fetch_url,
+            fetch_url_fn=fetch_url,
         )
     
-    tasks = await _run_llm_with_retrieval(
+    tasks = await run_llm_with_retrieval(
         agent,
         system_prompt,
         history_items,

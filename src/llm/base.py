@@ -5,7 +5,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import TypedDict
+from typing import Any, TypedDict
 
 # --- Type definitions for message parts and chat messages ---
 
@@ -59,6 +59,45 @@ class ChatMsg(TypedDict, total=False):
     is_agent: bool
     msg_id: str | None
     ts_iso: str | None
+
+
+# --- Utility functions ---
+
+
+def extract_gemini_response_text(response: Any) -> str:
+    """
+    Extract text from a Gemini response object, handling various response structures.
+    
+    This function handles different Gemini API response formats:
+    - Direct text attribute: response.text
+    - Candidates with text: response.candidates[0].text
+    - Candidates with content parts: response.candidates[0].content.parts[0].text
+    
+    Args:
+        response: Gemini API response object
+        
+    Returns:
+        Extracted text string, or empty string if no text can be extracted
+    """
+    if response is None:
+        return ""
+    
+    if hasattr(response, "text") and isinstance(response.text, str):
+        return response.text
+    
+    if hasattr(response, "candidates") and response.candidates:
+        cand = response.candidates[0]
+        t = getattr(cand, "text", None)
+        if isinstance(t, str):
+            return t or ""
+        else:
+            content = getattr(cand, "content", None)
+            if content and getattr(content, "parts", None):
+                first_part = content.parts[0]
+                if isinstance(first_part, dict) and "text" in first_part:
+                    return str(first_part["text"] or "")
+    
+    return ""
 
 
 # --- Base LLM class ---

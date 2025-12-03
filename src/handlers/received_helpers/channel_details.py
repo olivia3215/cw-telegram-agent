@@ -238,7 +238,7 @@ async def _build_channel_entity_details(agent, dialog, media_chain):
     return details
 
 
-async def _build_channel_details_section(
+async def build_channel_details_section(
     agent,
     channel_id,
     dialog,

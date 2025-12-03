@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from telepathic import is_telepath, reload_telepathic_channels, _load_telepathic_channels, TELEPATHIC_PREFIXES
+from telepathic import is_telepath, reload_telepathic_channels, load_telepathic_channels, TELEPATHIC_PREFIXES
 from task_graph import TaskGraph, TaskNode
 
 
@@ -19,7 +19,7 @@ class TestTelepathicConfiguration:
     def test_load_telepathic_channels_empty_config(self):
         """Test loading when no config directories exist."""
         with patch('telepathic.CONFIG_DIRECTORIES', []):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == set()
 
     def test_load_telepathic_channels_no_telepaths_file(self, tmp_path):
@@ -28,7 +28,7 @@ class TestTelepathicConfiguration:
         config_dir.mkdir()
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == set()
 
     def test_load_telepathic_channels_valid_file(self, tmp_path):
@@ -50,7 +50,7 @@ Some other content that should be ignored.
         """)
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == {123456789, -987654321, 555666777}
 
     def test_load_telepathic_channels_multiple_config_dirs(self, tmp_path):
@@ -66,7 +66,7 @@ Some other content that should be ignored.
         telepaths2.write_text("- 333\n- 444")
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config1), str(config2)]):
-            channels = _load_telepathic_channels()
+            channels = load_telepathic_channels()
             assert channels == {111, 222, 333, 444}
 
     def test_load_telepathic_channels_invalid_numbers(self, tmp_path):
@@ -84,7 +84,7 @@ Some other content that should be ignored.
         
         with patch('telepathic.CONFIG_DIRECTORIES', [str(config_dir)]):
             with patch('telepathic.logger') as mock_logger:
-                channels = _load_telepathic_channels()
+                channels = load_telepathic_channels()
                 assert channels == {123, 456, -789}
                 # Should log warning about invalid number
                 mock_logger.warning.assert_called()
@@ -206,7 +206,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -246,7 +246,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -297,7 +297,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
 
-        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+        with patch("telepathic.is_telepath") as mock_is_telepath, patch(
             "handlers.telepathic.is_telepath"
         ) as mock_telepath:
             mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
@@ -340,7 +340,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
 
-        with patch("handlers.received.is_telepath") as mock_is_telepath, patch(
+        with patch("telepathic.is_telepath") as mock_is_telepath, patch(
             "handlers.telepathic.is_telepath"
         ) as mock_telepath:
             mock_is_telepath.side_effect = mock_telepath.side_effect = lambda x: x == 456
@@ -386,7 +386,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Channel is telepathic, agent is not telepathic
@@ -409,7 +409,7 @@ class TestTelepathicMessageHandling:
             graph = TaskGraph(id="g1", context={}, tasks=[])
 
             with patch(
-                "handlers.received._fetch_url",
+                    "handlers.received.fetch_url",
                 new=AsyncMock(return_value=("https://example.com/page1", "<html>1</html>")),
             ):
                 with patch(
@@ -417,14 +417,14 @@ class TestTelepathicMessageHandling:
                     return_value=TaskNode(id="wait-1", type="wait", params={}, depends_on=[]),
                 ):
                     with pytest.raises(Exception):
-                        await hr._process_retrieve_tasks(
+                        await hr.process_retrieve_tasks(
                             tasks,
                             agent=mock_agent,
                             channel_id=456,
                             graph=graph,
                             retrieved_urls=set(),
                             retrieved_contents=[],
-                            fetch_url_fn=hr._fetch_url,
+                            fetch_url_fn=hr.fetch_url,
                         )
 
             mock_agent.client.send_message.assert_called_once_with(
@@ -448,7 +448,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath', return_value=False), patch(
+        with patch('telepathic.is_telepath', return_value=False), patch(
             'handlers.telepathic.is_telepath', return_value=False
         ):
             tasks = await parse_llm_reply(
@@ -476,7 +476,7 @@ class TestTelepathicMessageHandling:
             indent=2,
         )
         
-        with patch('handlers.received.is_telepath') as mock_is_telepath, patch(
+        with patch('telepathic.is_telepath') as mock_is_telepath, patch(
             'handlers.telepathic.is_telepath'
         ) as mock_telepath:
             # Both channel and agent are telepathic

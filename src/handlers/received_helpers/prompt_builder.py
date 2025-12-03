@@ -4,7 +4,7 @@
 
 import logging
 
-from handlers.received_helpers.channel_details import _build_channel_details_section
+from handlers.received_helpers.channel_details import build_channel_details_section
 from utils import get_dialog_name
 from schedule import get_current_activity
 from telegram_media import get_unique_id
@@ -229,7 +229,7 @@ async def build_complete_system_prompt(
     if activity_section:
         system_prompt += activity_section
 
-    channel_details = await _build_channel_details_section(
+    channel_details = await build_channel_details_section(
         agent=agent,
         channel_id=channel_id,
         dialog=dialog,

@@ -28,7 +28,7 @@ class ProcessedMessage:
     reactions: str | None = None  # Formatted reactions string
 
 
-async def _format_message_reactions(agent, message) -> str | None:
+async def format_message_reactions(agent, message) -> str | None:
     """
     Format reactions for a message.
     
@@ -171,7 +171,7 @@ async def process_message_history(
             timestamp_str = local_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
         # Format reactions
-        reactions_str = await _format_message_reactions(agent, m)
+        reactions_str = await format_message_reactions(agent, m)
 
         history_rendered_items.append(
             ProcessedMessage(
