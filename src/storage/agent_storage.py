@@ -11,7 +11,7 @@ import json
 import logging
 from pathlib import Path
 
-from config import STATE_DIRECTORY
+from clock import clock
 from memory_storage import MemoryStorageError, load_property_entries
 
 logger = logging.getLogger(__name__)
@@ -553,7 +553,7 @@ class AgentStorage:
         from schedule import ScheduleActivity
         
         # Calculate cutoff time: 2 days ago
-        cutoff_time = datetime.now(UTC) - timedelta(days=2)
+        cutoff_time = clock.now(UTC) - timedelta(days=2)
         
         # Filter out activities that ended more than 2 days ago
         original_count = len(activities)

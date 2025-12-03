@@ -449,11 +449,13 @@ class GrokLLM(LLM):
             logger.info("=== END GROK_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
 
         try:
-            # Call Grok API with response_format using json_schema_object
+            # OpenAI-compatible APIs require at least one user message in the messages array.
+            # Add a special user message to satisfy this requirement (same pattern as Gemini).
             response = await self.client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "⟦special⟧ Please respond to the instructions provided."},
                 ],
                 response_format={
                     "type": "json_schema",
