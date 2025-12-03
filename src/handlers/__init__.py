@@ -12,6 +12,7 @@ from . import (
     remember,  # noqa: F401
     received,  # noqa: F401
     react,  # noqa: F401
+    schedule_handler,  # noqa: F401
     send,  # noqa: F401
     summarize,  # noqa: F401
     xsend,  # noqa: F401

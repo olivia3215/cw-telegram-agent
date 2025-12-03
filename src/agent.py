@@ -56,6 +56,8 @@ class Agent(
         config_directory=None,
         # Timezone configuration
         timezone=None,
+        # Daily schedule configuration
+        daily_schedule_description=None,
     ):
         self.name = name
         self.phone = phone
@@ -111,6 +113,13 @@ class Agent(
 
         self._llm = llm
         self._llm_name = llm_name
+        
+        # Daily schedule configuration
+        self.daily_schedule_description = daily_schedule_description  # str | None
+        
+        # Schedule cache (loaded on demand, invalidated on save)
+        self._schedule_cache: dict | None = None
+        self._schedule_cache_mtime: float | None = None
 
     @property
     def llm(self):

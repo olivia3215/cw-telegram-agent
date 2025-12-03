@@ -16,12 +16,13 @@ from telethon.errors.rpcerrorlist import (
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction
 
-from agent import get_agent_for_id
+from agent import all_agents, get_agent_for_id
 from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
+from schedule import days_remaining, get_responsiveness
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def is_graph_complete(graph) -> bool:
 async def trigger_typing_indicators():
     """
     Check for pending wait tasks with typing=True or online=True and trigger typing indicators.
-    For typing=True tasks, only trigger if unblocked. For online=True tasks, trigger even if not ready.
+    For typing=True tasks, only trigger if unblocked. For online=True tasks, trigger when unblocked (ready).
     """
     clock.now(UTC)
     work_queue = WorkQueue.get_instance()
@@ -106,12 +107,16 @@ async def trigger_typing_indicators():
                 
                 # For online=True: send cancel action to show online without typing indicator
                 # Only send if no typing indicators are being sent in this graph
-                if online and not should_send_typing:
+                # Send when task is unblocked (ready) - dependencies are satisfied
+                if online and not should_send_typing and task.is_unblocked(completed_ids):
                     try:
                         await client(
                             SetTypingRequest(
                                 peer=channel_id, action=SendMessageCancelAction()
                             )
+                        )
+                        logger.debug(
+                            f"Sent online status to channel {channel_id} for task {task.id}"
                         )
                     except (UserBannedInChannelError, ChatWriteForbiddenError):
                         # It's okay if we can't show ourselves as online
@@ -121,6 +126,8 @@ async def trigger_typing_indicators():
 
         except Exception as e:
             logger.debug(f"Error checking typing indicators for agent {agent_id}: {e}")
+
+
 
 
 async def run_one_tick(work_queue=None, state_file_path: str = None):
@@ -147,6 +154,7 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
     # Reset per-tick AI description budget at start of each tick
     reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
 
+    # Check and extend schedules if needed (non-blocking)
     # Trigger typing indicators for pending wait tasks
     await trigger_typing_indicators()
 
@@ -185,7 +193,9 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         if not handled:
             raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
         
-        task.status = TaskStatus.DONE
+        # Only mark as DONE if task is still ACTIVE (handler may have reset it to PENDING)
+        if task.status == TaskStatus.ACTIVE:
+            task.status = TaskStatus.DONE
 
     except Exception as e:
         if isinstance(e, PeerIdInvalidError) and agent:

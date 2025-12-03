@@ -417,3 +417,81 @@ class GrokLLM(LLM):
             logger.error("Grok API exception: %s", e)
             raise e
 
+    async def query_with_json_schema(
+        self,
+        *,
+        system_prompt: str,
+        json_schema: dict,
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Query Grok with a JSON schema constraint on the response.
+        
+        Uses OpenAI-compatible response_format with json_schema_object.
+        
+        Args:
+            system_prompt: The system prompt/instruction to send to Grok
+            json_schema: JSON schema dictionary that constrains the response format
+            model: Optional model name override
+            timeout_s: Optional timeout in seconds for the request
+        
+        Returns:
+            JSON string response that matches the schema
+        """
+        model_name = model or self.model_name
+
+        # Optional comprehensive logging for debugging
+        if GROK_DEBUG_LOGGING:
+            logger.info("=== GROK_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
+            logger.info(f"System Prompt: {system_prompt}")
+            logger.info(f"JSON Schema: {json.dumps(json_schema, indent=2)}")
+            logger.info("=== END GROK_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
+
+        try:
+            # Call Grok API with response_format using json_schema_object
+            response = await self.client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "response",
+                        "strict": True,
+                        "schema": json_schema,
+                    },
+                },
+                timeout=timeout_s or 60.0,
+            )
+
+            # Optional comprehensive logging for debugging
+            if GROK_DEBUG_LOGGING:
+                logger.info("=== GROK_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
+                logger.info(f"Response: {response}")
+                if response.choices and response.choices[0].message.content:
+                    formatted_text = _format_string_for_logging(
+                        response.choices[0].message.content
+                    )
+                    logger.info(f"Response string:\n{formatted_text}")
+                logger.info("=== END GROK_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
+
+            # Extract text from response
+            if response.choices and response.choices[0].message.content:
+                text = response.choices[0].message.content.strip()
+            else:
+                raise RuntimeError(f"Grok returned no content: {response}")
+
+            if text.startswith("⟦"):
+                # Reject response that starts with a metadata placeholder
+                raise Exception(
+                    "Temporary error: response starts with a metadata placeholder - will retry"
+                )
+
+            return text or ""
+
+        except Exception as e:
+            logger.error("Grok JSON schema query exception: %s", e)
+            raise
+

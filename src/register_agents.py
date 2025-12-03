@@ -152,6 +152,14 @@ def parse_agent_markdown(path):
         # Parse LLM (optional field)
         llm_name = _norm_set(fields.get("LLM"))
 
+        # Parse Daily Schedule (optional field - freeform English text)
+        daily_schedule = fields.get("Daily Schedule")
+        daily_schedule_description = None
+        if daily_schedule:
+            daily_schedule_text = str(daily_schedule).strip()
+            if daily_schedule_text:
+                daily_schedule_description = daily_schedule_text
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
@@ -164,6 +172,8 @@ def parse_agent_markdown(path):
             "timezone": timezone,  # str | None
             # llm config:
             "llm_name": llm_name,  # str | None
+            # daily schedule config:
+            "daily_schedule_description": daily_schedule_description,  # str | None
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -223,6 +233,7 @@ def register_all_agents(force: bool = False):
                         config_directory=config_dir,
                         timezone=parsed.get("timezone"),
                         llm_name=parsed.get("llm_name"),
+                        daily_schedule_description=parsed.get("daily_schedule_description"),
                     )
                     registered_agents.add(agent_name)
 

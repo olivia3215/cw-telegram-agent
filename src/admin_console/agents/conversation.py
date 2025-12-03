@@ -14,7 +14,8 @@ from flask import Blueprint, Response, jsonify, request  # pyright: ignore[repor
 
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY
-from handlers.received import _format_message_reactions, trigger_summarization_directly
+from handlers.received import _format_message_reactions, parse_llm_reply
+from handlers.received_helpers.summarization import trigger_summarization_directly
 from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
@@ -683,7 +684,7 @@ Translate all messages provided, maintaining the order and message IDs. Ensure a
             # Trigger summarization directly (without going through task graph)
             # This is async, so we need to run it on the agent's event loop
             async def _trigger_summarize():
-                await trigger_summarization_directly(agent, channel_id)
+                await trigger_summarization_directly(agent, channel_id, parse_llm_reply_fn=parse_llm_reply)
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:

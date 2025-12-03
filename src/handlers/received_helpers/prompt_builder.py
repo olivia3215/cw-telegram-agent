@@ -6,8 +6,71 @@ import logging
 
 from handlers.received_helpers.channel_details import _build_channel_details_section
 from utils import get_dialog_name
+from schedule import get_current_activity
+from telegram_media import get_unique_id
 
 logger = logging.getLogger(__name__)
+
+
+def _build_current_activity_section(agent, now) -> str:
+    """
+    Build the current activity section for the system prompt.
+    
+    Args:
+        agent: The agent instance
+        now: Current datetime
+    
+    Returns:
+        Formatted activity section string, or empty string if no activity
+    """
+    if not agent.daily_schedule_description:
+        return ""
+    
+    try:
+        schedule = agent._load_schedule()
+        if not schedule:
+            return ""
+        
+        current_activity, time_remaining, next_activity = get_current_activity(schedule, now)
+        
+        # If no current activity, show next activity if available
+        if not current_activity:
+            if not next_activity:
+                return ""
+            # Show next activity as upcoming
+            activity_text = f"\n\n# Current Activity\n\n"
+            activity_text += f"Next activity: {next_activity.activity_name} "
+            activity_text += f"(starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
+            activity_text += f"{next_activity.description}\n"
+            activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
+            return activity_text
+        
+        activity_text = f"\n\n# Current Activity\n\n"
+        activity_text += f"You are currently: {current_activity.activity_name} "
+        activity_text += f"({current_activity.start_time.strftime('%I:%M %p')} - {current_activity.end_time.strftime('%I:%M %p')})\n"
+        activity_text += f"{current_activity.description}\n"
+        
+        # Add time remaining
+        if time_remaining:
+            hours = int(time_remaining.total_seconds() // 3600)
+            minutes = int((time_remaining.total_seconds() % 3600) // 60)
+            if hours > 0:
+                time_str = f"{hours} hour{'s' if hours != 1 else ''}"
+                if minutes > 0:
+                    time_str += f" and {minutes} minute{'s' if minutes != 1 else ''}"
+            else:
+                time_str = f"{minutes} minute{'s' if minutes != 1 else ''}"
+            activity_text += f"Time remaining: {time_str}\n"
+        
+        # Add next activity
+        if next_activity:
+            activity_text += f"Next activity: {next_activity.activity_name} (starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
+        
+        activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
+        return activity_text
+    except Exception as e:
+        logger.debug(f"[{agent.name}] Failed to add current activity to prompt: {e}")
+        return ""
 
 
 async def build_specific_instructions(
@@ -128,8 +191,6 @@ async def build_complete_system_prompt(
     Returns:
         Complete system prompt string
     """
-    from handlers.received import _build_sticker_list
-    
     # Get base system prompt with context-appropriate instructions
     specific_instructions = await build_specific_instructions(
         agent=agent,
@@ -163,6 +224,11 @@ async def build_complete_system_prompt(
         f"\n\n# Current Time\n\nThe current time is: {now.strftime('%A %B %d, %Y at %I:%M %p %Z')}"
     )
 
+    # Add current activity if agent has a schedule
+    activity_section = _build_current_activity_section(agent, now)
+    if activity_section:
+        system_prompt += activity_section
+
     channel_details = await _build_channel_details_section(
         agent=agent,
         channel_id=channel_id,
@@ -186,4 +252,114 @@ async def build_complete_system_prompt(
         system_prompt += f"\n\n{specific_instructions}\n"
 
     return system_prompt
+
+
+async def _is_sticker_sendable(agent, doc) -> bool:
+    """
+    Test if a sticker can be sent by checking for premium requirements.
+
+    According to Telegram API documentation, premium stickers are identified by
+    the presence of a videoSize of type=f in the sticker's main document.
+
+    Args:
+        agent: Agent instance
+        doc: Sticker document from Telegram API
+
+    Returns:
+        True if sticker can be sent, False if it requires premium
+    """
+    try:
+        # Check for premium indicator: videoSize with type=f
+        video_thumbs = getattr(doc, "video_thumbs", None)
+        if video_thumbs:
+            for video_size in video_thumbs:
+                video_type = getattr(video_size, "type", None)
+                if video_type == "f":
+                    return False
+
+        # No premium indicators found
+        return True
+
+    except Exception as e:
+        logger.exception(f"Error checking sticker sendability: {e}")
+        return True
+
+
+async def _build_sticker_list(agent, media_chain) -> str | None:
+    """
+    Build a formatted list of available stickers with descriptions.
+    Filters out premium stickers that the agent cannot send.
+
+    Args:
+        agent: Agent instance with configured stickers
+        media_chain: Media source chain for description lookups
+
+    Returns:
+        Formatted sticker list string or None if no stickers available
+    """
+    if not agent.stickers:
+        return None
+
+    lines: list[str] = []
+    filtered_count = 0
+
+    # Check if premium filtering is enabled (based on agent's premium status)
+    filter_premium = getattr(agent, "filter_premium_stickers", True)
+
+    if filter_premium:
+        logger.debug("Premium sticker filtering enabled for non-premium agent")
+    else:
+        logger.debug("Premium sticker filtering disabled for premium agent")
+
+    try:
+        for set_short, name in sorted(agent.stickers.keys()):
+            try:
+                if set_short == "AnimatedEmojies":
+                    # Don't describe these - they are just animated emojis
+                    desc = None
+                else:
+                    # Get the document from the configured stickers
+                    doc = agent.stickers.get((set_short, name))
+                    if doc:
+                        # Check if sticker is sendable (not premium) if filtering is enabled
+                        if filter_premium and not await _is_sticker_sendable(
+                            agent, doc
+                        ):
+                            filtered_count += 1
+                            continue
+
+                        # Get unique_id from document
+                        _uid = get_unique_id(doc)
+
+                        # Use agent's media source chain
+                        cache_record = await media_chain.get(
+                            unique_id=_uid,
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            sticker_set_name=set_short,
+                            sticker_name=name,
+                        )
+                        desc = cache_record.get("description") if cache_record else None
+                    else:
+                        desc = None
+            except Exception as e:
+                logger.exception(f"Failed to process sticker {set_short}::{name}: {e}")
+                desc = None
+            if desc:
+                lines.append(f"- {set_short} :: {name} - {desc}")
+            else:
+                lines.append(f"- {set_short} :: {name}")
+
+        if filtered_count > 0:
+            logger.debug(f"Filtered out {filtered_count} premium stickers")
+
+    except Exception as e:
+        # If anything unexpected occurs, fall back to names-only list
+        logger.warning(
+            f"Failed to build sticker descriptions, falling back to names-only: {e}"
+        )
+        lines = [f"- {s} :: {n}" for (s, n) in sorted(agent.stickers.keys())]
+
+    return "\n".join(lines) if lines else None
 

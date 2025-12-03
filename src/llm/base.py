@@ -155,3 +155,32 @@ class LLM(ABC):
             timeout_s: Optional timeout in seconds for the request
         """
         ...
+
+    @abstractmethod
+    async def query_with_json_schema(
+        self,
+        *,
+        system_prompt: str,
+        json_schema: dict,
+        model: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str:
+        """
+        Query the LLM with a JSON schema constraint on the response.
+        
+        This method sends a system prompt and expects a JSON response that matches
+        the provided JSON schema. The response is returned as a JSON string.
+        
+        Args:
+            system_prompt: The system prompt/instruction to send to the LLM
+            json_schema: JSON schema dictionary that constrains the response format
+            model: Optional model name override
+            timeout_s: Optional timeout in seconds for the request
+        
+        Returns:
+            JSON string response that matches the schema
+        
+        Raises:
+            RuntimeError: If the LLM doesn't support JSON schema or returns invalid response
+        """
+        ...

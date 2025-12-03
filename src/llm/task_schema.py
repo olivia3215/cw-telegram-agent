@@ -405,6 +405,47 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "additionalProperties": False,
                 "title": "XSend Task",
                 "description": "Send an intent to the agent's future self in another channel for later follow-up.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["schedule"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional activity identifier. If provided and matches existing entry, updates or deletes it. If not provided, creates new entry.",
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO 8601 datetime string with timezone (e.g., '2025-12-02T06:00:00-10:00')",
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "ISO 8601 datetime string with timezone",
+                    },
+                    "activity_name": {
+                        "type": "string",
+                        "description": "Short human-readable name for the activity. If empty and id matches existing entry, deletes it.",
+                    },
+                    "responsiveness": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "Agent's responsiveness level (0 = sleeping/unavailable, 100 = actively chatting)",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Detailed description of what you'll be doing (include foods, work details, location, etc. in this field)",
+                    },
+                },
+                "required": ["kind", "start_time", "end_time", "activity_name", "responsiveness", "description"],
+                "additionalProperties": False,
+                "title": "Schedule Task",
+                "description": "Create, update, or delete a schedule entry. Operation determined by id and activity_name.",
             }
         ]
     },

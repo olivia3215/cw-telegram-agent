@@ -68,9 +68,11 @@ Include at least one of these or supply your own equivalent persona prompt to an
 Layer these on top of a core prompt when you want to unlock extra behavior:
 
 - `Person` – encourages everyday, human-like small talk and life details
-- `Memory` – teaches the agent how and when to record long-term memories
-- `Retrieve` – allows web retrieval tasks for fresh, external information and local file retrieval
-- `XSend` – enables cross-channel intents to the agent's future self
+- `Task-Memory` – teaches the agent how and when to record long-term memories
+- `Task-Retrieve` – allows web retrieval tasks for fresh, external information and local file retrieval
+- `Task-XSend` – enables cross-channel intents to the agent's future self
+- `Task-Plan` – enables channel-specific planning capabilities
+- `Task-Summarize` – enables conversation summarization capabilities
 
 ### Prompt Loading
 
@@ -83,20 +85,29 @@ All role prompts are loaded from the global `prompts/` directory within each con
 
 The final system prompt sent to the LLM combines prompts in this order:
 
-1. **Instructions prompt** (`Instructions.md`) - shared across all LLMs
-2. **Role prompts** (in the order specified in the agent configuration)
-3. **Agent instructions** (the specific behavior instructions for this agent)
+1. **Specific instructions** - Context-specific instructions for the current turn (e.g., "New Conversation", "Target Message", "Cross-channel Trigger")
+2. **Intentions section** - Channel Plan (if any) and Intentions (if any)
+3. **Instructions prompt** (`Instructions.md`) - Shared across all LLMs
+4. **Agent instructions** - The specific behavior instructions for this agent
+5. **Role prompts** - All role prompts in the order specified in the agent configuration
 
 Example with multiple role prompts:
 ```
-[Instructions prompt content]
+[Specific instructions for this turn]
+
+[Channel Plan (if any)]
+[Intentions (if any)]
+
+[Instructions.md content]
+
+[Agent-specific instructions]
 
 [First role prompt content]
 
 [Second role prompt content]
-
-[Agent-specific instructions]
 ```
+
+Note: Additional sections are added later in the prompt building process (stickers, memory, current time, current activity, channel details, conversation summary).
 
 ### Creating Role Prompts
 
@@ -130,19 +141,27 @@ Heidi
 # Agent Phone
 +15551234567
 
+# Agent Timezone
+America/Los_Angeles
+
 # Role Prompt
 Chatbot
-Student
+Person
+Task-Memory
+Task-Retrieve
+Task-XSend
 
 # Agent Instructions
-You are Heidi. You were born on August 18, 2010.
-You are a high school student.
+I'm Heidi. I was born August 18, 2010. I'm a high-school student...
 ...
 ```
 
 This combines:
 - Global `Chatbot` prompt (from `samples/prompts/Chatbot.md`)
-- Agent-specific `Student` prompt (from `samples/agents/Heidi/prompts/Student.md`)
+- Global `Person` prompt (from `samples/prompts/Person.md`)
+- Global `Task-Memory` prompt (from `samples/prompts/Task-Memory.md`)
+- Global `Task-Retrieve` prompt (from `samples/prompts/Task-Retrieve.md`)
+- Global `Task-XSend` prompt (from `samples/prompts/Task-XSend.md`)
 
 #### Mary Agent (Single Role Prompt)
 
@@ -168,7 +187,7 @@ Add the `Agent Timezone` field to your agent's markdown file using [IANA timezon
 Heidi
 
 # Agent Phone
-+14083607039
++15551234567
 
 # Agent Timezone
 America/Los_Angeles
@@ -221,7 +240,7 @@ By using the agent's timezone:
 
 ### Example Agents
 
-- **Heidi** (`samples/agents/Heidi.md`): Uses `America/Los_Angeles` timezone
+- **Heidi** (`samples/agents/Heidi.md`): Uses `America/Los_Angeles` timezone, has multiple role prompts (Chatbot, Person, Task-Memory, Task-Retrieve, Task-XSend)
 - See your agent configurations for more examples
 
 ## Agent LLM Configuration
@@ -276,22 +295,131 @@ See the main [README.md](../README.md) for instructions on obtaining API keys.
 
 ### LLM Capabilities
 
-**Gemini** (default):
+**Gemini** (default for agent responses):
 - Text generation
-- Image description
-- Video description (up to 10 seconds)
-- Audio description (up to 5 minutes)
+- Image description (when used as MEDIA_MODEL)
+- Video description (when used as MEDIA_MODEL, up to 10 seconds)
+- Audio description (when used as MEDIA_MODEL, up to 5 minutes)
 
 **Grok**:
 - Text generation
-- Image description
-- Video and audio description not yet supported (raises `NotImplementedError`)
+- Image description (when used as MEDIA_MODEL)
+- Video and audio description not yet supported (raises `NotImplementedError` when used as MEDIA_MODEL)
 
-If you need video or audio description capabilities, use Gemini LLM for that agent.
+### Media Descriptions
+
+Media descriptions (for images, videos, audio, and stickers) use a separate `MEDIA_MODEL` environment variable, not the agent's LLM configuration. This allows you to use different models for media descriptions versus agent responses.
+
+**Configuration:**
+Set the `MEDIA_MODEL` environment variable to specify which model to use for media descriptions:
+
+```bash
+export MEDIA_MODEL="gemini-2.0-flash"  # Use Gemini for media descriptions
+# or
+export MEDIA_MODEL="grok-4-fast-non-reasoning"  # Use Grok for media descriptions (images only)
+```
+
+**Important Notes:**
+- Media descriptions are generated using `MEDIA_MODEL`, regardless of which LLM the agent uses for responses
+- If you need video or audio description capabilities, set `MEDIA_MODEL` to a Gemini model (Grok doesn't support video/audio descriptions)
+- The agent's `LLM` field only affects text generation for responses, not media descriptions
 
 ### Error Handling
 
 If the specified model name doesn't exist, the LLM's API will throw an exception. Ensure the model name is correct for the selected LLM provider.
+
+## Daily Schedules
+
+Agents can have daily schedules that make them behave more human-like by having activities outside their Telegram conversations. When an agent has a schedule, they will have sleep cycles, meals, work, leisure activities, and other life events that affect their availability and responsiveness.
+
+### Configuration
+
+Add the `Daily Schedule` field to your agent's markdown file with freeform English text describing the agent's typical activities and preferences:
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Agent Timezone
+America/Los_Angeles
+
+# Daily Schedule
+I'm a night owl who typically wakes up around 10 AM. I work on coding projects 
+in the afternoon, usually from 2 PM to 6 PM. I enjoy cooking dinner around 7 PM 
+and often watch movies or play games in the evening. I go to bed around 2 AM. 
+On weekends, I like to go surfing in the morning and meet friends for brunch.
+
+# Role Prompt
+Chatbot
+Person
+
+# Agent Instructions
+You are Heidi...
+```
+
+### How It Works
+
+When an agent has a daily schedule configured:
+
+1. **Schedule Extension**: The schedule is automatically extended to 14 days from today whenever fewer than 7 days remain. The LLM generates realistic activities including sleep, meals, work, leisure, travel, and social events based on the agent's schedule description.
+
+2. **Sleep Behavior**: When the agent is asleep (responsiveness 0), they don't participate in the tick loop and ignore incoming messages, reactions, and responses until they wake up.
+
+3. **Responsiveness Delays**: The agent's responsiveness varies based on their current activity:
+   - **Chatting** (responsiveness ~100): ~4 seconds delay before responding
+   - **Working** (responsiveness ~30-50): 2-3 minutes delay before responding
+   - **Asleep** (responsiveness 0): Delay until wake time
+   - Other activities have delays interpolated between these values
+
+4. **Current Activity Context**: The agent's current activity is included in the system prompt, allowing them to naturally mention what they're doing if asked. The agent can also retrieve their full schedule using `file://schedule.json` in a retrieve task.
+
+5. **Schedule Retrieval**: Agents can access their schedule by using a retrieve task with the URL `file://schedule.json`. This allows them to "look at my calendar" when planning or responding to questions about availability.
+
+### Schedule Storage
+
+Schedules are stored in the agent's state directory at `{STATE_DIRECTORY}/{agent_name}/schedule.json`. The schedule includes:
+- Activities with start/end times (timezone-aware)
+- Activity types (freeform strings like "sleeping", "eating", "working", etc.)
+- Responsiveness levels (0-100)
+- Descriptions and optional details (foods, work descriptions, locations, etc.)
+
+### Activity Types
+
+Activity types are freeform strings determined by the LLM when extending the schedule. Common examples include:
+- `sleeping` - Agent is asleep (responsiveness: 0)
+- `falling asleep` - Preparing for sleep (responsiveness: 10-20)
+- `waking` - Just woke up (responsiveness: 30-40)
+- `eating` - Having a meal (responsiveness: 40-60, includes `foods` array)
+- `working` - Working on something (responsiveness: 30-50, includes `work_description`)
+- `chatting` - Actively chatting on Telegram (responsiveness: 90-100)
+- `leisure` - Other activities (responsiveness: 20-60, varies by activity)
+- `traveling` - Traveling/commuting (responsiveness: 30-50)
+- `social` - Social events, parties (responsiveness: 20-40)
+
+The LLM decides appropriate activity types and responsiveness values based on the agent's schedule description.
+
+### Special Behavior
+
+- **xsend tasks**: Tasks triggered via `xsend` bypass all schedule delays and are processed immediately, even if the agent is asleep.
+- **Read receipts**: Read receipts are delayed based on responsiveness, making the agent's behavior more realistic.
+- **Schedule extension**: Happens automatically in the background during the tick loop, so it doesn't block message processing.
+
+### Example
+
+An agent with a schedule might respond like this:
+
+**User**: "What are you doing?"
+
+**Agent**: "I'm currently having breakfast (8:00 AM - 8:30 AM). I'm eating coffee, toast, and eggs. I'll be done in about 15 minutes, then I'll be working on my coding project."
+
+The agent can also retrieve their full schedule to answer questions about future availability:
+
+**User**: "Are you free tomorrow afternoon?"
+
+**Agent**: [Uses retrieve task with `file://schedule.json`] "Let me check my schedule... I have a meeting from 2-3 PM, but I'm free after that!"
 
 ## Configuration
 
@@ -309,14 +437,14 @@ The memory system allows agents to remember important information about the peop
 
 ### Enabling Memory for an Agent
 
-To enable memory functionality for an agent, add the `Memory` role prompt to their configuration:
+To enable memory functionality for an agent, add the `Task-Memory` role prompt to their configuration:
 
 ```markdown
 # Role Prompt
 
 Chatbot
 Student
-Memory
+Task-Memory
 ```
 
 This teaches the agent how to use the `remember` task to save information about conversation partners.
@@ -376,12 +504,12 @@ Agents with the `Retrieve` role prompt can load local documentation files using 
 
 ### Enabling File Retrieval
 
-To enable file retrieval, add the `Retrieve` role prompt to your agent's configuration:
+To enable file retrieval, add the `Task-Retrieve` role prompt to your agent's configuration:
 
 ```markdown
 # Role Prompt
 Chatbot
-Retrieve
+Task-Retrieve
 ```
 
 ### File Search Locations
@@ -415,6 +543,10 @@ samples/
     └── Cindy.md
 ```
 
+### Special File: schedule.json
+
+Agents with daily schedules can retrieve their schedule using `file://schedule.json`. This returns the agent's current schedule in JSON format, allowing them to check their calendar and answer questions about availability.
+
 ### Usage Example
 
 Agents can use retrieve tasks to load both web URLs and local files:
@@ -425,6 +557,7 @@ Agents can use retrieve tasks to load both web URLs and local files:
   "urls": [
     "file:Friends.md",
     "file:Family.md",
+    "file:schedule.json",
     "https://example.com/page"
   ]
 }
@@ -433,11 +566,14 @@ Agents can use retrieve tasks to load both web URLs and local files:
 The system will:
 1. Load `Friends.md` from the docs directories (agent-specific first, then shared)
 2. Load `Family.md` from the docs directories
-3. Fetch the web URL normally
+3. Load the agent's schedule from `{STATE_DIRECTORY}/{agent_name}/schedule.json`
+4. Fetch the web URL normally
 
 ### Error Handling
 
 If a file is not found, the system returns: `"No file `{filename}` was found."`
+
+For `schedule.json`, if the agent doesn't have a daily schedule configured, the system returns: `"Agent does not have a daily schedule configured."`
 
 ### Benefits
 
@@ -445,3 +581,4 @@ If a file is not found, the system returns: `"No file `{filename}` was found."`
 - **Shared content**: Store common information (like character descriptions) in shared docs
 - **Agent-specific content**: Keep agent-specific information in agent-specific docs
 - **On-demand loading**: Files are only loaded when the agent requests them via retrieve tasks
+- **Schedule access**: Agents can check their own schedules to answer questions about availability

@@ -469,4 +469,122 @@ class AgentStorage:
             )
         return None
 
+    def load_schedule(self) -> dict | None:
+        """
+        Load agent's schedule from state directory.
+        
+        Returns:
+            Schedule dictionary with version, agent_name, timezone, last_extended, and activities,
+            or None if schedule file doesn't exist or is invalid.
+        """
+        try:
+            schedule_file = self.state_directory / self.agent_name / "schedule.json"
+            if not schedule_file.exists():
+                return None
+            
+            with open(schedule_file, "r", encoding="utf-8") as f:
+                schedule = json.load(f)
+            
+            # Validate basic structure
+            if not isinstance(schedule, dict):
+                logger.warning(
+                    f"[{self.agent_name}] Invalid schedule file: expected dict, got {type(schedule).__name__}"
+                )
+                return None
+            
+            return schedule
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"[{self.agent_name}] Corrupted schedule file: {e}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[{self.agent_name}] Failed to load schedule: {e}"
+            )
+        return None
+
+    def save_schedule(self, schedule: dict) -> None:
+        """
+        Save agent's schedule to state directory.
+        
+        Automatically removes activities that are more than 2 days in the past.
+        
+        Args:
+            schedule: Schedule dictionary to save
+        """
+        try:
+            # Clean up old activities (more than 2 days in the past)
+            schedule = self._cleanup_old_activities(schedule)
+            
+            # Ensure agent directory exists
+            agent_dir = self.state_directory / self.agent_name
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            
+            schedule_file = agent_dir / "schedule.json"
+            
+            with open(schedule_file, "w", encoding="utf-8") as f:
+                json.dump(schedule, f, indent=2, ensure_ascii=False)
+            
+            logger.debug(f"[{self.agent_name}] Saved schedule to {schedule_file}")
+        except Exception as e:
+            logger.error(
+                f"[{self.agent_name}] Failed to save schedule: {e}"
+            )
+            raise
+    
+    def _cleanup_old_activities(self, schedule: dict) -> dict:
+        """
+        Remove activities that ended more than 2 days ago.
+        
+        Args:
+            schedule: Schedule dictionary
+            
+        Returns:
+            Schedule dictionary with old activities removed
+        """
+        if not schedule or not isinstance(schedule, dict):
+            return schedule
+        
+        activities = schedule.get("activities", [])
+        if not activities:
+            return schedule
+        
+        from datetime import datetime, timedelta, UTC
+        from schedule import ScheduleActivity
+        
+        # Calculate cutoff time: 2 days ago
+        cutoff_time = datetime.now(UTC) - timedelta(days=2)
+        
+        # Filter out activities that ended more than 2 days ago
+        original_count = len(activities)
+        kept_activities = []
+        removed_count = 0
+        
+        for act_data in activities:
+            try:
+                act = ScheduleActivity.from_dict(act_data)
+                # Keep activity if it ends after the cutoff time
+                if act.end_time > cutoff_time:
+                    kept_activities.append(act_data)
+                else:
+                    removed_count += 1
+            except Exception as e:
+                # If we can't parse the activity, keep it (better safe than sorry)
+                logger.warning(
+                    f"[{self.agent_name}] Failed to parse activity during cleanup, keeping it: {e}"
+                )
+                kept_activities.append(act_data)
+        
+        if removed_count > 0:
+            logger.info(
+                f"[{self.agent_name}] Cleaned up {removed_count} old activity(ies) "
+                f"(removed activities ending before {cutoff_time.isoformat()})"
+            )
+        
+        # Update schedule with cleaned activities
+        schedule = schedule.copy()
+        schedule["activities"] = kept_activities
+        
+        return schedule
+
 

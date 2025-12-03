@@ -137,14 +137,19 @@ async def handle_incoming_message(agent: Agent, event):
             logger.info(
                 f"[{agent.name}] Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
             )
+        # Determine if there are mentions/reactions to clear
+        has_mentions = event.message.mentioned
+        # For reactions, we'd need to check, but for now assume False (reactions are handled separately)
+        has_reactions = False
+        
         await insert_received_task_for_conversation(
             recipient_id=agent.agent_id,
             channel_id=event.chat_id,
             message_id=event.message.id,
             is_callout=is_callout,
+            clear_mentions=has_mentions,
+            clear_reactions=has_reactions,
         )
-        # send_read_acknowledge just needs to identify the chat/channel - event.chat_id is sufficient
-        await client.send_read_acknowledge(event.chat_id, clear_mentions=True, clear_reactions=True)
 
 
 async def scan_unread_messages(agent: Agent):
@@ -192,12 +197,15 @@ async def scan_unread_messages(agent: Agent):
                 f"[{agent.name}] Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
             )
-            await client.send_read_acknowledge(dialog, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
+            # Read receipts are now handled in handle_received with responsiveness delays
+            # Pass clear_mentions/clear_reactions flags so they can be cleared when marking as read
             await insert_received_task_for_conversation(
                 recipient_id=agent_id,
                 channel_id=dialog.id,
                 is_callout=is_callout or is_marked_unread,
                 reaction_message_id=reaction_message_id,
+                clear_mentions=has_mentions,
+                clear_reactions=has_reactions_on_agent_message,
             )
 
 
@@ -395,8 +403,16 @@ async def run_telegram_loop(agent: Agent):
                             is_callout=True,  # Reactions are treated as callouts
                             reaction_message_id=msg_id,
                         )
-                        # Clear reactions to prevent duplicate tasks when periodic scan runs
-                        await client.send_read_acknowledge(chat_id, clear_reactions=True)
+                        # Read receipts are now handled in handle_received with responsiveness delays
+                        # Pass clear_reactions flag so reactions can be cleared when marking as read
+                        await insert_received_task_for_conversation(
+                            recipient_id=agent.agent_id,
+                            channel_id=chat_id,
+                            is_callout=True,  # Reactions are treated as callouts
+                            reaction_message_id=msg_id,
+                            clear_mentions=False,
+                            clear_reactions=True,
+                        )
                 except Exception as e:
                     logger.debug(f"[{agent.name}] Error handling reaction update: {e}")
             except Exception as e:

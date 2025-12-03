@@ -48,7 +48,7 @@ from admin_console.helpers import (
     get_work_queue,
 )
 from register_agents import register_all_agents, all_agents as get_all_agents
-from handlers.received import _format_message_reactions, trigger_summarization_directly
+from handlers.received import _format_message_reactions
 from telepathic import TELEPATHIC_PREFIXES
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain

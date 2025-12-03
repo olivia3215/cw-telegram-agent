@@ -32,6 +32,7 @@ class AgentRegistry:
         explicit_stickers=None,
         config_directory=None,
         timezone=None,
+        daily_schedule_description=None,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -62,6 +63,7 @@ class AgentRegistry:
             explicit_stickers=explicit_stickers,
             config_directory=config_directory,
             timezone=timezone,
+            daily_schedule_description=daily_schedule_description,
         )
         # logger.info(f"Added agent [{name}] with instructions: {instructions!r}")
 
