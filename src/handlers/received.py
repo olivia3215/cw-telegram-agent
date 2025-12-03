@@ -269,6 +269,8 @@ def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
     """
     Calculate the responsiveness-based delay in seconds based on the agent's schedule.
     
+    Uses linear interpolation: 4 seconds at responsiveness 100, 120 seconds (2 minutes) at responsiveness 1.
+    
     Args:
         agent: Agent instance
         schedule: Schedule dictionary
@@ -288,37 +290,16 @@ def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
                 f"[{agent.name}] Agent is asleep, delaying received task by {delay_seconds}s until wake time"
             )
         return delay_seconds
-    elif responsiveness >= 90:
-        # Chatting: ~4 seconds delay
-        delay_seconds = 4
-        logger.debug(
-            f"[{agent.name}] Agent is chatting (responsiveness {responsiveness}), delaying {delay_seconds}s"
-        )
-        return delay_seconds
-    elif 30 <= responsiveness <= 50:
-        # Working: 2-3 minutes delay
-        # Linear interpolation: 30 = 3 minutes (180s), 50 = 2 minutes (120s)
-        delay_seconds = int(180 - (responsiveness - 30) * 3)
-        logger.info(
-            f"[{agent.name}] Agent is working (responsiveness {responsiveness}), delaying {delay_seconds}s"
-        )
-        return delay_seconds
-    elif responsiveness < 30:
-        # Low responsiveness: 180s to ~60s
-        delay_seconds = max(4, int(180 - (responsiveness * 4)))
-        logger.debug(
-            f"[{agent.name}] Agent has low responsiveness ({responsiveness}), delaying {delay_seconds}s"
-        )
-        return delay_seconds
-    elif 50 < responsiveness < 90:
-        # Medium responsiveness: 120s to 4s
-        delay_seconds = max(4, int(120 - ((responsiveness - 50) * 2.9)))
-        logger.debug(
-            f"[{agent.name}] Agent has medium responsiveness ({responsiveness}), delaying {delay_seconds}s"
-        )
-        return delay_seconds
     
-    return 0
+    # Linear interpolation: 4 seconds at responsiveness 100, 120 seconds at responsiveness 1
+    # Formula: delay = 4 + (100 - responsiveness) * (120 - 4) / (100 - 1)
+    # Simplified: delay = 4 + (100 - responsiveness) * 116 / 99
+    delay_seconds = max(4, int(4 + (100 - responsiveness) * 116 / 99))
+    
+    logger.debug(
+        f"[{agent.name}] Agent responsiveness {responsiveness}, delaying {delay_seconds}s"
+    )
+    return delay_seconds
 
 
 async def _schedule_tasks(
