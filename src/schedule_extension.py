@@ -110,13 +110,18 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
     # Execute schedule tasks (and think tasks)
     schedule_count = 0
     for task in tasks:
+        handled = await dispatch_immediate_task(task, agent=agent, channel_id=0)
         if task.type == "schedule":
-            handled = await dispatch_immediate_task(task, agent=agent, channel_id=0)
             if handled:
                 schedule_count += 1
         elif task.type == "think":
             # Execute think tasks to log reasoning
             await dispatch_immediate_task(task, agent=agent, channel_id=0)
+        else:
+            # Log unexpected task types (should only be schedule/think for schedule extension)
+            logger.warning(
+                f"[{agent.name}] Unexpected task type '{task.type}' in schedule extension response, ignoring"
+            )
     
     # Reload schedule to get updated version
     updated_schedule = agent._load_schedule()
@@ -170,13 +175,14 @@ def _build_schedule_system_prompt(
     instructions_prompt = load_system_prompt("Instructions-Schedule")
     
     # Build specific instructions with time range
-    specific_instructions = f"""# Instruction
-
-You are extending your daily schedule. Please create schedule entries starting from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.
-The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).
-
-Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight). If the last activity is sleep, it should continue past midnight until the normal wake time (e.g., 06:00:00 the next day).
-"""
+    specific_instructions = (
+        "# Instruction\n "
+        "\n"
+        f"You are extending your daily schedule. Please create schedule entries starting from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
+        f"The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).\n"
+        f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight)."
+        "If the last activity is sleep, it should continue past midnight until the normal wake time (e.g., 06:00:00 the next day).\n"
+    )
     
     # Add dynamic sections after the base instructions
     dynamic_sections = []
