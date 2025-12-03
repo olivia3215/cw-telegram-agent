@@ -857,11 +857,19 @@ class GeminiLLM(LLM):
                 logger.info(f"JSON Schema:\n{json.dumps(json_schema, indent=2)}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
 
+            # Gemini's generate_content API requires conversations to end with a user turn.
+            # Since we're not passing any conversation history, add a special user turn
+            # (same pattern as _build_gemini_contents when history is empty).
+            contents = [{
+                "role": "user",
+                "parts": [{"text": "⟦special⟧ Please respond to the instructions provided."}]
+            }]
+
             import asyncio
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model=model_name,
-                contents=[],  # Empty contents, all in system_instruction
+                contents=contents,
                 config=config,
             )
 
