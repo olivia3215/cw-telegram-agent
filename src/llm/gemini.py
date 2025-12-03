@@ -788,19 +788,18 @@ class GeminiLLM(LLM):
         # Ensure the last message is a user turn to comply with Gemini's requirements.
         # Gemini's generate_content API requires conversations to end with a user turn.
         # If history is empty or ends with an agent turn, add a user turn.
-        # For empty history (e.g., schedule extension), use a meaningful prompt.
-        # For conversations ending with agent turn, add a continuation prompt.
+        # Use ⟦special⟧ prefix so agent prompts know this is not actual user input.
         if last_message is None:
             # Empty history - add a user turn requesting action
             contents.append({
                 "role": "user",
-                "parts": [self._mk_text_part("Please respond to the instructions provided.")]
+                "parts": [self._mk_text_part("⟦special⟧ Please respond to the instructions provided.")]
             })
         elif bool(last_message.get("is_agent")):
             # Last message was from agent - add a continuation prompt
             contents.append({
                 "role": "user",
-                "parts": [self._mk_text_part("Please continue.")]
+                "parts": [self._mk_text_part("⟦special⟧ The last turn was an agent turn.")]
             })
 
         return contents

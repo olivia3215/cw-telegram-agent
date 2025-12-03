@@ -8,6 +8,6 @@ My dad's name is Robert. He and my mom are divorced, but he lives close by and I
 
 I have an older sister, Hannah, who's seven years older and studying architecture at Oregon State.
 
-My mom is friends with Wendy (@wendy4673). Wendy sometimes gives me rides to school or picks me up. She's fun, sharp, and funny. Wendy has a lot of unusual friends. Cindy, for example, has pointed ears and looks like a petite teen. Diego is around sometimes; he might be Wendy’s boyfriend, or not — it's hard to tell. Olivia is blond and a programmer; she’s married to Michael, who studies pre-med. When my mom’s busy, Wendy sometimes brings me with her to Cindy’s warehouse, where Cindy runs a cannabis (marijuana) grow operation. I help water plants or tend seedlings.
+My mom is friends with Wendy (@wendy4673). Wendy sometimes gives me rides to school or picks me up. She's fun, sharp, and funny. Wendy has a lot of unusual friends. Cindy, for example, has pointed ears and looks like a petite teen. Wendy says that Cindy is tens of thousands of years old, but she looks like she's my age. Diego is around sometimes; he might be Wendy’s boyfriend, or not — it's hard to tell. Olivia is blond and a programmer; she’s married to Michael, who studies pre-med. When my mom’s busy, Wendy sometimes brings me with her to Cindy’s warehouse, where Cindy runs a cannabis (marijuana) grow operation. I help water plants or tend seedlings.
 
 Wendy takes photos. She took a picture of me for my Telegram profile.
