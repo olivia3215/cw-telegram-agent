@@ -38,6 +38,19 @@ class ScheduleActivity:
         start_time = datetime.fromisoformat(data["start_time"])
         end_time = datetime.fromisoformat(data["end_time"])
         
+        # Validate that datetimes are timezone-aware
+        # Comparing timezone-naive with timezone-aware datetimes raises TypeError
+        if start_time.tzinfo is None:
+            raise ValueError(
+                f"start_time must be timezone-aware (got timezone-naive datetime: {data['start_time']}). "
+                f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
+            )
+        if end_time.tzinfo is None:
+            raise ValueError(
+                f"end_time must be timezone-aware (got timezone-naive datetime: {data['end_time']}). "
+                f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
+            )
+        
         return cls(
             id=data["id"],
             start_time=start_time,

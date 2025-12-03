@@ -91,6 +91,21 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
             logger.warning(f"[schedule] Invalid datetime format: {e}")
             return False
         
+        # Validate that datetimes are timezone-aware
+        # Comparing timezone-naive with timezone-aware datetimes raises TypeError
+        if start_time.tzinfo is None:
+            logger.warning(
+                f"[schedule] start_time must be timezone-aware (got: {start_time_str}). "
+                f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
+            )
+            return False
+        if end_time.tzinfo is None:
+            logger.warning(
+                f"[schedule] end_time must be timezone-aware (got: {end_time_str}). "
+                f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
+            )
+            return False
+        
         # Generate ID if not provided
         activity_id = params.get("id") or f"act-{uuid.uuid4().hex[:8]}"
         
@@ -156,9 +171,33 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
             if act.get("id") == activity_id:
                 # Update fields
                 if "start_time" in params:
-                    activities[i]["start_time"] = params["start_time"]
+                    # Validate timezone-aware datetime
+                    try:
+                        start_time = datetime.fromisoformat(params["start_time"])
+                        if start_time.tzinfo is None:
+                            logger.warning(
+                                f"[schedule] start_time must be timezone-aware (got: {params['start_time']}). "
+                                f"ISO 8601 datetime strings must include timezone offset."
+                            )
+                            return False
+                        activities[i]["start_time"] = params["start_time"]
+                    except ValueError as e:
+                        logger.warning(f"[schedule] Invalid start_time format: {e}")
+                        return False
                 if "end_time" in params:
-                    activities[i]["end_time"] = params["end_time"]
+                    # Validate timezone-aware datetime
+                    try:
+                        end_time = datetime.fromisoformat(params["end_time"])
+                        if end_time.tzinfo is None:
+                            logger.warning(
+                                f"[schedule] end_time must be timezone-aware (got: {params['end_time']}). "
+                                f"ISO 8601 datetime strings must include timezone offset."
+                            )
+                            return False
+                        activities[i]["end_time"] = params["end_time"]
+                    except ValueError as e:
+                        logger.warning(f"[schedule] Invalid end_time format: {e}")
+                        return False
                 if "activity_name" in params:
                     activities[i]["activity_name"] = params["activity_name"]
                 if "responsiveness" in params:
