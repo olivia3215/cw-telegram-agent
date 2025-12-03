@@ -181,7 +181,7 @@ def _build_schedule_system_prompt(
         "\n"
         f"You are extending your daily schedule. Please create schedule entries starting from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
         f"The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).\n"
-        f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight)."
+        f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).\n"
         "If the last activity is sleep, it should continue past midnight until the normal wake time (e.g., 06:00:00 the next day).\n"
     )
     
