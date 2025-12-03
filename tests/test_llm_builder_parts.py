@@ -248,7 +248,7 @@ def test_agent_reply_to_msg_id_in_metadata():
     assert "message_id=a2" in agent_msg2_parts[0]["text"]
     assert "reply_to_msg_id" not in agent_msg2_parts[0]["text"]
 
-        # Last message is appended user turn (since last actual message was agent)
+    # Last message is appended user turn (since last actual message was agent)
     special_msg_parts = contents[4]["parts"]
     assert special_msg_parts[0]["text"] == "⟦special⟧ The last turn was an agent turn."
 

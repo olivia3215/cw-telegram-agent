@@ -167,10 +167,11 @@ def _build_schedule_system_prompt(
             for act in recent_activities[-10:]:  # Last 10 activities
                 recent_activities_text += f"- {act.activity_name} ({act.start_time.strftime('%Y-%m-%d %H:%M')} - {act.end_time.strftime('%H:%M')}): {act.description}\n"
     
-    # Calculate end date: midnight of the next day after start_date
-    # Always extend to midnight of the day after start_date
+    # Calculate end date: midnight of the day after next
+    # This ensures we extend to the end of the next day, giving us at least a full day of coverage
+    # Example: if start_date is 10 PM on Dec 2, end_date will be midnight of Dec 4 (26 hours)
     start_date_midnight = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_date = start_date_midnight + timedelta(days=1)
+    end_date = start_date_midnight + timedelta(days=2)
     
     # Load Instructions-Schedule.md
     instructions_prompt = load_system_prompt("Instructions-Schedule")
@@ -180,9 +181,9 @@ def _build_schedule_system_prompt(
         "# Instruction\n "
         "\n"
         f"You are extending your daily schedule. Please create schedule entries starting from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
-        f"The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).\n"
-        f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight).\n"
-        "If the last activity is sleep, it should continue past midnight until the normal wake time (e.g., 06:00:00 the next day).\n"
+        f"The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight of the day after next).\n"
+        f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
+        "If the last activity is sleep, it should continue past the end time until the normal wake time (e.g., 06:00:00 the next day).\n"
     )
     
     # Add dynamic sections after the base instructions
