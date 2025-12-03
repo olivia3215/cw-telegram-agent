@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from google.genai.types import FinishReason
-from handlers.received import _run_llm_with_retrieval
+from handlers.received_helpers.llm_query import run_llm_with_retrieval as _run_llm_with_retrieval
 from llm.gemini import GeminiLLM
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from tick import run_one_tick

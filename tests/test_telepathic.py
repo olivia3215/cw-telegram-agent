@@ -499,7 +499,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_telepathic_messages_from_history(self):
         """Test that telepathic messages are filtered from message history."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -544,7 +544,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_multiple_telepathic_message_types(self):
         """Test filtering of different types of telepathic messages."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -594,7 +594,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_filter_summarize_telepathic_messages(self):
         """Test that ⟦summarize⟧ messages are filtered from non-telepathic agents."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgTextPart
         
         mock_agent = Mock()
@@ -637,7 +637,7 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_media_messages_not_filtered(self):
         """Test that ⟦media⟧ messages are NOT filtered from non-telepathic agents (they're legitimate media descriptions)."""
-        from handlers.received import _process_message_history
+        from handlers.received_helpers.message_processing import process_message_history as _process_message_history
         from llm.base import MsgMediaPart
         
         mock_agent = Mock()
@@ -759,7 +759,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_marks_summarize_silent_in_summarization_mode(self):
         """Test that parse_llm_reply marks summarize tasks as silent when summarization_mode=True."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(
@@ -800,7 +804,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_normal_summarize_not_silent(self):
         """Test that parse_llm_reply does not mark summarize tasks as silent in normal mode."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(
@@ -912,7 +920,11 @@ class TestTelepathicMessageFiltering:
     @pytest.mark.asyncio
     async def test_parse_llm_reply_marks_think_silent_in_summarization_mode(self):
         """Test that parse_llm_reply marks think tasks as silent when summarization_mode=True."""
-        from handlers.received import parse_llm_reply_from_json, _dedupe_tasks_by_identifier, _assign_generated_identifiers
+        from handlers.received_helpers.task_parsing import (
+            parse_llm_reply_from_json,
+            dedupe_tasks_by_identifier as _dedupe_tasks_by_identifier,
+            assign_generated_identifiers as _assign_generated_identifiers,
+        )
         import json
         
         json_text = json.dumps(

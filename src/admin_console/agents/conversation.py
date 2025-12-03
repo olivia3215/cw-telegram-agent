@@ -14,7 +14,8 @@ from flask import Blueprint, Response, jsonify, request  # pyright: ignore[repor
 
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY
-from handlers.received import _format_message_reactions, parse_llm_reply
+from handlers.received_helpers.message_processing import _format_message_reactions
+from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
 from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries

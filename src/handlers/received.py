@@ -60,8 +60,6 @@ from handlers.received_helpers.task_parsing import (
     process_retrieve_tasks as _process_retrieve_tasks,
 )
 
-# Re-export for backward compatibility (for admin_console and tests)
-# These functions are imported above and will be available as received._format_message_reactions, etc.
 from media.media_injector import (
     format_message_for_prompt,
     inject_media_descriptions,
