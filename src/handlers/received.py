@@ -26,8 +26,6 @@ from utils import (
     get_channel_name,
     get_dialog_name,
     is_group_or_channel,
-    extract_user_id_from_peer,
-    extract_sticker_name_from_document,
     get_custom_emoji_name,
     strip_json_fence,
     normalize_list,
