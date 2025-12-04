@@ -10,13 +10,32 @@ Handler for schedule tasks that allow agents to manage their daily schedules.
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from handlers.registry import register_immediate_task_handler
 from schedule import ScheduleActivity
 from task_graph import TaskNode
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_datetime(dt: datetime) -> datetime:
+    """
+    Normalize a datetime to be timezone-aware.
+    
+    If the datetime is timezone-naive, it's assumed to be in UTC and made UTC-aware.
+    This allows comparison between legacy (naive) and new (aware) datetimes.
+    
+    Args:
+        dt: Datetime to normalize (may be naive or aware)
+    
+    Returns:
+        Timezone-aware datetime
+    """
+    if dt.tzinfo is None:
+        # Legacy timezone-naive datetime - assume UTC
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 def _activities_overlap(start1: datetime, end1: datetime, start2: datetime, end2: datetime) -> bool:
@@ -35,9 +54,20 @@ def _activities_overlap(start1: datetime, end1: datetime, start2: datetime, end2
     Returns:
         True if ranges overlap (excluding exact boundary touches)
     """
-    # Two ranges overlap if: start1 < end2 AND start2 < end1
-    # This excludes exact boundary touches (e.g., one ends exactly when another starts)
-    return start1 < end2 and start2 < end1
+    try:
+        # Normalize datetimes to handle mixed timezone-naive/aware comparisons
+        start1 = _normalize_datetime(start1)
+        end1 = _normalize_datetime(end1)
+        start2 = _normalize_datetime(start2)
+        end2 = _normalize_datetime(end2)
+        
+        # Two ranges overlap if: start1 < end2 AND start2 < end1
+        # This excludes exact boundary touches (e.g., one ends exactly when another starts)
+        return start1 < end2 and start2 < end1
+    except TypeError as e:
+        # Safety net: if normalization didn't work, log and return False (no overlap)
+        logger.warning(f"[schedule] TypeError comparing datetimes for overlap: {e}")
+        return False
 
 
 def _split_activity_for_overlap(
@@ -65,23 +95,34 @@ def _split_activity_for_overlap(
         logger.warning(f"[schedule] Failed to parse activity times for splitting: {e}")
         return []
     
+    # Normalize datetimes to handle mixed timezone-naive/aware comparisons
+    existing_start = _normalize_datetime(existing_start)
+    existing_end = _normalize_datetime(existing_end)
+    new_start = _normalize_datetime(new_start)
+    new_end = _normalize_datetime(new_end)
+    
     segments = []
     
-    # Create "before" segment if there's time before the overlap
-    if existing_start < new_start:
-        before_segment = existing_activity.copy()
-        before_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
-        before_segment["start_time"] = existing_start.isoformat()
-        before_segment["end_time"] = new_start.isoformat()
-        segments.append(before_segment)
-    
-    # Create "after" segment if there's time after the overlap
-    if new_end < existing_end:
-        after_segment = existing_activity.copy()
-        after_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
-        after_segment["start_time"] = new_end.isoformat()
-        after_segment["end_time"] = existing_end.isoformat()
-        segments.append(after_segment)
+    try:
+        # Create "before" segment if there's time before the overlap
+        if existing_start < new_start:
+            before_segment = existing_activity.copy()
+            before_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
+            before_segment["start_time"] = existing_start.isoformat()
+            before_segment["end_time"] = new_start.isoformat()
+            segments.append(before_segment)
+        
+        # Create "after" segment if there's time after the overlap
+        if new_end < existing_end:
+            after_segment = existing_activity.copy()
+            after_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
+            after_segment["start_time"] = new_end.isoformat()
+            after_segment["end_time"] = existing_end.isoformat()
+            segments.append(after_segment)
+    except TypeError as e:
+        # Safety net: if comparison fails, log and return empty (no split)
+        logger.warning(f"[schedule] TypeError comparing datetimes for splitting: {e}")
+        return []
     
     return segments
 
@@ -119,13 +160,24 @@ def _handle_activity_overlaps(
             result.append(act)  # Keep invalid activities as-is
             continue
         
+        # Normalize datetimes to handle mixed timezone-naive/aware comparisons
+        act_start = _normalize_datetime(act_start)
+        act_end = _normalize_datetime(act_end)
+        new_start_normalized = _normalize_datetime(new_start)
+        new_end_normalized = _normalize_datetime(new_end)
+        
         # Check if this activity overlaps with the new time range
-        if _activities_overlap(act_start, act_end, new_start, new_end):
-            # Split the activity and add non-empty segments
-            segments = _split_activity_for_overlap(act, new_start, new_end)
-            result.extend(segments)
-        else:
-            # No overlap, keep the activity as-is
+        try:
+            if _activities_overlap(act_start, act_end, new_start_normalized, new_end_normalized):
+                # Split the activity and add non-empty segments
+                segments = _split_activity_for_overlap(act, new_start_normalized, new_end_normalized)
+                result.extend(segments)
+            else:
+                # No overlap, keep the activity as-is
+                result.append(act)
+        except TypeError as e:
+            # Safety net: if overlap check fails, keep the activity as-is
+            logger.warning(f"[schedule] TypeError checking overlap: {e}, keeping activity as-is")
             result.append(act)
     
     return result
@@ -147,13 +199,22 @@ def _sort_activities(activities: list[dict]) -> list[dict]:
         try:
             start_str = act.get("start_time", "")
             if not start_str:
-                return (1, datetime.min.replace(tzinfo=None))  # Invalid: sort to end
+                return (1, datetime.min.replace(tzinfo=UTC))  # Invalid: sort to end (use UTC-aware)
             dt = datetime.fromisoformat(start_str)
+            # Normalize to handle mixed timezone-naive/aware datetimes
+            dt = _normalize_datetime(dt)
             return (0, dt)  # Valid: sort normally
-        except (ValueError, KeyError, TypeError):
-            return (1, datetime.min.replace(tzinfo=None))  # Invalid: sort to end
+        except (ValueError, KeyError, TypeError) as e:
+            # Catch TypeError in case normalization or comparison fails
+            logger.debug(f"[schedule] Error in sort_key for activity: {e}")
+            return (1, datetime.min.replace(tzinfo=UTC))  # Invalid: sort to end (use UTC-aware)
     
-    return sorted(activities, key=sort_key)
+    try:
+        return sorted(activities, key=sort_key)
+    except TypeError as e:
+        # Safety net: if sorting fails due to mixed timezone awareness, log and return unsorted
+        logger.warning(f"[schedule] TypeError sorting activities: {e}, returning unsorted")
+        return activities
 
 
 @register_immediate_task_handler("schedule")
@@ -321,8 +382,11 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                 try:
                     current_start = datetime.fromisoformat(act.get("start_time", ""))
                     current_end = datetime.fromisoformat(act.get("end_time", ""))
-                except (ValueError, KeyError):
-                    logger.warning(f"[schedule] Activity {activity_id} has invalid times")
+                    # Normalize to handle legacy timezone-naive datetimes
+                    current_start = _normalize_datetime(current_start)
+                    current_end = _normalize_datetime(current_end)
+                except (ValueError, KeyError, TypeError) as e:
+                    logger.warning(f"[schedule] Activity {activity_id} has invalid times: {e}")
                 found = True
                 break
         
