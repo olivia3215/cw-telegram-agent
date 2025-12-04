@@ -85,8 +85,12 @@ class AgentPromptMixin:
             summarize_prompt = load_system_prompt("Task-Summarize")
             prompt_parts.append(summarize_prompt)
         else:
-            # Add all role prompts in order
+            # Add all role prompts in order, but exclude Task-Schedule
+            # Task-Schedule.md is added conditionally based on context (see build_complete_system_prompt)
             for role_prompt_name in self.role_prompt_names:
+                # Skip Task-Schedule - it's added conditionally when schedule.json is in context
+                if role_prompt_name == "Task-Schedule":
+                    continue
                 role_prompt = load_system_prompt(role_prompt_name)
                 prompt_parts.append(role_prompt)
 
