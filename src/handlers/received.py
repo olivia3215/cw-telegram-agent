@@ -685,8 +685,20 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 # Fetch schedule
                 fetched_url, schedule_content = await fetch_url(schedule_url, agent=agent)
                 
-                # Add to graph context so it's available on retry
-                if fetched_url == schedule_url:
+                # Validate that we got valid schedule JSON (not an error message)
+                # fetch_url always returns the original URL, so we must validate the content
+                is_valid_schedule = False
+                try:
+                    schedule_data = json.loads(schedule_content)
+                    # Valid schedule should be a dict (JSON object)
+                    if isinstance(schedule_data, dict):
+                        is_valid_schedule = True
+                except (json.JSONDecodeError, ValueError):
+                    # Content is not valid JSON - likely an error message
+                    pass
+                
+                if is_valid_schedule:
+                    # Valid schedule content - inject it into context
                     fetched_resources = graph.context.get("fetched_resources", {})
                     fetched_resources[schedule_url] = schedule_content
                     graph.context["fetched_resources"] = fetched_resources
@@ -717,7 +729,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                         "Temporary error: schedule context injection - will retry with schedule in context"
                     )
                 else:
-                    # Failed to fetch schedule - log error but continue (might fail gracefully)
+                    # Failed to fetch schedule or got error message - log error but continue (might fail gracefully)
                     logger.warning(
                         f"[{agent.name}] Failed to fetch schedule for injection: {schedule_content[:100]}"
                     )
