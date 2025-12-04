@@ -19,6 +19,143 @@ from task_graph import TaskNode
 logger = logging.getLogger(__name__)
 
 
+def _activities_overlap(start1: datetime, end1: datetime, start2: datetime, end2: datetime) -> bool:
+    """
+    Check if two time ranges overlap.
+    
+    Two ranges overlap if they share any time, but NOT if they only touch at boundaries.
+    For example: [9am-5pm] and [5pm-6pm] do NOT overlap (exact boundary).
+    
+    Args:
+        start1: Start time of first range
+        end1: End time of first range
+        start2: Start time of second range
+        end2: End time of second range
+    
+    Returns:
+        True if ranges overlap (excluding exact boundary touches)
+    """
+    # Two ranges overlap if: start1 < end2 AND start2 < end1
+    # This excludes exact boundary touches (e.g., one ends exactly when another starts)
+    return start1 < end2 and start2 < end1
+
+
+def _split_activity_for_overlap(
+    existing_activity: dict, new_start: datetime, new_end: datetime
+) -> list[dict]:
+    """
+    Split an existing activity to remove overlapping time with a new activity.
+    
+    Returns a list of activity segments (before and/or after the overlap).
+    Segments preserve all properties of the original activity but get new IDs.
+    Empty segments (start_time == end_time) are excluded.
+    
+    Args:
+        existing_activity: Activity dictionary to split
+        new_start: Start time of the new overlapping activity
+        new_end: End time of the new overlapping activity
+    
+    Returns:
+        List of activity dictionaries (0, 1, or 2 segments)
+    """
+    try:
+        existing_start = datetime.fromisoformat(existing_activity["start_time"])
+        existing_end = datetime.fromisoformat(existing_activity["end_time"])
+    except (KeyError, ValueError) as e:
+        logger.warning(f"[schedule] Failed to parse activity times for splitting: {e}")
+        return []
+    
+    segments = []
+    
+    # Create "before" segment if there's time before the overlap
+    if existing_start < new_start:
+        before_segment = existing_activity.copy()
+        before_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
+        before_segment["start_time"] = existing_start.isoformat()
+        before_segment["end_time"] = new_start.isoformat()
+        segments.append(before_segment)
+    
+    # Create "after" segment if there's time after the overlap
+    if new_end < existing_end:
+        after_segment = existing_activity.copy()
+        after_segment["id"] = f"act-{uuid.uuid4().hex[:8]}"
+        after_segment["start_time"] = new_end.isoformat()
+        after_segment["end_time"] = existing_end.isoformat()
+        segments.append(after_segment)
+    
+    return segments
+
+
+def _handle_activity_overlaps(
+    activities: list[dict], new_start: datetime, new_end: datetime, exclude_id: str | None = None
+) -> list[dict]:
+    """
+    Handle overlaps between a new activity and existing activities.
+    
+    Splits overlapping activities and removes empty ones. Does not add the new activity.
+    
+    Args:
+        activities: List of existing activity dictionaries
+        new_start: Start time of the new activity
+        new_end: End time of the new activity
+        exclude_id: Optional activity ID to exclude from overlap checking (e.g., when updating)
+    
+    Returns:
+        Updated list of activities with overlaps handled
+    """
+    result = []
+    
+    for act in activities:
+        # Skip the activity being updated (don't check it for overlap with itself)
+        if exclude_id and act.get("id") == exclude_id:
+            result.append(act)
+            continue
+        
+        try:
+            act_start = datetime.fromisoformat(act["start_time"])
+            act_end = datetime.fromisoformat(act["end_time"])
+        except (KeyError, ValueError) as e:
+            logger.warning(f"[schedule] Failed to parse activity times: {e}, skipping")
+            result.append(act)  # Keep invalid activities as-is
+            continue
+        
+        # Check if this activity overlaps with the new time range
+        if _activities_overlap(act_start, act_end, new_start, new_end):
+            # Split the activity and add non-empty segments
+            segments = _split_activity_for_overlap(act, new_start, new_end)
+            result.extend(segments)
+        else:
+            # No overlap, keep the activity as-is
+            result.append(act)
+    
+    return result
+
+
+def _sort_activities(activities: list[dict]) -> list[dict]:
+    """
+    Sort activities by start_time.
+    
+    Activities with invalid or missing start_time are placed at the end.
+    
+    Args:
+        activities: List of activity dictionaries
+    
+    Returns:
+        Sorted list of activities
+    """
+    def sort_key(act: dict) -> tuple[int, datetime]:
+        try:
+            start_str = act.get("start_time", "")
+            if not start_str:
+                return (1, datetime.min.replace(tzinfo=None))  # Invalid: sort to end
+            dt = datetime.fromisoformat(start_str)
+            return (0, dt)  # Valid: sort normally
+        except (ValueError, KeyError, TypeError):
+            return (1, datetime.min.replace(tzinfo=None))  # Invalid: sort to end
+    
+    return sorted(activities, key=sort_key)
+
+
 @register_immediate_task_handler("schedule")
 async def handle_immediate_schedule(task: TaskNode, *, agent, channel_id: int) -> bool:
     """
@@ -130,8 +267,16 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
                 "activities": [],
             }
         
+        # Handle overlaps: split existing activities that overlap with the new one
+        schedule["activities"] = _handle_activity_overlaps(
+            schedule["activities"], start_time, end_time
+        )
+        
         # Add new activity
         schedule["activities"].append(activity_dict)
+        
+        # Sort activities by start_time
+        schedule["activities"] = _sort_activities(schedule["activities"])
         
         # Save schedule
         agent._save_schedule(schedule)
@@ -163,54 +308,99 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
             logger.warning(f"[{agent.name}] No schedule found for update")
             return False
         
-        # Find the activity to update
+        # Find the activity to update and get its current times
         activities = schedule.get("activities", [])
         found = False
+        activity_index = None
+        current_start = None
+        current_end = None
         
         for i, act in enumerate(activities):
             if act.get("id") == activity_id:
-                # Update fields
-                if "start_time" in params:
-                    # Validate timezone-aware datetime
-                    try:
-                        start_time = datetime.fromisoformat(params["start_time"])
-                        if start_time.tzinfo is None:
-                            logger.warning(
-                                f"[schedule] start_time must be timezone-aware (got: {params['start_time']}). "
-                                f"ISO 8601 datetime strings must include timezone offset."
-                            )
-                            return False
-                        activities[i]["start_time"] = params["start_time"]
-                    except ValueError as e:
-                        logger.warning(f"[schedule] Invalid start_time format: {e}")
-                        return False
-                if "end_time" in params:
-                    # Validate timezone-aware datetime
-                    try:
-                        end_time = datetime.fromisoformat(params["end_time"])
-                        if end_time.tzinfo is None:
-                            logger.warning(
-                                f"[schedule] end_time must be timezone-aware (got: {params['end_time']}). "
-                                f"ISO 8601 datetime strings must include timezone offset."
-                            )
-                            return False
-                        activities[i]["end_time"] = params["end_time"]
-                    except ValueError as e:
-                        logger.warning(f"[schedule] Invalid end_time format: {e}")
-                        return False
-                if "activity_name" in params:
-                    activities[i]["activity_name"] = params["activity_name"]
-                if "responsiveness" in params:
-                    activities[i]["responsiveness"] = int(params["responsiveness"])
-                if "description" in params:
-                    activities[i]["description"] = params["description"]
-                
+                activity_index = i
+                try:
+                    current_start = datetime.fromisoformat(act.get("start_time", ""))
+                    current_end = datetime.fromisoformat(act.get("end_time", ""))
+                except (ValueError, KeyError):
+                    logger.warning(f"[schedule] Activity {activity_id} has invalid times")
                 found = True
                 break
         
         if not found:
             logger.warning(f"[{agent.name}] Schedule entry {activity_id} not found for update")
             return False
+        
+        # Parse and validate new times if provided
+        new_start = None
+        new_end = None
+        times_being_updated = False
+        
+        if "start_time" in params:
+            try:
+                new_start = datetime.fromisoformat(params["start_time"])
+                if new_start.tzinfo is None:
+                    logger.warning(
+                        f"[schedule] start_time must be timezone-aware (got: {params['start_time']}). "
+                        f"ISO 8601 datetime strings must include timezone offset."
+                    )
+                    return False
+                times_being_updated = True
+            except ValueError as e:
+                logger.warning(f"[schedule] Invalid start_time format: {e}")
+                return False
+        else:
+            new_start = current_start
+        
+        if "end_time" in params:
+            try:
+                new_end = datetime.fromisoformat(params["end_time"])
+                if new_end.tzinfo is None:
+                    logger.warning(
+                        f"[schedule] end_time must be timezone-aware (got: {params['end_time']}). "
+                        f"ISO 8601 datetime strings must include timezone offset."
+                    )
+                    return False
+                times_being_updated = True
+            except ValueError as e:
+                logger.warning(f"[schedule] Invalid end_time format: {e}")
+                return False
+        else:
+            new_end = current_end
+        
+        # If times are being updated, handle overlaps with OTHER activities
+        if times_being_updated and new_start and new_end:
+            # Handle overlaps: split existing activities that overlap with the new times
+            # Exclude the activity being updated from overlap checking
+            activities = _handle_activity_overlaps(
+                activities, new_start, new_end, exclude_id=activity_id
+            )
+            # Find the activity again after overlap handling (index may have changed)
+            activity_index = None
+            for i, act in enumerate(activities):
+                if act.get("id") == activity_id:
+                    activity_index = i
+                    break
+            if activity_index is None:
+                logger.error(f"[schedule] Activity {activity_id} lost during overlap handling")
+                return False
+        
+        # Update fields
+        if activity_index is not None:
+            if "start_time" in params:
+                activities[activity_index]["start_time"] = params["start_time"]
+            if "end_time" in params:
+                activities[activity_index]["end_time"] = params["end_time"]
+            if "activity_name" in params:
+                activities[activity_index]["activity_name"] = params["activity_name"]
+            if "responsiveness" in params:
+                activities[activity_index]["responsiveness"] = int(params["responsiveness"])
+            if "description" in params:
+                activities[activity_index]["description"] = params["description"]
+        
+        schedule["activities"] = activities
+        
+        # Sort activities by start_time
+        schedule["activities"] = _sort_activities(schedule["activities"])
         
         # Save schedule
         agent._save_schedule(schedule)
@@ -247,6 +437,9 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         if len(schedule["activities"]) == original_count:
             logger.warning(f"[{agent.name}] Schedule entry {activity_id} not found for delete")
             return False
+        
+        # Sort activities by start_time (order shouldn't change, but ensures consistency)
+        schedule["activities"] = _sort_activities(schedule["activities"])
         
         # Save schedule
         agent._save_schedule(schedule)
