@@ -628,6 +628,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         target_msg,
         xsend_intent_param,
         reaction_msg=reaction_msg,
+        graph=graph,
     )
 
     # Process message history (only unsummarized messages)

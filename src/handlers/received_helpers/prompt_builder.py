@@ -174,6 +174,7 @@ async def build_complete_system_prompt(
     target_msg,
     xsend_intent: str | None = None,
     reaction_msg=None,
+    graph=None,
 ) -> str:
     """
     Build the complete system prompt with all sections.
@@ -185,8 +186,11 @@ async def build_complete_system_prompt(
         media_chain: Media source chain for sticker descriptions
         is_group: Whether this is a group chat
         channel_name: Display name of the conversation partner
+        dialog: Dialog entity
         target_msg: Optional target message to respond to
         xsend_intent: Optional intent from a cross-channel send
+        reaction_msg: Optional reaction message
+        graph: Optional TaskGraph to check for context resources
 
     Returns:
         Complete system prompt string
@@ -201,6 +205,32 @@ async def build_complete_system_prompt(
         reaction_msg=reaction_msg,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
+
+    # Check if schedule.json is in context (as valid content, not an error)
+    # If so, add Task-Schedule.md to the prompt after role prompts
+    if graph is not None:
+        fetched_resources = graph.context.get("fetched_resources", {})
+        schedule_url = "file:schedule.json"
+        
+        if schedule_url in fetched_resources:
+            schedule_content = fetched_resources[schedule_url]
+            # Validate that it's valid JSON (not an error message)
+            try:
+                import json
+                schedule_data = json.loads(schedule_content)
+                if isinstance(schedule_data, dict):
+                    # Valid schedule content - add Task-Schedule.md
+                    from prompt_loader import load_system_prompt
+                    task_schedule_prompt = load_system_prompt("Task-Schedule")
+                    system_prompt += f"\n\n{task_schedule_prompt}"
+                    logger.info(
+                        f"[{agent.name}] Added Task-Schedule.md to prompt (schedule.json found in context)"
+                    )
+            except (json.JSONDecodeError, ValueError, TypeError):
+                # Not valid JSON - likely an error message, don't add Task-Schedule
+                logger.debug(
+                    f"[{agent.name}] schedule.json in context but not valid JSON, skipping Task-Schedule.md"
+                )
 
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
