@@ -665,6 +665,63 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         is_retryable_llm_error_fn=is_retryable_llm_error,
     )
 
+    # Check if agent wants to schedule and needs schedule context
+    if agent and agent.daily_schedule_description:
+        # Check if any schedule tasks exist
+        has_schedule_tasks = any(t.type == "schedule" for t in tasks)
+        
+        if has_schedule_tasks:
+            # Check if schedule.json is already in context
+            fetched_resources = graph.context.get("fetched_resources", {})
+            schedule_url = "file:schedule.json"
+            
+            if schedule_url not in fetched_resources:
+                # Schedule tasks exist but schedule.json not in context - fetch and inject it
+                logger.info(
+                    f"[{agent.name}] Schedule task detected but schedule.json not in context; "
+                    f"fetching and injecting schedule before retry"
+                )
+                
+                # Fetch schedule
+                fetched_url, schedule_content = await fetch_url(schedule_url, agent=agent)
+                
+                # Add to graph context so it's available on retry
+                if fetched_url == schedule_url:
+                    fetched_resources = graph.context.get("fetched_resources", {})
+                    fetched_resources[schedule_url] = schedule_content
+                    graph.context["fetched_resources"] = fetched_resources
+                    
+                    logger.info(
+                        f"[{agent.name}] Injected schedule.json into context ({len(schedule_content)} chars); "
+                        f"triggering retry"
+                    )
+                    
+                    # Add a preserve wait task to keep the fetched resource alive
+                    has_preserve_task = any(
+                        t.type == "wait" and t.params.get("preserve", False)
+                        for t in graph.tasks
+                    )
+                    if not has_preserve_task:
+                        wait_task = make_wait_task(
+                            delay_seconds=FETCHED_RESOURCE_LIFETIME_SECONDS,
+                            preserve=True,
+                        )
+                        graph.add_task(wait_task)
+                        logger.info(
+                            f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) "
+                            f"to keep fetched resource alive"
+                        )
+                    
+                    # Drop the current result and trigger retry
+                    raise Exception(
+                        "Temporary error: schedule context injection - will retry with schedule in context"
+                    )
+                else:
+                    # Failed to fetch schedule - log error but continue (might fail gracefully)
+                    logger.warning(
+                        f"[{agent.name}] Failed to fetch schedule for injection: {schedule_content[:100]}"
+                    )
+
     # Schedule output tasks
     await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent)
 
