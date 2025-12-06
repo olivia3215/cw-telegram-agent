@@ -73,8 +73,8 @@ you do not need to supply them.
   - `emoji`: The emoji reaction to send.
   - `message_id`: Telegram message ID to react to (integer). This is required.
   - `id` (optional): Identifier so you can revise or cancel this reaction.
-- Suggested common emoji: ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
-- Not all emoji are supported. Use one of these or one you've seen before.
+- Suggested common reactions: ❤, 👍, 🥰, 👏, 🔥, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🤣, 😍, 💯, 🖕, 💋, 💔, 😇, 👀, 😭, 😉, 😍, 😘, 🤪, 🥳, 😏, 😡, 😳, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 👏
+- Not all emoji are supported. For example, 😂 is not a valid reaction. Use one of the above or one you've seen before.
 
 ### `sticker`
 - Sends a sticker in the current channel.

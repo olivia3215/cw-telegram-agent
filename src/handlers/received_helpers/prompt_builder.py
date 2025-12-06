@@ -80,6 +80,7 @@ async def build_specific_instructions(
     target_msg,
     xsend_intent: str | None = None,
     reaction_msg=None,
+    highest_summarized_id: int | None = None,
 ) -> str:
     """
     Compute the specific instructions for the system prompt based on context.
@@ -87,9 +88,11 @@ async def build_specific_instructions(
     Args:
         agent: The agent instance
         channel_id: The conversation ID
-        messages: List of Telegram messages
+        messages: List of Telegram messages (unsummarized only)
         target_msg: Optional target message to respond to
         xsend_intent: Optional intent from a cross-channel send
+        reaction_msg: Optional reaction message
+        highest_summarized_id: Highest message ID that has been summarized, or None
 
     Returns:
         Complete specific instructions string for the system prompt
@@ -97,16 +100,35 @@ async def build_specific_instructions(
     channel_name = await get_dialog_name(agent, channel_id)
     
     # Check if this is conversation start
-    is_conversation_start = len(messages) < 5
-    agent_id = agent.agent_id
-    if is_conversation_start and agent_id is not None:
-        for m in messages:
-            if (
-                getattr(m, "from_id", None)
-                and getattr(m.from_id, "user_id", None) == agent_id
-            ):
-                is_conversation_start = False
-                break
+    # It's a start ONLY if:
+    # 1. No summaries exist (highest_summarized_id is None)
+    # 2. There are few messages (< 5) in the current unsummarized set
+    # 3. None of the messages are from the agent
+    is_conversation_start = False
+    # Check explicitly for None (not just falsy, since 0 could be a valid message ID)
+    if highest_summarized_id is None:
+        # No summaries exist, so check if this looks like a new conversation
+        if len(messages) < 5:
+            agent_id = agent.agent_id
+            # Check if any message is from the agent
+            has_agent_message = False
+            if agent_id is not None:
+                for m in messages:
+                    # Check if message is from the agent
+                    if getattr(m, "out", False):
+                        # Message was sent by us
+                        has_agent_message = True
+                        break
+                    # Also check from_id for compatibility
+                    if (
+                        getattr(m, "from_id", None)
+                        and getattr(m.from_id, "user_id", None) == agent_id
+                    ):
+                        has_agent_message = True
+                        break
+            
+            # It's a start if there are no agent messages
+            is_conversation_start = not has_agent_message
 
     instructions = (
         "\n# Instruction\n\n"
@@ -175,6 +197,7 @@ async def build_complete_system_prompt(
     xsend_intent: str | None = None,
     reaction_msg=None,
     graph=None,
+    highest_summarized_id: int | None = None,
 ) -> str:
     """
     Build the complete system prompt with all sections.
@@ -203,6 +226,7 @@ async def build_complete_system_prompt(
         target_msg=target_msg,
         xsend_intent=xsend_intent,
         reaction_msg=reaction_msg,
+        highest_summarized_id=highest_summarized_id,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
 
@@ -235,8 +259,8 @@ async def build_complete_system_prompt(
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
     if sticker_list:
-        system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n"
-        system_prompt += "\n\nYou may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
+        system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n\n"
+        system_prompt += "You may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name."
 
     # Add memory content
     memory_content = agent._load_memory_content(channel_id)
@@ -267,7 +291,7 @@ async def build_complete_system_prompt(
         channel_name=channel_name,
     )
     if channel_details:
-        system_prompt += f"\n\n{channel_details}\n"
+        system_prompt += f"\n\n{channel_details}"
 
     # Add conversation summary immediately before the conversation history
     summary_content = await agent._load_summary_content(channel_id, json_format=False)

@@ -8,6 +8,7 @@ pathspec
 fs
 pytest
 telethon
+telethon-secret-chat
 pytest-asyncio
 mistune
 google-genai
