@@ -14,7 +14,9 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
+    UpdateEncryptedMessagesRead,
     UpdateMessageReactions,
+    UpdateNewEncryptedMessage,
     UpdateUserTyping,
 )
 
@@ -106,6 +108,50 @@ def load_work_queue():
 
 async def handle_incoming_message(agent: Agent, event):
     client = agent.client
+    
+    # Check if this is a secret chat message and handle it
+    try:
+        from telegram.secret_chat import is_secret_chat, get_secret_chat_channel_id
+        chat_entity = getattr(event, "chat", None)
+        if chat_entity and is_secret_chat(chat_entity):
+            # This is a secret chat message - handle it here as fallback
+            logger.info(f"[{agent.name}] DEBUG: Received secret chat message in regular handler (SecretChatManager handler not called)")
+            
+            # Get secret chat manager to see if it exists
+            secret_chat_manager = getattr(agent, "_secret_chat_manager", None)
+            if secret_chat_manager:
+                logger.info(f"[{agent.name}] DEBUG: SecretChatManager exists but handler wasn't called")
+            
+            # Process it here as fallback
+            channel_id = get_secret_chat_channel_id(chat_entity)
+            sender_id = event.sender_id
+            
+            sender_name = await get_channel_name(agent, sender_id)
+            dialog_name = await get_channel_name(agent, channel_id)
+            message_content = format_message_content_for_logging(event.message)
+            
+            logger.info(
+                f"[{agent.name}] Secret chat message from [{sender_name}]: {message_content!r}"
+            )
+            
+            # Check if sender is blocked
+            if await agent.is_blocked(sender_id):
+                logger.info(f"[{agent.name}] Ignoring secret chat message from blocked user {sender_id}")
+                return
+            
+            # Create received task for the secret chat
+            await insert_received_task_for_conversation(
+                recipient_id=agent.agent_id,
+                channel_id=str(channel_id),
+                message_id=event.message.id,
+                is_callout=True,  # Secret chats are always direct messages
+                clear_mentions=False,
+                clear_reactions=False,
+            )
+            return
+    except Exception as e:
+        logger.info(f"[{agent.name}] DEBUG: Error checking/handling secret chat message: {e}")
+    
     await event.get_sender()
     
     muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
@@ -171,9 +217,14 @@ async def scan_unread_messages(agent: Agent):
         if is_secret_chat(dialog_entity):
             # Convert to our secret chat channel ID format
             channel_id = get_secret_chat_channel_id(dialog_entity)
-            logger.debug(
-                f"[{agent.name}] Found secret chat dialog, converted ID {dialog.id} to {channel_id}"
+            logger.info(
+                f"[{agent.name}] DEBUG: Found secret chat dialog, converted ID {dialog.id} to {channel_id}, unread_count: {dialog.unread_count}"
             )
+            # For secret chats, if there are unread messages, we need to process them
+            # The SecretChatManager should decrypt them when we fetch messages
+            # But if it's not working, the unread_count might be 0 even if messages exist
+            if dialog.unread_count > 0:
+                logger.info(f"[{agent.name}] DEBUG: Secret chat has {dialog.unread_count} unread messages - will try to fetch and process")
         
         muted = await agent.is_muted(channel_id)
         has_unread = not muted and dialog.unread_count > 0
@@ -193,6 +244,11 @@ async def scan_unread_messages(agent: Agent):
                         break
             except Exception as e:
                 logger.debug(f"[{agent.name}] Error checking mentions in dialog {dialog.id}: {e}")
+        
+        # For secret chats, all unread messages are treated as callouts (direct messages)
+        if is_secret_chat(dialog_entity) and has_unread:
+            is_callout = True
+            logger.info(f"[{agent.name}] DEBUG: Secret chat has unread messages, treating as callout")
 
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
@@ -217,9 +273,10 @@ async def scan_unread_messages(agent: Agent):
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
             dialog_name = await get_channel_name(agent, channel_id)
+            is_secret = is_secret_chat(dialog_entity)
             logger.info(
                 f"[{agent.name}] Found unread content in [{dialog_name}] "
-                f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
+                f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message}, secret_chat: {is_secret})"
             )
             # Read receipts are now handled in handle_received with responsiveness delays
             # Pass clear_mentions/clear_reactions flags so they can be cleared when marking as read
@@ -376,10 +433,79 @@ async def run_telegram_loop(agent: Agent):
             break
 
         # Initialize secret chat manager
+        # The SecretChatManager automatically registers _secret_chat_event_loop as an event handler
+        # when it's created, which will process UpdateNewEncryptedMessage events automatically
         from telegram.secret_chat_manager import create_secret_chat_manager
         secret_chat_manager = create_secret_chat_manager(client, agent)
         if secret_chat_manager:
             agent._secret_chat_manager = secret_chat_manager
+            
+            # Verify the SecretChatManager's handler is registered
+            # Check if _secret_chat_event_loop is in the client's event handlers
+            try:
+                # Access the client's list of registered handlers
+                if hasattr(client, '_event_builders'):
+                    handlers = client._event_builders
+                    logger.info(f"[{agent.name}] DEBUG: Client has {len(handlers)} event handlers registered")
+                    # Check if SecretChatManager's handler is there
+                    secret_handler_found = any('_secret_chat_event_loop' in str(h) or 'secret_chat' in str(h).lower() for h in handlers)
+                    logger.info(f"[{agent.name}] DEBUG: SecretChatManager handler registered: {secret_handler_found}")
+                    if not secret_handler_found:
+                        logger.warning(f"[{agent.name}] WARNING: SecretChatManager handler not found in client handlers!")
+                # Also check if the SecretChatManager has registered handlers
+                if hasattr(secret_chat_manager, 'secret_events'):
+                    logger.info(f"[{agent.name}] DEBUG: SecretChatManager has {len(secret_chat_manager.secret_events)} secret event handlers")
+                    for event_type, callback in secret_chat_manager.secret_events:
+                        logger.info(f"[{agent.name}] DEBUG: SecretChatManager handler: event_type={event_type}, callback={callback}")
+            except Exception as e:
+                logger.info(f"[{agent.name}] DEBUG: Could not verify handler registration: {e}")
+            
+            logger.info(f"[{agent.name}] DEBUG: SecretChatManager initialized and event handler should be registered")
+            
+            # IMPORTANT: Also register a specific handler for UpdateNewEncryptedMessage
+            # The SecretChatManager's _secret_chat_event_loop should handle this, but let's ensure
+            # we catch it and can manually pass it if needed
+            @client.on(events.Raw(UpdateNewEncryptedMessage))
+            async def handle_encrypted_message_update(update):
+                """Explicitly handle UpdateNewEncryptedMessage updates."""
+                try:
+                    logger.info(f"[{agent.name}] ===== EXPLICIT UpdateNewEncryptedMessage HANDLER CALLED =====")
+                    logger.info(f"[{agent.name}] DEBUG: UpdateNewEncryptedMessage details: {update}")
+                    # The SecretChatManager's _secret_chat_event_loop should also receive this
+                    # But let's manually ensure it processes it
+                    if hasattr(secret_chat_manager, '_secret_chat_event_loop'):
+                        logger.info(f"[{agent.name}] DEBUG: Manually calling SecretChatManager._secret_chat_event_loop")
+                        await secret_chat_manager._secret_chat_event_loop(update)
+                except Exception as e:
+                    logger.exception(f"[{agent.name}] DEBUG: Error in explicit UpdateNewEncryptedMessage handler: {e}")
+            
+            # Add a catch-all raw update handler to log ALL raw updates
+            # This will help us see if ANY updates are being received
+            # IMPORTANT: Register this BEFORE other handlers so it sees all updates first
+            @client.on(events.Raw())
+            async def log_all_raw_updates(update):
+                """Log all raw updates for debugging."""
+                update_type = type(update).__name__
+                # Log encrypted updates prominently - these MUST be processed by SecretChatManager
+                if 'Encrypted' in update_type or 'Secret' in update_type:
+                    logger.info(f"[{agent.name}] ===== RAW ENCRYPTED UPDATE RECEIVED: {update_type} =====")
+                    logger.info(f"[{agent.name}] DEBUG: Encrypted update details: {update}")
+                    # The SecretChatManager's _secret_chat_event_loop should process this
+                    # But let's verify it's being called by checking if the manager exists
+                    if hasattr(agent, '_secret_chat_manager') and agent._secret_chat_manager:
+                        logger.info(f"[{agent.name}] DEBUG: SecretChatManager exists, should process this update")
+                        # Try manually calling the SecretChatManager's handler to see if it works
+                        try:
+                            # The _secret_chat_event_loop is registered as a general event handler
+                            # It should receive this update automatically, but let's try calling it manually
+                            if hasattr(secret_chat_manager, '_secret_chat_event_loop'):
+                                logger.info(f"[{agent.name}] DEBUG: Manually calling _secret_chat_event_loop")
+                                await secret_chat_manager._secret_chat_event_loop(update)
+                        except Exception as e:
+                            logger.info(f"[{agent.name}] DEBUG: Error manually calling _secret_chat_event_loop: {e}")
+                # Also log a few other update types to verify the handler is working
+                elif update_type in ('UpdateNewMessage', 'UpdateMessageID', 'UpdateUserStatus'):
+                    logger.info(f"[{agent.name}] DEBUG: Received raw update of type {update_type}")
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):

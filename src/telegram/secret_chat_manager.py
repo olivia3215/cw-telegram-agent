@@ -48,11 +48,25 @@ def create_secret_chat_manager(
             This is called by SecretChatManager when a message is received in a secret chat.
             """
             try:
+                # Log that we received an event - this should be the first thing we see
+                # Use a very visible marker so we can't miss it
+                logger.info(f"[{agent.name}] ===== SECRET CHAT HANDLER CALLED ===== {type(event)}")
+                logger.info(f"[{agent.name}] ===== SECRET CHAT HANDLER CALLED ===== {event}")
+                logger.info(f"[{agent.name}] DEBUG: Secret chat handler called with event type: {type(event)}")
+                logger.info(f"[{agent.name}] DEBUG: Secret chat event attributes: {dir(event)}")
+                
                 # event.decrypted_event contains the decrypted message
                 decrypted_event = getattr(event, "decrypted_event", None)
                 if not decrypted_event:
-                    logger.warning(f"[{agent.name}] Secret chat event missing decrypted_event")
-                    return
+                    # Try alternative event structures
+                    logger.info(f"[{agent.name}] DEBUG: Secret chat event missing decrypted_event, checking alternatives...")
+                    # Some versions might use 'message' directly
+                    if hasattr(event, "message"):
+                        decrypted_event = event
+                        logger.info(f"[{agent.name}] DEBUG: Using event.message directly")
+                    else:
+                        logger.warning(f"[{agent.name}] Secret chat event missing decrypted_event and message. Event: {event}")
+                        return
 
                 # Get the encrypted chat from the event
                 encrypted_chat = getattr(event, "chat", None)
@@ -67,17 +81,26 @@ def create_secret_chat_manager(
                 user_id = get_user_id_from_secret_chat(encrypted_chat)
                 channel_name = await get_channel_name(agent, channel_id)
 
-                # Get message details
-                message = getattr(decrypted_event, "message", None)
+                # Get message details - handle different event structures
+                message = None
+                if hasattr(decrypted_event, "message"):
+                    message = decrypted_event.message
+                elif hasattr(decrypted_event, "id"):
+                    # Event might be the message itself
+                    message = decrypted_event
+                else:
+                    logger.warning(f"[{agent.name}] Secret chat event has no message attribute. Event type: {type(decrypted_event)}, attributes: {dir(decrypted_event)}")
+                    return
+
                 if not message:
-                    logger.debug(f"[{agent.name}] Secret chat message has no message content")
+                    logger.info(f"[{agent.name}] DEBUG: Secret chat message has no message content")
                     return
 
                 message_id = getattr(message, "id", None)
                 message_text = getattr(message, "message", None) or ""
 
                 logger.info(
-                    f"[{agent.name}] Secret chat message from [{channel_name}]: {message_text!r}"
+                    f"[{agent.name}] Secret chat message from [{channel_name}]: {message_text!r} (message_id: {message_id})"
                 )
 
                 # Check if sender is blocked
@@ -90,8 +113,8 @@ def create_secret_chat_manager(
                 # Check if muted (secret chats can't be muted in the same way, but check anyway)
                 muted = await agent.is_muted(channel_id) or (user_id and await agent.is_muted(user_id))
                 if muted:
-                    logger.debug(
-                        f"[{agent.name}] Secret chat message from [{channel_name}] is muted"
+                    logger.info(
+                        f"[{agent.name}] DEBUG: Secret chat message from [{channel_name}] is muted"
                     )
 
                 # Create received task for the secret chat
@@ -145,14 +168,43 @@ def create_secret_chat_manager(
 
         # Create SecretChatManager with auto-accept enabled
         # This allows the agent to automatically accept secret chat requests
+        # The SecretChatManager automatically hooks into the client's update processing
+        # by calling client.add_event_handler(self._secret_chat_event_loop) in its __init__
         manager = SecretChatManager(
             client,
             auto_accept=True,
             new_chat_created=handle_new_secret_chat,
         )
+        
+        # Log that manager was created
+        logger.info(f"[{agent.name}] DEBUG: SecretChatManager instance created: {manager}")
+        logger.info(f"[{agent.name}] DEBUG: SecretChatManager client: {manager.client if hasattr(manager, 'client') else 'N/A'}")
+        
+        # Verify that _secret_chat_event_loop was registered
+        # The SecretChatManager should have called client.add_event_handler(self._secret_chat_event_loop)
+        try:
+            if hasattr(manager, '_secret_chat_event_loop'):
+                logger.info(f"[{agent.name}] DEBUG: SecretChatManager has _secret_chat_event_loop method")
+            # Check if it's bound to the manager
+            if hasattr(manager._secret_chat_event_loop, '__self__'):
+                logger.info(f"[{agent.name}] DEBUG: _secret_chat_event_loop is bound to manager")
+        except Exception as e:
+            logger.info(f"[{agent.name}] DEBUG: Could not verify _secret_chat_event_loop: {e}")
 
         # Register handler for secret chat messages
-        manager.add_secret_event_handler(func=handle_secret_chat_message)
+        # The event_type defaults to SECRET_TYPES.decrypt which handles incoming messages
+        try:
+            from telethon_secret_chat import SECRET_TYPES
+            manager.add_secret_event_handler(event_type=SECRET_TYPES.decrypt, func=handle_secret_chat_message)
+            logger.info(f"[{agent.name}] DEBUG: Registered secret chat handler using add_secret_event_handler with decrypt event type")
+        except Exception as e:
+            logger.warning(f"[{agent.name}] Failed to register secret chat handler with add_secret_event_handler: {e}")
+            # Try without specifying event type (uses default)
+            try:
+                manager.add_secret_event_handler(func=handle_secret_chat_message)
+                logger.info(f"[{agent.name}] DEBUG: Registered secret chat handler using add_secret_event_handler (default event type)")
+            except Exception as e2:
+                logger.warning(f"[{agent.name}] Failed to register secret chat handler even with default: {e2}")
 
         logger.info(f"[{agent.name}] Secret chat manager initialized")
         return manager
