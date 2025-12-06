@@ -156,55 +156,80 @@ async def scan_unread_messages(agent: Agent):
     client = agent.client
     agent_id = agent.agent_id
     
+    from telegram.secret_chat import is_secret_chat, get_secret_chat_channel_id
+    from utils.telegram import is_dm
+    
     async for dialog in client.iter_dialogs():
         # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
         await clock.sleep(0.05)
         
-        muted = await agent.is_muted(dialog.id)
+        # Get the dialog entity to check if it's a secret chat
+        dialog_entity = dialog.entity
+        
+        # Convert dialog ID to our channel ID format if it's a secret chat
+        channel_id = dialog.id
+        if is_secret_chat(dialog_entity):
+            # Convert to our secret chat channel ID format
+            channel_id = get_secret_chat_channel_id(dialog_entity)
+            logger.debug(
+                f"[{agent.name}] Found secret chat dialog, converted ID {dialog.id} to {channel_id}"
+            )
+        
+        muted = await agent.is_muted(channel_id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
 
+        # Secret chats don't support mentions in the same way, but check anyway
         # If there are mentions, we must check if they are from a non-blocked user.
         is_callout = False
-        if has_mentions:
-            async for message in client.iter_messages(
-                dialog.id, limit=5
-            ):
-                if message.mentioned and not await agent.is_blocked(message.sender_id):
-                    is_callout = True
-                    break
+        if has_mentions and not is_secret_chat(dialog_entity):
+            # Secret chats don't support mentions, skip this check
+            try:
+                async for message in client.iter_messages(
+                    dialog.id, limit=5
+                ):
+                    if message.mentioned and not await agent.is_blocked(message.sender_id):
+                        is_callout = True
+                        break
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Error checking mentions in dialog {dialog.id}: {e}")
 
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
 
-        # Check if unread reactions are on any agent message
-        # Only check if dialog indicates there are unread reactions (avoids expensive API call)
-        # Note: dialog.dialog.unread_reactions_count may not be available in all Telethon versions
-        unread_reactions_count = getattr(dialog.dialog, "unread_reactions_count", 0)
-        # Ensure it's an integer (MagicMock returns a mock object if attribute doesn't exist)
-        if not isinstance(unread_reactions_count, int):
-            unread_reactions_count = 0
+        # Secret chats don't support reactions
+        unread_reactions_count = 0
         reaction_message_id = None
-        if unread_reactions_count > 0:
-            # Only check if there are actually unread reactions indicated
-            reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
-
-        has_reactions_on_agent_message = reaction_message_id is not None
+        has_reactions_on_agent_message = False
+        
+        if not is_secret_chat(dialog_entity):
+            # Check if unread reactions are on any agent message
+            # Only check if dialog indicates there are unread reactions (avoids expensive API call)
+            # Note: dialog.dialog.unread_reactions_count may not be available in all Telethon versions
+            unread_reactions_count = getattr(dialog.dialog, "unread_reactions_count", 0)
+            # Ensure it's an integer (MagicMock returns a mock object if attribute doesn't exist)
+            if not isinstance(unread_reactions_count, int):
+                unread_reactions_count = 0
+            if unread_reactions_count > 0:
+                # Only check if there are actually unread reactions indicated
+                reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
+            has_reactions_on_agent_message = reaction_message_id is not None
 
         if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
-            dialog_name = await get_channel_name(agent, dialog.id)
+            dialog_name = await get_channel_name(agent, channel_id)
             logger.info(
                 f"[{agent.name}] Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
             )
             # Read receipts are now handled in handle_received with responsiveness delays
             # Pass clear_mentions/clear_reactions flags so they can be cleared when marking as read
+            # Note: Secret chats don't support reactions, so clear_reactions will be False
             await insert_received_task_for_conversation(
                 recipient_id=agent_id,
-                channel_id=dialog.id,
+                channel_id=str(channel_id),  # Convert to string for consistency
                 is_callout=is_callout or is_marked_unread,
                 reaction_message_id=reaction_message_id,
-                clear_mentions=has_mentions,
+                clear_mentions=has_mentions and not is_secret_chat(dialog_entity),
                 clear_reactions=has_reactions_on_agent_message,
             )
 
@@ -349,6 +374,12 @@ async def run_telegram_loop(agent: Agent):
         if not client:
             logger.error(f"[{agent.name}] No client available after authentication.")
             break
+
+        # Initialize secret chat manager
+        from telegram.secret_chat_manager import create_secret_chat_manager
+        secret_chat_manager = create_secret_chat_manager(client, agent)
+        if secret_chat_manager:
+            agent._secret_chat_manager = secret_chat_manager
 
         @client.on(events.NewMessage(incoming=True))
         async def handle(event):

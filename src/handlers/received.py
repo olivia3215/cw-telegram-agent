@@ -418,12 +418,15 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Use completed_ids to match the selection logic used by is_unblocked
     responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
     responsiveness_delay_task = None  # Initialize to avoid UnboundLocalError
+    has_responsiveness_delay = False
     if responsiveness_delay_task_id:
         completed_ids = graph.completed_ids()
         if responsiveness_delay_task_id not in completed_ids:
             # Delay task not complete yet - reset status to PENDING so task isn't marked as DONE
             # The task already depends on the delay task, so it shouldn't be selected again until
             # the delay completes (via is_ready check). If it was selected, there's a bug in is_unblocked.
+            # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant to delay
+            # marking messages as read until after the delay completes
             task.status = TaskStatus.PENDING
             logger.warning(
                 f"[{agent.name}] Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
@@ -431,6 +434,9 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                 f"Resetting to PENDING. This suggests is_unblocked is not working correctly."
             )
             return
+        else:
+            # Responsiveness delay has completed
+            has_responsiveness_delay = True
     
     # Check if agent was already online (before we create any new tasks)
     # Look for an existing online wait task in the conversation (must be pending)
@@ -478,11 +484,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                         )
                         # Reset status to PENDING and return early - task won't be marked as DONE
                         # It will remain PENDING and be re-selected when the delay task completes
+                        # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant
+                        # to delay marking messages as read until after the delay completes
                         task.status = TaskStatus.PENDING
                         return
             except Exception as e:
                 logger.warning(f"[{agent.name}] Failed to apply schedule delay: {e}")
-
     # Handle online wait task AFTER responsiveness delay is handled
     # If there was a responsiveness delay, we'll create the online wait task after read acknowledge
     # (so it only appears online after the delay completes)
@@ -629,6 +636,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         xsend_intent_param,
         reaction_msg=reaction_msg,
         graph=graph,
+        highest_summarized_id=highest_summarized_id,
     )
 
     # Process message history (only unsummarized messages)
@@ -690,6 +698,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     # Mark conversation as read (moved from scan_unread_messages)
     # This happens after processing, AFTER responsiveness delay has completed
+    # The responsiveness delay is meant to delay marking messages as read until after the delay completes
     # Double-check that responsiveness delay is complete before marking as read
     final_responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
     if final_responsiveness_delay_task_id:

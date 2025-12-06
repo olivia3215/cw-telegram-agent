@@ -10,7 +10,7 @@ Users generally seem to have positive IDs
 - 6754281260
 
 Groups generally seem to have negative IDs
-- -1002100080800
+// - -1002100080800
 
 ## How it works
 
