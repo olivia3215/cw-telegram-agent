@@ -40,7 +40,7 @@ class AgentStorageMixin:
             config_dir = Path(self.config_directory) if self.config_directory else None
             state_dir = Path(STATE_DIRECTORY)
             self._storage_obj = AgentStorage(
-                agent_name=self.name,
+                agent_config_name=self.config_name,
                 config_directory=config_dir,
                 state_directory=state_dir,
             )
@@ -112,7 +112,7 @@ class AgentStorageMixin:
         from pathlib import Path
         from config import STATE_DIRECTORY
         
-        schedule_file = Path(STATE_DIRECTORY) / self.name / "schedule.json"
+        schedule_file = Path(STATE_DIRECTORY) / self.config_name / "schedule.json"
         
         # Check if file exists
         if not schedule_file.exists():

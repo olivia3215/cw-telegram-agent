@@ -24,16 +24,16 @@ class AgentStorage:
     Provides a clean abstraction over the file system structure used for agent storage.
     """
 
-    def __init__(self, agent_name: str, config_directory: Path | None, state_directory: Path):
+    def __init__(self, agent_config_name: str, config_directory: Path | None, state_directory: Path):
         """
         Initialize agent storage.
         
         Args:
-            agent_name: The agent's name (used in file paths)
+            agent_config_name: The agent's config file name (without .md extension, used in file paths)
             config_directory: Optional config directory path (for curated memories)
             state_directory: State directory path (for plans, summaries, global memories)
         """
-        self.agent_name = agent_name
+        self.agent_config_name = agent_config_name
         self.config_directory = config_directory
         self.state_directory = state_directory
 
@@ -45,17 +45,17 @@ class AgentStorage:
             JSON-formatted string of intention entries, or empty string when absent.
         """
         try:
-            intention_file = self.state_directory / self.agent_name / "memory.json"
+            intention_file = self.state_directory / self.agent_config_name / "memory.json"
             intentions, _ = load_property_entries(
                 intention_file, "intention", default_id_prefix="intent"
             )
             if intentions:
                 return json.dumps(intentions, indent=2, ensure_ascii=False)
         except MemoryStorageError as exc:
-            logger.warning(f"[{self.agent_name}] Failed to load intention content: {exc}")
+            logger.warning(f"[{self.agent_config_name}] Failed to load intention content: {exc}")
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.exception(
-                f"[{self.agent_name}] Unexpected error while loading intention content: {exc}"
+                f"[{self.agent_config_name}] Unexpected error while loading intention content: {exc}"
             )
         return ""
 
@@ -96,7 +96,7 @@ class AgentStorage:
 
         except Exception as e:
             logger.exception(
-                f"[{self.agent_name}] Failed to load memory content for channel {channel_id}: {e}"
+                f"[{self.agent_config_name}] Failed to load memory content for channel {channel_id}: {e}"
             )
             return ""
 
@@ -114,7 +114,7 @@ class AgentStorage:
             memory_file = (
                 self.config_directory
                 / "agents"
-                / self.agent_name
+                / self.agent_config_name
                 / "memory"
                 / f"{user_id}.json"
             )
@@ -127,22 +127,22 @@ class AgentStorage:
                         memories = loaded
                     else:
                         logger.warning(
-                            f"[{self.agent_name}] Config memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
+                            f"[{self.agent_config_name}] Config memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
                         )
                         return ""
                     if not isinstance(memories, list):
                         logger.warning(
-                            f"[{self.agent_name}] Config memory file {memory_file} contains invalid 'memory' structure"
+                            f"[{self.agent_config_name}] Config memory file {memory_file} contains invalid 'memory' structure"
                         )
                         return ""
                     return json.dumps(memories, indent=2, ensure_ascii=False)
         except json.JSONDecodeError as e:
             logger.warning(
-                f"[{self.agent_name}] Corrupted JSON in config memory file {memory_file}: {e}"
+                f"[{self.agent_config_name}] Corrupted JSON in config memory file {memory_file}: {e}"
             )
         except Exception as e:
             logger.warning(
-                f"[{self.agent_name}] Failed to load config memory from {memory_file}: {e}"
+                f"[{self.agent_config_name}] Failed to load config memory from {memory_file}: {e}"
             )
 
         return ""
@@ -155,7 +155,7 @@ class AgentStorage:
             Pretty-printed JSON string of the memory array, or empty string if no memory exists.
         """
         try:
-            memory_file = self.state_directory / self.agent_name / "memory.json"
+            memory_file = self.state_directory / self.agent_config_name / "memory.json"
             if memory_file.exists():
                 memories, _ = load_property_entries(
                     memory_file, "memory", default_id_prefix="memory"
@@ -164,11 +164,11 @@ class AgentStorage:
                     return json.dumps(memories, indent=2, ensure_ascii=False)
         except MemoryStorageError as exc:
             logger.warning(
-                f"[{self.agent_name}] Corrupted state memory file {memory_file}: {exc}"
+                f"[{self.agent_config_name}] Corrupted state memory file {memory_file}: {exc}"
             )
         except Exception as e:
             logger.warning(
-                f"[{self.agent_name}] Failed to load state memory from {memory_file}: {e}"
+                f"[{self.agent_config_name}] Failed to load state memory from {memory_file}: {e}"
             )
 
         return ""
@@ -176,17 +176,17 @@ class AgentStorage:
     def load_plan_content(self, channel_id: int) -> str:
         """Load channel-specific plan content from state directory."""
         try:
-            plan_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
+            plan_file = self.state_directory / self.agent_config_name / "memory" / f"{channel_id}.json"
             plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
             if plans:
                 return json.dumps(plans, indent=2, ensure_ascii=False)
         except MemoryStorageError as exc:
             logger.warning(
-                f"[{self.agent_name}] Corrupted plan file {plan_file}: {exc}"
+                f"[{self.agent_config_name}] Corrupted plan file {plan_file}: {exc}"
             )
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning(
-                f"[{self.agent_name}] Failed to load plan content from {plan_file}: {exc}"
+                f"[{self.agent_config_name}] Failed to load plan content from {plan_file}: {exc}"
             )
         return ""
 
@@ -202,7 +202,7 @@ class AgentStorage:
             Summary content as JSON string (if json_format=True) or concatenated text (if json_format=False)
         """
         try:
-            summary_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
+            summary_file = self.state_directory / self.agent_config_name / "memory" / f"{channel_id}.json"
             summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
             if summaries:
                 # Sort by message ID range (oldest first) - consistent with API endpoints
@@ -219,11 +219,11 @@ class AgentStorage:
                     return "\n\n".join(summary_texts) if summary_texts else ""
         except MemoryStorageError as exc:
             logger.warning(
-                f"[{self.agent_name}] Corrupted summary file {summary_file}: {exc}"
+                f"[{self.agent_config_name}] Corrupted summary file {summary_file}: {exc}"
             )
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning(
-                f"[{self.agent_name}] Failed to load summary content from {summary_file}: {exc}"
+                f"[{self.agent_config_name}] Failed to load summary content from {summary_file}: {exc}"
             )
         return ""
 
@@ -237,19 +237,19 @@ class AgentStorage:
             agent: Agent instance with Telegram client access
         """
         logger.info(
-            f"[{self.agent_name}] backfill_summary_dates called for channel {channel_id}"
+            f"[{self.agent_config_name}] backfill_summary_dates called for channel {channel_id}"
         )
         try:
             from memory_storage import mutate_property_entries
             from datetime import UTC
             
-            summary_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
+            summary_file = self.state_directory / self.agent_config_name / "memory" / f"{channel_id}.json"
             logger.info(
-                f"[{self.agent_name}] Loading summaries from {summary_file} for backfill"
+                f"[{self.agent_config_name}] Loading summaries from {summary_file} for backfill"
             )
             summaries, payload = load_property_entries(summary_file, "summary", default_id_prefix="summary")
             logger.info(
-                f"[{self.agent_name}] Loaded {len(summaries)} summaries, checking for missing dates"
+                f"[{self.agent_config_name}] Loaded {len(summaries)} summaries, checking for missing dates"
             )
             
             # Find summaries missing dates (check for None or empty string)
@@ -260,25 +260,25 @@ class AgentStorage:
             ]
             
             logger.info(
-                f"[{self.agent_name}] Found {len(summaries_to_backfill)} summaries needing date backfill "
+                f"[{self.agent_config_name}] Found {len(summaries_to_backfill)} summaries needing date backfill "
                 f"out of {len(summaries)} total"
             )
             
             if not summaries_to_backfill:
                 logger.info(
-                    f"[{self.agent_name}] No summaries need date backfill for channel {channel_id}"
+                    f"[{self.agent_config_name}] No summaries need date backfill for channel {channel_id}"
                 )
                 return
             
             logger.info(
-                f"[{self.agent_name}] Backfilling dates for {len(summaries_to_backfill)} summary(ies) "
+                f"[{self.agent_config_name}] Backfilling dates for {len(summaries_to_backfill)} summary(ies) "
                 f"in channel {channel_id}"
             )
             
             # Check if client is available (don't try to connect if not)
             if not agent.client:
                 logger.debug(
-                    f"[{self.agent_name}] Cannot backfill summary dates: agent client not initialized for channel {channel_id}"
+                    f"[{self.agent_config_name}] Cannot backfill summary dates: agent client not initialized for channel {channel_id}"
                 )
                 return
             
@@ -289,12 +289,12 @@ class AgentStorage:
                     await client.connect()
             except RuntimeError as e:
                 logger.debug(
-                    f"[{self.agent_name}] Cannot backfill summary dates: agent client not available for channel {channel_id}: {e}"
+                    f"[{self.agent_config_name}] Cannot backfill summary dates: agent client not available for channel {channel_id}: {e}"
                 )
                 return
             except Exception as e:
                 logger.warning(
-                    f"[{self.agent_name}] Error connecting client for backfill in channel {channel_id}: {e}"
+                    f"[{self.agent_config_name}] Error connecting client for backfill in channel {channel_id}: {e}"
                 )
                 return
             
@@ -302,7 +302,7 @@ class AgentStorage:
             entity = await agent.get_cached_entity(channel_id)
             if not entity:
                 logger.warning(
-                    f"[{self.agent_name}] Cannot backfill summary dates: entity not found for channel {channel_id}"
+                    f"[{self.agent_config_name}] Cannot backfill summary dates: entity not found for channel {channel_id}"
                 )
                 return
             
@@ -322,7 +322,7 @@ class AgentStorage:
             
             if len(summaries_to_backfill) > max_backfill_per_call:
                 logger.info(
-                    f"[{self.agent_name}] Backfilling {len(summaries_to_process)} of {len(summaries_to_backfill)} "
+                    f"[{self.agent_config_name}] Backfilling {len(summaries_to_process)} of {len(summaries_to_backfill)} "
                     f"summaries (will continue on next load)"
                 )
             
@@ -365,7 +365,7 @@ class AgentStorage:
                     
                     if not messages:
                         logger.debug(
-                            f"[{self.agent_name}] No messages found for summary range {min_id_int}-{max_id_int}"
+                            f"[{self.agent_config_name}] No messages found for summary range {min_id_int}-{max_id_int}"
                         )
                         continue
                     
@@ -378,7 +378,7 @@ class AgentStorage:
                     
                     if not filtered_messages:
                         logger.debug(
-                            f"[{self.agent_name}] No messages in filtered range {min_id_int}-{max_id_int} "
+                            f"[{self.agent_config_name}] No messages in filtered range {min_id_int}-{max_id_int} "
                             f"(fetched {len(messages)} messages with adjusted boundaries)"
                         )
                         continue
@@ -410,12 +410,12 @@ class AgentStorage:
                         updated = True
                         
                         logger.info(
-                            f"[{self.agent_name}] Backfilled dates for summary {summary.get('id', 'unknown')}: "
+                            f"[{self.agent_config_name}] Backfilled dates for summary {summary.get('id', 'unknown')}: "
                             f"{first_date} to {last_date}"
                         )
                 except Exception as e:
                     logger.warning(
-                        f"[{self.agent_name}] Failed to backfill dates for summary "
+                        f"[{self.agent_config_name}] Failed to backfill dates for summary "
                         f"{summary.get('id', 'unknown')} (range {min_id_int}-{max_id_int}): {e}"
                     )
                     continue
@@ -430,15 +430,15 @@ class AgentStorage:
                     payload=payload,
                 )
                 logger.info(
-                    f"[{self.agent_name}] Saved backfilled summary dates for channel {channel_id}"
+                    f"[{self.agent_config_name}] Saved backfilled summary dates for channel {channel_id}"
                 )
             else:
                 logger.debug(
-                    f"[{self.agent_name}] No summaries were updated during backfill for channel {channel_id}"
+                    f"[{self.agent_config_name}] No summaries were updated during backfill for channel {channel_id}"
                 )
         except Exception as exc:
             logger.warning(
-                f"[{self.agent_name}] Failed to backfill summary dates for channel {channel_id}: {exc}"
+                f"[{self.agent_config_name}] Failed to backfill summary dates for channel {channel_id}: {exc}"
             )
 
     def get_channel_llm_model(self, channel_id: int) -> str | None:
@@ -454,7 +454,7 @@ class AgentStorage:
             The LLM model name (e.g., "gemini-2.0-flash", "grok") or None if not set
         """
         try:
-            memory_file = self.state_directory / self.agent_name / "memory" / f"{channel_id}.json"
+            memory_file = self.state_directory / self.agent_config_name / "memory" / f"{channel_id}.json"
             if not memory_file.exists():
                 return None
             # Load the file to get the payload (which contains top-level properties)
@@ -465,7 +465,7 @@ class AgentStorage:
                     return llm_model.strip()
         except Exception as exc:
             logger.debug(
-                f"[{self.agent_name}] Failed to load llm_model from {memory_file}: {exc}"
+                f"[{self.agent_config_name}] Failed to load llm_model from {memory_file}: {exc}"
             )
         return None
 
@@ -478,7 +478,7 @@ class AgentStorage:
             or None if schedule file doesn't exist or is invalid.
         """
         try:
-            schedule_file = self.state_directory / self.agent_name / "schedule.json"
+            schedule_file = self.state_directory / self.agent_config_name / "schedule.json"
             if not schedule_file.exists():
                 return None
             
@@ -488,18 +488,18 @@ class AgentStorage:
             # Validate basic structure
             if not isinstance(schedule, dict):
                 logger.warning(
-                    f"[{self.agent_name}] Invalid schedule file: expected dict, got {type(schedule).__name__}"
+                    f"[{self.agent_config_name}] Invalid schedule file: expected dict, got {type(schedule).__name__}"
                 )
                 return None
             
             return schedule
         except json.JSONDecodeError as e:
             logger.warning(
-                f"[{self.agent_name}] Corrupted schedule file: {e}"
+                f"[{self.agent_config_name}] Corrupted schedule file: {e}"
             )
         except Exception as e:
             logger.warning(
-                f"[{self.agent_name}] Failed to load schedule: {e}"
+                f"[{self.agent_config_name}] Failed to load schedule: {e}"
             )
         return None
 
@@ -517,7 +517,7 @@ class AgentStorage:
             schedule = self._cleanup_old_activities(schedule)
             
             # Ensure agent directory exists
-            agent_dir = self.state_directory / self.agent_name
+            agent_dir = self.state_directory / self.agent_config_name
             agent_dir.mkdir(parents=True, exist_ok=True)
             
             schedule_file = agent_dir / "schedule.json"
@@ -525,10 +525,10 @@ class AgentStorage:
             with open(schedule_file, "w", encoding="utf-8") as f:
                 json.dump(schedule, f, indent=2, ensure_ascii=False)
             
-            logger.debug(f"[{self.agent_name}] Saved schedule to {schedule_file}")
+            logger.debug(f"[{self.agent_config_name}] Saved schedule to {schedule_file}")
         except Exception as e:
             logger.error(
-                f"[{self.agent_name}] Failed to save schedule: {e}"
+                f"[{self.agent_config_name}] Failed to save schedule: {e}"
             )
             raise
     
@@ -571,13 +571,13 @@ class AgentStorage:
             except Exception as e:
                 # If we can't parse the activity, keep it (better safe than sorry)
                 logger.warning(
-                    f"[{self.agent_name}] Failed to parse activity during cleanup, keeping it: {e}"
+                    f"[{self.agent_config_name}] Failed to parse activity during cleanup, keeping it: {e}"
                 )
                 kept_activities.append(act_data)
         
         if removed_count > 0:
             logger.info(
-                f"[{self.agent_name}] Cleaned up {removed_count} old activity(ies) "
+                f"[{self.agent_config_name}] Cleaned up {removed_count} old activity(ies) "
                 f"(removed activities ending before {cutoff_time.isoformat()})"
             )
         

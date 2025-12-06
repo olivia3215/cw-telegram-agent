@@ -59,7 +59,7 @@ _TRANSLATION_SCHEMA = {
 }
 
 
-def _get_highest_summarized_message_id_for_api(agent_name: str, channel_id: int) -> int | None:
+def _get_highest_summarized_message_id_for_api(agent_config_name: str, channel_id: int) -> int | None:
     """
     Get the highest message ID that has been summarized (for use in Flask context).
     
@@ -67,7 +67,7 @@ def _get_highest_summarized_message_id_for_api(agent_name: str, channel_id: int)
     Returns None if no summaries exist.
     """
     try:
-        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        summary_file = Path(STATE_DIRECTORY) / agent_config_name / "memory" / f"{channel_id}.json"
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         
         highest_max_id = None
@@ -82,18 +82,18 @@ def _get_highest_summarized_message_id_for_api(agent_name: str, channel_id: int)
                     pass
         return highest_max_id
     except Exception as e:
-        logger.debug(f"Failed to get highest summarized message ID for {agent_name}/{channel_id}: {e}")
+        logger.debug(f"Failed to get highest summarized message ID for {agent_config_name}/{channel_id}: {e}")
         return None
 
 
-def _has_conversation_content_local(agent_name: str, channel_id: int) -> bool:
+def _has_conversation_content_local(agent_config_name: str, channel_id: int) -> bool:
     """
     Check if a conversation has content by checking local files only (no Telegram API calls).
     
     Returns True if summaries exist or if the summary file exists (indicating conversation data).
     """
     try:
-        summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+        summary_file = Path(STATE_DIRECTORY) / agent_config_name / "memory" / f"{channel_id}.json"
         if not summary_file.exists():
             return False
         
@@ -107,8 +107,8 @@ def _has_conversation_content_local(agent_name: str, channel_id: int) -> bool:
 def register_conversation_routes(agents_bp: Blueprint):
     """Register conversation management routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/conversation-content-check", methods=["POST"])
-    def api_check_conversation_content_batch(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-content-check", methods=["POST"])
+    def api_check_conversation_content_batch(agent_config_name: str):
         """
         Batch check which partners have conversation content (local files only, no Telegram API calls).
         
@@ -116,9 +116,9 @@ def register_conversation_routes(agents_bp: Blueprint):
         Response: {"content_checks": {"user_id1": true, "user_id2": false, ...}}
         """
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             data = request.json or {}
             user_ids = data.get("user_ids", [])
@@ -130,22 +130,22 @@ def register_conversation_routes(agents_bp: Blueprint):
             for user_id_str in user_ids:
                 try:
                     channel_id = int(user_id_str)
-                    content_checks[user_id_str] = _has_conversation_content_local(agent_name, channel_id)
+                    content_checks[user_id_str] = _has_conversation_content_local(agent.config_name, channel_id)
                 except (ValueError, TypeError):
                     content_checks[user_id_str] = False
 
             return jsonify({"content_checks": content_checks})
         except Exception as e:
-            logger.error(f"Error checking conversation content for {agent_name}: {e}")
+            logger.error(f"Error checking conversation content for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>", methods=["GET"])
-    def api_get_conversation(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>", methods=["GET"])
+    def api_get_conversation(agent_config_name: str, user_id: str):
         """Get conversation history (unsummarized messages only) and summaries."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.client or not agent.client.is_connected():
                 return jsonify({"error": "Agent client not connected"}), 503
@@ -156,7 +156,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Invalid user ID"}), 400
 
             # Get summaries
-            summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
             summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
             
@@ -168,26 +168,26 @@ def register_conversation_routes(agents_bp: Blueprint):
                         if storage:
                             await storage.backfill_summary_dates(channel_id, agent)
                     except Exception as e:
-                        logger.warning(f"Backfill failed for {agent_name}/{user_id}: {e}", exc_info=True)
+                        logger.warning(f"Backfill failed for {agent_config_name}/{user_id}: {e}", exc_info=True)
                 
                 # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
                 executor = agent.executor
                 if executor and executor.loop and executor.loop.is_running():
                     # Schedule the coroutine without waiting for it
                     asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
-                    logger.info(f"Scheduled backfill for {agent_name}/{user_id} (channel {channel_id})")
+                    logger.info(f"Scheduled backfill for {agent_config_name}/{user_id} (channel {channel_id})")
                 else:
                     logger.info(
-                        f"Agent executor not available for {agent_name}, skipping backfill. "
+                        f"Agent executor not available for {agent_config_name}, skipping backfill. "
                         f"executor={executor}, loop={executor.loop if executor else None}, "
                         f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
                     )
             except Exception as e:
                 # Don't fail the request if backfill setup fails
-                logger.warning(f"Failed to setup backfill for {agent_name}/{user_id}: {e}", exc_info=True)
+                logger.warning(f"Failed to setup backfill for {agent_config_name}/{user_id}: {e}", exc_info=True)
             
             # Get highest summarized message ID to filter messages
-            highest_summarized_id = _get_highest_summarized_message_id_for_api(agent_name, channel_id)
+            highest_summarized_id = _get_highest_summarized_message_id_for_api(agent.config_name, channel_id)
 
             # Get conversation history from Telegram
             # Check if agent's event loop is accessible before creating coroutine
@@ -229,7 +229,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         if highest_summarized_id is not None and msg_id <= highest_summarized_id:
                             # This shouldn't happen if min_id is working correctly, but log if it does
                             logger.warning(
-                                f"[{agent_name}] Unexpected: message {msg_id} <= highest_summarized_id {highest_summarized_id} "
+                                f"[{agent_config_name}] Unexpected: message {msg_id} <= highest_summarized_id {highest_summarized_id} "
                                 f"despite min_id filter"
                             )
                             continue
@@ -298,12 +298,12 @@ def register_conversation_routes(agents_bp: Blueprint):
                             "reactions": reactions_str,
                         })
                     logger.info(
-                        f"[{agent_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "
+                        f"[{agent_config_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "
                         f"(highest_summarized_id={highest_summarized_id}, using min_id filter)"
                     )
                     return list(reversed(messages))  # Return in chronological order
                 except Exception as e:
-                    logger.error(f"Error fetching messages for {agent_name}/{channel_id}: {e}", exc_info=True)
+                    logger.error(f"Error fetching messages for {agent_config_name}/{channel_id}: {e}", exc_info=True)
                     return []
 
             # Use agent.execute() to run the coroutine on the agent's event loop
@@ -313,28 +313,28 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error fetching conversation: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout fetching conversation for agent {agent_name}, user {user_id}")
+                logger.warning(f"Timeout fetching conversation for agent {agent_config_name}, user {user_id}")
                 return jsonify({"error": "Timeout fetching conversation"}), 504
             except Exception as e:
                 logger.error(f"Error fetching conversation: {e}")
                 return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error getting conversation for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error getting conversation for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/translate", methods=["POST"])
-    def api_translate_conversation(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/translate", methods=["POST"])
+    def api_translate_conversation(agent_config_name: str, user_id: str):
         """Translate unsummarized messages into English using the media LLM."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -478,28 +478,28 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error translating conversation: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout translating conversation for agent {agent_name}, user {user_id}")
+                logger.warning(f"Timeout translating conversation for agent {agent_config_name}, user {user_id}")
                 return jsonify({"error": "Timeout translating conversation"}), 504
             except Exception as e:
                 logger.error(f"Error translating conversation: {e}")
                 return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error translating conversation for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error translating conversation for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/xsend/<user_id>", methods=["POST"])
-    def api_xsend(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/xsend/<user_id>", methods=["POST"])
+    def api_xsend(agent_config_name: str, user_id: str):
         """Create an xsend task to trigger a received task on another channel."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.agent_id:
                 return jsonify({"error": "Agent not authenticated"}), 400
@@ -534,25 +534,25 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error creating xsend task: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout creating xsend task for agent {agent_name}, user {user_id}")
+                logger.warning(f"Timeout creating xsend task for agent {agent_config_name}, user {user_id}")
                 return jsonify({"error": "Timeout creating xsend task"}), 504
         except Exception as e:
-            logger.error(f"Error creating xsend task for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error creating xsend task for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/media/<message_id>/<unique_id>", methods=["GET"])
-    def api_get_conversation_media(agent_name: str, user_id: str, message_id: str, unique_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/media/<message_id>/<unique_id>", methods=["GET"])
+    def api_get_conversation_media(agent_config_name: str, user_id: str, message_id: str, unique_id: str):
         """Serve media from a Telegram message."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.client or not agent.client.is_connected():
                 return jsonify({"error": "Agent client not connected"}), 503
@@ -618,28 +618,28 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error fetching media: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout fetching media for agent {agent_name}, message {message_id}")
+                logger.warning(f"Timeout fetching media for agent {agent_config_name}, message {message_id}")
                 return jsonify({"error": "Timeout fetching media"}), 504
             except Exception as e:
                 logger.error(f"Error fetching media: {e}")
                 return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error getting media for {agent_name}/{user_id}/{message_id}/{unique_id}: {e}")
+            logger.error(f"Error getting media for {agent_config_name}/{user_id}/{message_id}/{unique_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/summarize", methods=["POST"])
-    def api_trigger_summarization(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/summarize", methods=["POST"])
+    def api_trigger_summarization(agent_config_name: str, user_id: str):
         """Trigger summarization for a conversation directly without going through the task graph."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.agent_id:
                 return jsonify({"error": "Agent not authenticated"}), 400
@@ -664,25 +664,25 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error triggering summarization: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout triggering summarization for agent {agent_name}, user {user_id}")
+                logger.warning(f"Timeout triggering summarization for agent {agent_config_name}, user {user_id}")
                 return jsonify({"error": "Timeout triggering summarization"}), 504
         except Exception as e:
-            logger.error(f"Error triggering summarization for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error triggering summarization for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation/<user_id>/delete-telepathic-messages", methods=["POST"])
-    def api_delete_telepathic_messages(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/delete-telepathic-messages", methods=["POST"])
+    def api_delete_telepathic_messages(agent_config_name: str, user_id: str):
         """Delete all telepathic messages from a channel. Uses agent's client for DMs, puppetmaster for groups."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -776,13 +776,13 @@ def register_conversation_routes(agents_bp: Blueprint):
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
-                    logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                    logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                     return jsonify({"error": "Agent client loop is not available"}), 503
                 else:
                     logger.error(f"Error checking channel type: {e}")
                     return jsonify({"error": str(e)}), 500
             except TimeoutError:
-                logger.warning(f"Timeout checking channel type for agent {agent_name}, user {user_id}")
+                logger.warning(f"Timeout checking channel type for agent {agent_config_name}, user {user_id}")
                 return jsonify({"error": "Timeout checking channel type"}), 504
 
             # Choose the appropriate client: agent for DMs, puppetmaster for groups
@@ -793,7 +793,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         agent_client = agent.client
                         if not agent_client or not agent_client.is_connected():
                             raise RuntimeError("Agent client not connected")
-                        client_name = f"agent {agent_name}"
+                        client_name = f"agent {agent_config_name}"
                         return await _find_and_delete_telepathic_messages(agent_client, entity_from_agent, client_name)
                     except Exception as e:
                         logger.error(f"Error deleting telepathic messages: {e}")
@@ -805,13 +805,13 @@ def register_conversation_routes(agents_bp: Blueprint):
                 except RuntimeError as e:
                     error_msg = str(e).lower()
                     if "not authenticated" in error_msg or "not running" in error_msg:
-                        logger.warning(f"Agent {agent_name} client loop issue: {e}")
+                        logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
                         return jsonify({"error": "Agent client loop is not available"}), 503
                     else:
                         logger.error(f"Error deleting telepathic messages: {e}")
                         return jsonify({"error": str(e)}), 500
                 except TimeoutError:
-                    logger.warning(f"Timeout deleting telepathic messages for agent {agent_name}, user {user_id}")
+                    logger.warning(f"Timeout deleting telepathic messages for agent {agent_config_name}, user {user_id}")
                     return jsonify({"error": "Timeout deleting telepathic messages"}), 504
             else:
                 # Use puppetmaster's client for groups/channels
@@ -845,6 +845,6 @@ def register_conversation_routes(agents_bp: Blueprint):
                     logger.error(f"Error deleting telepathic messages: {e}")
                     return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error deleting telepathic messages for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error deleting telepathic messages for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 

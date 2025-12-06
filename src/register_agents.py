@@ -223,6 +223,9 @@ def register_all_agents(force: bool = False):
                         )
                         continue
 
+                    # Extract config file name (without .md extension) for state directory paths
+                    config_name = file.stem
+
                     register_telegram_agent(
                         name=agent_name,
                         phone=parsed["phone"],
@@ -231,6 +234,7 @@ def register_all_agents(force: bool = False):
                         sticker_set_names=parsed.get("sticker_set_names") or [],
                         explicit_stickers=parsed.get("explicit_stickers") or [],
                         config_directory=config_dir,
+                        config_name=config_name,
                         timezone=parsed.get("timezone"),
                         llm_name=parsed.get("llm_name"),
                         daily_schedule_description=parsed.get("daily_schedule_description"),

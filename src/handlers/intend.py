@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _process_intend_task(agent, channel_id: int, task: TaskNode):
-    file_path = Path(STATE_DIRECTORY) / agent.name / "memory.json"
+    file_path = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
     await process_property_entry_task(
         agent,
         channel_id,

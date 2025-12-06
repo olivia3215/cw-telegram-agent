@@ -357,7 +357,7 @@ def api_refresh_from_ai(unique_id: str):
             # Ensure the agent's client is connected
             if agent.client is None:
                 # Initialize and start the client
-                client = get_telegram_client(agent.name, agent.phone)
+                client = get_telegram_client(agent.config_name, agent.phone)
                 agent._client = client
 
                 # Start the client if not already connected

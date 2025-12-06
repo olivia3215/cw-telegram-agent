@@ -116,9 +116,19 @@ def get_agent_for_directory(target_directory: str = None) -> Any:
     return agent
 
 
-def get_agent_by_name(agent_name: str) -> Agent | None:
-    """Get an agent by name from the registry."""
-    return _agent_registry._registry.get(agent_name)
+def get_agent_by_name(agent_config_name: str) -> Agent | None:
+    """Get an agent by config name from the registry.
+    
+    The agent_config_name parameter should be the config file name (without .md extension),
+    which is stored as agent.config_name. This allows the admin console URLs to use
+    the config file name, which is stable even if the agent's display name changes.
+    """
+    # Search by config_name first (preferred)
+    for agent in get_all_agents():
+        if agent.config_name == agent_config_name:
+            return agent
+    # Fallback to display name for backward compatibility
+    return _agent_registry._registry.get(agent_config_name)
 
 
 def get_default_llm() -> str:

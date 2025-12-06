@@ -31,6 +31,7 @@ class AgentRegistry:
         sticker_set_names=None,
         explicit_stickers=None,
         config_directory=None,
+        config_name=None,
         timezone=None,
         daily_schedule_description=None,
     ):
@@ -62,6 +63,7 @@ class AgentRegistry:
             sticker_set_names=sticker_set_names,
             explicit_stickers=explicit_stickers,
             config_directory=config_directory,
+            config_name=config_name,
             timezone=timezone,
             daily_schedule_description=daily_schedule_description,
         )

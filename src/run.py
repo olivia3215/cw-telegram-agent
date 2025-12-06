@@ -282,7 +282,7 @@ async def authenticate_agent(agent: Agent):
     Authenticate an agent and set up their basic connection.
     Returns True if successful, False if authentication failed.
     """
-    client = get_telegram_client(agent.name, agent.phone)
+    client = get_telegram_client(agent.config_name, agent.phone)
     agent._client = client
 
     try:
@@ -429,8 +429,8 @@ async def run_telegram_loop(agent: Agent):
         try:
             async with client:
                 # Stagger initial scan to avoid GetContactsRequest flood when multiple agents start
-                # Add a random delay between 0-5 seconds based on agent name hash
-                agent_hash = int(hashlib.md5(agent.name.encode()).hexdigest()[:8], 16)
+                # Add a random delay between 0-5 seconds based on agent config name hash
+                agent_hash = int(hashlib.md5(agent.config_name.encode()).hexdigest()[:8], 16)
                 initial_delay = (agent_hash % 5000) / 1000.0  # 0-5 seconds
                 if initial_delay > 0:
                     logger.debug(f"[{agent.name}] Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
@@ -459,9 +459,9 @@ async def periodic_scan(agents, interval_sec):
             if agent.client:  # Only scan if the client is connected
                 try:
                     # Stagger scans between agents to avoid simultaneous GetHistoryRequest calls
-                    # Use agent name hash to create consistent but distributed delays
+                    # Use agent config name hash to create consistent but distributed delays
                     # Increased stagger to 0-5 seconds to better spread out API calls
-                    agent_hash = int(hashlib.md5(agent.name.encode()).hexdigest()[:8], 16)
+                    agent_hash = int(hashlib.md5(agent.config_name.encode()).hexdigest()[:8], 16)
                     stagger_delay = (agent_hash % 5000) / 1000.0  # 0-5 seconds
                     if stagger_delay > 0:
                         await clock.sleep(stagger_delay)

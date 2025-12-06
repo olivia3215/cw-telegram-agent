@@ -54,6 +54,7 @@ class Agent(
         explicit_stickers=None,
         # Config directory tracking
         config_directory=None,
+        config_name=None,
         # Timezone configuration
         timezone=None,
         # Daily schedule configuration
@@ -64,6 +65,9 @@ class Agent(
         self.instructions = instructions
         self.role_prompt_names = list(role_prompt_names or [])
         self.config_directory = config_directory
+        # config_name is the config file name (without .md extension) used for state directories
+        # If not provided, default to name for backward compatibility
+        self.config_name = config_name if config_name is not None else name
 
         # Set timezone: use provided timezone, or default to server's local timezone
         if timezone is None:
