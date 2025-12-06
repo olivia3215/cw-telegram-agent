@@ -10,6 +10,7 @@ from task_graph import TaskNode
 class StubAgent:
     def __init__(self, name="TestAgent"):
         self.name = name
+        self.config_name = name  # config_name defaults to name, matching Agent class behavior
         self.timezone = ZoneInfo("UTC")
 
     def get_current_time(self):
