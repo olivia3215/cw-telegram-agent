@@ -112,7 +112,15 @@ async def insert_received_task_for_conversation(
     agent = get_agent_for_id(recipient_id)
     preserved_tasks = []
     # Find the existing graph for this conversation
-    old_graph = work_queue.graph_for_conversation(recipient_id, channel_id)
+    # Convert to ints for comparison (graph_for_conversation expects ints)
+    try:
+        agent_id_int = int(recipient_id)
+        channel_id_int = int(channel_id)
+    except (ValueError, TypeError):
+        # If conversion fails, use as-is (shouldn't happen, but be defensive)
+        agent_id_int = recipient_id
+        channel_id_int = channel_id
+    old_graph = work_queue.graph_for_conversation(agent_id_int, channel_id_int)
 
     # Check if there's already an active received task for this conversation
     if old_graph:
@@ -132,9 +140,17 @@ async def insert_received_task_for_conversation(
                 if clear_reactions:
                     task.params["clear_reactions"] = True
                 logger.info(
-                    f"[{recipient_id}] Skipping received task creation - active received task {task.id} already exists for conversation {channel_id}"
+                    f"[{recipient_id}] Skipping received task creation - active received task {task.id} "
+                    f"(status: {task.status}) already exists for conversation {channel_id}"
                 )
                 return
+        # Log if we found a graph but no active received task (for debugging duplicates)
+        received_tasks = [t for t in old_graph.tasks if t.type == "received"]
+        if received_tasks:
+            logger.debug(
+                f"[{recipient_id}] Found graph for conversation {channel_id} with {len(received_tasks)} "
+                f"received task(s), but all are completed. Statuses: {[t.status for t in received_tasks]}"
+            )
 
     last_task = None
     preserved_online_wait_task = None

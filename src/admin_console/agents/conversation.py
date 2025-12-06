@@ -234,20 +234,46 @@ def register_conversation_routes(agents_bp: Blueprint):
                             )
                             continue
                         
+                        # Try multiple ways to extract sender_id (for compatibility with different message types)
                         from_id = getattr(message, "from_id", None)
                         sender_id = None
                         if from_id:
                             sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
+                        
+                        # Fallback: try message.sender.id if from_id didn't work
+                        if not sender_id:
+                            sender = getattr(message, "sender", None)
+                            if sender:
+                                sender_id = getattr(sender, "id", None)
+                        
                         is_from_agent = sender_id == agent.agent_id
                         
-                        # Get sender name
+                        # Get sender name - ensure it's never None so frontend can display it properly
+                        # The frontend expects format: sender_name (sender_id), so we provide the name part
+                        # get_channel_name should always return a non-empty string, but we handle failures gracefully
                         sender_name = None
                         if sender_id and isinstance(sender_id, int):
                             try:
                                 sender_name = await get_channel_name(agent, sender_id)
+                                # get_channel_name should never return None or empty, but be defensive
+                                if not sender_name or not sender_name.strip():
+                                    # This shouldn't happen, but if it does, use a fallback
+                                    sender_name = "User"
                             except Exception as e:
-                                logger.debug(f"Failed to get sender name for {sender_id}: {e}")
-                                sender_name = None
+                                logger.warning(f"Failed to get sender name for {sender_id}: {e}")
+                                # Fallback: use generic name (frontend will append ID)
+                                sender_name = "User"
+                        elif sender_id:
+                            # sender_id exists but isn't an int - use generic name
+                            sender_name = "User"
+                        else:
+                            # No sender_id - this shouldn't happen for regular messages, but handle gracefully
+                            # For messages without sender_id, we can't show the ID, so just show "User"
+                            sender_name = "User"
+                        
+                        # Final safety check: ensure sender_name is never None
+                        if not sender_name:
+                            sender_name = "User"
                         
                         text = message.text or ""
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
