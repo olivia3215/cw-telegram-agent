@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
+from admin_console.helpers import get_agent_by_name, get_default_llm
 from config import STATE_DIRECTORY
 from memory_storage import (
     MemoryStorageError,
@@ -418,4 +418,102 @@ def register_memory_routes(agents_bp: Blueprint):
             logger.error(
                 f"Error creating curated memory for {agent_config_name}/{user_id}: {e}"
             )
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/partner-content-check", methods=["POST"])
+    def api_check_partner_content_batch(agent_config_name: str):
+        """
+        Batch check which partners have content for curated-memories, conversation-llm, and plans.
+        
+        Request body: {"user_ids": ["user_id1", "user_id2", ...]}
+        Response: {
+            "content_checks": {
+                "user_id1": {
+                    "curated_memories": true,
+                    "conversation_llm": false,
+                    "plans": true
+                },
+                ...
+            }
+        }
+        """
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            data = request.json or {}
+            user_ids = data.get("user_ids", [])
+            
+            if not isinstance(user_ids, list):
+                return jsonify({"error": "user_ids must be a list"}), 400
+
+            content_checks = {}
+            
+            # Get agent default LLM for comparison
+            agent_default_llm = agent._llm_name or get_default_llm()
+            
+            for user_id_str in user_ids:
+                try:
+                    channel_id = int(user_id_str)
+                except (ValueError, TypeError):
+                    content_checks[user_id_str] = {
+                        "curated_memories": False,
+                        "conversation_llm": False,
+                        "plans": False
+                    }
+                    continue
+                
+                checks = {}
+                
+                # Check curated memories
+                if agent.config_directory:
+                    memory_file = (
+                        Path(agent.config_directory)
+                        / "agents"
+                        / agent.config_name
+                        / "memory"
+                        / f"{user_id_str}.json"
+                    )
+                    if memory_file.exists():
+                        try:
+                            with open(memory_file, "r", encoding="utf-8") as f:
+                                loaded = json.load(f)
+                                if isinstance(loaded, dict):
+                                    memories = loaded.get("memory", [])
+                                elif isinstance(loaded, list):
+                                    memories = loaded
+                                else:
+                                    memories = []
+                                checks["curated_memories"] = len(memories) > 0
+                        except Exception:
+                            checks["curated_memories"] = False
+                    else:
+                        checks["curated_memories"] = False
+                else:
+                    checks["curated_memories"] = False
+                
+                # Check conversation LLM (has override if different from agent default)
+                try:
+                    conversation_llm = agent.get_channel_llm_model(channel_id)
+                    checks["conversation_llm"] = conversation_llm is not None and conversation_llm != agent_default_llm
+                except Exception:
+                    checks["conversation_llm"] = False
+                
+                # Check plans
+                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+                if plan_file.exists():
+                    try:
+                        plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
+                        checks["plans"] = len(plans) > 0
+                    except Exception:
+                        checks["plans"] = False
+                else:
+                    checks["plans"] = False
+                
+                content_checks[user_id_str] = checks
+                
+            return jsonify({"content_checks": content_checks})
+        except Exception as e:
+            logger.error(f"Error checking partner content for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
