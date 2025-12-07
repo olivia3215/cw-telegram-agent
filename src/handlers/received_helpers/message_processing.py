@@ -188,4 +188,3 @@ async def process_message_history(
         )
 
     return history_rendered_items
-

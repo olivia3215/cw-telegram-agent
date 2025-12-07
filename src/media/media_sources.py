@@ -49,4 +49,3 @@ def reset_media_source_registry() -> None:
     """Clear the registry. Intended for tests."""
     with _registry_lock:
         _directory_sources.clear()
-

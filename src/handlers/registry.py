@@ -72,4 +72,3 @@ def get_task_dispatch_table() -> dict[str, TaskHandler]:
 def get_immediate_task_dispatch_table() -> dict[str, ImmediateTaskHandler]:
     """Return the registry backing store for immediate task handlers."""
     return _immediate_task_dispatch
-

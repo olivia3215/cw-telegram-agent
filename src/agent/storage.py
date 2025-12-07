@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from storage.agent_storage import AgentStorage
+from agent.storage_impl import AgentStorage
 
 logger = logging.getLogger(__name__)
 
@@ -162,4 +162,3 @@ class AgentStorageMixin:
         # Invalidate cache - it will be reloaded on next access
         self._schedule_cache = None
         self._schedule_cache_mtime = None
-

@@ -75,4 +75,3 @@ async def handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "remember", body)
     await _process_remember_task(agent, channel_id, task)
     return True
-

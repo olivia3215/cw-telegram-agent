@@ -41,4 +41,3 @@ async def handle_immediate_plan(task: TaskNode, *, agent, channel_id: int) -> bo
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "plan", body)
     await _process_plan_task(agent, channel_id, task)
     return True
-

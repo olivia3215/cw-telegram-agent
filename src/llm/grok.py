@@ -496,4 +496,3 @@ class GrokLLM(LLM):
         except Exception as e:
             logger.error("Grok JSON schema query exception: %s", e)
             raise
-

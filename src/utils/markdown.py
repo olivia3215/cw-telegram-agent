@@ -17,4 +17,3 @@ def flatten_node_text(node):
             lines.extend(flatten_node_text(child))
         return lines
     return []
-

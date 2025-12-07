@@ -123,12 +123,17 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
     which is stored as agent.config_name. This allows the admin console URLs to use
     the config file name, which is stable even if the agent's display name changes.
     """
-    # Search by config_name first (preferred)
+    # Registry is now keyed by config_name, so direct lookup
+    agent = _agent_registry.get_by_config_name(agent_config_name)
+    if agent:
+        return agent
+    
+    # Fallback: search by display name for backward compatibility
+    # (in case someone is still using display names in URLs)
     for agent in get_all_agents():
-        if agent.config_name == agent_config_name:
+        if agent.name == agent_config_name:
             return agent
-    # Fallback to display name for backward compatibility
-    return _agent_registry._registry.get(agent_config_name)
+    return None
 
 
 def get_default_llm() -> str:
@@ -167,4 +172,3 @@ def get_work_queue() -> Any:
     """Get the global work queue singleton instance."""
     from task_graph import WorkQueue
     return WorkQueue.get_instance()
-

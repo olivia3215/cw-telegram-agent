@@ -60,5 +60,3 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
     logger.info(
         f"[{agent.name}] xsend scheduled received on channel {target_channel_id} (intent length={len(intent)})"
     )
-
-

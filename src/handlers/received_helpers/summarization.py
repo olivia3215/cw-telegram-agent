@@ -371,4 +371,3 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
         highest_summarized_id=highest_summarized_id,
         parse_llm_reply_fn=parse_llm_reply_fn,
     )
-

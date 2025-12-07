@@ -96,4 +96,3 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error updating conversation LLM for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-

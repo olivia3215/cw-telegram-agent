@@ -95,4 +95,3 @@ def extract_user_id_from_peer(peer_id) -> int | None:
             return user_id
             
     return None
-

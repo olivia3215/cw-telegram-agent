@@ -288,4 +288,3 @@ def api_auth_verify():
     session[SESSION_VERIFIED_KEY] = True
     session.modified = True
     return jsonify({"success": True})
-

@@ -419,4 +419,3 @@ def register_memory_routes(agents_bp: Blueprint):
                 f"Error creating curated memory for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
-

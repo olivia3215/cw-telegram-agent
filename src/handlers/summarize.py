@@ -57,5 +57,3 @@ async def handle_immediate_summarize(task: TaskNode, *, agent, channel_id: int) 
     
     await _process_summarize_task(agent, channel_id, task)
     return True
-
-

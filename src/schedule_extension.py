@@ -223,6 +223,3 @@ def _build_schedule_system_prompt(
     final_prompt = substitute_templates(final_prompt, agent.name, "Schedule Extension")
     
     return final_prompt
-
-
-

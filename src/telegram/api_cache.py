@@ -120,5 +120,3 @@ class TelegramAPICache:
             logger.info(f"[{self.name}] Updated blocklist cache.")
 
         return user_id in self._blocklist_cache
-
-

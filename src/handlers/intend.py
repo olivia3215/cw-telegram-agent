@@ -39,4 +39,3 @@ async def handle_immediate_intend(task: TaskNode, *, agent, channel_id: int) -> 
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "intend", body)
     await _process_intend_task(agent, channel_id, task)
     return True
-

@@ -16,13 +16,12 @@ from telethon.errors.rpcerrorlist import (
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction
 
-from agent import all_agents, get_agent_for_id
+from agent import get_agent_for_id
 from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
-from schedule import days_remaining, get_responsiveness
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)

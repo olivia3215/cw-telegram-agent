@@ -96,4 +96,3 @@ def register_intention_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error deleting intention {intention_id} for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
-

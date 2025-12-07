@@ -141,4 +141,3 @@ def register_configuration_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error updating prompt for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
-

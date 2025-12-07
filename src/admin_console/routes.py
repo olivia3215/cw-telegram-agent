@@ -57,4 +57,3 @@ def set_available_directories(directories: list[dict[str, str]]) -> None:
     """Set the list of available directories."""
     global _available_directories
     _available_directories = directories
-

@@ -514,4 +514,3 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
     except Exception as e:
         logger.error(f"[schedule] Error deleting schedule entry: {e}")
         return False
-

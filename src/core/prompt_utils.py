@@ -37,4 +37,3 @@ def substitute_templates(text: str, agent_name: str, channel_name: str) -> str:
     text = text.replace("{user}", channel_name)
     
     return text
-

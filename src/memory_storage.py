@@ -162,4 +162,3 @@ __all__ = [
     "mutate_property_entries",
     "write_property_entries",
 ]
-

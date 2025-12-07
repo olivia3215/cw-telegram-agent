@@ -280,4 +280,3 @@ async def build_channel_details_section(
         return ""
 
     return "\n".join(["# Channel Details", "", *detail_lines])
-

@@ -847,4 +847,3 @@ def register_conversation_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error deleting telepathic messages for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-

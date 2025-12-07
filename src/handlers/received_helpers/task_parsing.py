@@ -290,4 +290,3 @@ async def process_retrieve_tasks(
     raise Exception(
         "Temporary error: retrieval - will retry with fetched content"
     )
-

@@ -60,4 +60,3 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
         logger.exception(
             f"[{agent.name}] Failed to send reaction to message {message_id}: {exc}"
         )
-

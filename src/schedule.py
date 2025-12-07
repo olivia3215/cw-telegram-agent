@@ -239,5 +239,3 @@ def days_remaining(schedule: dict | None, now: datetime | None = None) -> float:
     # Calculate days remaining
     time_remaining = latest_end - now
     return max(0.0, time_remaining.total_seconds() / 86400.0)
-
-
