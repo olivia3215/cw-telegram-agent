@@ -187,6 +187,10 @@ def register_partner_routes(agents_bp: Blueprint):
                                         # Avoid calling get_entity() to prevent GetContactsRequest flood
                                         entity = dialog.entity
                                         
+                                        # Skip deleted users
+                                        if isinstance(entity, User) and getattr(entity, "deleted", False):
+                                            continue
+                                        
                                         if isinstance(entity, User):
                                             # User (DM) - get name from first_name/last_name or username
                                             if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
