@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from agent import Agent
 
 from utils.ids import normalize_peer_id
+from telegram.secret_chat import is_secret_chat, get_user_id_from_secret_chat
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +34,30 @@ def format_username(entity):
 
 async def get_channel_name(agent: "Agent", channel_id: int):
     """
-    Fetches the display name for any channel (user, group, or channel).
+    Fetches the display name for any channel (user, group, channel, or secret chat).
     Accepts Agent-like objects (e.g., test doubles) too.
     """
     channel_id = normalize_peer_id(channel_id)
     try:
-        # get_entity can fetch users, chats, or channels
+        # get_entity can fetch users, chats, channels, or secret chats
         entity = await agent.get_cached_entity(channel_id)
         if not entity:
             return f"Unknown ({channel_id})"
+
+        # Check if this is a secret chat
+        if is_secret_chat(entity):
+            # For secret chats, get the user ID and use get_channel_name recursively
+            # to format the user's name, then append "(Secret Chat)"
+            user_id = get_user_id_from_secret_chat(entity)
+            if user_id:
+                try:
+                    user_name = await get_channel_name(agent, user_id)
+                    # Only append "(Secret Chat)" if we got a real name (not "Unknown")
+                    if user_name and not user_name.startswith("Unknown"):
+                        return f"{user_name} (Secret Chat)"
+                except Exception as e:
+                    logger.debug(f"Could not fetch user name for secret chat: {e}")
+            return f"Secret Chat ({channel_id})"
 
         # 1. Check for a 'title' (for groups and channels)
         if hasattr(entity, "title") and entity.title:
@@ -88,9 +104,13 @@ def is_group_or_channel(entity) -> bool:
 
 def is_dm(entity) -> bool:
     """
-    Returns True if the entity is a direct message with a user.
+    Returns True if the entity is a direct message with a user (including secret chats).
     Returns False if the entity is a group or channel, or if entity is None.
     """
     if entity is None:
         return False
+    # Secret chats are also DMs, but they have a title attribute (False)
+    # So we check for secret chats explicitly
+    if is_secret_chat(entity):
+        return True
     return not hasattr(entity, "title")

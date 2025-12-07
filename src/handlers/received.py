@@ -490,7 +490,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
                         return
             except Exception as e:
                 logger.warning(f"[{agent.name}] Failed to apply schedule delay: {e}")
-
     # Handle online wait task AFTER responsiveness delay is handled
     # If there was a responsiveness delay, we'll create the online wait task after read acknowledge
     # (so it only appears online after the delay completes)
@@ -717,7 +716,21 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Clear mentions/reactions if requested (these flags were set during message scanning)
     clear_mentions = task.params.get("clear_mentions", False)
     clear_reactions = task.params.get("clear_reactions", False)
-    await client.send_read_acknowledge(entity, clear_mentions=clear_mentions, clear_reactions=clear_reactions)
+    
+    # Mark messages as read - handle secret chats specially if needed
+    try:
+        await client.send_read_acknowledge(entity, clear_mentions=clear_mentions, clear_reactions=clear_reactions)
+    except Exception as e:
+        # Secret chats might need different handling, but try to log the error
+        from telegram.secret_chat import is_secret_chat
+        if is_secret_chat(entity):
+            logger.warning(
+                f"[{agent.name}] Failed to mark secret chat messages as read for {channel_id}: {e}. "
+                f"This might be expected for secret chats."
+            )
+        else:
+            # Re-raise for non-secret chats as this is unexpected
+            raise
     
     # After marking as read, create/extend online wait task to 5 minutes from now
     # Find the online wait task (it may have been created earlier if there was no responsiveness delay)

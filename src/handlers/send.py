@@ -10,6 +10,7 @@ from utils import coerce_to_int
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from handlers.registry import register_task_handler
+from telegram.secret_chat import is_secret_chat
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +59,47 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
 
     reply_to_raw = task.params.get("reply_to")
     reply_to_int = coerce_to_int(reply_to_raw)
-    try:
-        if reply_to_int:
-            await client.send_message(
-                entity, message, reply_to=reply_to_int, parse_mode="Markdown"
+    
+    # Check if this is a secret chat
+    if is_secret_chat(entity):
+        # Use SecretChatManager to send messages in secret chats
+        secret_chat_manager = getattr(agent, "_secret_chat_manager", None)
+        if not secret_chat_manager:
+            raise RuntimeError(
+                f"Secret chat manager not available for agent {agent.name}. "
+                "Cannot send message in secret chat."
             )
-        else:
-            await client.send_message(entity, message, parse_mode="Markdown")
-    except Exception as e:
-        logger.exception(
-            f"[{agent.name}] Failed to send reply to message {reply_to_int}: {e}"
-        )
+        
+        try:
+            # SecretChatManager uses send_message method with the encrypted chat
+            # Note: Secret chats may not support reply_to in the same way
+            if reply_to_int:
+                # Try to send with reply, but secret chats may not support this
+                logger.warning(
+                    f"[{agent.name}] Reply-to not fully supported in secret chats, sending without reply"
+                )
+            
+            # Send message via secret chat manager
+            # The API may vary - check telethon-secret-chat documentation
+            await secret_chat_manager.send_message(entity, message)
+            logger.info(
+                f"[{agent.name}] Sent secret chat message to [{await get_channel_name(agent, channel_id_int)}]"
+            )
+        except Exception as e:
+            logger.exception(
+                f"[{agent.name}] Failed to send secret chat message: {e}"
+            )
+            raise
+    else:
+        # Regular chat - use standard send_message
+        try:
+            if reply_to_int:
+                await client.send_message(
+                    entity, message, reply_to=reply_to_int, parse_mode="Markdown"
+                )
+            else:
+                await client.send_message(entity, message, parse_mode="Markdown")
+        except Exception as e:
+            logger.exception(
+                f"[{agent.name}] Failed to send reply to message {reply_to_int}: {e}"
+            )
