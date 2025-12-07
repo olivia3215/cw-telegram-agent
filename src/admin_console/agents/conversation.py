@@ -12,7 +12,7 @@ from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import find_media_file, get_agent_by_name
+from admin_console.helpers import get_agent_by_name
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
@@ -590,18 +590,27 @@ def register_conversation_routes(agents_bp: Blueprint):
             # Check config directories first (curated media), then state/media/ (AI cache)
             # This matches the priority order of the media source chain
             cached_file = None
+            
+            # Check all config directories first (without fallback to state/media/)
             for config_dir in CONFIG_DIRECTORIES:
                 config_media_dir = Path(config_dir) / "media"
                 if config_media_dir.exists() and config_media_dir.is_dir():
-                    # find_media_file will check config_media_dir first, then fallback to state/media/
-                    cached_file = find_media_file(config_media_dir, unique_id)
+                    # Search only in this config directory (no fallback)
+                    for file_path in config_media_dir.glob(f"{unique_id}.*"):
+                        if file_path.suffix.lower() != ".json":
+                            cached_file = file_path
+                            break
                     if cached_file:
                         break
             
-            # If not found in config directories, check state/media/ directly
+            # If not found in any config directory, check state/media/ directly
             if not cached_file:
                 state_media_dir = Path(STATE_DIRECTORY) / "media"
-                cached_file = find_media_file(state_media_dir, unique_id)
+                if state_media_dir.exists() and state_media_dir.is_dir():
+                    for file_path in state_media_dir.glob(f"{unique_id}.*"):
+                        if file_path.suffix.lower() != ".json":
+                            cached_file = file_path
+                            break
             
             # If found in cache, serve from cache
             if cached_file and cached_file.exists():
