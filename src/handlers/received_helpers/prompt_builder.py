@@ -369,35 +369,31 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     try:
         for set_short, name in sorted(agent.stickers.keys()):
             try:
-                if set_short == "AnimatedEmojies":
-                    # Don't describe these - they are just animated emojis
-                    desc = None
+                # Get the document from the configured stickers
+                doc = agent.stickers.get((set_short, name))
+                if doc:
+                    # Check if sticker is sendable (not premium) if filtering is enabled
+                    if filter_premium and not await _is_sticker_sendable(
+                        agent, doc
+                    ):
+                        filtered_count += 1
+                        continue
+
+                    # Get unique_id from document
+                    _uid = get_unique_id(doc)
+
+                    # Use agent's media source chain
+                    cache_record = await media_chain.get(
+                        unique_id=_uid,
+                        agent=agent,
+                        doc=doc,
+                        kind="sticker",
+                        sticker_set_name=set_short,
+                        sticker_name=name,
+                    )
+                    desc = cache_record.get("description") if cache_record else None
                 else:
-                    # Get the document from the configured stickers
-                    doc = agent.stickers.get((set_short, name))
-                    if doc:
-                        # Check if sticker is sendable (not premium) if filtering is enabled
-                        if filter_premium and not await _is_sticker_sendable(
-                            agent, doc
-                        ):
-                            filtered_count += 1
-                            continue
-
-                        # Get unique_id from document
-                        _uid = get_unique_id(doc)
-
-                        # Use agent's media source chain
-                        cache_record = await media_chain.get(
-                            unique_id=_uid,
-                            agent=agent,
-                            doc=doc,
-                            kind="sticker",
-                            sticker_set_name=set_short,
-                            sticker_name=name,
-                        )
-                        desc = cache_record.get("description") if cache_record else None
-                    else:
-                        desc = None
+                    desc = None
             except Exception as e:
                 logger.exception(f"Failed to process sticker {set_short}::{name}: {e}")
                 desc = None

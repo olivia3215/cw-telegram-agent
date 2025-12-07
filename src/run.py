@@ -262,6 +262,8 @@ async def scan_unread_messages(agent: Agent):
 async def ensure_sticker_cache(agent, client):
     # Determine which sets to load fully vs which to load selectively
     full_sets = set(getattr(agent, "sticker_set_names", []) or [])
+    # Never treat AnimatedEmojies as a full set - only allow specific stickers via explicit_stickers
+    full_sets.discard("AnimatedEmojies")
     explicit = getattr(agent, "explicit_stickers", []) or []
 
     # Group explicit stickers by set
