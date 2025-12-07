@@ -118,6 +118,9 @@ async def can_agent_send_to_channel(agent: Agent, channel_id: int) -> bool:
         # Check if we can send messages
         # For DMs, this will be False if we're blocked
         # For groups/channels, this reflects the channel permissions
+        # Handle None case explicitly - default to True to match documented fallback behavior
+        if permissions.send_messages is None:
+            return True
         return permissions.send_messages
     except Exception as e:
         # If we can't determine permissions, assume we can send
