@@ -321,7 +321,6 @@ async def _schedule_tasks(
         is_group: Whether this is a group chat
         agent: Agent instance
     """
-    fallback_reply_to = received_task.params.get("message_id") if is_group else None
     last_id = received_task.id
 
     for task in tasks:
@@ -332,10 +331,6 @@ async def _schedule_tasks(
             task.params["callout"] = True
 
         if task.type == "send" or task.type == "sticker":
-            if "reply_to" not in task.params and fallback_reply_to:
-                task.params["reply_to"] = fallback_reply_to
-                fallback_reply_to = None
-
             # Calculate delay based on task type
             if task.type == "send":
                 raw_text = task.params.get("text")
