@@ -12,8 +12,8 @@ from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY
+from admin_console.helpers import find_media_file, get_agent_by_name
+from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
@@ -574,20 +574,61 @@ def register_conversation_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/media/<message_id>/<unique_id>", methods=["GET"])
     def api_get_conversation_media(agent_config_name: str, user_id: str, message_id: str, unique_id: str):
-        """Serve media from a Telegram message."""
+        """Serve media from a Telegram message, using cache if available."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
-
-            if not agent.client or not agent.client.is_connected():
-                return jsonify({"error": "Agent client not connected"}), 503
 
             try:
                 channel_id = int(user_id)
                 msg_id = int(message_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID or message ID"}), 400
+
+            # First, check if media is cached in any of the media directories
+            # Check config directories first (curated media), then state/media/ (AI cache)
+            # This matches the priority order of the media source chain
+            cached_file = None
+            for config_dir in CONFIG_DIRECTORIES:
+                config_media_dir = Path(config_dir) / "media"
+                if config_media_dir.exists() and config_media_dir.is_dir():
+                    # find_media_file will check config_media_dir first, then fallback to state/media/
+                    cached_file = find_media_file(config_media_dir, unique_id)
+                    if cached_file:
+                        break
+            
+            # If not found in config directories, check state/media/ directly
+            if not cached_file:
+                state_media_dir = Path(STATE_DIRECTORY) / "media"
+                cached_file = find_media_file(state_media_dir, unique_id)
+            
+            # If found in cache, serve from cache
+            if cached_file and cached_file.exists():
+                try:
+                    # Read the cached file
+                    with open(cached_file, "rb") as f:
+                        media_bytes = f.read()
+                    
+                    # Detect MIME type
+                    mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
+                    
+                    logger.debug(
+                        f"Serving cached media {unique_id} from {cached_file} for {agent_config_name}/{user_id}/{message_id}"
+                    )
+                    
+                    return Response(
+                        media_bytes,
+                        mimetype=mime_type or "application/octet-stream",
+                        headers={"Content-Disposition": f"inline; filename={unique_id}"}
+                    )
+                except Exception as e:
+                    logger.warning(f"Error reading cached media file {cached_file}: {e}, falling back to Telegram download")
+                    # Fall through to download from Telegram
+            
+            # Not in cache, or cache read failed - download from Telegram
+            if not agent.client or not agent.client.is_connected():
+                return jsonify({"error": "Agent client not connected"}), 503
 
             # Check if agent's event loop is accessible
             try:
@@ -635,6 +676,10 @@ def register_conversation_routes(agents_bp: Blueprint):
                 media_bytes, mime_type = agent.execute(_get_media(), timeout=30.0)
                 if media_bytes is None:
                     return jsonify({"error": "Media not found"}), 404
+                
+                logger.debug(
+                    f"Downloaded media {unique_id} from Telegram for {agent_config_name}/{user_id}/{message_id}"
+                )
                 
                 return Response(
                     media_bytes,
