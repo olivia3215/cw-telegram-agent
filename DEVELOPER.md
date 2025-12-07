@@ -99,7 +99,7 @@ state/
 └── work_queue.json.bak
 ```
 
-**Important:** Agent names cannot be `media` as this conflicts with the reserved media directory.
+**Important:** Agent display names and config file names (the filename without `.md`) cannot be `media` as this conflicts with the reserved media directory. Both display names and config file names must be unique across all config directories to prevent state directory conflicts.
 
 ## Code style & tooling
 
