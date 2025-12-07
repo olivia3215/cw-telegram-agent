@@ -350,8 +350,12 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
     if not entity:
         raise ValueError(f"Cannot resolve entity for channel_id {channel_id}")
     
-    # Fetch messages (use 500 limit to ensure we get enough messages to summarize)
-    messages = await client.get_messages(entity, limit=500)
+    # Fetch messages based on chat type:
+    # - Groups/channels: 150 messages
+    # - DMs: 500 messages
+    is_group = is_group_or_channel(entity)
+    message_limit = 150 if is_group else 500
+    messages = await client.get_messages(entity, limit=message_limit)
     
     # Get media chain and inject media descriptions
     media_chain = get_default_media_source_chain()

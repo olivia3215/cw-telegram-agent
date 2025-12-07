@@ -553,10 +553,16 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
 
     # Check if summaries exist to determine how many messages to fetch
-    # If no summaries exist, fetch 500 messages as we may need to summarize most of them
+    # If no summaries exist, fetch messages based on chat type:
+    # - Groups/channels: 150 messages
+    # - DMs: 500 messages
     # Otherwise, fetch 100 messages for normal operation
     highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
-    message_limit = 500 if highest_summarized_id is None else 100
+    if highest_summarized_id is None:
+        is_group = is_group_or_channel(entity)
+        message_limit = 150 if is_group else 500
+    else:
+        message_limit = 100
     messages = await client.get_messages(entity, limit=message_limit)
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
