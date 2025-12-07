@@ -37,6 +37,7 @@ from admin_console.puppet_master import (
 from telegram_util import get_channel_name, get_telegram_client
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
+from telepathic import TELEPATHIC_PREFIXES
 
 # Configure logging level from environment variable, default to INFO
 log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
@@ -57,6 +58,21 @@ def _env_flag(name: str, default: bool) -> bool:
     if value in ("0", "false", "no", "off"):
         return False
     return default
+
+
+def is_telepathic_message(message) -> bool:
+    """
+    Check if a Telegram message is telepathic (starts with a telepathic prefix).
+    
+    Args:
+        message: Telegram message object
+        
+    Returns:
+        True if the message is telepathic, False otherwise
+    """
+    text = getattr(message, "text", None) or ""
+    text_stripped = text.strip()
+    return text_stripped.startswith(TELEPATHIC_PREFIXES)
 
 
 async def get_agent_message_with_reactions(agent: Agent, dialog):
@@ -125,6 +141,13 @@ async def handle_incoming_message(agent: Agent, event):
     sender_name = await get_channel_name(agent, sender_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
 
+    # Skip telepathic messages - they should never trigger received tasks
+    if is_telepathic_message(event.message):
+        logger.debug(
+            f"[{agent.name}] Skipping telepathic message from [{sender_name}] in [{dialog_name}]"
+        )
+        return
+
     # Format message content for logging
     message_content = format_message_content_for_logging(event.message)
 
@@ -165,14 +188,17 @@ async def scan_unread_messages(agent: Agent):
         has_mentions = dialog.unread_mentions_count > 0
 
         # If there are mentions, we must check if they are from a non-blocked user.
+        # Skip telepathic messages even if they mention the agent.
         is_callout = False
         if has_mentions:
             async for message in client.iter_messages(
                 dialog.id, limit=5
             ):
                 if message.mentioned and not await agent.is_blocked(message.sender_id):
-                    is_callout = True
-                    break
+                    # Don't treat telepathic messages as callouts
+                    if not is_telepathic_message(message):
+                        is_callout = True
+                        break
 
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
@@ -191,7 +217,31 @@ async def scan_unread_messages(agent: Agent):
 
         has_reactions_on_agent_message = reaction_message_id is not None
 
-        if is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message:
+        # Check if all unread messages are telepathic (skip if so)
+        all_unread_are_telepathic = False
+        if has_unread and not is_callout and not is_marked_unread and not has_reactions_on_agent_message:
+            # Only check if we have unread messages and no other triggers
+            try:
+                unread_messages = []
+                async for message in client.iter_messages(
+                    dialog.id, limit=min(dialog.unread_count, 50)
+                ):
+                    unread_messages.append(message)
+                
+                if unread_messages:
+                    all_unread_are_telepathic = all(
+                        is_telepathic_message(msg) for msg in unread_messages
+                    )
+                    if all_unread_are_telepathic:
+                        logger.debug(
+                            f"[{agent.name}] Skipping unread content in [{await get_channel_name(agent, dialog.id)}] - all {len(unread_messages)} unread messages are telepathic"
+                        )
+            except Exception as e:
+                logger.debug(
+                    f"[{agent.name}] Error checking if unread messages are telepathic in dialog {dialog.id}: {e}"
+                )
+
+        if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not all_unread_are_telepathic:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
                 f"[{agent.name}] Found unread content in [{dialog_name}] "
