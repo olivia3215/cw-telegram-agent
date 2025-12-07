@@ -40,18 +40,20 @@ class AgentRegistry:
             raise RuntimeError("No agent name provided")
         if phone == "":
             raise RuntimeError("No agent phone provided")
+        if config_name == "":
+            raise RuntimeError("Agent config_name cannot be empty string (use None to default to name)")
 
         # Check for reserved names that conflict with state directory structure
         # State directories use config_name (or name if config_name is not provided)
         reserved_names = {"media"}
         
         # Determine the effective config_name that will be used for state directories
-        effective_config_name = config_name if config_name is not None else name
+        effective_config_name = config_name or name
         
         if effective_config_name.lower() in reserved_names:
             # Use the actual value that conflicts for better error message
-            conflicting_value = config_name if config_name is not None else name
-            field_name = "config name" if config_name is not None else "name"
+            conflicting_value = config_name or name
+            field_name = "config name" if config_name else "name"
             raise RuntimeError(
                 f"Agent {field_name} '{conflicting_value}' is reserved for system use. Please choose a different name."
             )
@@ -62,11 +64,8 @@ class AgentRegistry:
         agent_module = importlib.import_module('agent')
         Agent = agent_module.Agent
 
-        # Determine the effective config_name for registry key
-        # This matches what Agent.__init__ does: config_name if provided, else name
-        effective_config_name = config_name if config_name is not None else name
-
         # Check for duplicate config_name in registry
+        # (effective_config_name was already computed above for reserved name check)
         if effective_config_name in self._registry:
             existing_agent = self._registry[effective_config_name]
             raise RuntimeError(

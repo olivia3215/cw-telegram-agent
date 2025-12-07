@@ -766,8 +766,3 @@ async def _import_sticker_set_async(
         "skipped_count": skipped_count,
         "message": f"Imported {imported_count} stickers, skipped {skipped_count} existing ones",
     }
-
-
-# --------------------------------------------------------------------------- #
-# Helper functions for admin console
-# --------------------------------------------------------------------------- #
