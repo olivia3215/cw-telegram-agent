@@ -97,25 +97,6 @@ def scan_media_directories() -> list[dict[str, str]]:
     return directories
 
 
-def get_agent_for_directory(target_directory: str = None) -> Any:
-    """Get an agent for the specified directory (always returns the first agent)."""
-    # Register all agents to get the list
-    register_all_agents()
-    agents = list(get_all_agents())
-
-    if not agents:
-        raise RuntimeError("No agents found. Please configure at least one agent.")
-
-    # Return the first agent (agent-specific media directories no longer exist)
-    agent = agents[0]
-    logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
-
-    # Note: Client initialization is handled in the AI refresh function
-    # where we have proper async context
-
-    return agent
-
-
 def get_agent_by_name(agent_config_name: str) -> Agent | None:
     """Get an agent by config name from the registry.
     
@@ -123,17 +104,7 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
     which is stored as agent.config_name. This allows the admin console URLs to use
     the config file name, which is stable even if the agent's display name changes.
     """
-    # Registry is now keyed by config_name, so direct lookup
-    agent = _agent_registry.get_by_config_name(agent_config_name)
-    if agent:
-        return agent
-    
-    # Fallback: search by display name for backward compatibility
-    # (in case someone is still using display names in URLs)
-    for agent in get_all_agents():
-        if agent.name == agent_config_name:
-            return agent
-    return None
+    return _agent_registry.get_by_config_name(agent_config_name)
 
 
 def get_default_llm() -> str:

@@ -24,7 +24,6 @@ from datetime import UTC
 from admin_console.helpers import (
     find_media_file,
     resolve_media_path,
-    get_agent_for_directory,
 )
 from admin_console.puppet_master import (
     PuppetMasterNotConfigured,
@@ -291,19 +290,39 @@ def api_refresh_from_ai(unique_id: str):
         data["status"] = MediaStatus.TEMPORARY_FAILURE.value
         media_cache_source.put(unique_id, data)
 
-        # Get the agent for this directory
+        # Use the puppetmaster's client for media operations
+        # (The client isn't actually used when doc is a Path, but the interface requires it)
+        # Create a minimal agent-like object
+        class MinimalAgent:
+            def __init__(self, client):
+                self.client = client
+                self.name = "puppetmaster"
+        
+        # Require puppetmaster for media operations
         try:
-            agent = get_agent_for_directory(directory_path)
+            puppet_master = get_puppet_master_manager()
+            puppet_master.ensure_ready()
+        except (PuppetMasterNotConfigured, PuppetMasterUnavailable) as e:
+            logger.error(f"Puppetmaster required for media operations but not available: {e}")
+            return jsonify({
+                "error": f"Puppetmaster is required for media operations. {str(e)}"
+            }), 400
+        
+        # Get the puppetmaster's client
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            client = loop.run_until_complete(puppet_master._ensure_client())
+            agent = MinimalAgent(client)
+            logger.info(
+                "Refreshing AI description for %s using puppetmaster",
+                unique_id,
+            )
         except Exception as e:
-            logger.error(f"Failed to get agent for directory {directory_path}: {e}")
-            return jsonify({"error": f"Could not determine agent: {e}"}), 400
-
-        # Use the media pipeline to regenerate description
-        logger.info(
-            "Refreshing AI description for %s using agent '%s'",
-            unique_id,
-            agent.name,
-        )
+            logger.error(f"Failed to get puppetmaster client: {e}")
+            loop.close()
+            return jsonify({"error": f"Could not get puppetmaster client: {e}"}), 400
 
         # For refresh, we want to bypass cached results and force fresh AI generation
         # Create a minimal chain with just the AI generation source
@@ -348,30 +367,10 @@ def api_refresh_from_ai(unique_id: str):
         else:
             media_kind = data.get("kind", "sticker")
 
-        # Initialize the agent's client before using it
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
+        # For media editor, we don't have a real Telegram document
+        # download_media_bytes supports Path objects directly
+        # The client is already connected (from puppetmaster or agent initialization above)
         try:
-
-            # Ensure the agent's client is connected
-            if agent.client is None:
-                # Initialize and start the client
-                client = get_telegram_client(agent.config_name, agent.phone)
-                agent._client = client
-
-                # Start the client if not already connected
-                if not client.is_connected():
-                    loop.run_until_complete(client.connect())
-
-                # Check if authenticated
-                if not loop.run_until_complete(client.is_user_authorized()):
-                    raise RuntimeError(
-                        f"Agent '{agent.name}' is not authenticated to Telegram. Please run './telegram_login.sh' to authenticate this agent."
-                    )
-
-            # For media editor, we don't have a real Telegram document
-            # download_media_bytes supports Path objects directly
             record = loop.run_until_complete(
                 media_chain.get(
                     unique_id=unique_id,
