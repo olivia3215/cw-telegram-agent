@@ -189,10 +189,13 @@ def register_all_agents(force: bool = False):
 
         config_path = CONFIG_DIRECTORIES
 
-        # Track registered agent names to avoid duplicates
+        # Track registered agent names and config names to avoid duplicates
+        # Both must be unique to prevent data corruption from shared state directories
         registered_agents = set()
+        registered_config_names = set()
         for agent in all_agents():
             registered_agents.add(agent.name)
+            registered_config_names.add(agent.config_name)
 
         valid_config_dirs = []  # Track valid config directories found
 
@@ -217,14 +220,24 @@ def register_all_agents(force: bool = False):
                 parsed = parse_agent_markdown(file)
                 if parsed:
                     agent_name = parsed["name"]
+                    # Extract config file name (without .md extension) for state directory paths
+                    config_name = file.stem
+
+                    # Check for duplicate display name
                     if agent_name in registered_agents:
                         logger.warning(
                             f"Agent '{agent_name}' already registered, skipping duplicate from {file}"
                         )
                         continue
 
-                    # Extract config file name (without .md extension) for state directory paths
-                    config_name = file.stem
+                    # Check for duplicate config_name (critical: prevents shared state directories)
+                    if config_name in registered_config_names:
+                        logger.error(
+                            f"Agent config file '{file.name}' (config_name='{config_name}') conflicts with "
+                            f"an already registered agent. Config names must be unique across all config "
+                            f"directories to prevent state directory conflicts. Skipping registration from {file}"
+                        )
+                        continue
 
                     register_telegram_agent(
                         name=agent_name,
@@ -240,6 +253,7 @@ def register_all_agents(force: bool = False):
                         daily_schedule_description=parsed.get("daily_schedule_description"),
                     )
                     registered_agents.add(agent_name)
+                    registered_config_names.add(config_name)
 
         # Fail fast if no valid config directories were found
         if not valid_config_dirs:
