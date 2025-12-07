@@ -137,4 +137,3 @@ def memory_sort_key(memory: dict, agent) -> tuple:
         localized.timetz(),
         memory.get("id", ""),
     )
-

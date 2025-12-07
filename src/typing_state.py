@@ -43,4 +43,3 @@ def is_partner_typing(agent_id: int, peer_id: int) -> bool:
 def clear_typing_state() -> None:
     """Clear all tracked typing information (used in tests)."""
     _typing_state.clear()
-

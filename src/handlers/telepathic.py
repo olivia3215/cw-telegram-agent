@@ -50,4 +50,3 @@ async def maybe_send_telepathic_message(agent, channel_id: int, prefix: str, con
         logger.error(
             f"[{getattr(agent, 'name', 'unknown-agent')}] Failed to send telepathic message: {exc}"
         )
-

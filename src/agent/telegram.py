@@ -90,4 +90,3 @@ class AgentTelegramMixin:
         if not api_cache:
             return False
         return await api_cache.is_blocked(user_id)
-

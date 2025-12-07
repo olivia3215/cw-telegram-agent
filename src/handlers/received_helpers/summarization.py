@@ -30,7 +30,7 @@ def get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
         from pathlib import Path
         from config import STATE_DIRECTORY
         
-        summary_file = Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+        summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         
         highest_max_id = None
@@ -371,4 +371,3 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
         highest_summarized_id=highest_summarized_id,
         parse_llm_reply_fn=parse_llm_reply_fn,
     )
-

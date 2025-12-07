@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 async def _process_plan_task(agent, channel_id: int, task: TaskNode):
     file_path = (
-        Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+        Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
     )
     await process_property_entry_task(
         agent,
@@ -41,4 +41,3 @@ async def handle_immediate_plan(task: TaskNode, *, agent, channel_id: int) -> bo
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "plan", body)
     await _process_plan_task(agent, channel_id, task)
     return True
-

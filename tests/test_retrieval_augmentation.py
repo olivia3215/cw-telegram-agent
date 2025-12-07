@@ -255,6 +255,7 @@ async def test_fetch_file_url_agent_specific():
         
         mock_agent = MagicMock()
         mock_agent.name = agent_name
+        mock_agent.config_name = agent_name  # config_name defaults to name, matching Agent class behavior
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
             url, content = await fetch_url("file:Friends.md", agent=mock_agent)
@@ -276,6 +277,7 @@ async def test_fetch_file_url_shared_docs():
         
         mock_agent = MagicMock()
         mock_agent.name = "TestAgent"
+        mock_agent.config_name = "TestAgent"  # config_name defaults to name, matching Agent class behavior
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
             url, content = await fetch_url("file:Wendy.md", agent=mock_agent)
@@ -303,6 +305,7 @@ async def test_fetch_file_url_priority_agent_over_shared():
         
         mock_agent = MagicMock()
         mock_agent.name = agent_name
+        mock_agent.config_name = agent_name  # config_name defaults to name, matching Agent class behavior
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
             url, content = await fetch_url("file:Family.md", agent=mock_agent)
@@ -319,6 +322,7 @@ async def test_fetch_file_url_not_found():
         
         mock_agent = MagicMock()
         mock_agent.name = "TestAgent"
+        mock_agent.config_name = "TestAgent"  # config_name defaults to name, matching Agent class behavior
         
         with patch("handlers.received.CONFIG_DIRECTORIES", [str(config_dir)]):
             url, content = await fetch_url("file:Nonexistent.md", agent=mock_agent)
@@ -332,6 +336,7 @@ async def test_fetch_file_url_invalid_filename():
     """Test that file: URLs with forward slashes are rejected."""
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
+    mock_agent.config_name = "TestAgent"  # config_name defaults to name, matching Agent class behavior
     
     url, content = await fetch_url("file:../secrets.txt", agent=mock_agent)
     
@@ -345,6 +350,7 @@ async def test_fetch_file_url_invalid_filename_backslash():
     """Test that file: URLs with backslashes are rejected (Windows path traversal prevention)."""
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
+    mock_agent.config_name = "TestAgent"  # config_name defaults to name, matching Agent class behavior
     
     url, content = await fetch_url("file:..\\secrets.txt", agent=mock_agent)
     

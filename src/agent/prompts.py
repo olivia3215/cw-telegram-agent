@@ -141,4 +141,3 @@ class AgentPromptMixin:
             Base system prompt string for summarization
         """
         return self._build_system_prompt(channel_name, specific_instructions, for_summarization=True)
-

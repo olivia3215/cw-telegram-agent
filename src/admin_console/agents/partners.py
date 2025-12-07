@@ -18,16 +18,16 @@ from utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
 
-# Cache for conversation partner recency: {(agent_name, user_id): (timestamp, ttl_seconds, partner_dict)}
+# Cache for conversation partner recency: {(agent_config_name, user_id): (timestamp, ttl_seconds, partner_dict)}
 # TTL: 5 minutes + random 0-1 minute (stored per entry to ensure consistent expiration)
 # partner_dict contains: {"user_id": str, "name": str|None, "date": datetime|None}
 # The "date" field is the recency data (most recent message date from dialog.date)
 _partner_recency_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
 
 
-def get_partner_recency_cache_key(agent_name: str, user_id: str) -> tuple[str, str]:
+def get_partner_recency_cache_key(agent_config_name: str, user_id: str) -> tuple[str, str]:
     """Generate cache key for partner recency."""
-    return (agent_name, user_id)
+    return (agent_config_name, user_id)
 
 
 def is_partner_recency_cache_valid(cache_entry: tuple[float, float, dict]) -> bool:
@@ -36,7 +36,7 @@ def is_partner_recency_cache_valid(cache_entry: tuple[float, float, dict]) -> bo
     return (time.time() - cached_time) < ttl_seconds
 
 
-def get_cached_partner_recency(agent_name: str) -> dict[str, dict] | None:
+def get_cached_partner_recency(agent_config_name: str) -> dict[str, dict] | None:
     """Get cached partner recency data for an agent if still valid.
     
     Returns:
@@ -50,19 +50,19 @@ def get_cached_partner_recency(agent_name: str) -> dict[str, dict] | None:
     current_time = time.time()
     
     # Collect valid cache entries for this agent
-    for (cached_agent_name, user_id), (cached_time, ttl_seconds, data) in list(_partner_recency_cache.items()):
-        if cached_agent_name == agent_name:
+    for (cached_agent_config_name, user_id), (cached_time, ttl_seconds, data) in list(_partner_recency_cache.items()):
+        if cached_agent_config_name == agent_config_name:
             if (current_time - cached_time) < ttl_seconds:
                 # data is the partner dict containing "date" field with recency
                 cached_partners[user_id] = data
             else:
                 # Remove expired entry
-                del _partner_recency_cache[(cached_agent_name, user_id)]
+                del _partner_recency_cache[(cached_agent_config_name, user_id)]
     
     return cached_partners if cached_partners else None
 
 
-def cache_partner_recency(agent_name: str, partners: list[dict]):
+def cache_partner_recency(agent_config_name: str, partners: list[dict]):
     """Cache partner recency data for an agent.
     
     Each entry gets a TTL of 5 minutes + random 0-1 minute (per entry) to avoid thundering herd.
@@ -82,7 +82,7 @@ def cache_partner_recency(agent_name: str, partners: list[dict]):
     
     for partner in partners:
         user_id = partner["user_id"]
-        cache_key = get_partner_recency_cache_key(agent_name, user_id)
+        cache_key = get_partner_recency_cache_key(agent_config_name, user_id)
         # Random jitter: 0-60 seconds (calculated per entry to spread expiration times)
         ttl_seconds = 300 + random.uniform(0, 60)
         # Cache structure: (timestamp, ttl_seconds, partner_dict)
@@ -93,13 +93,13 @@ def cache_partner_recency(agent_name: str, partners: list[dict]):
 def register_partner_routes(agents_bp: Blueprint):
     """Register conversation partner routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/conversation-partners", methods=["GET"])
-    def api_get_conversation_partners(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-partners", methods=["GET"])
+    def api_get_conversation_partners(agent_config_name: str):
         """Get list of conversation partners for an agent."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Dictionary to store partners: {user_id: {"name": name, "date": date}}
             partners_dict = {}
@@ -107,7 +107,7 @@ def register_partner_routes(agents_bp: Blueprint):
             # 1. From curated memory files
             if agent.config_directory:
                 memory_dir = (
-                    Path(agent.config_directory) / "agents" / agent_name / "memory"
+                    Path(agent.config_directory) / "agents" / agent.config_name / "memory"
                 )
                 if memory_dir.exists():
                     for memory_file in memory_dir.glob("*.json"):
@@ -116,7 +116,7 @@ def register_partner_routes(agents_bp: Blueprint):
                             partners_dict[user_id] = {"name": None, "date": None}
 
             # 2. From plan files
-            plan_dir = Path(STATE_DIRECTORY) / agent_name / "memory"
+            plan_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"
             if plan_dir.exists():
                 for plan_file in plan_dir.glob("*.json"):
                     user_id = plan_file.stem
@@ -125,10 +125,10 @@ def register_partner_routes(agents_bp: Blueprint):
 
             # 3. From existing Telegram conversations (if agent has client)
             # Check cache first to avoid unnecessary GetHistoryRequest calls
-            cached_telegram_partners = get_cached_partner_recency(agent_name)
+            cached_telegram_partners = get_cached_partner_recency(agent.config_name)
             
             if cached_telegram_partners is not None:
-                logger.info(f"Using cached partner recency for agent {agent_name} ({len(cached_telegram_partners)} partners)")
+                logger.info(f"Using cached partner recency for agent {agent_config_name} ({len(cached_telegram_partners)} partners)")
                 telegram_partners = list(cached_telegram_partners.values())
             else:
                 # Cache miss or expired - fetch from Telegram
@@ -136,13 +136,13 @@ def register_partner_routes(agents_bp: Blueprint):
                 client = agent.client
                 
                 if not client:
-                    logger.info(f"Agent {agent_name} has no client - skipping Telegram conversation fetch")
+                    logger.info(f"Agent {agent_config_name} has no client - skipping Telegram conversation fetch")
                     telegram_partners = []
                 elif not client.is_connected():
-                    logger.info(f"Agent {agent_name} client is not connected - skipping Telegram conversation fetch")
+                    logger.info(f"Agent {agent_config_name} client is not connected - skipping Telegram conversation fetch")
                     telegram_partners = []
                 else:
-                    logger.info(f"Fetching Telegram conversations for agent {agent_name} using agent's client (cache miss)")
+                    logger.info(f"Fetching Telegram conversations for agent {agent_config_name} using agent's client (cache miss)")
                     telegram_partners = []  # Initialize before try block
                     try:
                         # Check if agent's event loop is accessible before creating coroutine
@@ -225,10 +225,10 @@ def register_partner_routes(agents_bp: Blueprint):
                             
                             # Cache the fetched partners
                             if telegram_partners:
-                                cache_partner_recency(agent_name, telegram_partners)
-                                logger.info(f"Cached partner recency for agent {agent_name} ({len(telegram_partners)} partners)")
+                                cache_partner_recency(agent.config_name, telegram_partners)
+                                logger.info(f"Cached partner recency for agent {agent_config_name} ({len(telegram_partners)} partners)")
                         
-                        logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_name}")
+                        logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_config_name}")
                     except RuntimeError as e:
                         error_msg = str(e).lower()
                         if "event loop" in error_msg or "no current event loop" in error_msg or "not authenticated" in error_msg or "not running" in error_msg:
@@ -238,7 +238,7 @@ def register_partner_routes(agents_bp: Blueprint):
                             logger.warning(f"RuntimeError fetching Telegram conversations: {e}", exc_info=True)
                             telegram_partners = []
                     except TimeoutError as e:
-                        logger.warning(f"Timeout fetching Telegram conversations for agent {agent_name}: {e}")
+                        logger.warning(f"Timeout fetching Telegram conversations for agent {agent_config_name}: {e}")
                         telegram_partners = []
                     except Exception as e:
                         logger.warning(f"Error fetching Telegram conversations: {e}", exc_info=True)
@@ -296,6 +296,5 @@ def register_partner_routes(agents_bp: Blueprint):
 
             return jsonify({"partners": partner_list})
         except Exception as e:
-            logger.error(f"Error getting conversation partners for {agent_name}: {e}")
+            logger.error(f"Error getting conversation partners for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
-

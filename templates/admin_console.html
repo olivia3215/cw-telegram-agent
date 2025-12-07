@@ -2067,7 +2067,7 @@
                 const agentContentChecks = {};
                 if (subtabName) {
                     await Promise.all(agents.map(async (agent) => {
-                        agentContentChecks[agent.name] = await agentHasContent(agent.name, subtabName);
+                        agentContentChecks[agent.config_name] = await agentHasContent(agent.config_name, subtabName);
                     }));
                 }
                 
@@ -2079,13 +2079,13 @@
                         select.innerHTML = '<option value="">Choose an agent...</option>';
                         agents.forEach(agent => {
                             const option = document.createElement('option');
-                            option.value = agent.name;
+                            option.value = agent.config_name;
                             // Display format: "Name (agent_id)" or just "Name" if no agent_id
                             let displayName = agent.agent_id 
                                 ? `${agent.name} (${agent.agent_id})` 
                                 : agent.name;
                             // Add asterisk if agent has content for current subtab (only in agents tab)
-                            if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.name]) {
+                            if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.config_name]) {
                                 displayName += ' *';
                             }
                             option.textContent = displayName;

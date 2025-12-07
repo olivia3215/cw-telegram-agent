@@ -218,4 +218,3 @@ async def process_property_entry_task(
     except Exception as exc:
         logger.exception(f"[{agent.name}] Failed to process {entry_type_name} task: {exc}")
         raise
-

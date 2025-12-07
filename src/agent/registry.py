@@ -14,9 +14,10 @@ logger = logging.getLogger(__name__)
 
 class AgentRegistry:
     def __init__(self):
-        self._registry = {}  # name -> Agent
+        self._registry = {}  # config_name -> Agent
 
     def all_agent_names(self):
+        """Return list of agent config names (for backward compatibility with tests)."""
         return list(self._registry.keys())
 
     def register(
@@ -31,6 +32,7 @@ class AgentRegistry:
         sticker_set_names=None,
         explicit_stickers=None,
         config_directory=None,
+        config_name=None,
         timezone=None,
         daily_schedule_description=None,
     ):
@@ -38,12 +40,22 @@ class AgentRegistry:
             raise RuntimeError("No agent name provided")
         if phone == "":
             raise RuntimeError("No agent phone provided")
+        if config_name == "":
+            raise RuntimeError("Agent config_name cannot be empty string (use None to default to name)")
 
         # Check for reserved names that conflict with state directory structure
+        # State directories use config_name (or name if config_name is not provided)
         reserved_names = {"media"}
-        if name.lower() in reserved_names:
+        
+        # Determine the effective config_name that will be used for state directories
+        effective_config_name = config_name or name
+        
+        if effective_config_name.lower() in reserved_names:
+            # Use the actual value that conflicts for better error message
+            conflicting_value = config_name or name
+            field_name = "config name" if config_name else "name"
             raise RuntimeError(
-                f"Agent name '{name}' is reserved for system use. Please choose a different name."
+                f"Agent {field_name} '{conflicting_value}' is reserved for system use. Please choose a different name."
             )
 
         # Import here to avoid circular dependency
@@ -52,7 +64,17 @@ class AgentRegistry:
         agent_module = importlib.import_module('agent')
         Agent = agent_module.Agent
 
-        self._registry[name] = Agent(
+        # Check for duplicate config_name in registry
+        # (effective_config_name was already computed above for reserved name check)
+        if effective_config_name in self._registry:
+            existing_agent = self._registry[effective_config_name]
+            raise RuntimeError(
+                f"Agent with config_name '{effective_config_name}' already registered "
+                f"(existing: name='{existing_agent.name}', new: name='{name}'). "
+                f"Config names must be unique."
+            )
+
+        agent = Agent(
             name=name,
             phone=phone,
             instructions=instructions,
@@ -62,10 +84,18 @@ class AgentRegistry:
             sticker_set_names=sticker_set_names,
             explicit_stickers=explicit_stickers,
             config_directory=config_directory,
+            config_name=config_name,
             timezone=timezone,
             daily_schedule_description=daily_schedule_description,
         )
-        # logger.info(f"Added agent [{name}] with instructions: {instructions!r}")
+        
+        # Store by config_name (the key used for state directories and lookups)
+        self._registry[effective_config_name] = agent
+        # logger.info(f"Added agent [{name}] with config_name [{effective_config_name}] with instructions: {instructions!r}")
+
+    def get_by_config_name(self, config_name: str):
+        """Get an agent by config_name (the registry key)."""
+        return self._registry.get(config_name)
 
     def get_by_agent_id(self, agent_id):
         for agent in self.all_agents():
@@ -82,4 +112,3 @@ _agent_registry = AgentRegistry()
 register_telegram_agent = _agent_registry.register
 get_agent_for_id = _agent_registry.get_by_agent_id
 all_agents = _agent_registry.all_agents
-

@@ -170,4 +170,3 @@ class AgentExecutionMixin:
                 f"Agent '{self.name}' is not authenticated. No client available."
             )
         return await executor.execute_async(coro)
-

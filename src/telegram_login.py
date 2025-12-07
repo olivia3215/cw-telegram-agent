@@ -49,7 +49,7 @@ async def _ensure_logged_in(client, phone: str, agent_name: str) -> None:
 
 
 async def login_agent(agent) -> None:
-    client = get_telegram_client(agent.name, agent.phone)
+    client = get_telegram_client(agent.config_name, agent.phone)
 
     try:
         await _ensure_logged_in(client, agent.phone, agent.name)

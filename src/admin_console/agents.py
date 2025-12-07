@@ -72,6 +72,7 @@ def api_agents():
         agent_list = [
             {
                 "name": agent.name,
+                "config_name": agent.config_name,
                 "phone": agent.phone,
                 "agent_id": agent.agent_id if agent.agent_id else None
             }
@@ -98,5 +99,3 @@ def api_agents():
 
 
 # Conversation routes moved to admin_console/agents/conversation.py
-
-

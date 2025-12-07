@@ -23,4 +23,3 @@ async def handle_immediate_think(task: TaskNode, *, agent, channel_id: int) -> b
     if agent and thought_str and not is_silent:
         await telepathic.maybe_send_telepathic_message(agent, channel_id, "think", thought_str)
     return True
-

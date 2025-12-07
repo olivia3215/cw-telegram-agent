@@ -417,4 +417,3 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
         lines = [f"- {s} :: {n}" for (s, n) in sorted(agent.stickers.keys())]
 
     return "\n".join(lines) if lines else None
-

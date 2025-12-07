@@ -55,4 +55,3 @@ __all__ = [
     "strip_json_fence",
     "normalize_list",
 ]
-

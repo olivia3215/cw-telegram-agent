@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _process_intend_task(agent, channel_id: int, task: TaskNode):
-    file_path = Path(STATE_DIRECTORY) / agent.name / "memory.json"
+    file_path = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
     await process_property_entry_task(
         agent,
         channel_id,
@@ -39,4 +39,3 @@ async def handle_immediate_intend(task: TaskNode, *, agent, channel_id: int) -> 
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "intend", body)
     await _process_intend_task(agent, channel_id, task)
     return True
-

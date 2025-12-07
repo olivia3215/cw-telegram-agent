@@ -97,28 +97,14 @@ def scan_media_directories() -> list[dict[str, str]]:
     return directories
 
 
-def get_agent_for_directory(target_directory: str = None) -> Any:
-    """Get an agent for the specified directory (always returns the first agent)."""
-    # Register all agents to get the list
-    register_all_agents()
-    agents = list(get_all_agents())
-
-    if not agents:
-        raise RuntimeError("No agents found. Please configure at least one agent.")
-
-    # Return the first agent (agent-specific media directories no longer exist)
-    agent = agents[0]
-    logger.info(f"Using agent '{agent.name}' for directory: {target_directory}")
-
-    # Note: Client initialization is handled in the AI refresh function
-    # where we have proper async context
-
-    return agent
-
-
-def get_agent_by_name(agent_name: str) -> Agent | None:
-    """Get an agent by name from the registry."""
-    return _agent_registry._registry.get(agent_name)
+def get_agent_by_name(agent_config_name: str) -> Agent | None:
+    """Get an agent by config name from the registry.
+    
+    The agent_config_name parameter should be the config file name (without .md extension),
+    which is stored as agent.config_name. This allows the admin console URLs to use
+    the config file name, which is stable even if the agent's display name changes.
+    """
+    return _agent_registry.get_by_config_name(agent_config_name)
 
 
 def get_default_llm() -> str:
@@ -157,4 +143,3 @@ def get_work_queue() -> Any:
     """Get the global work queue singleton instance."""
     from task_graph import WorkQueue
     return WorkQueue.get_instance()
-

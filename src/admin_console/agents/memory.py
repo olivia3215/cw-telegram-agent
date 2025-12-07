@@ -24,15 +24,15 @@ logger = logging.getLogger(__name__)
 def register_memory_routes(agents_bp: Blueprint):
     """Register memory management routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/memories", methods=["GET"])
-    def api_get_memories(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/memories", methods=["GET"])
+    def api_get_memories(agent_config_name: str):
         """Get memories for an agent (from state/AgentName/memory.json)."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent_name / "memory.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
             memories, _ = load_property_entries(
                 memory_file, "memory", default_id_prefix="memory"
             )
@@ -42,24 +42,24 @@ def register_memory_routes(agents_bp: Blueprint):
 
             return jsonify({"memories": memories})
         except MemoryStorageError as e:
-            logger.error(f"Error loading memories for {agent_name}: {e}")
+            logger.error(f"Error loading memories for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error getting memories for {agent_name}: {e}")
+            logger.error(f"Error getting memories for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/memories/<memory_id>", methods=["PUT"])
-    def api_update_memory(agent_name: str, memory_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/memories/<memory_id>", methods=["PUT"])
+    def api_update_memory(agent_config_name: str, memory_id: str):
         """Update a memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             data = request.json
             content = data.get("content", "").strip()
 
-            memory_file = Path(STATE_DIRECTORY) / agent_name / "memory.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
             def update_memory(entries, payload):
                 for entry in entries:
@@ -74,18 +74,18 @@ def register_memory_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating memory {memory_id} for {agent_name}: {e}")
+            logger.error(f"Error updating memory {memory_id} for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/memories/<memory_id>", methods=["DELETE"])
-    def api_delete_memory(agent_name: str, memory_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/memories/<memory_id>", methods=["DELETE"])
+    def api_delete_memory(agent_config_name: str, memory_id: str):
         """Delete a memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent_name / "memory.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
             def delete_memory(entries, payload):
                 entries = [e for e in entries if e.get("id") != memory_id]
@@ -97,16 +97,16 @@ def register_memory_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error deleting memory {memory_id} for {agent_name}: {e}")
+            logger.error(f"Error deleting memory {memory_id} for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/memories", methods=["POST"])
-    def api_create_memory(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/memories", methods=["POST"])
+    def api_create_memory(agent_config_name: str):
         """Create a new memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             data = request.json or {}
             content = data.get("content", "").strip()
@@ -114,7 +114,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
-            memory_file = Path(STATE_DIRECTORY) / agent_name / "memory.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
             
             memory_id = f"memory-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
@@ -136,22 +136,22 @@ def register_memory_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True, "memory": new_entry})
         except Exception as e:
-            logger.error(f"Error creating memory for {agent_name}: {e}")
+            logger.error(f"Error creating memory for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/curated-memories", methods=["GET"])
-    def api_get_curated_memories(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories", methods=["GET"])
+    def api_get_curated_memories(agent_config_name: str):
         """Get curated memories for an agent (from configdir/agents/AgentName/memory/UserID.json)."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"curated_memories": []})
 
             memory_dir = (
-                Path(agent.config_directory) / "agents" / agent_name / "memory"
+                Path(agent.config_directory) / "agents" / agent.config_name / "memory"
             )
             if not memory_dir.exists():
                 return jsonify({"curated_memories": []})
@@ -186,16 +186,16 @@ def register_memory_routes(agents_bp: Blueprint):
 
             return jsonify({"curated_memories": curated_memories})
         except Exception as e:
-            logger.error(f"Error getting curated memories for {agent_name}: {e}")
+            logger.error(f"Error getting curated memories for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/curated-memories/<user_id>", methods=["GET"])
-    def api_get_curated_memories_for_user(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>", methods=["GET"])
+    def api_get_curated_memories_for_user(agent_config_name: str, user_id: str):
         """Get curated memories for a specific user."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"memories": []})
@@ -203,7 +203,7 @@ def register_memory_routes(agents_bp: Blueprint):
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
-                / agent_name
+                / agent.config_name
                 / "memory"
                 / f"{user_id}.json"
             )
@@ -230,17 +230,17 @@ def register_memory_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Corrupted JSON file: {e}"}), 500
         except Exception as e:
             logger.error(
-                f"Error getting curated memories for {agent_name}/{user_id}: {e}"
+                f"Error getting curated memories for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/curated-memories/<user_id>/<memory_id>", methods=["PUT"])
-    def api_update_curated_memory(agent_name: str, user_id: str, memory_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>/<memory_id>", methods=["PUT"])
+    def api_update_curated_memory(agent_config_name: str, user_id: str, memory_id: str):
         """Update a curated memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
@@ -251,7 +251,7 @@ def register_memory_routes(agents_bp: Blueprint):
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
-                / agent_name
+                / agent.config_name
                 / "memory"
                 / f"{user_id}.json"
             )
@@ -292,17 +292,17 @@ def register_memory_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(
-                f"Error updating curated memory {memory_id} for {agent_name}/{user_id}: {e}"
+                f"Error updating curated memory {memory_id} for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/curated-memories/<user_id>/<memory_id>", methods=["DELETE"])
-    def api_delete_curated_memory(agent_name: str, user_id: str, memory_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>/<memory_id>", methods=["DELETE"])
+    def api_delete_curated_memory(agent_config_name: str, user_id: str, memory_id: str):
         """Delete a curated memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
@@ -310,7 +310,7 @@ def register_memory_routes(agents_bp: Blueprint):
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
-                / agent_name
+                / agent.config_name
                 / "memory"
                 / f"{user_id}.json"
             )
@@ -345,17 +345,17 @@ def register_memory_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(
-                f"Error deleting curated memory {memory_id} for {agent_name}/{user_id}: {e}"
+                f"Error deleting curated memory {memory_id} for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/curated-memories/<user_id>", methods=["POST"])
-    def api_create_curated_memory(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>", methods=["POST"])
+    def api_create_curated_memory(agent_config_name: str, user_id: str):
         """Create a new curated memory entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
@@ -369,7 +369,7 @@ def register_memory_routes(agents_bp: Blueprint):
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
-                / agent_name
+                / agent.config_name
                 / "memory"
                 / f"{user_id}.json"
             )
@@ -416,7 +416,6 @@ def register_memory_routes(agents_bp: Blueprint):
             return jsonify({"success": True, "memory": new_entry})
         except Exception as e:
             logger.error(
-                f"Error creating curated memory for {agent_name}/{user_id}: {e}"
+                f"Error creating curated memory for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
-

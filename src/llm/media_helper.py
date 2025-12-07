@@ -38,4 +38,3 @@ def get_media_llm() -> "LLM":
         )
     
     return create_llm_from_name(MEDIA_MODEL)
-

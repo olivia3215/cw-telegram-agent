@@ -94,4 +94,3 @@ def is_dm(entity) -> bool:
     if entity is None:
         return False
     return not hasattr(entity, "title")
-

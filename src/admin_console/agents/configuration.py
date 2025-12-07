@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 def register_configuration_routes(agents_bp: Blueprint):
     """Register agent configuration routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/configuration", methods=["GET"])
-    def api_get_agent_configuration(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration", methods=["GET"])
+    def api_get_agent_configuration(agent_config_name: str):
         """Get agent configuration (LLM and prompt)."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Get current LLM (agent's configured LLM or default)
             current_llm = agent._llm_name or get_default_llm()
@@ -41,16 +41,16 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "prompt": agent.instructions,
             })
         except Exception as e:
-            logger.error(f"Error getting configuration for {agent_name}: {e}")
+            logger.error(f"Error getting configuration for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/configuration/llm", methods=["PUT"])
-    def api_update_agent_llm(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/llm", methods=["PUT"])
+    def api_update_agent_llm(agent_config_name: str):
         """Update agent LLM."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
@@ -59,7 +59,7 @@ def register_configuration_routes(agents_bp: Blueprint):
             llm_name = data.get("llm_name", "").strip()
 
             # Find agent's markdown file
-            agent_file = Path(agent.config_directory) / "agents" / f"{agent_name}.md"
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
             if not agent_file.exists():
                 return jsonify({"error": "Agent configuration file not found"}), 404
 
@@ -86,60 +86,24 @@ def register_configuration_routes(agents_bp: Blueprint):
 
             agent_file.write_text("\n".join(lines), encoding="utf-8")
 
-            # Reload agent
-            from register_agents import parse_agent_markdown, register_telegram_agent
-            parsed = parse_agent_markdown(agent_file)
-            if parsed:
-                # Disconnect old agent's client if connected
-                # Use agent.execute() to schedule disconnect on the client's event loop
-                if agent._client:
-                    try:
-                        async def _disconnect_old_client():
-                            try:
-                                if agent._client and agent._client.is_connected():
-                                    await agent._client.disconnect()
-                            except Exception as e:
-                                logger.warning(f"Error disconnecting old client for {agent_name}: {e}")
-                        
-                        # Schedule disconnect on the client's event loop
-                        agent.execute(_disconnect_old_client())
-                    except Exception as e:
-                        logger.warning(f"Error scheduling disconnect for {agent_name}: {e}")
-                    
-                    # Clear the client reference to prevent using it in wrong event loop
-                    agent._client = None
-                    agent._loop = None  # Clear cached loop when client is cleared
-                
-                # Create new LLM instance
-                from llm.factory import create_llm_from_name
-                new_llm = create_llm_from_name(llm_name if llm_name else None)
-
-                # Update agent in registry
-                register_telegram_agent(
-                    name=parsed["name"],
-                    phone=parsed["phone"],
-                    instructions=parsed["instructions"],
-                    role_prompt_names=parsed["role_prompt_names"],
-                    sticker_set_names=parsed.get("sticker_set_names") or [],
-                    explicit_stickers=parsed.get("explicit_stickers") or [],
-                    config_directory=agent.config_directory,
-                    timezone=parsed.get("timezone"),
-                    llm_name=llm_name if llm_name else None,
-                    llm=new_llm,
-                )
+            # Update agent's LLM in place (don't disconnect client or re-register)
+            # LLM changes don't require reconnection to Telegram
+            from llm.factory import create_llm_from_name
+            agent._llm_name = llm_name if llm_name else None
+            agent._llm = create_llm_from_name(agent._llm_name)
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating LLM for {agent_name}: {e}")
+            logger.error(f"Error updating LLM for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/configuration/prompt", methods=["PUT"])
-    def api_update_agent_prompt(agent_name: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/prompt", methods=["PUT"])
+    def api_update_agent_prompt(agent_config_name: str):
         """Update agent prompt (instructions)."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
@@ -148,7 +112,7 @@ def register_configuration_routes(agents_bp: Blueprint):
             prompt = data.get("prompt", "").strip()
 
             # Find agent's markdown file
-            agent_file = Path(agent.config_directory) / "agents" / f"{agent_name}.md"
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
             if not agent_file.exists():
                 return jsonify({"error": "Agent configuration file not found"}), 404
 
@@ -169,45 +133,11 @@ def register_configuration_routes(agents_bp: Blueprint):
 
             agent_file.write_text("\n".join(lines), encoding="utf-8")
 
-            # Reload agent
-            from register_agents import parse_agent_markdown, register_telegram_agent
-            parsed = parse_agent_markdown(agent_file)
-            if parsed:
-                # Disconnect old agent's client if connected
-                # Use agent.execute() to schedule disconnect on the client's event loop
-                if agent._client:
-                    try:
-                        async def _disconnect_old_client():
-                            try:
-                                if agent._client and agent._client.is_connected():
-                                    await agent._client.disconnect()
-                            except Exception as e:
-                                logger.warning(f"Error disconnecting old client for {agent_name}: {e}")
-                        
-                        # Schedule disconnect on the client's event loop
-                        agent.execute(_disconnect_old_client())
-                    except Exception as e:
-                        logger.warning(f"Error scheduling disconnect for {agent_name}: {e}")
-                    
-                    # Clear the client reference to prevent using it in wrong event loop
-                    agent._client = None
-                    agent._loop = None  # Clear cached loop when client is cleared
-                
-                # Update agent in registry
-                register_telegram_agent(
-                    name=parsed["name"],
-                    phone=parsed["phone"],
-                    instructions=parsed["instructions"],
-                    role_prompt_names=parsed["role_prompt_names"],
-                    sticker_set_names=parsed.get("sticker_set_names") or [],
-                    explicit_stickers=parsed.get("explicit_stickers") or [],
-                    config_directory=agent.config_directory,
-                    timezone=parsed.get("timezone"),
-                    llm_name=parsed.get("llm_name"),
-                )
+            # Update agent's instructions in place (don't disconnect client or re-register)
+            # Instruction changes don't require reconnection to Telegram
+            agent.instructions = prompt
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating prompt for {agent_name}: {e}")
+            logger.error(f"Error updating prompt for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
-

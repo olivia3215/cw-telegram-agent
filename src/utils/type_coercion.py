@@ -31,4 +31,3 @@ def coerce_to_str(value) -> str:
         return json.dumps(value, ensure_ascii=False)
     except Exception:
         return str(value)
-

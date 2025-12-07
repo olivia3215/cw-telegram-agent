@@ -56,19 +56,19 @@ ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 # Summarization helper functions moved to handlers.received_helpers.summarization
 
 
-def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
+def _find_file_in_docs(filename: str, agent_config_name: str | None) -> Path | None:
     """
     Search for a file in the docs directories.
     
     Search order:
-    1. {configdir}/agents/{agent_name}/docs/{filename} (agent-specific)
+    1. {configdir}/agents/{agent_config_name}/docs/{filename} (agent-specific)
     2. {configdir}/docs/{filename} (shared)
     
     Searches through all config directories in CONFIG_DIRECTORIES order.
     
     Args:
         filename: The filename to search for (must not contain '/' or '\')
-        agent_name: The agent name for agent-specific search, or None
+        agent_config_name: The agent config file name (without .md extension) for agent-specific search, or None
         
     Returns:
         Path to the file if found, None otherwise
@@ -83,8 +83,8 @@ def _find_file_in_docs(filename: str, agent_name: str | None) -> Path | None:
             continue
         
         # First priority: agent-specific docs
-        if agent_name:
-            agent_docs_path = config_path / "agents" / agent_name / "docs" / filename
+        if agent_config_name:
+            agent_docs_path = config_path / "agents" / agent_config_name / "docs" / filename
             if agent_docs_path.exists() and agent_docs_path.is_file():
                 return agent_docs_path
         
@@ -148,8 +148,8 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
                 )
         
         # Handle other file: URLs (docs files)
-        agent_name = agent.name if agent else None
-        file_path = _find_file_in_docs(filename, agent_name)
+        agent_config_name = agent.config_name if agent else None
+        file_path = _find_file_in_docs(filename, agent_config_name)
         
         if file_path is None:
             return (url, f"No file `{filename}` was found.")

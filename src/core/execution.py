@@ -126,4 +126,3 @@ class EventLoopExecutor:
         # Convert to asyncio.Future so we can await it
         asyncio_future = asyncio.wrap_future(future)
         return await asyncio_future
-

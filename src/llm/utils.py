@@ -15,4 +15,3 @@ def format_string_for_logging(s: str) -> str:
         return s
     # Return as-is to preserve actual newlines; Python logging will handle them correctly
     return s
-

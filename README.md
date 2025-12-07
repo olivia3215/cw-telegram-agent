@@ -207,7 +207,8 @@ Notes:
   - `gemini` or names starting with `gemini` (e.g., `gemini-2.0-flash`) - uses Gemini LLM
   - `grok` or names starting with `grok` (e.g., `grok-4-fast-non-reasoning`) - uses Grok LLM
   - If omitted, defaults to Gemini with `gemini-2.5-flash-preview-09-2025`
-* **Reserved names:** Agent names cannot be `media` (reserved for system directories).
+* **Reserved names:** Agent display names and config file names (the filename without `.md`) cannot be `media` (reserved for system directories).
+* **Uniqueness:** Both agent display names (from the `Agent Name` field) and config file names (the filename without `.md`) must be unique across all config directories. If two config files have the same filename but different display names, only the first one will be registered to prevent state directory conflicts.
 
 > Internals about sticker trigger syntax and LLM task formats are documented in [DESIGN.md](DESIGN.md) (not needed for basic use).
 
@@ -224,6 +225,8 @@ config-dir/
 ```
 
 **Multiple directories:** You can specify multiple config directories separated by colons in `CINDY_AGENT_CONFIG_PATH`. The system will search for agents and prompts in all directories, with earlier directories taking precedence for duplicate names.
+
+**Important:** Both agent display names (from the `Agent Name` field) and config file names (the filename without `.md`) must be unique across all config directories. If duplicate display names or config file names are detected, only the first occurrence will be registered, and subsequent duplicates will be skipped with a warning or error logged.
 
 **Default location:** If `CINDY_AGENT_CONFIG_PATH` is not set, the system defaults to the `samples` directory.
 

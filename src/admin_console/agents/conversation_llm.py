@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 def register_conversation_llm_routes(agents_bp: Blueprint):
     """Register conversation-specific LLM routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/conversation-llm/<user_id>", methods=["GET"])
-    def api_get_conversation_llm(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-llm/<user_id>", methods=["GET"])
+    def api_get_conversation_llm(agent_config_name: str, user_id: str):
         """Get conversation-specific LLM for a user."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -47,16 +47,16 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                 "available_llms": available_llms,
             })
         except Exception as e:
-            logger.error(f"Error getting conversation LLM for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error getting conversation LLM for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/conversation-llm/<user_id>", methods=["PUT"])
-    def api_update_conversation_llm(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-llm/<user_id>", methods=["PUT"])
+    def api_update_conversation_llm(agent_config_name: str, user_id: str):
         """Update conversation-specific LLM for a user."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -66,7 +66,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             data = request.json
             llm_name = data.get("llm_name", "").strip()
 
-            memory_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             agent_default_llm = agent._llm_name or get_default_llm()
 
             # If setting to agent default, remove the conversation-specific LLM
@@ -94,6 +94,5 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating conversation LLM for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error updating conversation LLM for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-

@@ -59,7 +59,7 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
             logger.info(
                 f"[{agent.name}] Agent has ResetContextOnFirstMessage role, clearing summaries and plans for channel [{channel_name}]"
             )
-            memory_file = Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             
             # Clear summaries
             def clear_summaries(entries, payload):

@@ -25,7 +25,7 @@ async def _process_summarize_task(agent, channel_id: int, task: TaskNode):
     - created: timestamp when the summary was created/updated
     """
     file_path = (
-        Path(STATE_DIRECTORY) / agent.name / "memory" / f"{channel_id}.json"
+        Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
     )
     await process_property_entry_task(
         agent,
@@ -57,5 +57,3 @@ async def handle_immediate_summarize(task: TaskNode, *, agent, channel_id: int) 
     
     await _process_summarize_task(agent, channel_id, task)
     return True
-
-

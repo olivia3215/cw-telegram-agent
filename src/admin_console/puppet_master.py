@@ -247,4 +247,3 @@ def get_puppet_master_manager() -> PuppetMasterManager:
     if _manager is None:
         _manager = PuppetMasterManager()
     return _manager
-

@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 def register_summary_routes(agents_bp: Blueprint):
     """Register summary management routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>", methods=["GET"])
-    def api_get_summaries(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/summaries/<user_id>", methods=["GET"])
+    def api_get_summaries(agent_config_name: str, user_id: str):
         """Get summaries for a conversation."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -45,25 +45,25 @@ def register_summary_routes(agents_bp: Blueprint):
                         if storage:
                             await storage.backfill_summary_dates(channel_id, agent)
                     except Exception as e:
-                        logger.warning(f"Backfill failed for {agent_name}/{user_id}: {e}", exc_info=True)
+                        logger.warning(f"Backfill failed for {agent_config_name}/{user_id}: {e}", exc_info=True)
                 
                 # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
                 executor = agent.executor
                 if executor and executor.loop and executor.loop.is_running():
                     # Schedule the coroutine without waiting for it
                     asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
-                    logger.info(f"Scheduled backfill for {agent_name}/{user_id} (channel {channel_id})")
+                    logger.info(f"Scheduled backfill for {agent_config_name}/{user_id} (channel {channel_id})")
                 else:
                     logger.info(
-                        f"Agent executor not available for {agent_name}, skipping backfill. "
+                        f"Agent executor not available for {agent_config_name}, skipping backfill. "
                         f"executor={executor}, loop={executor.loop if executor else None}, "
                         f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
                     )
             except Exception as e:
                 # Don't fail the request if backfill setup fails
-                logger.warning(f"Failed to setup backfill for {agent_name}/{user_id}: {e}", exc_info=True)
+                logger.warning(f"Failed to setup backfill for {agent_config_name}/{user_id}: {e}", exc_info=True)
 
-            summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
 
             # Sort by message ID range (oldest first)
@@ -71,19 +71,19 @@ def register_summary_routes(agents_bp: Blueprint):
 
             return jsonify({"summaries": summaries})
         except MemoryStorageError as e:
-            logger.error(f"Error loading summaries for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error loading summaries for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error getting summaries for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error getting summaries for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>/<summary_id>", methods=["PUT"])
-    def api_update_summary(agent_name: str, user_id: str, summary_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/summaries/<user_id>/<summary_id>", methods=["PUT"])
+    def api_update_summary(agent_config_name: str, user_id: str, summary_id: str):
         """Update a summary entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -99,7 +99,7 @@ def register_summary_routes(agents_bp: Blueprint):
             first_message_date = data.get("first_message_date")
             last_message_date = data.get("last_message_date")
 
-            summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
 
             def update_summary(entries, payload):
                 for entry in entries:
@@ -129,23 +129,23 @@ def register_summary_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating summary {summary_id} for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error updating summary {summary_id} for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>/<summary_id>", methods=["DELETE"])
-    def api_delete_summary(agent_name: str, user_id: str, summary_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/summaries/<user_id>/<summary_id>", methods=["DELETE"])
+    def api_delete_summary(agent_config_name: str, user_id: str, summary_id: str):
         """Delete a summary entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID"}), 400
 
-            summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
 
             def delete_summary(entries, payload):
                 entries = [e for e in entries if e.get("id") != summary_id]
@@ -157,16 +157,16 @@ def register_summary_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error deleting summary {summary_id} for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error deleting summary {summary_id} for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/summaries/<user_id>", methods=["POST"])
-    def api_create_summary(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/summaries/<user_id>", methods=["POST"])
+    def api_create_summary(agent_config_name: str, user_id: str):
         """Create a new summary entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -185,7 +185,7 @@ def register_summary_routes(agents_bp: Blueprint):
             if min_message_id is None or max_message_id is None:
                 return jsonify({"error": "min_message_id and max_message_id are required"}), 400
 
-            summary_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             
             summary_id = f"summary-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
@@ -214,6 +214,5 @@ def register_summary_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True, "summary": new_entry})
         except Exception as e:
-            logger.error(f"Error creating summary for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error creating summary for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-

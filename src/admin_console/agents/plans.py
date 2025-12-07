@@ -23,20 +23,20 @@ logger = logging.getLogger(__name__)
 def register_plan_routes(agents_bp: Blueprint):
     """Register plan management routes."""
     
-    @agents_bp.route("/api/agents/<agent_name>/plans/<user_id>", methods=["GET"])
-    def api_get_plans(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>", methods=["GET"])
+    def api_get_plans(agent_config_name: str, user_id: str):
         """Get plans for a conversation."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID"}), 400
 
-            plan_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
 
             # Sort by created timestamp (newest first)
@@ -44,19 +44,19 @@ def register_plan_routes(agents_bp: Blueprint):
 
             return jsonify({"plans": plans})
         except MemoryStorageError as e:
-            logger.error(f"Error loading plans for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error loading plans for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
         except Exception as e:
-            logger.error(f"Error getting plans for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error getting plans for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/plans/<user_id>/<plan_id>", methods=["PUT"])
-    def api_update_plan(agent_name: str, user_id: str, plan_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>/<plan_id>", methods=["PUT"])
+    def api_update_plan(agent_config_name: str, user_id: str, plan_id: str):
         """Update a plan entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -66,7 +66,7 @@ def register_plan_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            plan_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
 
             def update_plan(entries, payload):
                 for entry in entries:
@@ -81,23 +81,23 @@ def register_plan_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating plan {plan_id} for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error updating plan {plan_id} for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/plans/<user_id>/<plan_id>", methods=["DELETE"])
-    def api_delete_plan(agent_name: str, user_id: str, plan_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>/<plan_id>", methods=["DELETE"])
+    def api_delete_plan(agent_config_name: str, user_id: str, plan_id: str):
         """Delete a plan entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID"}), 400
 
-            plan_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
 
             def delete_plan(entries, payload):
                 entries = [e for e in entries if e.get("id") != plan_id]
@@ -109,16 +109,16 @@ def register_plan_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error deleting plan {plan_id} for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error deleting plan {plan_id} for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_name>/plans/<user_id>", methods=["POST"])
-    def api_create_plan(agent_name: str, user_id: str):
+    @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>", methods=["POST"])
+    def api_create_plan(agent_config_name: str, user_id: str):
         """Create a new plan entry."""
         try:
-            agent = get_agent_by_name(agent_name)
+            agent = get_agent_by_name(agent_config_name)
             if not agent:
-                return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
                 channel_id = int(user_id)
@@ -131,7 +131,7 @@ def register_plan_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
-            plan_file = Path(STATE_DIRECTORY) / agent_name / "memory" / f"{channel_id}.json"
+            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             
             plan_id = f"plan-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
@@ -153,6 +153,5 @@ def register_plan_routes(agents_bp: Blueprint):
 
             return jsonify({"success": True, "plan": new_entry})
         except Exception as e:
-            logger.error(f"Error creating plan for {agent_name}/{user_id}: {e}")
+            logger.error(f"Error creating plan for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-

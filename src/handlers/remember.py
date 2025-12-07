@@ -24,7 +24,7 @@ async def _process_remember_task(agent, channel_id: int, task: TaskNode):
     regardless of which user the memory is about. This enables the agent to have a
     comprehensive memory of all interactions across all conversations.
     """
-    memory_file = Path(STATE_DIRECTORY) / agent.name / "memory.json"
+    memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
     async def entry_mutator(new_entry: dict[str, Any], existing_entry: dict[str, Any] | None) -> None:
         """Add channel information to the memory entry."""
@@ -75,4 +75,3 @@ async def handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -
     await telepathic.maybe_send_telepathic_message(agent, channel_id, "remember", body)
     await _process_remember_task(agent, channel_id, task)
     return True
-

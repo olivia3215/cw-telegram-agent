@@ -74,5 +74,3 @@ class TelegramEntityCache:
         """Clear all cached entities."""
         logger.info(f"[{self.name}] Clearing entity cache.")
         self._cache.clear()
-
-

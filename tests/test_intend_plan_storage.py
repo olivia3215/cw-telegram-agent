@@ -10,6 +10,7 @@ from task_graph import TaskNode
 class StubAgent:
     def __init__(self, name="TestAgent"):
         self.name = name
+        self.config_name = name  # config_name defaults to name, matching Agent class behavior
         self.timezone = ZoneInfo("UTC")
 
     def get_current_time(self):
@@ -36,7 +37,7 @@ async def test_process_intend_task_persists_entries(tmp_path, monkeypatch):
 
     await intend._process_intend_task(agent, channel_id, task)
 
-    memory_file = state_dir / agent.name / "memory.json"
+    memory_file = state_dir / agent.config_name / "memory.json"
     payload = json.loads(memory_file.read_text())
     assert "intention" in payload
     assert len(payload["intention"]) == 1
@@ -90,7 +91,7 @@ async def test_process_intend_task_preserves_order_on_update(tmp_path, monkeypat
     )
     await intend._process_intend_task(agent, channel_id, task3)
 
-    memory_file = state_dir / agent.name / "memory.json"
+    memory_file = state_dir / agent.config_name / "memory.json"
     payload = json.loads(memory_file.read_text())
     assert len(payload["intention"]) == 3
     assert payload["intention"][0]["id"] == "intent-first"
@@ -131,7 +132,7 @@ async def test_process_plan_task_persists_entries(tmp_path, monkeypatch):
 
     await plan._process_plan_task(agent, channel_id, task)
 
-    plan_file = state_dir / agent.name / "memory" / f"{channel_id}.json"
+    plan_file = state_dir / agent.config_name / "memory" / f"{channel_id}.json"
     payload = json.loads(plan_file.read_text())
     assert "plan" in payload
     assert len(payload["plan"]) == 1
@@ -185,7 +186,7 @@ async def test_process_plan_task_preserves_order_on_update(tmp_path, monkeypatch
     )
     await plan._process_plan_task(agent, channel_id, task3)
 
-    plan_file = state_dir / agent.name / "memory" / f"{channel_id}.json"
+    plan_file = state_dir / agent.config_name / "memory" / f"{channel_id}.json"
     payload = json.loads(plan_file.read_text())
     assert len(payload["plan"]) == 3
     assert payload["plan"][0]["id"] == "plan-first"
@@ -246,7 +247,7 @@ async def test_process_remember_task_preserves_order_on_update(tmp_path, monkeyp
         )
         await remember._process_remember_task(agent, channel_id, task3)
 
-        memory_file = state_dir / agent.name / "memory.json"
+        memory_file = state_dir / agent.config_name / "memory.json"
         payload = json.loads(memory_file.read_text())
         assert len(payload["memory"]) == 3
         # After sorting, memories should be in chronological order
@@ -316,7 +317,7 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
         )
         await remember._process_remember_task(agent, original_channel_id, create_task)
 
-        memory_file = state_dir / agent.name / "memory.json"
+        memory_file = state_dir / agent.config_name / "memory.json"
         payload = json.loads(memory_file.read_text())
         original_memory = next(m for m in payload["memory"] if m["id"] == "memory-test")
         original_channel = original_memory.get("creation_channel")
@@ -384,7 +385,7 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
         llm=DummyLLM(),
     )
 
-    memory_dir = state_dir / "Planner"
+    memory_dir = state_dir / agent_instance.config_name
     memory_dir.mkdir(parents=True)
 
     (memory_dir / "memory.json").write_text(
