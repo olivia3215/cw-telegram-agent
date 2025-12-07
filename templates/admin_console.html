@@ -2715,12 +2715,20 @@
                     const currentValue = select.value;
                     const subtabName = getCurrentConversationsSubtab();
                     
-                    // Check content for each partner
+                    // Check content for each partner using batch endpoint
                     const partnerContentChecks = {};
+                    const userIds = partners.map(p => p.user_id || p);
                     
-                    // For conversation subtab, use batch endpoint to avoid Telegram API flood
+                    // Map subtab names to content check keys
+                    const subtabToKey = {
+                        'curated-memories-conv': 'curated_memories',
+                        'conversation-llm': 'conversation_llm',
+                        'plans': 'plans',
+                        'conversation': 'conversation'  // Special case, uses different endpoint
+                    };
+                    
                     if (subtabName === 'conversation') {
-                        const userIds = partners.map(p => p.user_id || p);
+                        // For conversation subtab, use conversation-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-content-check`, {
                                 method: 'POST',
@@ -2742,11 +2750,38 @@
                             }));
                         }
                     } else {
-                        // For other subtabs, use individual checks
-                        await Promise.all(partners.map(async (partner) => {
-                            const userId = partner.user_id || partner;
-                            partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
-                        }));
+                        // For curated-memories, conversation-llm, and plans, use partner-content-check endpoint
+                        try {
+                            const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-content-check`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ user_ids: userIds })
+                            });
+                            const batchData = await batchResponse.json();
+                            if (batchData.content_checks) {
+                                // Map the batch response to the format expected by the frontend
+                                const contentKey = subtabToKey[subtabName];
+                                if (contentKey) {
+                                    for (const userId of userIds) {
+                                        const checks = batchData.content_checks[userId];
+                                        if (checks) {
+                                            partnerContentChecks[userId] = checks[contentKey] || false;
+                                        } else {
+                                            partnerContentChecks[userId] = false;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.warn('Error checking partner content batch:', error);
+                            // Fall back to individual checks if batch fails
+                            await Promise.all(partners.map(async (partner) => {
+                                const userId = partner.user_id || partner;
+                                partnerContentChecks[userId] = await partnerHasContent(agentName, userId, subtabName);
+                            }));
+                        }
                     }
                     
                     select.innerHTML = '<option value="">Choose a partner...</option>';
