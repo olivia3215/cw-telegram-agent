@@ -331,6 +331,7 @@ def api_refresh_from_ai(unique_id: str):
         media_file = find_media_file(media_dir, unique_id)
 
         if not media_file:
+            loop.close()
             return jsonify({"error": "Media file not found"}), 404
 
         # Pass the media file Path directly as the doc parameter
