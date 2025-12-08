@@ -38,6 +38,24 @@ class Obj:
         self.__dict__.update(kw)
 
 
+def make_minimal_mp4_bytes() -> bytes:
+    """
+    Create minimal valid MP4 file bytes for testing.
+    MP4 files must have 'ftyp' box at offset 4.
+    """
+    # Minimal MP4 structure: box size (4 bytes) + 'ftyp' (4 bytes) + minimal data
+    # Box size in big-endian: 0x00000020 = 32 bytes
+    return b"\x00\x00\x00\x20" + b"ftyp" + b"mp41" + b"\x00" * 20
+
+
+def make_minimal_webm_bytes() -> bytes:
+    """
+    Create minimal valid WebM file bytes for testing.
+    WebM files must start with EBML header: 0x1a 0x45 0xdf 0xa3
+    """
+    return b"\x1a\x45\xdf\xa3" + b"\x00" * 20
+
+
 def make_msg(**kw):
     """Create a mock Telegram message."""
     return Obj(**kw)
@@ -198,7 +216,7 @@ async def test_gemini_describe_video_success():
         mock_client_class.return_value = mock_client
 
         # Test video description
-        video_bytes = b"fake_video_data_12345"
+        video_bytes = make_minimal_mp4_bytes()
         description = await llm.describe_video(
             video_bytes, mime_type="video/mp4", duration=5
         )
@@ -223,7 +241,7 @@ async def test_gemini_describe_video_too_long():
     """Test that videos longer than 10 seconds are rejected."""
     llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    video_bytes = b"fake_long_video"
+    video_bytes = make_minimal_mp4_bytes()
 
     with pytest.raises(ValueError) as exc_info:
         await llm.describe_video(video_bytes, mime_type="video/mp4", duration=15)
@@ -257,7 +275,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
 
         # Should not raise - exactly 10 seconds is OK
         description = await llm.describe_video(
-            b"fake_video", mime_type="video/mp4", duration=10
+            make_minimal_mp4_bytes(), mime_type="video/mp4", duration=10
         )
         assert description == "A 10-second video description."
 
@@ -286,7 +304,7 @@ async def test_gemini_describe_video_no_duration():
 
         # Should not raise - no duration means we can't enforce limit
         description = await llm.describe_video(
-            b"fake_video", mime_type="video/mp4", duration=None
+            make_minimal_mp4_bytes(), mime_type="video/mp4", duration=None
         )
         assert description == "Video without duration metadata."
 
@@ -316,7 +334,7 @@ async def test_gemini_describe_video_timeout():
         mock_client_class.return_value = mock_client
 
         with pytest.raises(RuntimeError) as exc_info:
-            await llm.describe_video(b"fake_video", mime_type="video/mp4", duration=5)
+            await llm.describe_video(make_minimal_mp4_bytes(), mime_type="video/mp4", duration=5)
 
         assert (
             "timeout" in str(exc_info.value).lower()

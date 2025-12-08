@@ -139,13 +139,15 @@ class GeminiLLM(LLM):
     IMAGE_DESCRIPTION_PROMPT = (
         "You are given a single image. Describe the scene in rich detail so a reader "
         "can understand it without seeing the image. Include salient objects, colors, "
-        "relations, actions, and setting. Output only the description."
+        "relations, actions, and setting. "
+        "Output the description as a single string without markdown formatting. "
     )
 
     VIDEO_DESCRIPTION_PROMPT = (
         "You are given a short video. Describe what happens in the video in rich detail "
         "so a reader can understand it without seeing the video. Include salient objects, "
-        "colors, actions, movement, and what the video shows. Output only the description."
+        "colors, actions, movement, and what the video shows. "
+        "Output the description as a single string without markdown formatting. "
     )
 
     AUDIO_DESCRIPTION_PROMPT = (
@@ -153,7 +155,7 @@ class GeminiLLM(LLM):
         "so a reader can understand the audio content without hearing it. Include "
         "a complete speech transcription, music, sounds, and any other audio elements. "
         "Estimate the speaker's age, gender, and accent if they are human. "
-        "Output only the description."
+        "Output the description as a single string without markdown formatting. "
     )
 
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
@@ -362,6 +364,32 @@ class GeminiLLM(LLM):
             raise ValueError(
                 f"MIME type {mime_type} is not supported by Gemini for video description"
             )
+        
+        # Check file size - Gemini has limits on inline_data size (typically 20MB)
+        # Base64 encoding increases size by ~33%, so we check the original size
+        MAX_VIDEO_SIZE = 20 * 1024 * 1024  # 20MB
+        if len(video_bytes) > MAX_VIDEO_SIZE:
+            size_mb = len(video_bytes) / (1024 * 1024)
+            raise ValueError(
+                f"Video file is too large ({size_mb:.1f}MB, max {MAX_VIDEO_SIZE / (1024 * 1024):.0f}MB) "
+                f"for Gemini inline_data API"
+            )
+        
+        # Validate video file format - check if it's actually a valid MP4/WebM/etc.
+        # MP4 files should start with ftyp box at offset 4
+        # WebM files should start with EBML header
+        if mime_type == "video/mp4":
+            if len(video_bytes) < 8 or video_bytes[4:8] != b"ftyp":
+                raise ValueError(
+                    f"Video file does not appear to be a valid MP4 (missing ftyp box). "
+                    f"File may be corrupted or in wrong format."
+                )
+        elif mime_type == "video/webm":
+            if len(video_bytes) < 4 or video_bytes[:4] != b"\x1a\x45\xdf\xa3":
+                raise ValueError(
+                    f"Video file does not appear to be a valid WebM (missing EBML header). "
+                    f"File may be corrupted or in wrong format."
+                )
 
         # Assert that this instance is the correct type for media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm

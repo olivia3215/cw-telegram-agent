@@ -363,8 +363,29 @@ def api_refresh_from_ai(unique_id: str):
         # Determine the correct media kind based on MIME type
         # This fixes the issue where cached records have wrong kind for animated stickers
         mime_type = data.get("mime_type")
+        
+        # If MIME type is not in data but we have a Path, try to get it from file extension
+        if not mime_type and hasattr(fake_doc, "suffix"):
+            from media.mime_utils import get_mime_type_from_file_extension
+            mime_type = get_mime_type_from_file_extension(fake_doc)
+        
+        # Determine kind from MIME type if not already set
         if is_tgs_mime_type(mime_type):
             media_kind = "animated_sticker"
+        elif mime_type and mime_type == "audio/mp4":
+            # Audio-only MP4 files (M4A) should be treated as audio
+            media_kind = "audio"
+        elif mime_type:
+            from media.mime_utils import is_audio_mime_type, is_video_mime_type, is_image_mime_type
+            if is_audio_mime_type(mime_type):
+                media_kind = "audio"
+            elif is_video_mime_type(mime_type):
+                media_kind = "video"
+            elif is_image_mime_type(mime_type):
+                media_kind = "photo"
+            else:
+                # Fall back to data kind or default
+                media_kind = data.get("kind", "sticker")
         else:
             media_kind = data.get("kind", "sticker")
 
@@ -388,11 +409,27 @@ def api_refresh_from_ai(unique_id: str):
                     duration=data.get(
                         "duration"
                     ),  # Include duration for video/animated stickers
+                    mime_type=mime_type,  # Pass MIME type in metadata so it's available early
                     skip_fallback=True,
                 )
             )
         finally:
-            loop.close()
+            # Properly clean up async resources before closing the loop
+            try:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                
+                # Wait for tasks to complete cancellation
+                if pending:
+                    loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception as e:
+                logger.warning(f"Error cleaning up async tasks: {e}")
+            finally:
+                loop.close()
 
         if record:
             # AIChainMediaSource has already cached the result to disk

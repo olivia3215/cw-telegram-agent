@@ -3,7 +3,9 @@
 # Conversation management routes for the admin console.
 
 import asyncio
+import contextlib
 import copy
+import glob
 import json as json_lib
 import logging
 import os
@@ -13,15 +15,16 @@ from pathlib import Path
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY
+from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
 from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
-from media.media_source import get_default_media_source_chain
-from media.mime_utils import detect_mime_type_from_bytes
+from media.media_source import MediaStatus, get_default_media_source_chain
+from media.media_sources import get_directory_media_source
+from media.mime_utils import detect_mime_type_from_bytes, get_file_extension_from_mime_or_bytes
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telegram_download import download_media_bytes
@@ -574,20 +577,73 @@ def register_conversation_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/media/<message_id>/<unique_id>", methods=["GET"])
     def api_get_conversation_media(agent_config_name: str, user_id: str, message_id: str, unique_id: str):
-        """Serve media from a Telegram message."""
+        """Serve media from a Telegram message, using cache if available."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
-
-            if not agent.client or not agent.client.is_connected():
-                return jsonify({"error": "Agent client not connected"}), 503
 
             try:
                 channel_id = int(user_id)
                 msg_id = int(message_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID or message ID"}), 400
+
+            # First, check if media is cached in any of the media directories
+            # Check config directories first (curated media), then state/media/ (AI cache)
+            # This matches the priority order of the media source chain
+            cached_file = None
+            
+            # Escape unique_id to prevent glob pattern injection attacks
+            escaped_unique_id = glob.escape(unique_id)
+            
+            # Check all config directories first (without fallback to state/media/)
+            for config_dir in CONFIG_DIRECTORIES:
+                config_media_dir = Path(config_dir) / "media"
+                if config_media_dir.exists() and config_media_dir.is_dir():
+                    # Search only in this config directory (no fallback)
+                    for file_path in config_media_dir.glob(f"{escaped_unique_id}.*"):
+                        if file_path.suffix.lower() != ".json":
+                            cached_file = file_path
+                            break
+                    if cached_file:
+                        break
+            
+            # If not found in any config directory, check state/media/ directly
+            if not cached_file:
+                state_media_dir = Path(STATE_DIRECTORY) / "media"
+                if state_media_dir.exists() and state_media_dir.is_dir():
+                    for file_path in state_media_dir.glob(f"{escaped_unique_id}.*"):
+                        if file_path.suffix.lower() != ".json":
+                            cached_file = file_path
+                            break
+            
+            # If found in cache, serve from cache
+            if cached_file and cached_file.exists():
+                try:
+                    # Read the cached file
+                    with open(cached_file, "rb") as f:
+                        media_bytes = f.read()
+                    
+                    # Detect MIME type
+                    mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
+                    
+                    logger.debug(
+                        f"Serving cached media {unique_id} from {cached_file} for {agent_config_name}/{user_id}/{message_id}"
+                    )
+                    
+                    return Response(
+                        media_bytes,
+                        mimetype=mime_type or "application/octet-stream",
+                        headers={"Content-Disposition": f"inline; filename={unique_id}"}
+                    )
+                except Exception as e:
+                    logger.warning(f"Error reading cached media file {cached_file}: {e}, falling back to Telegram download")
+                    # Fall through to download from Telegram
+            
+            # Not in cache, or cache read failed - download from Telegram
+            if not agent.client or not agent.client.is_connected():
+                return jsonify({"error": "Agent client not connected"}), 503
 
             # Check if agent's event loop is accessible
             try:
@@ -635,6 +691,56 @@ def register_conversation_routes(agents_bp: Blueprint):
                 media_bytes, mime_type = agent.execute(_get_media(), timeout=30.0)
                 if media_bytes is None:
                     return jsonify({"error": "Media not found"}), 404
+                
+                logger.debug(
+                    f"Downloaded media {unique_id} from Telegram for {agent_config_name}/{user_id}/{message_id}"
+                )
+                
+                # Cache the downloaded media file to state/media/ for future use
+                # Use the same storage mechanism as the normal media source chain
+                try:
+                    # Get file extension from MIME type or by detecting from bytes
+                    file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+                    
+                    # Store media file if we have an extension
+                    if file_extension:
+                        # Get the shared DirectoryMediaSource instance for state/media/
+                        state_media_dir = Path(STATE_DIRECTORY) / "media"
+                        cache_source = get_directory_media_source(state_media_dir)
+                        
+                        # Check if file already exists to avoid overwriting
+                        media_filename = f"{unique_id}{file_extension}"
+                        media_file = state_media_dir / media_filename
+                        if not media_file.exists():
+                            # Create a record using the same structure as normal media storage
+                            # This indicates the file is cached but description is pending
+                            from clock import clock
+                            from datetime import UTC
+                            
+                            record = {
+                                "unique_id": unique_id,
+                                "description": None,
+                                "status": MediaStatus.TEMPORARY_FAILURE.value,
+                                "failure_reason": "File cached from admin console, description pending",
+                                "ts": clock.now(UTC).isoformat(),
+                            }
+                            
+                            # Add MIME type if available
+                            if mime_type:
+                                record["mime_type"] = mime_type
+                            
+                            try:
+                                cache_source.put(unique_id, record, media_bytes, file_extension)
+                                logger.debug(
+                                    f"Cached media file {media_filename} to {state_media_dir} for {unique_id}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to cache media file {media_filename}: {e}")
+                    else:
+                        logger.debug(f"Could not determine file extension for {unique_id}, skipping cache")
+                except Exception as e:
+                    # Don't fail the request if caching fails
+                    logger.warning(f"Error caching media file for {unique_id}: {e}")
                 
                 return Response(
                     media_bytes,

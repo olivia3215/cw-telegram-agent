@@ -36,6 +36,9 @@ from .media_budget import (
 from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
+    get_file_extension_from_mime_or_bytes,
+    get_mime_type_from_file_extension,
+    is_audio_mime_type,
     is_tgs_mime_type,
     normalize_mime_type,
 )
@@ -789,19 +792,22 @@ class AIGeneratingMediaSource(MediaSource):
         sticker_set_name: str | None = None,
         sticker_name: str | None = None,
         **metadata,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
         Generate a media description using AI.
 
-        Always returns a dict (never None). Caches successful results
-        and unsupported formats to disk.
+        Returns a dict with description or error record, or None if doc is not available.
+        Caches successful results and unsupported formats to disk.
         """
 
         if agent is None:
             raise ValueError("AIGeneratingMediaSource: agent is required but was None")
 
         if doc is None:
-            raise ValueError("AIGeneratingMediaSource: doc is required but was None")
+            # Return None when doc is not available - we cannot generate without it
+            # This allows callers that are only reading from cache (like format_message_for_prompt)
+            # to work gracefully. The description can be generated later when doc is available.
+            return None
 
         client = getattr(agent, "client", None)
         if not client:
@@ -813,6 +819,21 @@ class AIGeneratingMediaSource(MediaSource):
         media_llm = get_media_llm()
 
         t0 = time.perf_counter()
+
+        # If doc is a Path, try to get MIME type from file extension first
+        # This helps avoid application/octet-stream fallback for valid media files
+        # Special handling for .m4a files - they should be audio/mp4, not video/mp4
+        if hasattr(doc, "suffix") and hasattr(doc, "read_bytes"):
+            # doc is a Path object
+            if doc.suffix.lower() == ".m4a":
+                # M4A files are audio-only MP4 containers
+                metadata["mime_type"] = normalize_mime_type("audio/mp4")
+            else:
+                mime_from_ext = get_mime_type_from_file_extension(doc)
+                if mime_from_ext:
+                    detected_mime_type = normalize_mime_type(mime_from_ext)
+                    if detected_mime_type:
+                        metadata["mime_type"] = detected_mime_type
 
         # Download media bytes
         try:
@@ -836,14 +857,37 @@ class AIGeneratingMediaSource(MediaSource):
 
         # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
         # Detect MIME type before LLM call so it's available in exception handlers
+        # Use byte detection to verify/override extension-based detection
+        # BUT preserve audio/mp4 for .m4a files (byte detection can't distinguish M4A from MP4 video)
         detected_mime_type = normalize_mime_type(detect_mime_type_from_bytes(data))
-        if detected_mime_type:
+        
+        # If this is a .m4a file, preserve audio/mp4 even if byte detection says video/mp4
+        # (byte detection can't distinguish M4A from MP4 video - they have the same container signature)
+        is_m4a_file = hasattr(doc, "suffix") and doc.suffix.lower() == ".m4a"
+        if is_m4a_file:
+            # Force audio/mp4 for M4A files regardless of byte detection
+            metadata["mime_type"] = normalize_mime_type("audio/mp4")
+            detected_mime_type = normalize_mime_type("audio/mp4")
+        elif detected_mime_type and detected_mime_type != "application/octet-stream":
+            # Prefer byte detection over extension-based detection (more accurate)
             metadata["mime_type"] = detected_mime_type
+        elif detected_mime_type == "application/octet-stream" and "mime_type" in metadata:
+            # Keep extension-based MIME type if byte detection fails
+            # (byte detection can fail for some valid files)
+            # Use the extension-based MIME type for LLM calls
+            detected_mime_type = metadata["mime_type"]
+        elif detected_mime_type:
+            metadata["mime_type"] = detected_mime_type
+        
+        # Ensure we have a MIME type for LLM calls (use metadata if available, otherwise detected)
+        final_mime_type = metadata.get("mime_type") or detected_mime_type
+        if final_mime_type:
+            metadata["mime_type"] = final_mime_type
 
         # For TGS files (animated stickers), convert to video first
         video_file_path = None
         is_converted_tgs = False
-        if is_tgs_mime_type(detected_mime_type):
+        if is_tgs_mime_type(final_mime_type):
             try:
                 import tempfile
 
@@ -873,6 +917,8 @@ class AIGeneratingMediaSource(MediaSource):
 
                 # Update MIME type to video/mp4
                 detected_mime_type = normalize_mime_type("video/mp4")
+                final_mime_type = detected_mime_type  # Update final_mime_type for converted TGS
+                metadata["mime_type"] = final_mime_type  # Update metadata too
                 is_converted_tgs = True
 
                 logger.info(
@@ -904,30 +950,56 @@ class AIGeneratingMediaSource(MediaSource):
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
             # - Converted TGS files (now in video format)
-            if _needs_video_analysis(kind, detected_mime_type) or is_converted_tgs:
+            if _needs_video_analysis(kind, final_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
                 desc = await media_llm.describe_video(
                     data,
-                    detected_mime_type,
+                    final_mime_type,
                     duration=duration,
                     timeout_s=_DESCRIBE_TIMEOUT_SECS,
                 )
-            elif (
-                kind == "audio"
-                and hasattr(media_llm, "is_audio_mime_type_supported")
-                and media_llm.is_audio_mime_type_supported(detected_mime_type)
-            ):
+            elif kind == "audio" or is_audio_mime_type(final_mime_type):
                 # Audio files (including voice messages)
-                duration = metadata.get("duration")
-                desc = await media_llm.describe_audio(
-                    data,
-                    detected_mime_type,
-                    duration=duration,
-                    timeout_s=_DESCRIBE_TIMEOUT_SECS,
-                )
+                # Route to describe_audio if kind is audio OR MIME type indicates audio
+                if hasattr(media_llm, "is_audio_mime_type_supported"):
+                    # Check if MIME type is supported (if we have one)
+                    # If no MIME type or application/octet-stream, pass None and let describe_audio detect it
+                    audio_mime_type = final_mime_type if final_mime_type and final_mime_type != "application/octet-stream" else None
+                    
+                    # Only check support if we have a specific MIME type
+                    if audio_mime_type and not media_llm.is_audio_mime_type_supported(audio_mime_type):
+                        # Audio MIME type not supported - this shouldn't happen for valid audio, but handle gracefully
+                        logger.warning(
+                            f"AIGeneratingMediaSource: audio MIME type {audio_mime_type} not supported for {unique_id}, "
+                            f"but kind={kind} indicates audio. Attempting describe_audio anyway."
+                        )
+                    
+                    duration = metadata.get("duration")
+                    desc = await media_llm.describe_audio(
+                        data,
+                        audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
+                        duration=duration,
+                        timeout_s=_DESCRIBE_TIMEOUT_SECS,
+                    )
+                else:
+                    # LLM doesn't support audio description - this shouldn't happen, but fall through to describe_image
+                    logger.warning(
+                        f"AIGeneratingMediaSource: kind={kind} indicates audio but LLM doesn't support audio description for {unique_id}"
+                    )
+                    # Fall through to describe_image which will raise ValueError
+                    desc = await media_llm.describe_image(
+                        data, None, timeout_s=_DESCRIBE_TIMEOUT_SECS
+                    )
             else:
+                # Ensure we have a valid MIME type before calling describe_image
+                # If final_mime_type is None or invalid, let describe_image detect it from bytes
+                image_mime_type = final_mime_type if final_mime_type and final_mime_type != "application/octet-stream" else None
+                logger.debug(
+                    f"AIGeneratingMediaSource: calling describe_image for {unique_id} with MIME type: {image_mime_type} "
+                    f"(final_mime_type={final_mime_type}, detected={detected_mime_type}, from_ext={'mime_type' in metadata})"
+                )
                 desc = await media_llm.describe_image(
-                    data, detected_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
+                    data, image_mime_type, timeout_s=_DESCRIBE_TIMEOUT_SECS
                 )
             desc = (desc or "").strip()
         except httpx.TimeoutException:
@@ -963,6 +1035,44 @@ class AIGeneratingMediaSource(MediaSource):
                 sticker_name=sticker_name,
                 **metadata,
             )
+        except RuntimeError as e:
+            # RuntimeError is raised for API errors (400, 500, etc.)
+            # Log the error with MIME type and file size info for debugging
+            file_size_mb = len(data) / (1024 * 1024) if data else 0
+            logger.error(
+                f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e} "
+                f"(MIME type: {final_mime_type}, detected: {detected_mime_type}, "
+                f"file size: {file_size_mb:.2f}MB, kind: {kind})"
+            )
+            
+            # Check if this is a format/argument error (400) - treat as permanent failure
+            error_str = str(e)
+            if "400" in error_str or "INVALID_ARGUMENT" in error_str:
+                # For 400 errors, provide more context about what might be wrong
+                failure_reason = f"LLM API error (400): {error_str[:100]}"
+                if file_size_mb > 20:
+                    failure_reason += f" (file may be too large: {file_size_mb:.1f}MB)"
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.PERMANENT_FAILURE,
+                    failure_reason,
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    **metadata,
+                )
+            else:
+                # Other API errors (500, timeout, etc.) - treat as temporary failure
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.TEMPORARY_FAILURE,
+                    f"LLM API error: {error_str[:100]}",
+                    retryable=True,
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    **metadata,
+                )
         except Exception as e:
             logger.exception(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
@@ -1122,22 +1232,9 @@ class AIChainMediaSource(MediaSource):
                     )
                     media_bytes = await download_media_bytes(agent.client, doc)
 
-                    # Get file extension from MIME type
+                    # Get file extension from MIME type or by detecting from bytes
                     mime_type = getattr(doc, "mime_type", None)
-                    if mime_type:
-                        file_extension = get_file_extension_for_mime_type(mime_type)
-                        if file_extension:
-                            file_extension = f".{file_extension}"
-                    else:
-                        # For Photo objects, detect MIME type from downloaded bytes
-                        detected_mime_type = detect_mime_type_from_bytes(
-                            media_bytes
-                        )
-                        file_extension = get_file_extension_for_mime_type(
-                            detected_mime_type
-                        )
-                        if file_extension:
-                            file_extension = f".{file_extension}"
+                    file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
 
                     logger.debug(
                         f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
