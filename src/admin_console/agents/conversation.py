@@ -5,6 +5,7 @@
 import asyncio
 import contextlib
 import copy
+import glob
 import json as json_lib
 import logging
 import os
@@ -593,12 +594,15 @@ def register_conversation_routes(agents_bp: Blueprint):
             # This matches the priority order of the media source chain
             cached_file = None
             
+            # Escape unique_id to prevent glob pattern injection attacks
+            escaped_unique_id = glob.escape(unique_id)
+            
             # Check all config directories first (without fallback to state/media/)
             for config_dir in CONFIG_DIRECTORIES:
                 config_media_dir = Path(config_dir) / "media"
                 if config_media_dir.exists() and config_media_dir.is_dir():
                     # Search only in this config directory (no fallback)
-                    for file_path in config_media_dir.glob(f"{unique_id}.*"):
+                    for file_path in config_media_dir.glob(f"{escaped_unique_id}.*"):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break
@@ -609,7 +613,7 @@ def register_conversation_routes(agents_bp: Blueprint):
             if not cached_file:
                 state_media_dir = Path(STATE_DIRECTORY) / "media"
                 if state_media_dir.exists() and state_media_dir.is_dir():
-                    for file_path in state_media_dir.glob(f"{unique_id}.*"):
+                    for file_path in state_media_dir.glob(f"{escaped_unique_id}.*"):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break
