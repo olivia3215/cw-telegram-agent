@@ -3,6 +3,7 @@
 # Intention management routes for the admin console.
 
 import logging
+import uuid
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
@@ -14,6 +15,7 @@ from memory_storage import (
     load_property_entries,
     mutate_property_entries,
 )
+from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
 
@@ -95,4 +97,43 @@ def register_intention_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error deleting intention {intention_id} for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/intentions", methods=["POST"])
+    def api_create_intention(agent_config_name: str):
+        """Create a new intention entry."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            data = request.json or {}
+            content = data.get("content", "").strip()
+            
+            if not content:
+                return jsonify({"error": "Content is required"}), 400
+
+            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
+            
+            intention_id = f"intent-{uuid.uuid4().hex[:8]}"
+            created_value = normalize_created_string(None, agent)
+            
+            new_entry = {
+                "id": intention_id,
+                "content": content,
+                "created": created_value,
+                "origin": "puppetmaster"
+            }
+
+            def create_intention(entries, payload):
+                entries.append(new_entry)
+                return entries, payload
+
+            mutate_property_entries(
+                memory_file, "intention", default_id_prefix="intent", mutator=create_intention
+            )
+
+            return jsonify({"success": True, "intention": new_entry})
+        except Exception as e:
+            logger.error(f"Error creating intention for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500

@@ -2460,12 +2460,15 @@
                     }
                     
                     const intentions = data.intentions || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewIntention(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Intention</button></div>';
+                    
                     if (intentions.length === 0) {
-                        container.innerHTML = '<div class="placeholder-card">No intentions found.</div>';
+                        html += '<div class="placeholder-card">No intentions found.</div>';
+                        container.innerHTML = html;
                         return;
                     }
                     
-                    container.innerHTML = intentions.map(intention => `
+                    html += intentions.map(intention => `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
@@ -2482,6 +2485,7 @@
                             <div id="intention-status-${intention.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
+                    container.innerHTML = html;
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -2489,6 +2493,35 @@
                     }
                     container.innerHTML = `<div class="error">Error loading intentions: ${error}</div>`;
                 });
+        }
+
+        function createNewIntention(agentName) {
+            if (!agentName) {
+                alert('Please select an agent');
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: 'New intention entry' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error creating intention: ' + data.error);
+                } else {
+                    loadIntentions(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error creating intention: ' + error);
+            });
         }
 
         // Auto-save for intentions
