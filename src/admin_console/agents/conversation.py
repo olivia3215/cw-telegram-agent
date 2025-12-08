@@ -3,6 +3,7 @@
 # Conversation management routes for the admin console.
 
 import asyncio
+import contextlib
 import copy
 import json as json_lib
 import logging
@@ -20,8 +21,9 @@ from handlers.received_helpers.summarization import trigger_summarization_direct
 from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
-from media.media_source import get_default_media_source_chain
-from media.mime_utils import detect_mime_type_from_bytes
+from media.media_source import MediaStatus, get_default_media_source_chain
+from media.media_sources import get_directory_media_source
+from media.mime_utils import detect_mime_type_from_bytes, get_file_extension_from_mime_or_bytes
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telegram_download import download_media_bytes
@@ -689,6 +691,52 @@ def register_conversation_routes(agents_bp: Blueprint):
                 logger.debug(
                     f"Downloaded media {unique_id} from Telegram for {agent_config_name}/{user_id}/{message_id}"
                 )
+                
+                # Cache the downloaded media file to state/media/ for future use
+                # Use the same storage mechanism as the normal media source chain
+                try:
+                    # Get file extension from MIME type or by detecting from bytes
+                    file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+                    
+                    # Store media file if we have an extension
+                    if file_extension:
+                        # Get the shared DirectoryMediaSource instance for state/media/
+                        state_media_dir = Path(STATE_DIRECTORY) / "media"
+                        cache_source = get_directory_media_source(state_media_dir)
+                        
+                        # Check if file already exists to avoid overwriting
+                        media_filename = f"{unique_id}{file_extension}"
+                        media_file = state_media_dir / media_filename
+                        if not media_file.exists():
+                            # Create a record using the same structure as normal media storage
+                            # This indicates the file is cached but description is pending
+                            from clock import clock
+                            from datetime import UTC
+                            
+                            record = {
+                                "unique_id": unique_id,
+                                "description": None,
+                                "status": MediaStatus.TEMPORARY_FAILURE.value,
+                                "failure_reason": "File cached from admin console, description pending",
+                                "ts": clock.now(UTC).isoformat(),
+                            }
+                            
+                            # Add MIME type if available
+                            if mime_type:
+                                record["mime_type"] = mime_type
+                            
+                            try:
+                                cache_source.put(unique_id, record, media_bytes, file_extension)
+                                logger.debug(
+                                    f"Cached media file {media_filename} to {state_media_dir} for {unique_id}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to cache media file {media_filename}: {e}")
+                    else:
+                        logger.debug(f"Could not determine file extension for {unique_id}, skipping cache")
+                except Exception as e:
+                    # Don't fail the request if caching fails
+                    logger.warning(f"Error caching media file for {unique_id}: {e}")
                 
                 return Response(
                     media_bytes,
