@@ -475,13 +475,16 @@ async def _replace_custom_emoji_in_reactions(
             except Exception:
                 user_name = str(user_id)
             
+            # Escape user_name to prevent XSS when inserted into HTML
+            user_name_escaped = html.escape(user_name)
+            
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
                 continue
             
             # Build the reaction part
-            reaction_part = f'"{user_name}"({user_id})='
+            reaction_part = f'"{user_name_escaped}"({user_id})='
             
             # Check if it's a custom emoji (has document_id)
             if hasattr(reaction_obj, 'document_id'):
@@ -861,6 +864,10 @@ def register_conversation_routes(agents_bp: Blueprint):
                         if not sender_name:
                             sender_name = "User"
                         
+                        # Escape sender_name to prevent XSS when displayed in frontend
+                        # (Frontend also escapes, but defense in depth)
+                        sender_name = html.escape(sender_name)
+                        
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
                         
                         # Extract reply_to information
@@ -1179,8 +1186,11 @@ def register_conversation_routes(agents_bp: Blueprint):
                         if is_forwarded_story and not parts:
                             story_text = "Forwarded story"
                             if story_from_name:
-                                story_text = f"Forwarded story from {story_from_name}"
-                            # Convert to HTML and escape user-controlled content (story_from_name) to prevent XSS
+                                # Escape story_from_name before inserting into string to prevent XSS
+                                # (markdown_to_html will also escape, but defense in depth)
+                                story_from_name_escaped = html.escape(story_from_name)
+                                story_text = f"Forwarded story from {story_from_name_escaped}"
+                            # Convert to HTML (additional escaping for safety)
                             story_html = markdown_to_html(story_text)
                             parts.append({
                                 "kind": "text",
