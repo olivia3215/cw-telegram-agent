@@ -15,6 +15,14 @@
             max-width: 100vw;
             overflow-x: hidden;
         }
+        /* Ensure emojis render consistently regardless of formatting */
+        strong, em {
+            font-variant-emoji: emoji;
+        }
+        /* Prevent font-weight/font-style from affecting emoji rendering */
+        strong em, em strong, strong, em {
+            font-feature-settings: "liga" on, "calt" on;
+        }
         .main-container {
             max-width: 100%;
             width: 100%;
@@ -3421,7 +3429,9 @@
                                 const partText = showTranslation && conversationTranslations[msg.id] 
                                     ? conversationTranslations[msg.id] 
                                     : part.text;
-                                contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                                // Text may contain HTML formatting (bold, italic, etc.) - render it
+                                // Use CSS to ensure emojis render consistently (don't apply font-weight/font-style to emojis)
+                                contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText}</div>`;
                             } else if (part.kind === 'media') {
                                 const mediaKind = part.media_kind || 'media';
                                 const uniqueId = part.unique_id;
@@ -3473,7 +3483,8 @@
                         const displayText = showTranslation && conversationTranslations[msg.id] 
                             ? conversationTranslations[msg.id] 
                             : msg.text;
-                        contentHtml = `<div style="white-space: pre-wrap;">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                        // Text may contain HTML formatting (bold, italic, etc.) - render it
+                        contentHtml = `<div style="white-space: pre-wrap;">${displayText}</div>`;
                     }
                     
                     // If still no content, show placeholder
@@ -3518,7 +3529,63 @@
             // Load TGS animations for animated stickers in conversation (same as media editor)
             setTimeout(() => {
                 loadTGSAnimationsForConversation(agentName, userId);
+                loadCustomEmojiAnimations(agentName);
             }, 100);
+        }
+        
+        async function loadCustomEmojiAnimations(agentName) {
+            // Find all custom emoji containers and check if they're animated (TGS)
+            // Only process containers that haven't been processed yet (don't have a Lottie player)
+            const emojiContainers = document.querySelectorAll('.custom-emoji-container:not([data-lottie-processed])');
+            
+            for (const container of emojiContainers) {
+                const emojiUrl = container.getAttribute('data-emoji-url');
+                const documentId = container.getAttribute('data-document-id');
+                const emojiChar = container.getAttribute('data-emoji-char');
+                
+                if (!emojiUrl || !documentId) continue;
+                
+                // Mark as processed immediately to avoid duplicate processing
+                container.setAttribute('data-lottie-processed', 'true');
+                
+                try {
+                    // Fetch the emoji to check if it's animated (TGS)
+                    // The emojiUrl from data attribute should already be a full path like /admin/api/agents/...
+                    const response = await fetchWithAuth(emojiUrl);
+                    const contentType = response.headers.get('content-type') || '';
+                    const isAnimated = response.headers.get('x-emoji-type') === 'animated' || 
+                                      contentType.includes('application/gzip') || 
+                                      contentType.includes('application/x-tgsticker');
+                    
+                    if (isAnimated) {
+                        // It's a TGS file - render with Lottie
+                        const tgsData = await response.arrayBuffer();
+                        // Use a unique player ID that includes the container's position to avoid conflicts
+                        const containerIndex = Array.from(document.querySelectorAll('.custom-emoji-container')).indexOf(container);
+                        const playerId = `emoji-lottie-${documentId}-${containerIndex}`;
+                        
+                        // Replace img with Lottie container
+                        container.innerHTML = `<div id="${playerId}" style="width: 1.2em; height: 1.2em;"></div>`;
+                        
+                        // Decompress and load TGS with Lottie
+                        const decompressed = pako.inflate(new Uint8Array(tgsData));
+                        const jsonData = JSON.parse(new TextDecoder().decode(decompressed));
+                        
+                        const player = lottie.loadAnimation({
+                            container: document.getElementById(playerId),
+                            renderer: 'svg',
+                            loop: true,
+                            autoplay: true,
+                            animationData: jsonData
+                        });
+                    }
+                    // If not animated, the img tag will display normally
+                } catch (error) {
+                    console.warn(`Failed to load custom emoji ${documentId}:`, error);
+                    // Remove the processed flag on error so it can be retried
+                    container.removeAttribute('data-lottie-processed');
+                }
+            }
         }
         
         async function loadTGSAnimationsForConversation(agentName, userId) {
