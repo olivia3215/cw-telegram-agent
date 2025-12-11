@@ -3507,9 +3507,11 @@
                     }
                     
                     // Add reactions if present
+                    // Note: msg.reactions may contain HTML (img tags for custom emojis) added by the backend,
+                    // so we should NOT escape it - the backend intentionally provides HTML to render
                     let reactionsHtml = '';
                     if (msg.reactions) {
-                        reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                        reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions}</div>`;
                     }
                     
                     return `
@@ -3534,23 +3536,22 @@
         }
         
         async function loadCustomEmojiAnimations(agentName) {
-            // Find all custom emoji containers and check if they're animated (TGS)
-            // Only process containers that haven't been processed yet (don't have a Lottie player)
-            const emojiContainers = document.querySelectorAll('.custom-emoji-container:not([data-lottie-processed])');
+            // Find all custom emoji reaction images and check if they're animated (TGS)
+            // Only process images that haven't been processed yet (don't have the processed flag)
+            const emojiImages = document.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed])');
             
-            for (const container of emojiContainers) {
-                const emojiUrl = container.getAttribute('data-emoji-url');
-                const documentId = container.getAttribute('data-document-id');
-                const emojiChar = container.getAttribute('data-emoji-char');
+            for (const img of emojiImages) {
+                const emojiUrl = img.getAttribute('data-emoji-url') || img.getAttribute('src');
+                const documentId = img.getAttribute('data-document-id');
                 
                 if (!emojiUrl || !documentId) continue;
                 
                 // Mark as processed immediately to avoid duplicate processing
-                container.setAttribute('data-lottie-processed', 'true');
+                img.setAttribute('data-lottie-processed', 'true');
                 
                 try {
                     // Fetch the emoji to check if it's animated (TGS)
-                    // The emojiUrl from data attribute should already be a full path like /admin/api/agents/...
+                    // The emojiUrl should already be a full path like /admin/api/agents/...
                     const response = await fetchWithAuth(emojiUrl);
                     const contentType = response.headers.get('content-type') || '';
                     const isAnimated = response.headers.get('x-emoji-type') === 'animated' || 
@@ -3560,12 +3561,26 @@
                     if (isAnimated) {
                         // It's a TGS file - render with Lottie
                         const tgsData = await response.arrayBuffer();
-                        // Use a unique player ID that includes the container's position to avoid conflicts
-                        const containerIndex = Array.from(document.querySelectorAll('.custom-emoji-container')).indexOf(container);
-                        const playerId = `emoji-lottie-${documentId}-${containerIndex}`;
+                        // Use a unique player ID that includes the document ID and position to avoid conflicts
+                        const imgIndex = Array.from(document.querySelectorAll('.custom-emoji-reaction')).indexOf(img);
+                        const playerId = `emoji-lottie-${documentId}-${imgIndex}`;
                         
-                        // Replace img with Lottie container
-                        container.innerHTML = `<div id="${playerId}" style="width: 1.2em; height: 1.2em;"></div>`;
+                        // Get the parent element (or create a wrapper) to replace the img
+                        const parent = img.parentElement;
+                        const wrapper = document.createElement('span');
+                        wrapper.style.display = 'inline-block';
+                        wrapper.style.width = '1.2em';
+                        wrapper.style.height = '1.2em';
+                        wrapper.style.verticalAlign = 'middle';
+                        wrapper.innerHTML = `<div id="${playerId}" style="width: 1.2em; height: 1.2em;"></div>`;
+                        
+                        // Replace img with wrapper containing Lottie container
+                        if (parent) {
+                            parent.insertBefore(wrapper, img);
+                            parent.removeChild(img);
+                        } else {
+                            img.replaceWith(wrapper);
+                        }
                         
                         // Decompress and load TGS with Lottie
                         const decompressed = pako.inflate(new Uint8Array(tgsData));
@@ -3583,7 +3598,7 @@
                 } catch (error) {
                     console.warn(`Failed to load custom emoji ${documentId}:`, error);
                     // Remove the processed flag on error so it can be retried
-                    container.removeAttribute('data-lottie-processed');
+                    img.removeAttribute('data-lottie-processed');
                 }
             }
         }

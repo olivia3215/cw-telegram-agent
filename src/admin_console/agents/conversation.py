@@ -446,31 +446,65 @@ async def _replace_custom_emoji_in_reactions(
         if not recent_reactions:
             return reactions_str
         
-        result = reactions_str
-        # Find custom emoji reactions and replace [name] with img tags
+        from utils import get_custom_emoji_name, extract_user_id_from_peer
+        from handlers.received_helpers.message_processing import get_channel_name
+        
+        # Rebuild reactions string directly from reaction objects, using img tags for custom emojis
+        # This is more reliable than trying to match and replace text in the formatted string
+        reaction_parts = []
         for reaction in recent_reactions:
+            # Get user info
+            peer_id = getattr(reaction, 'peer_id', None)
+            if not peer_id:
+                continue
+            
+            user_id = extract_user_id_from_peer(peer_id)
+            if user_id is None:
+                continue
+            
+            # Get user name
+            try:
+                user_name = await get_channel_name(agent, user_id)
+            except Exception:
+                user_name = str(user_id)
+            
+            # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
                 continue
             
+            # Build the reaction part
+            reaction_part = f'"{user_name}"({user_id})='
+            
             # Check if it's a custom emoji (has document_id)
             if hasattr(reaction_obj, 'document_id'):
                 document_id = reaction_obj.document_id
-                # Try to get the emoji name to find it in the reactions string
-                from utils import get_custom_emoji_name
+                # Build img tag directly for custom emoji - always use img tag, not text replacement
+                emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
+                # Try to get emoji name for alt text, but don't fail if we can't
                 try:
                     emoji_name = await get_custom_emoji_name(agent, document_id)
-                    if emoji_name and emoji_name.startswith('[') and emoji_name.endswith(']'):
-                        # Replace [name] with img tag
-                        # The blueprint is registered with url_prefix="/admin", so /api/agents/... becomes /admin/api/agents/...
-                        # But we need to include /admin in the URL since it's used in HTML
-                        emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
-                        img_tag = f'<img src="{emoji_url}" alt="{emoji_name}" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" />'
-                        result = result.replace(emoji_name, img_tag)
+                    alt_text = emoji_name if emoji_name else "🎭"
                 except Exception:
-                    pass  # If we can't get the name, skip this emoji
+                    alt_text = "🎭"
+                # Add data attributes so the frontend can detect and handle animated emojis
+                img_tag = f'<img class="custom-emoji-reaction" src="{emoji_url}" alt="{alt_text}" data-emoji-url="{emoji_url}" data-document-id="{document_id}" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" />'
+                reaction_part += img_tag
+            elif hasattr(reaction_obj, 'emoticon'):
+                # Regular emoji - keep as is
+                reaction_part += reaction_obj.emoticon
+            else:
+                # Unknown reaction type - skip
+                continue
+            
+            reaction_parts.append(reaction_part)
         
-        return result
+        # Return rebuilt reactions string with img tags for custom emojis
+        if reaction_parts:
+            return ', '.join(reaction_parts)
+        else:
+            # If we couldn't rebuild (shouldn't happen), return original
+            return reactions_str
     except Exception as e:
         logger.debug(f"Error replacing custom emojis in reactions: {e}")
         return reactions_str
