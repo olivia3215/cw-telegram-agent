@@ -735,13 +735,8 @@ def register_conversation_routes(agents_bp: Blueprint):
                                         # Extract the story from the result
                                         if hasattr(stories_result, "stories") and stories_result.stories:
                                             story_item = stories_result.stories[0]
-                                            logger.info(f"Fetched story {story_id} for message {message.id}")
-                                        else:
-                                            logger.info(f"Story {story_id} not found in result for message {message.id}")
                                     except Exception as e:
-                                        logger.info(f"Failed to fetch story {story_id} for message {message.id}: {e}")
-                                
-                                logger.info(f"Detected forwarded story via MessageMediaStory in message {message.id}, story_id={story_id}, peer={story_peer}, story_item={'available' if story_item else 'None'}")
+                                        logger.debug(f"Failed to fetch story {story_id} for message {message.id}: {e}")
                         
                         # Also check fwd_from for StoryFwdHeader (alternative representation)
                         if fwd_from and not is_forwarded_story:
@@ -790,18 +785,6 @@ def register_conversation_routes(agents_bp: Blueprint):
                         
                         # For forwarded stories, check if the message itself has text with formatting
                         # (the story caption will be handled separately)
-                        if is_forwarded_story and raw_text:
-                            logger.info(f"Message {message.id}: Forwarded story has message text: {raw_text[:100]}, entities: {len(entities) if entities else 0}")
-                            # Log entity details for message text if it's a forwarded story
-                            if entities:
-                                for i, entity in enumerate(entities[:3]):  # Log first 3 entities
-                                    entity_type = entity.__class__.__name__ if hasattr(entity, "__class__") else str(type(entity))
-                                    utf16_offset = getattr(entity, "offset", 0)
-                                    utf16_length = getattr(entity, "length", 0)
-                                    py_start = _utf16_offset_to_python_index(raw_text, utf16_offset)
-                                    py_end = _utf16_offset_to_python_index(raw_text, utf16_offset + utf16_length)
-                                    entity_text = raw_text[py_start:py_end] if raw_text else ""
-                                    logger.info(f"Message {message.id}: Message entity {i}: type={entity_type}, UTF-16 offset={utf16_offset}, length={utf16_length}, Python indices=[{py_start}:{py_end}], text=\"{entity_text[:50]}\"")
                         
                         # Check if we have formatting information
                         has_entities = bool(entities)
@@ -812,8 +795,6 @@ def register_conversation_routes(agents_bp: Blueprint):
                             if raw_text and entities:
                                 # Convert entities to markdown first, then to HTML
                                 text_markdown = _entities_to_markdown(raw_text, entities)
-                                if text_markdown != raw_text:
-                                    logger.info(f"Message {message.id}: Converted {len(entities)} message entities to markdown. Preview: {text_markdown[:150]}")
                             else:
                                 text_markdown = raw_text
                         
@@ -825,19 +806,10 @@ def register_conversation_routes(agents_bp: Blueprint):
                             text, raw_text, entities, agent_config_name, str(message.id), message
                         )
                         
-                        # Log formatting detection for debugging (only for messages that might have formatting)
-                        if has_entities or has_text_markdown:
-                            if "<strong>" in text or "<em>" in text:
-                                logger.info(f"Message {message.id}: Successfully converted formatting to HTML (entities: {len(entities) if entities else 0}, text_markdown: {has_text_markdown})")
-                            else:
-                                logger.info(f"Message {message.id}: Has formatting info but no HTML tags produced. Entities: {len(entities) if entities else 0}, text_markdown sample: {text_markdown[:50] if text_markdown else 'None'}")
-                        
                         # If this is a forwarded story and we have the story item, try to extract media and text from it
                         story_media_parts = []
                         story_text_content = None
                         story_caption_entities = None
-                        if is_forwarded_story:
-                            logger.info(f"Message {message.id}: Processing forwarded story. story_item={'available' if story_item else 'None'}")
                         if is_forwarded_story and story_item:
                             try:
                                 # Extract text/caption from the story if available
@@ -853,10 +825,6 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 message_text_markdown = getattr(message, "text_markdown", None)
                                 message_text = getattr(message, "message", None) or getattr(message, "text", None) or ""
                                 
-                                # Log caption and entity count for debugging
-                                if story_caption_entities:
-                                    logger.debug(f"Message {message.id}: Story caption has {len(story_caption_entities)} entities")
-                                
                                 # Prefer message text_markdown if available (forwarded stories sometimes have formatted text in the message)
                                 if message_text_markdown and message_text_markdown.strip() and message_text_markdown != message_text:
                                     story_text_content = message_text_markdown
@@ -866,21 +834,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 # Then try story caption with entities
                                 elif story_caption:
                                     if story_caption_entities:
-                                        # Log entity details before conversion for debugging
-                                        logger.info(f"Message {message.id}: Converting {len(story_caption_entities)} story caption entities to markdown")
-                                        for i, entity in enumerate(story_caption_entities[:5]):  # Log first 5 entities
-                                            entity_type = entity.__class__.__name__ if hasattr(entity, "__class__") else str(type(entity))
-                                            utf16_offset = getattr(entity, "offset", 0)
-                                            utf16_length = getattr(entity, "length", 0)
-                                            # Convert to Python indices for logging
-                                            py_start = _utf16_offset_to_python_index(story_caption, utf16_offset)
-                                            py_end = _utf16_offset_to_python_index(story_caption, utf16_offset + utf16_length)
-                                            entity_text = story_caption[py_start:py_end] if story_caption else ""
-                                            logger.info(f"Message {message.id}: Entity {i}: type={entity_type}, UTF-16 offset={utf16_offset}, length={utf16_length}, Python indices=[{py_start}:{py_end}], text=\"{entity_text[:50]}\"")
-                                        
                                         story_text_content = _entities_to_markdown(story_caption, story_caption_entities)
-                                        # Log the markdown before HTML conversion for debugging
-                                        logger.info(f"Message {message.id}: Markdown result preview: {story_text_content[:200]}")
                                     else:
                                         story_text_content = story_caption
                                 # Fallback to message text if story has no caption
