@@ -1399,8 +1399,13 @@ def register_conversation_routes(agents_bp: Blueprint):
             try:
                 translations = agent.execute(_translate_messages(), timeout=60.0)
                 
-                # Convert to dict for easy lookup
-                translation_dict = {t["message_id"]: t["translated_text"] for t in translations}
+                # Convert to dict for easy lookup and sanitize translation text
+                # Translation text comes from LLM and may contain HTML/markdown that needs sanitization
+                # Use markdown_to_html() to escape HTML and safely process any markdown formatting
+                translation_dict = {
+                    t["message_id"]: markdown_to_html(t["translated_text"]) 
+                    for t in translations
+                }
                 
                 return jsonify({"translations": translation_dict})
             except RuntimeError as e:

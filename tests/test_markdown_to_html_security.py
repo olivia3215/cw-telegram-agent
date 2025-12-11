@@ -157,3 +157,32 @@ def test_handles_malicious_markdown():
     result = markdown_to_html("**<script>alert('XSS')</script>** [click](javascript:alert('XSS'))")
     assert "<script>" not in result
     assert 'href="javascript:' not in result
+
+
+def test_escapes_user_controlled_content_in_interpolated_strings():
+    """Test that user-controlled content interpolated into strings is properly escaped.
+    
+    This test verifies the fix for the XSS vulnerability where story_from_name
+    (user-controlled) was interpolated into "Forwarded story from {story_from_name}"
+    without escaping.
+    """
+    # Simulate malicious user/channel name with HTML/script injection
+    malicious_name = "<script>alert('XSS')</script>"
+    story_text = f"Forwarded story from {malicious_name}"
+    
+    result = markdown_to_html(story_text)
+    
+    # HTML tags should be escaped
+    assert "<script>" not in result
+    assert "&lt;script&gt;" in result
+    
+    # The text should still be present (escaped)
+    assert "Forwarded story from" in result
+    assert "alert" in result  # The script content should be present but escaped
+    
+    # Test with other HTML tags
+    malicious_name2 = "<img src=x onerror=alert('XSS')>"
+    story_text2 = f"Forwarded story from {malicious_name2}"
+    result2 = markdown_to_html(story_text2)
+    assert "<img" not in result2
+    assert "&lt;img" in result2
