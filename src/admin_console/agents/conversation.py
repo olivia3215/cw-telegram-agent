@@ -208,7 +208,7 @@ def _entities_to_markdown(text: str, entities: list) -> str:
 
 
 async def _replace_custom_emojis_with_images(
-    html: str, 
+    html_text: str, 
     text: str, 
     entities: list, 
     agent_name: str, 
@@ -220,7 +220,7 @@ async def _replace_custom_emojis_with_images(
     This is a central helper that can be used for both message text and reactions.
     
     Args:
-        html: HTML text that may contain custom emoji characters
+        html_text: HTML text that may contain custom emoji characters
         text: Original text (to match emoji positions)
         entities: List of MessageEntity objects (should include MessageEntityCustomEmoji)
         agent_name: Agent name for building emoji URLs
@@ -230,14 +230,14 @@ async def _replace_custom_emojis_with_images(
     Returns:
         HTML with custom emojis replaced by img tags
     """
-    if not html or not entities:
-        return html
+    if not html_text or not entities:
+        return html_text
     
     # Quick check: if the HTML already contains custom-emoji-container tags,
     # we might be processing already-processed HTML. 
     # Count how many emoji characters from entities are still in the HTML
     emoji_entities = [e for e in entities if e.__class__.__name__ == "MessageEntityCustomEmoji"]
-    if 'custom-emoji-container' in html and emoji_entities:
+    if 'custom-emoji-container' in html_text and emoji_entities:
         # Check if any emoji characters from entities are still present in HTML
         # If not, all emojis are already replaced and we should skip
         emoji_chars_in_html = []
@@ -247,14 +247,14 @@ async def _replace_custom_emojis_with_images(
             start_idx = _utf16_offset_to_python_index(text, utf16_offset)
             end_idx = _utf16_offset_to_python_index(text, utf16_offset + utf16_length)
             emoji_char = text[start_idx:end_idx]
-            if emoji_char in html:
+            if emoji_char in html_text:
                 emoji_chars_in_html.append(emoji_char)
         
         if not emoji_chars_in_html:
             # All emojis already replaced, skip to avoid duplication
-            return html
+            return html_text
         else:
-            container_count = html.count('custom-emoji-container')
+            container_count = html_text.count('custom-emoji-container')
             logger.debug(f"_replace_custom_emojis_with_images: HTML already contains {container_count} custom-emoji-container tags for message {message_id}, but {len(emoji_chars_in_html)} emoji characters still present. Processing may cause duplication.")
     
     # Build a map of document_id -> document for custom emojis
@@ -268,7 +268,7 @@ async def _replace_custom_emojis_with_images(
             if doc_id:
                 emoji_documents[doc_id] = msg_doc
     
-    result = html
+    result = html_text
     # Process custom emoji entities in reverse order to maintain positions
     # This way, when we replace, earlier positions aren't affected by length changes
     
