@@ -1508,7 +1508,7 @@ def register_conversation_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/emoji/<document_id>", methods=["GET"])
     def api_get_custom_emoji(agent_config_name: str, document_id: str):
-        """Serve custom emoji image by document ID, using cache if available."""
+        """Serve custom emoji image by document ID, using media pipeline for caching and downloading."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -1519,70 +1519,6 @@ def register_conversation_routes(agents_bp: Blueprint):
             except ValueError:
                 return jsonify({"error": "Invalid document ID"}), 400
 
-            # First, check if emoji is cached in any of the media directories
-            # Use document_id as the cache key (similar to unique_id for regular media)
-            import glob
-            cached_file = None
-            
-            # Escape document_id to prevent glob pattern injection attacks
-            escaped_doc_id = glob.escape(str(doc_id))
-            
-            # Check all config directories first (curated media)
-            for config_dir in CONFIG_DIRECTORIES:
-                config_media_dir = Path(config_dir) / "media"
-                if config_media_dir.exists() and config_media_dir.is_dir():
-                    # Search for files with document_id as the base name
-                    # Custom emojis might be stored with document_id as unique_id
-                    for file_path in config_media_dir.glob(f"{escaped_doc_id}.*"):
-                        if file_path.suffix.lower() != ".json":
-                            cached_file = file_path
-                            break
-                    if cached_file:
-                        break
-            
-            # If not found in any config directory, check state/media/ directly
-            if not cached_file:
-                state_media_dir = Path(STATE_DIRECTORY) / "media"
-                if state_media_dir.exists() and state_media_dir.is_dir():
-                    for file_path in state_media_dir.glob(f"{escaped_doc_id}.*"):
-                        if file_path.suffix.lower() != ".json":
-                            cached_file = file_path
-                            break
-            
-            # If found in cache, serve from cache
-            if cached_file and cached_file.exists():
-                try:
-                    # Read the cached file
-                    with open(cached_file, "rb") as f:
-                        emoji_bytes = f.read()
-                    
-                    # Detect MIME type
-                    mime_type = detect_mime_type_from_bytes(emoji_bytes[:1024])
-                    if not mime_type:
-                        mime_type = "image/webp"  # Default for custom emojis
-                    
-                    # Check if it's an animated emoji (TGS/Lottie)
-                    is_animated = is_tgs_mime_type(mime_type)
-                    
-                    headers = {
-                        "Cache-Control": "public, max-age=86400",  # Cache for 1 day
-                    }
-                    if is_animated:
-                        headers["X-Emoji-Type"] = "animated"
-                    
-                    logger.debug(f"Serving cached custom emoji {doc_id} from {cached_file}")
-                    return Response(
-                        emoji_bytes,
-                        mimetype=mime_type,
-                        headers=headers
-                    )
-                except Exception as e:
-                    logger.warning(f"Error reading cached emoji file {cached_file}: {e}")
-                    # Fall through to download from Telegram
-            
-            # Get message_id from query params if provided (to help find the document)
-            message_id_param = request.args.get("message_id", None)
-            
             async def _get_emoji():
                 try:
                     # Use GetCustomEmojiDocumentsRequest to fetch the document by document_id
@@ -1590,14 +1526,11 @@ def register_conversation_routes(agents_bp: Blueprint):
                     
                     logger.debug(f"Fetching custom emoji document {doc_id} using GetCustomEmojiDocumentsRequest")
                     # Fetch the custom emoji document
-                    # Note: document_id should be a list of document IDs
                     result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[doc_id]))
-                    
-                    logger.debug(f"GetCustomEmojiDocumentsRequest result for {doc_id}: {result}, type: {type(result)}")
                     
                     if not result:
                         logger.warning(f"Custom emoji document {doc_id} - GetCustomEmojiDocumentsRequest returned None")
-                        return None
+                        return None, None
                     
                     # Check different possible result structures
                     documents = None
@@ -1608,33 +1541,82 @@ def register_conversation_routes(agents_bp: Blueprint):
                     elif isinstance(result, list):
                         documents = result
                     
-                    logger.debug(f"Custom emoji document {doc_id} - extracted documents: {documents}, count: {len(documents) if documents else 0}")
-                    
                     if not documents or len(documents) == 0:
-                        logger.warning(f"Custom emoji document {doc_id} not found via GetCustomEmojiDocumentsRequest (no documents in result)")
-                        return None
+                        logger.warning(f"Custom emoji document {doc_id} not found via GetCustomEmojiDocumentsRequest")
+                        return None, None
                     
                     # Get the first document (should only be one for a single document_id)
                     doc = documents[0] if documents else None
                     if not doc:
                         logger.warning(f"Custom emoji document {doc_id} returned empty result")
-                        return None
+                        return None, None
                     
-                    logger.debug(f"Found custom emoji document {doc_id}, type: {type(doc)}, downloading...")
-                    # Download the emoji image using the document
-                    emoji_bytes = await download_media_bytes(agent.client, doc)
-                    if not emoji_bytes or len(emoji_bytes) == 0:
-                        logger.warning(f"Custom emoji document {doc_id} downloaded but empty")
-                        return None
-                    logger.info(f"Custom emoji document {doc_id} downloaded successfully, size: {len(emoji_bytes)} bytes")
-                    return emoji_bytes
+                    # Get unique_id from document for use with media pipeline
+                    unique_id = getattr(doc, "file_unique_id", None)
+                    if not unique_id:
+                        # Fallback to document_id as string if file_unique_id not available
+                        unique_id = str(doc_id)
+                    
+                    # Use media pipeline to get/cache the emoji
+                    # This will handle caching, downloading, and description generation
+                    media_chain = get_default_media_source_chain()
+                    record = await media_chain.get(
+                        unique_id=unique_id,
+                        agent=agent,
+                        doc=doc,
+                        kind="sticker",  # Custom emojis are treated as stickers
+                        sender_id=None,
+                        sender_name=None,
+                        channel_id=None,
+                        channel_name=None,
+                    )
+                    
+                    if not record:
+                        logger.warning(f"Custom emoji {doc_id} (unique_id: {unique_id}) not found via media pipeline")
+                        return None, None
+                    
+                    # After calling media_chain.get(), the file should be cached
+                    # Find the cached file using unique_id
+                    import glob
+                    cached_file = None
+                    escaped_unique_id = glob.escape(unique_id)
+                    
+                    # Check all config directories first (curated media)
+                    for config_dir in CONFIG_DIRECTORIES:
+                        config_media_dir = Path(config_dir) / "media"
+                        if config_media_dir.exists() and config_media_dir.is_dir():
+                            for file_path in config_media_dir.glob(f"{escaped_unique_id}.*"):
+                                if file_path.suffix.lower() != ".json":
+                                    cached_file = file_path
+                                    break
+                            if cached_file:
+                                break
+                    
+                    # If not found in config directories, check state/media/
+                    if not cached_file:
+                        state_media_dir = Path(STATE_DIRECTORY) / "media"
+                        if state_media_dir.exists() and state_media_dir.is_dir():
+                            for file_path in state_media_dir.glob(f"{escaped_unique_id}.*"):
+                                if file_path.suffix.lower() != ".json":
+                                    cached_file = file_path
+                                    break
+                    
+                    if not cached_file or not cached_file.exists():
+                        logger.warning(f"Custom emoji {doc_id} (unique_id: {unique_id}) processed but cached file not found")
+                        return None, None
+                    
+                    # Read the cached file
+                    with open(cached_file, "rb") as f:
+                        emoji_bytes = f.read()
+                    
+                    return emoji_bytes, unique_id
                 except Exception as e:
                     logger.error(f"Error fetching custom emoji {doc_id}: {e}", exc_info=True)
-                    return None
+                    return None, None
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
-                emoji_bytes = agent.execute(_get_emoji(), timeout=10.0)
+                emoji_bytes, unique_id = agent.execute(_get_emoji(), timeout=10.0)
                 if not emoji_bytes:
                     logger.warning(f"Custom emoji {document_id} not found or failed to download")
                     return jsonify({"error": "Emoji not found"}), 404
@@ -1647,9 +1629,6 @@ def register_conversation_routes(agents_bp: Blueprint):
                 # Check if it's an animated emoji (TGS/Lottie)
                 is_animated = is_tgs_mime_type(mime_type)
                 
-                # For animated emojis, we need to serve them in a way that can be rendered with Lottie
-                # For now, serve the raw TGS file - the frontend can detect and render with Lottie
-                # Add a header to indicate if it's animated
                 headers = {
                     "Cache-Control": "public, max-age=86400",  # Cache for 1 day
                 }
