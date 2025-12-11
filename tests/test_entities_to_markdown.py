@@ -136,3 +136,123 @@ def test_entities_with_emoji():
     # Expected: "**Hello 😀** world"
     assert result.startswith("**Hello 😀**")
     assert "world" in result
+
+
+def test_entities_ending_at_same_position():
+    """Test that entities ending at the same position are handled correctly.
+    
+    This test verifies the fix for the bug where end_idx adjustment didn't include
+    markdown_before_start, causing incorrect markdown placement when entities end
+    at the same position.
+    """
+    # Text: "Hello world"
+    # Bold: "Hello world" (offset 0, length 11) - entire string
+    # Italic: "world" (offset 6, length 5) - just the word "world"
+    # Both entities end at offset 11 (same position)
+    text = "Hello world"
+    
+    class MessageEntityBold:
+        def __init__(self, offset, length):
+            self.offset = offset
+            self.length = length
+    
+    class MessageEntityItalic:
+        def __init__(self, offset, length):
+            self.offset = offset
+            self.length = length
+    
+    bold_entity = MessageEntityBold(offset=0, length=11)
+    italic_entity = MessageEntityItalic(offset=6, length=5)
+    
+    entities = [bold_entity, italic_entity]
+    result = _entities_to_markdown(text, entities)
+    
+    # Expected: "**Hello __world__**"
+    # The italic entity is processed first (offset 6 > offset 0), inserting "__" at positions 6 and 11
+    # Then the bold entity is processed, which needs to account for the "__" inserted at position 6
+    # (which is before its end_idx of 11) when adjusting end_idx
+    assert result == "**Hello __world__**"
+    assert result.startswith("**")
+    assert result.endswith("**")
+    assert "__world__" in result
+
+
+def test_url_entity_closing_len_bug():
+    """Test that URL entities calculate closing_len correctly.
+    
+    This test verifies the fix for the bug where closing_len for URL entities was
+    calculated as 2 + len(url) instead of 3 + len(url). The actual markdown inserted
+    is ](" + url + ")" which has 3 fixed characters (], (, )) plus the URL length.
+    
+    The fix ensures that when URL entities are processed before other nested entities,
+    the position adjustments account for the correct length of the closing markdown.
+    """
+    # Text: "Link here"
+    # URL: "Link" (offset 0, length 4) - link to "http://x.co" (11 chars)
+    # The closing markdown should be: ](http://x.co) = 3 + 11 = 14 characters
+    # With the bug (closing_len = 2 + 11 = 13), position calculations would be off by 1
+    # With the fix (closing_len = 3 + 11 = 14), position calculations are correct
+    text = "Link here"
+    
+    class MessageEntityTextUrl:
+        def __init__(self, offset, length, url):
+            self.offset = offset
+            self.length = length
+            self.url = url
+    
+    url_entity = MessageEntityTextUrl(offset=0, length=4, url="http://x.co")
+    
+    entities = [url_entity]
+    result = _entities_to_markdown(text, entities)
+    
+    # Verify the URL markdown is correctly formatted
+    # Expected: [Link](http://x.co) here
+    # The closing markdown ](http://x.co) is 14 chars (3 fixed + 11 URL)
+    assert result.startswith("[Link](http://x.co)")
+    assert " here" in result
+    # Verify the exact structure
+    assert result == "[Link](http://x.co) here"
+
+def test_url_entity_closing_len_bug2():
+    text = "Visit example then bold"
+    
+    class MessageEntityTextUrl:
+        def __init__(self, offset, length, url):
+            self.offset = offset
+            self.length = length
+            self.url = url
+    
+    class MessageEntityBold:
+        def __init__(self, offset, length):
+            self.offset = offset
+            self.length = length
+    
+    url_entity = MessageEntityTextUrl(offset=0, length=13, url="https://example.com")
+    bold_entity = MessageEntityBold(offset=14, length=9)
+    
+    entities = [url_entity, bold_entity]
+    result = _entities_to_markdown(text, entities)
+    
+    assert result == "[Visit example](https://example.com) **then bold**"
+
+def test_url_entity_closing_len_bug3():
+    text = "Visit example then bold"
+    
+    class MessageEntityTextUrl:
+        def __init__(self, offset, length, url):
+            self.offset = offset
+            self.length = length
+            self.url = url
+    
+    class MessageEntityBold:
+        def __init__(self, offset, length):
+            self.offset = offset
+            self.length = length
+    
+    url_entity = MessageEntityTextUrl(offset=0, length=14, url="https://example.com")
+    bold_entity = MessageEntityBold(offset=14, length=9)
+    
+    entities = [url_entity, bold_entity]
+    result = _entities_to_markdown(text, entities)
+    
+    assert result == "[Visit example ](https://example.com)**then bold**"

@@ -144,7 +144,7 @@ def _entities_to_markdown(text: str, entities: list) -> str:
                 url = getattr(prev_entity, "url", None) or ""
                 if url:
                     opening_len = 1  # "["
-                    closing_len = 2 + len(url)  # "]" + "(" + url + ")"
+                    closing_len = 3 + len(url)  # "]" + "(" + url + ")"
             
             # Count markdown inserted before our start and end positions
             # The opening delimiter is inserted at prev_start_idx
@@ -152,24 +152,28 @@ def _entities_to_markdown(text: str, entities: list) -> str:
             # We need to count how much markdown appears before each of our positions in the result string
             
             # Count opening delimiter
-            if prev_start_idx < start_idx:
-                # Opening delimiter is before our start
+            if prev_start_idx <= start_idx:
+                # Opening delimiter is at or before our start
                 markdown_before_start += opening_len
             elif prev_start_idx < end_idx:
-                # Opening delimiter is before our end (but at or after our start)
+                # Opening delimiter is before our end (but after our start)
                 markdown_before_end += opening_len
             
             # Count closing delimiter
-            if prev_end_idx < start_idx:
-                # Closing delimiter is before our start
+            if prev_end_idx <= start_idx:
+                # Closing delimiter is at or before our start
                 markdown_before_start += closing_len
-            elif prev_end_idx < end_idx:
-                # Closing delimiter is before our end (but at or after our start)
+            elif prev_end_idx <= end_idx:
+                # Closing delimiter is before or at our end (but after our start)
+                # When prev_end_idx == end_idx, we still count it because we want to insert
+                # our closing delimiter after the previous one
                 markdown_before_end += closing_len
         
         # Adjust indices to account for markdown inserted before them
+        # Note: markdown_before_start shifts both start_idx and end_idx, since it's inserted
+        # before start_idx and shifts everything after it. markdown_before_end only shifts end_idx.
         start_idx += markdown_before_start
-        end_idx += markdown_before_end
+        end_idx += markdown_before_start + markdown_before_end
         
         # Ensure indices are within bounds
         if start_idx < 0:
@@ -1171,13 +1175,15 @@ def register_conversation_routes(agents_bp: Blueprint):
                             story_text = "Forwarded story"
                             if story_from_name:
                                 story_text = f"Forwarded story from {story_from_name}"
+                            # Convert to HTML and escape user-controlled content (story_from_name) to prevent XSS
+                            story_html = markdown_to_html(story_text)
                             parts.append({
                                 "kind": "text",
-                                "text": story_text
+                                "text": story_html
                             })
                             # Also update the main text field for consistency
                             if not text:
-                                text = story_text
+                                text = story_html
                             logger.debug(f"Added forwarded story text part for message {message.id}: {story_text}")
                         
                         # Also handle case where message has no text and no parts (might be other types of empty messages)
