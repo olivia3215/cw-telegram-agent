@@ -810,6 +810,10 @@ def register_conversation_routes(agents_bp: Blueprint):
                         story_media_parts = []
                         story_text_content = None
                         story_caption_entities = None
+                        # Track which source story_text_content came from, and the corresponding raw text and entities
+                        story_text_source = None  # 'message_markdown', 'message_text', 'story_markdown', 'story_caption', 'formatted_parts'
+                        story_text_raw = None  # The raw text that corresponds to story_text_content (for entity offsets)
+                        story_text_entities = None  # The entities that correspond to story_text_raw
                         if is_forwarded_story and story_item:
                             try:
                                 # Extract text/caption from the story if available
@@ -828,18 +832,31 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 # Prefer message text_markdown if available (forwarded stories sometimes have formatted text in the message)
                                 if message_text_markdown and message_text_markdown.strip() and message_text_markdown != message_text:
                                     story_text_content = message_text_markdown
+                                    story_text_source = 'message_markdown'
+                                    story_text_raw = message_text
+                                    story_text_entities = entities  # Use message entities
                                 # Then try story text_markdown
                                 elif story_text_markdown and story_text_markdown != story_caption:
                                     story_text_content = story_text_markdown
+                                    story_text_source = 'story_markdown'
+                                    # For story_text_markdown, use story_caption as raw text if available, otherwise we might not have entities
+                                    story_text_raw = story_caption if story_caption else None
+                                    story_text_entities = story_caption_entities if story_caption else None
                                 # Then try story caption with entities
                                 elif story_caption:
                                     if story_caption_entities:
                                         story_text_content = _entities_to_markdown(story_caption, story_caption_entities)
                                     else:
                                         story_text_content = story_caption
+                                    story_text_source = 'story_caption'
+                                    story_text_raw = story_caption
+                                    story_text_entities = story_caption_entities
                                 # Fallback to message text if story has no caption
                                 elif message_text and message_text.strip():
                                     story_text_content = message_text
+                                    story_text_source = 'message_text'
+                                    story_text_raw = message_text
+                                    story_text_entities = entities  # Use message entities
                                 
                                 # Extract media from the story item
                                 # The story has a 'media' attribute that contains Photo, Document, etc.
@@ -894,6 +911,11 @@ def register_conversation_routes(agents_bp: Blueprint):
                                                 # Skip text parts if we already have story_text_content
                                                 if not story_text_content:
                                                     story_text_content = part.get("text")
+                                                    story_text_source = 'formatted_parts'
+                                                    # Formatted parts might not have corresponding raw text/entities
+                                                    # Use story_caption if available as fallback
+                                                    story_text_raw = story_caption if story_caption else None
+                                                    story_text_entities = story_caption_entities if story_caption else None
                                             elif part.get("kind") == "media":
                                                 story_media_parts.append({
                                                     "kind": "media",
@@ -938,12 +960,17 @@ def register_conversation_routes(agents_bp: Blueprint):
                             story_text = story_text_content.strip()
                             # Convert markdown to HTML for story captions
                             story_html = markdown_to_html(story_text)
-                            # Replace custom emojis with images in story caption
-                            # Note: story_item doesn't have the same structure as message, so we pass None
-                            # We'll need to handle story custom emojis differently if needed
-                            story_html = await _replace_custom_emojis_with_images(
-                                story_html, story_caption, story_caption_entities, agent_config_name, str(message.id), None
-                            )
+                            # Replace custom emojis with images in story text
+                            # Use the correct raw text and entities based on where story_text_content came from
+                            # This ensures UTF-16 offsets in entities match the text being processed
+                            story_raw_for_entities = story_text_raw if story_text_raw else story_caption
+                            story_entities_for_emoji = story_text_entities if story_text_entities is not None else story_caption_entities
+                            # Only process if we have both raw text and entities (entities might be empty list, which is OK)
+                            if story_raw_for_entities is not None:
+                                story_html = await _replace_custom_emojis_with_images(
+                                    story_html, story_raw_for_entities, story_entities_for_emoji, agent_config_name, str(message.id), None
+                                )
+                            # If we don't have raw text, entities won't work anyway, so skip emoji replacement
                             parts.append({
                                 "kind": "text",
                                 "text": story_html
