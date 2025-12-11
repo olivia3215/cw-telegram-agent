@@ -3536,21 +3536,30 @@
         }
         
         async function loadCustomEmojiAnimations(agentName) {
-            // Find all custom emoji reaction images and check if they're animated (TGS)
+            // Find all custom emoji images (both reactions and message text) and check if they're animated (TGS)
             // Only process images that haven't been processed yet (don't have the processed flag)
-            const emojiImages = document.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed])');
+            // Query for both:
+            // - .custom-emoji-reaction: used in reactions (standalone img)
+            // - .custom-emoji-img: used in message text (inside .custom-emoji-container)
+            const emojiImages = document.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed]), .custom-emoji-img:not([data-lottie-processed])');
             
             // Calculate indices upfront from the original DOM state to avoid index shifts
             // when images are removed during processing. Create a map from img element to its index.
-            const allEmojiImages = Array.from(document.querySelectorAll('.custom-emoji-reaction'));
+            const allEmojiImages = Array.from(document.querySelectorAll('.custom-emoji-reaction, .custom-emoji-img'));
             const imgIndexMap = new Map();
             allEmojiImages.forEach((img, index) => {
                 imgIndexMap.set(img, index);
             });
             
             for (const img of emojiImages) {
-                const emojiUrl = img.getAttribute('data-emoji-url') || img.getAttribute('src');
-                const documentId = img.getAttribute('data-document-id');
+                // For .custom-emoji-img, data attributes may be on the parent container
+                // For .custom-emoji-reaction, data attributes are on the img itself
+                const container = img.closest('.custom-emoji-container');
+                const emojiUrl = img.getAttribute('data-emoji-url') || 
+                                (container ? container.getAttribute('data-emoji-url') : null) ||
+                                img.getAttribute('src');
+                const documentId = img.getAttribute('data-document-id') ||
+                                  (container ? container.getAttribute('data-document-id') : null);
                 
                 if (!emojiUrl || !documentId) continue;
                 
