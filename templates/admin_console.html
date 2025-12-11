@@ -3541,11 +3541,19 @@
             // Query for both:
             // - .custom-emoji-reaction: used in reactions (standalone img)
             // - .custom-emoji-img: used in message text (inside .custom-emoji-container)
-            const emojiImages = document.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed]), .custom-emoji-img:not([data-lottie-processed])');
+            // Scope to conversation container to avoid processing emojis in other parts of the page
+            const conversationContainer = document.getElementById('conversation-container');
+            if (!conversationContainer) {
+                console.warn('loadCustomEmojiAnimations: conversation-container not found');
+                return;
+            }
+            
+            const emojiImages = conversationContainer.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed]), .custom-emoji-img:not([data-lottie-processed])');
+            console.log(`loadCustomEmojiAnimations: Found ${emojiImages.length} unprocessed emoji images`);
             
             // Calculate indices upfront from the original DOM state to avoid index shifts
             // when images are removed during processing. Create a map from img element to its index.
-            const allEmojiImages = Array.from(document.querySelectorAll('.custom-emoji-reaction, .custom-emoji-img'));
+            const allEmojiImages = Array.from(conversationContainer.querySelectorAll('.custom-emoji-reaction, .custom-emoji-img'));
             const imgIndexMap = new Map();
             allEmojiImages.forEach((img, index) => {
                 imgIndexMap.set(img, index);
@@ -3561,7 +3569,12 @@
                 const documentId = img.getAttribute('data-document-id') ||
                                   (container ? container.getAttribute('data-document-id') : null);
                 
-                if (!emojiUrl || !documentId) continue;
+                console.log(`loadCustomEmojiAnimations: Processing emoji - documentId: ${documentId}, emojiUrl: ${emojiUrl}, container: ${container ? 'found' : 'none'}`);
+                
+                if (!emojiUrl || !documentId) {
+                    console.warn(`loadCustomEmojiAnimations: Skipping emoji - missing emojiUrl (${emojiUrl}) or documentId (${documentId})`);
+                    continue;
+                }
                 
                 // Mark as processed immediately to avoid duplicate processing
                 img.setAttribute('data-lottie-processed', 'true');
