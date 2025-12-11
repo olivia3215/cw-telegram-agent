@@ -64,7 +64,7 @@ class TelegramEntityCache:
                 await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
         except Exception as e:
-            logger.exception(f"[{self.name}] get_cached_entity failed for ID {entity_id}: {e}")
+            logger.warning(f"[{self.name}] get_cached_entity failed for ID {entity_id}: {e}")
             return None
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
