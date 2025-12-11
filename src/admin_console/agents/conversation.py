@@ -1007,7 +1007,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         # Check for custom emoji entities before replacement
                         emoji_entities_count = sum(1 for e in entities if e.__class__.__name__ == "MessageEntityCustomEmoji")
                         if emoji_entities_count > 0:
-                            logger.info(f"[{agent_config_name}] Message {message.id} has {emoji_entities_count} custom emoji entities")
+                            logger.info(f"[{agent_config_name}] DEBUG: Message {message.id} has {emoji_entities_count} custom emoji entities")
                             # Log if custom-emoji-container is already in text (might indicate duplicate processing)
                             if 'custom-emoji-container' in text:
                                 logger.warning(f"[{agent_config_name}] Message {message.id} HTML already contains custom-emoji-container before replacement")
@@ -1021,7 +1021,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         # Log if replacement added containers
                         if emoji_entities_count > 0:
                             containers_after = text.count('custom-emoji-container')
-                            logger.info(f"[{agent_config_name}] Message {message.id} has {containers_after} custom-emoji-container tags after replacement")
+                            logger.info(f"[{agent_config_name}] DEBUG: Message {message.id} has {containers_after} custom-emoji-container tags after replacement")
                             if containers_after == 0 and 'custom-emoji-container' not in text_before:
                                 logger.warning(f"[{agent_config_name}] Message {message.id} had {emoji_entities_count} custom emoji entities but no containers were created!")
                         
