@@ -1004,10 +1004,26 @@ def register_conversation_routes(agents_bp: Blueprint):
                         # Convert markdown to HTML for frontend display
                         text = markdown_to_html(text_markdown)
                         
+                        # Check for custom emoji entities before replacement
+                        emoji_entities_count = sum(1 for e in entities if e.__class__.__name__ == "MessageEntityCustomEmoji")
+                        if emoji_entities_count > 0:
+                            logger.info(f"[{agent_config_name}] Message {message.id} has {emoji_entities_count} custom emoji entities")
+                            # Log if custom-emoji-container is already in text (might indicate duplicate processing)
+                            if 'custom-emoji-container' in text:
+                                logger.warning(f"[{agent_config_name}] Message {message.id} HTML already contains custom-emoji-container before replacement")
+                        
                         # Replace custom emojis with images (pass message for document extraction)
+                        text_before = text
                         text = await _replace_custom_emojis_with_images(
                             text, raw_text, entities, agent_config_name, str(message.id), message
                         )
+                        
+                        # Log if replacement added containers
+                        if emoji_entities_count > 0:
+                            containers_after = text.count('custom-emoji-container')
+                            logger.info(f"[{agent_config_name}] Message {message.id} has {containers_after} custom-emoji-container tags after replacement")
+                            if containers_after == 0 and 'custom-emoji-container' not in text_before:
+                                logger.warning(f"[{agent_config_name}] Message {message.id} had {emoji_entities_count} custom emoji entities but no containers were created!")
                         
                         # If this is a forwarded story and we have the story item, try to extract media and text from it
                         story_media_parts = []
@@ -1142,6 +1158,12 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 part_text = part.get("text", "")
                                 # Convert markdown to HTML for text parts
                                 part_html = markdown_to_html(part_text)
+                                # Replace custom emojis with images in text parts
+                                # Use raw_text and entities from the original message
+                                # Note: part_text is already markdown, so we need the raw text for entity offsets
+                                part_html = await _replace_custom_emojis_with_images(
+                                    part_html, raw_text, entities, agent_config_name, str(message.id), message
+                                )
                                 parts.append({
                                     "kind": "text",
                                     "text": part_html
