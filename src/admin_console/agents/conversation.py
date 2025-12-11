@@ -98,8 +98,89 @@ def _entities_to_markdown(text: str, entities: list) -> str:
         entity_type = entity.__class__.__name__ if hasattr(entity, "__class__") else str(type(entity))
         
         # Convert UTF-16 offsets to Python string indices
-        start_idx = _utf16_offset_to_python_index(result, utf16_offset)
-        end_idx = _utf16_offset_to_python_index(result, utf16_offset + utf16_length)
+        # IMPORTANT: Use original 'text' for offset conversion, not 'result'
+        # Telegram's entity offsets are based on the original text. As we insert markdown
+        # characters into 'result', the string grows, but we need to convert offsets
+        # based on the original text, then apply them to the current 'result' state.
+        # Since we process entities in reverse order (descending by offset), when we process
+        # an entity, all previously processed entities were at higher offsets (later in the
+        # original text), so their markdown insertions don't affect the indices for the
+        # current entity - we can use the indices directly from the original text conversion.
+        start_idx = _utf16_offset_to_python_index(text, utf16_offset)
+        end_idx = _utf16_offset_to_python_index(text, utf16_offset + utf16_length)
+        
+        # Since we process entities in reverse order (descending by offset), previously
+        # processed entities are at higher offsets (later in the original text). However,
+        # if entities are nested or overlapping, we need to account for markdown inserted
+        # by those entities that appears before our positions in the result string.
+        current_pos = sorted_entities.index(entity)
+        markdown_before_start = 0
+        markdown_before_end = 0
+        
+        # Count markdown inserted before start_idx and before end_idx by previously processed entities
+        for prev_entity in sorted_entities[:current_pos]:
+            prev_offset = getattr(prev_entity, "offset", 0)
+            prev_length = getattr(prev_entity, "length", 0)
+            prev_start_idx = _utf16_offset_to_python_index(text, prev_offset)
+            prev_end_idx = _utf16_offset_to_python_index(text, prev_offset + prev_length)
+            prev_type = prev_entity.__class__.__name__ if hasattr(prev_entity, "__class__") else str(type(prev_entity))
+            
+            if prev_type == "MessageEntityCustomEmoji":
+                continue
+            
+            # Calculate how much markdown this entity inserted
+            opening_len = 0
+            closing_len = 0
+            if prev_type == "MessageEntityBold":
+                opening_len = 2  # "**"
+                closing_len = 2  # "**"
+            elif prev_type == "MessageEntityItalic":
+                opening_len = 2  # "__"
+                closing_len = 2  # "__"
+            elif prev_type == "MessageEntityCode":
+                opening_len = 1  # "`"
+                closing_len = 1  # "`"
+            elif prev_type in ("MessageEntityTextUrl", "MessageEntityUrl"):
+                url = getattr(prev_entity, "url", None) or ""
+                if url:
+                    opening_len = 1  # "["
+                    closing_len = 2 + len(url)  # "]" + "(" + url + ")"
+            
+            # Count markdown inserted before our start and end positions
+            # The opening delimiter is inserted at prev_start_idx
+            # The closing delimiter is inserted at prev_end_idx
+            # We need to count how much markdown appears before each of our positions in the result string
+            
+            # Count opening delimiter
+            if prev_start_idx < start_idx:
+                # Opening delimiter is before our start
+                markdown_before_start += opening_len
+            elif prev_start_idx < end_idx:
+                # Opening delimiter is before our end (but at or after our start)
+                markdown_before_end += opening_len
+            
+            # Count closing delimiter
+            if prev_end_idx < start_idx:
+                # Closing delimiter is before our start
+                markdown_before_start += closing_len
+            elif prev_end_idx < end_idx:
+                # Closing delimiter is before our end (but at or after our start)
+                markdown_before_end += closing_len
+        
+        # Adjust indices to account for markdown inserted before them
+        start_idx += markdown_before_start
+        end_idx += markdown_before_end
+        
+        # Ensure indices are within bounds
+        if start_idx < 0:
+            start_idx = 0
+        if end_idx < start_idx:
+            end_idx = start_idx
+        if start_idx > len(result):
+            # Skip this entity if start is beyond current result length
+            continue
+        if end_idx > len(result):
+            end_idx = len(result)
         
         # Map entity types to markdown
         # Skip MessageEntityCustomEmoji - these are just metadata about custom emojis,
