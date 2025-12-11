@@ -328,10 +328,13 @@ async def _replace_custom_emojis_with_images(
         # But we need to include /admin in the URL since img src is resolved from document root
         emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
         
+        # Escape emoji_char for safe use in HTML attributes
+        emoji_char_escaped = html.escape(emoji_char)
+        
         # Create a container that can handle both static and animated emojis
         # The frontend JavaScript will detect TGS files and render them with Lottie
         # For now, use a span with data attributes that the frontend can process
-        emoji_tag = f'<span class="custom-emoji-container" data-document-id="{document_id}" data-emoji-url="{emoji_url}" data-emoji-char="{emoji_char}" style="display: inline-block; width: 1.2em; height: 1.2em; vertical-align: middle;"><img src="{emoji_url}" alt="{emoji_char}" class="custom-emoji-img" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" onerror="this.parentElement.classList.add(\'emoji-load-error\')" /></span>'
+        emoji_tag = f'<span class="custom-emoji-container" data-document-id="{document_id}" data-emoji-url="{emoji_url}" data-emoji-char="{emoji_char_escaped}" style="display: inline-block; width: 1.2em; height: 1.2em; vertical-align: middle;"><img src="{emoji_url}" alt="{emoji_char_escaped}" class="custom-emoji-img" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" onerror="this.parentElement.classList.add(\'emoji-load-error\')" /></span>'
         
         # Find and replace the emoji in the HTML at the specific position
         # The challenge: HTML has tags inserted (like <strong>, <em>), so positions don't match exactly.
@@ -491,8 +494,10 @@ async def _replace_custom_emoji_in_reactions(
                     alt_text = emoji_name if emoji_name else "🎭"
                 except Exception:
                     alt_text = "🎭"
+                # Escape alt_text for safe use in HTML attributes
+                alt_text_escaped = html.escape(alt_text)
                 # Add data attributes so the frontend can detect and handle animated emojis
-                img_tag = f'<img class="custom-emoji-reaction" src="{emoji_url}" alt="{alt_text}" data-emoji-url="{emoji_url}" data-document-id="{document_id}" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" />'
+                img_tag = f'<img class="custom-emoji-reaction" src="{emoji_url}" alt="{alt_text_escaped}" data-emoji-url="{emoji_url}" data-document-id="{document_id}" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" />'
                 reaction_part += img_tag
             elif hasattr(reaction_obj, 'emoticon'):
                 # Regular emoji - keep as is
