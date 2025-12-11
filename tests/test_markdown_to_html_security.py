@@ -96,6 +96,27 @@ def test_allows_relative_urls():
     assert 'href="#section"' in result
 
 
+def test_rejects_protocol_relative_urls():
+    """Test that protocol-relative URLs (starting with //) are rejected.
+    
+    Protocol-relative URLs like //evil.com resolve to external domains using
+    the current page's protocol, enabling open redirect attacks or loading
+    resources from malicious domains. These should be rejected even though
+    they start with /.
+    """
+    # Protocol-relative URL should be rejected
+    result = markdown_to_html("[click me](//evil.com)")
+    # Should not contain a link with // protocol-relative URL
+    assert 'href="//evil.com"' not in result
+    # The link text should still be present (but not as a link)
+    assert "click me" in result
+    
+    # Another protocol-relative URL
+    result = markdown_to_html("[link](//example.com/path)")
+    assert 'href="//example.com/path"' not in result
+    assert "link" in result
+
+
 def test_escapes_urls_in_links():
     """Test that URLs are properly escaped in href attributes."""
     # URL with special characters should be escaped

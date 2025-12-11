@@ -527,7 +527,8 @@ def _is_safe_url(url: str) -> bool:
     Check if a URL uses a safe protocol.
     
     Only allows http, https, mailto, tel, and relative URLs (starting with / or #).
-    Rejects javascript:, data:, vbscript:, and other dangerous protocols.
+    Rejects javascript:, data:, vbscript:, protocol-relative URLs (starting with //),
+    and other dangerous protocols.
     
     Args:
         url: The URL to validate
@@ -536,6 +537,11 @@ def _is_safe_url(url: str) -> bool:
         True if the URL is safe, False otherwise
     """
     if not url:
+        return False
+    
+    # Reject protocol-relative URLs (starting with //) - these resolve to external domains
+    # using the current page's protocol, enabling open redirect attacks
+    if url.startswith('//'):
         return False
     
     # Allow relative URLs (starting with / or #)
