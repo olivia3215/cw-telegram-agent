@@ -6,12 +6,14 @@ import asyncio
 import contextlib
 import copy
 import glob
+import html
 import json as json_lib
 import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
@@ -34,6 +36,9 @@ from telegram_util import get_channel_name
 from telepathic import TELEPATHIC_PREFIXES
 
 logger = logging.getLogger(__name__)
+
+# Safe URL schemes allowed in markdown links (for security)
+SAFE_URL_SCHEMES = {'http', 'https', 'mailto', 'tel'}
 
 
 def _utf16_offset_to_python_index(text: str, utf16_offset: int) -> int:
@@ -105,7 +110,8 @@ def _entities_to_markdown(text: str, entities: list) -> str:
         elif entity_type == "MessageEntityBold":
             result = result[:start_idx] + "**" + result[start_idx:end_idx] + "**" + result[end_idx:]
         elif entity_type == "MessageEntityItalic":
-            result = result[:start_idx] + "*" + result[start_idx:end_idx] + "*" + result[end_idx:]
+            # Use Telegram's native markdown format (__text__) for consistency
+            result = result[:start_idx] + "__" + result[start_idx:end_idx] + "__" + result[end_idx:]
         elif entity_type == "MessageEntityCode":
             result = result[:start_idx] + "`" + result[start_idx:end_idx] + "`" + result[end_idx:]
         elif entity_type == "MessageEntityTextUrl" or entity_type == "MessageEntityUrl":
@@ -389,15 +395,49 @@ async def _replace_custom_emoji_in_reactions(
         return reactions_str
 
 
+def _is_safe_url(url: str) -> bool:
+    """
+    Check if a URL uses a safe protocol.
+    
+    Only allows http, https, mailto, tel, and relative URLs (starting with / or #).
+    Rejects javascript:, data:, vbscript:, and other dangerous protocols.
+    
+    Args:
+        url: The URL to validate
+        
+    Returns:
+        True if the URL is safe, False otherwise
+    """
+    if not url:
+        return False
+    
+    # Allow relative URLs (starting with / or #)
+    if url.startswith('/') or url.startswith('#'):
+        return True
+    
+    # Parse the URL to get the scheme
+    try:
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        
+        # Only allow safe protocols
+        return scheme in SAFE_URL_SCHEMES
+    except Exception:
+        # If parsing fails, reject the URL
+        return False
+
+
 def markdown_to_html(text: str) -> str:
     """
     Convert Telegram markdown formatting to HTML for frontend display.
     
-    Converts common markdown patterns to safe HTML:
-    - **bold** and __bold__ → <strong>
-    - *italic* and _italic_ → <em>
-    - `code` → <code>
-    - [text](url) → <a href="url">text</a>
+    Converts Telegram markdown patterns to safe HTML:
+    - `**bold**` → `<strong>`
+    - `__italic__` → `<em>`
+    - `` `code` `` → `<code>` (single backtick before and after)
+    - `[text](url)` → `<a href="url">text</a>` (only for safe URLs)
+    
+    Security: This function escapes HTML characters and validates URLs to prevent XSS attacks.
     
     Args:
         text: Markdown-formatted text (from Telegram's text_markdown property)
@@ -408,20 +448,46 @@ def markdown_to_html(text: str) -> str:
     if not text:
         return ""
     
-    html = text
-    # Convert **bold** and __bold__ to <strong> (do this first to avoid conflicts)
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html, flags=re.DOTALL)
-    html = re.sub(r'__(.+?)__', r'<strong>\1</strong>', html, flags=re.DOTALL)
-    # Convert *italic* and _italic_ to <em> (improved regex to avoid matching **bold**)
-    # Match *text* where text can contain newlines, but is not part of **bold**
-    # Use DOTALL flag so . matches newlines
-    html = re.sub(r'(?<!\*)\*((?:[^*]|\*(?!\*))+?)\*(?!\*)', r'<em>\1</em>', html, flags=re.DOTALL)
-    html = re.sub(r'(?<!_)_((?:[^_]|_(?!_))+?)_(?!_)', r'<em>\1</em>', html, flags=re.DOTALL)
-    # Convert `code` to <code>
-    html = re.sub(r'`([^`]+?)`', r'<code>\1</code>', html)
-    # Convert [text](url) to <a href="url">text</a>
-    html = re.sub(r'\[([^\]]+?)\]\(([^)]+?)\)', r'<a href="\2">\1</a>', html)
-    return html
+    # Use placeholders to protect links during processing
+    # This allows us to process links on raw text (to extract/validate URLs),
+    # then escape everything, then restore the links
+    # Use a format that won't conflict with markdown (no underscores, asterisks, or backticks)
+    link_placeholders = {}
+    placeholder_counter = [0]  # Use list to allow modification in nested function
+    
+    def replace_link_with_placeholder(match):
+        link_text = match.group(1)
+        url = match.group(2)
+        placeholder = f"LINKPLACEHOLDER{placeholder_counter[0]}LINKPLACEHOLDER"
+        placeholder_counter[0] += 1
+        if _is_safe_url(url):
+            # URL is safe, store the link HTML (with properly escaped URL and text)
+            link_placeholders[placeholder] = f'<a href="{html.escape(url)}">{html.escape(link_text)}</a>'
+        else:
+            # URL is not safe, store just the escaped text
+            link_placeholders[placeholder] = html.escape(link_text)
+        return placeholder
+    
+    # Step 1: Process links first, replace with placeholders
+    text_with_placeholders = re.sub(r'\[([^\]]+?)\]\(([^)]+?)\)', replace_link_with_placeholder, text)
+    
+    # Step 2: Escape all HTML characters (this escapes user-provided HTML but not our placeholders)
+    escaped_text = html.escape(text_with_placeholders)
+    
+    # Step 3: Process Telegram markdown patterns on escaped text
+    # Note: In Telegram markdown, **text** is bold and __text__ is italic
+    html_output = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped_text, flags=re.DOTALL)
+    html_output = re.sub(r'__(.+?)__', r'<em>\1</em>', html_output, flags=re.DOTALL)
+    html_output = re.sub(r'`([^`]+?)`', r'<code>\1</code>', html_output)
+    
+    # Step 4: Restore link placeholders with actual link HTML
+    # The placeholders were escaped, so we need to unescape them first
+    for placeholder, link_html in link_placeholders.items():
+        # The placeholder was escaped, so replace the escaped version
+        escaped_placeholder = html.escape(placeholder)
+        html_output = html_output.replace(escaped_placeholder, link_html)
+    
+    return html_output
 
 # Translation JSON schema for message translation
 _TRANSLATION_SCHEMA = {
