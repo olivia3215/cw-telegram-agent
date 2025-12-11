@@ -3540,6 +3540,14 @@
             // Only process images that haven't been processed yet (don't have the processed flag)
             const emojiImages = document.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed])');
             
+            // Calculate indices upfront from the original DOM state to avoid index shifts
+            // when images are removed during processing. Create a map from img element to its index.
+            const allEmojiImages = Array.from(document.querySelectorAll('.custom-emoji-reaction'));
+            const imgIndexMap = new Map();
+            allEmojiImages.forEach((img, index) => {
+                imgIndexMap.set(img, index);
+            });
+            
             for (const img of emojiImages) {
                 const emojiUrl = img.getAttribute('data-emoji-url') || img.getAttribute('src');
                 const documentId = img.getAttribute('data-document-id');
@@ -3562,7 +3570,8 @@
                         // It's a TGS file - render with Lottie
                         const tgsData = await response.arrayBuffer();
                         // Use a unique player ID that includes the document ID and position to avoid conflicts
-                        const imgIndex = Array.from(document.querySelectorAll('.custom-emoji-reaction')).indexOf(img);
+                        // Get the index from the pre-calculated map (before any DOM removals)
+                        const imgIndex = imgIndexMap.get(img);
                         const playerId = `emoji-lottie-${documentId}-${imgIndex}`;
                         
                         // Get the parent element (or create a wrapper) to replace the img
