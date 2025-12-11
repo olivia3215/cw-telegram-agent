@@ -3596,8 +3596,11 @@
                         const imgIndex = imgIndexMap.get(img);
                         const playerId = `emoji-lottie-${documentId}-${imgIndex}`;
                         
-                        // Get the parent element (or create a wrapper) to replace the img
+                        // Check if img is inside a container (message text) or standalone (reaction)
                         const parent = img.parentElement;
+                        const isInContainer = container && container === parent;
+                        
+                        // Create Lottie player wrapper
                         const wrapper = document.createElement('span');
                         wrapper.style.display = 'inline-block';
                         wrapper.style.width = '1.2em';
@@ -3605,12 +3608,23 @@
                         wrapper.style.verticalAlign = 'middle';
                         wrapper.innerHTML = `<div id="${playerId}" style="width: 1.2em; height: 1.2em;"></div>`;
                         
-                        // Replace img with wrapper containing Lottie container
-                        if (parent) {
-                            parent.insertBefore(wrapper, img);
-                            parent.removeChild(img);
+                        if (isInContainer) {
+                            // For message text emojis: replace the entire container
+                            const containerParent = container.parentElement;
+                            if (containerParent) {
+                                containerParent.insertBefore(wrapper, container);
+                                containerParent.removeChild(container);
+                            } else {
+                                container.replaceWith(wrapper);
+                            }
                         } else {
-                            img.replaceWith(wrapper);
+                            // For reaction emojis: replace just the img
+                            if (parent) {
+                                parent.insertBefore(wrapper, img);
+                                parent.removeChild(img);
+                            } else {
+                                img.replaceWith(wrapper);
+                            }
                         }
                         
                         // Decompress and load TGS with Lottie
