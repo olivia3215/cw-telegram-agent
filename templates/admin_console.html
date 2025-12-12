@@ -15,6 +15,14 @@
             max-width: 100vw;
             overflow-x: hidden;
         }
+        /* Ensure emojis render consistently regardless of formatting */
+        strong, em {
+            font-variant-emoji: emoji;
+        }
+        /* Prevent font-weight/font-style from affecting emoji rendering */
+        strong em, em strong, strong, em {
+            font-feature-settings: "liga" on, "calt" on;
+        }
         .main-container {
             max-width: 100%;
             width: 100%;
@@ -3421,7 +3429,9 @@
                                 const partText = showTranslation && conversationTranslations[msg.id] 
                                     ? conversationTranslations[msg.id] 
                                     : part.text;
-                                contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                                // Text may contain HTML formatting (bold, italic, etc.) - render it
+                                // Use CSS to ensure emojis render consistently (don't apply font-weight/font-style to emojis)
+                                contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText}</div>`;
                             } else if (part.kind === 'media') {
                                 const mediaKind = part.media_kind || 'media';
                                 const uniqueId = part.unique_id;
@@ -3473,7 +3483,8 @@
                         const displayText = showTranslation && conversationTranslations[msg.id] 
                             ? conversationTranslations[msg.id] 
                             : msg.text;
-                        contentHtml = `<div style="white-space: pre-wrap;">${displayText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                        // Text may contain HTML formatting (bold, italic, etc.) - render it
+                        contentHtml = `<div style="white-space: pre-wrap;">${displayText}</div>`;
                     }
                     
                     // If still no content, show placeholder
@@ -3496,9 +3507,11 @@
                     }
                     
                     // Add reactions if present
+                    // Note: msg.reactions may contain HTML (img tags for custom emojis) added by the backend,
+                    // so we should NOT escape it - the backend intentionally provides HTML to render
                     let reactionsHtml = '';
                     if (msg.reactions) {
-                        reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                        reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions}</div>`;
                     }
                     
                     return `
@@ -3518,7 +3531,116 @@
             // Load TGS animations for animated stickers in conversation (same as media editor)
             setTimeout(() => {
                 loadTGSAnimationsForConversation(agentName, userId);
+                loadCustomEmojiAnimations(agentName);
             }, 100);
+        }
+        
+        async function loadCustomEmojiAnimations(agentName) {
+            // Find all custom emoji images (both reactions and message text) and check if they're animated (TGS)
+            // Only process images that haven't been processed yet (don't have the processed flag)
+            // Query for both:
+            // - .custom-emoji-reaction: used in reactions (standalone img)
+            // - .custom-emoji-img: used in message text (inside .custom-emoji-container)
+            // Scope to conversation container to avoid processing emojis in other parts of the page
+            const conversationContainer = document.getElementById('conversation-container');
+            if (!conversationContainer) {
+                return;
+            }
+            
+            const emojiImages = conversationContainer.querySelectorAll('.custom-emoji-reaction:not([data-lottie-processed]), .custom-emoji-img:not([data-lottie-processed])');
+            
+            // Calculate indices upfront from the original DOM state to avoid index shifts
+            // when images are removed during processing. Create a map from img element to its index.
+            const allEmojiImages = Array.from(conversationContainer.querySelectorAll('.custom-emoji-reaction, .custom-emoji-img'));
+            const imgIndexMap = new Map();
+            allEmojiImages.forEach((img, index) => {
+                imgIndexMap.set(img, index);
+            });
+            
+            for (const img of emojiImages) {
+                // For .custom-emoji-img, data attributes may be on the parent container
+                // For .custom-emoji-reaction, data attributes are on the img itself
+                const container = img.closest('.custom-emoji-container');
+                const emojiUrl = img.getAttribute('data-emoji-url') || 
+                                (container ? container.getAttribute('data-emoji-url') : null) ||
+                                img.getAttribute('src');
+                const documentId = img.getAttribute('data-document-id') ||
+                                  (container ? container.getAttribute('data-document-id') : null);
+                
+                if (!emojiUrl || !documentId) {
+                    continue;
+                }
+                
+                // Mark as processed immediately to avoid duplicate processing
+                img.setAttribute('data-lottie-processed', 'true');
+                
+                try {
+                    // Fetch the emoji to check if it's animated (TGS)
+                    // The emojiUrl should already be a full path like /admin/api/agents/...
+                    const response = await fetchWithAuth(emojiUrl);
+                    const contentType = response.headers.get('content-type') || '';
+                    const isAnimated = response.headers.get('x-emoji-type') === 'animated' || 
+                                      contentType.includes('application/gzip') || 
+                                      contentType.includes('application/x-tgsticker');
+                    
+                    if (isAnimated) {
+                        // It's a TGS file - render with Lottie
+                        const tgsData = await response.arrayBuffer();
+                        // Use a unique player ID that includes the document ID and position to avoid conflicts
+                        // Get the index from the pre-calculated map (before any DOM removals)
+                        const imgIndex = imgIndexMap.get(img);
+                        const playerId = `emoji-lottie-${documentId}-${imgIndex}`;
+                        
+                        // Check if img is inside a container (message text) or standalone (reaction)
+                        const parent = img.parentElement;
+                        const isInContainer = container && container === parent;
+                        
+                        // Create Lottie player wrapper
+                        const wrapper = document.createElement('span');
+                        wrapper.style.display = 'inline-block';
+                        wrapper.style.width = '1.2em';
+                        wrapper.style.height = '1.2em';
+                        wrapper.style.verticalAlign = 'middle';
+                        wrapper.innerHTML = `<div id="${playerId}" style="width: 1.2em; height: 1.2em;"></div>`;
+                        
+                        if (isInContainer) {
+                            // For message text emojis: replace the entire container
+                            const containerParent = container.parentElement;
+                            if (containerParent) {
+                                containerParent.insertBefore(wrapper, container);
+                                containerParent.removeChild(container);
+                            } else {
+                                container.replaceWith(wrapper);
+                            }
+                        } else {
+                            // For reaction emojis: replace just the img
+                            if (parent) {
+                                parent.insertBefore(wrapper, img);
+                                parent.removeChild(img);
+                            } else {
+                                img.replaceWith(wrapper);
+                            }
+                        }
+                        
+                        // Decompress and load TGS with Lottie
+                        const decompressed = pako.inflate(new Uint8Array(tgsData));
+                        const jsonData = JSON.parse(new TextDecoder().decode(decompressed));
+                        
+                        const player = lottie.loadAnimation({
+                            container: document.getElementById(playerId),
+                            renderer: 'svg',
+                            loop: true,
+                            autoplay: true,
+                            animationData: jsonData
+                        });
+                    }
+                    // If not animated, the img tag will display normally
+                } catch (error) {
+                    console.warn(`Failed to load custom emoji ${documentId}:`, error);
+                    // Remove the processed flag on error so it can be retried
+                    img.removeAttribute('data-lottie-processed');
+                }
+            }
         }
         
         async function loadTGSAnimationsForConversation(agentName, userId) {
