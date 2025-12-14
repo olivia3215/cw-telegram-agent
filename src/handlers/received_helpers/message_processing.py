@@ -46,64 +46,64 @@ async def format_message_reactions(agent, message) -> str | None:
         if not reactions_obj:
             return None
         
-        logger.info(f"DEBUG: Processing reactions for message {message_id}")
+        logger.debug(f"Processing reactions for message {message_id}")
             
         # Get recent reactions if available
         recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
         if not recent_reactions:
-            logger.info(f"DEBUG: No recent_reactions for message {message_id}")
+            logger.debug(f"No recent_reactions for message {message_id}")
             return None
         
-        logger.info(f"DEBUG: Message {message_id} has {len(recent_reactions)} reaction(s)")
+        logger.debug(f"Message {message_id} has {len(recent_reactions)} reaction(s)")
             
         reaction_parts = []
         for idx, reaction in enumerate(recent_reactions):
             # Get user info
             peer_id = getattr(reaction, 'peer_id', None)
             if not peer_id:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} has no peer_id")
+                logger.debug(f"Reaction {idx} on message {message_id} has no peer_id")
                 continue
                 
             # Get user ID from peer
             from utils import extract_user_id_from_peer, get_custom_emoji_name
             user_id = extract_user_id_from_peer(peer_id)
             if user_id is None:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} has no user_id")
+                logger.debug(f"Reaction {idx} on message {message_id} has no user_id")
                 continue
                 
             # Get user name
             user_name = await get_channel_name(agent, user_id)
-            logger.info(f"DEBUG: Reaction {idx} on message {message_id} from {user_name}({user_id})")
+            logger.debug(f"Reaction {idx} on message {message_id} from {user_name}({user_id})")
                 
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} has no reaction object")
+                logger.debug(f"Reaction {idx} on message {message_id} has no reaction object")
                 continue
                 
             emoji = None
             if hasattr(reaction_obj, 'emoticon'):
                 emoji = reaction_obj.emoticon
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} is standard emoji: {emoji}")
+                logger.debug(f"Reaction {idx} on message {message_id} is standard emoji: {emoji}")
             elif hasattr(reaction_obj, 'document_id'):
                 # Custom emoji - get the sticker name
                 doc_id = reaction_obj.document_id
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} is custom emoji with document_id={doc_id}")
+                logger.debug(f"Reaction {idx} on message {message_id} is custom emoji with document_id={doc_id}")
                 emoji = await get_custom_emoji_name(agent, doc_id)
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} custom emoji resolved to: {emoji[:100] if emoji else None}")
+                logger.debug(f"Reaction {idx} on message {message_id} custom emoji resolved to: {emoji[:100] if emoji else None}")
             else:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} has unknown reaction type: {type(reaction_obj)}")
+                logger.debug(f"Reaction {idx} on message {message_id} has unknown reaction type: {type(reaction_obj)}")
                 
             if emoji:
                 reaction_parts.append(f'"{user_name}"({user_id})={emoji}')
         
         result = ', '.join(reaction_parts) if reaction_parts else None
         if result:
-            logger.info(f"DEBUG: Formatted reactions for message {message_id}: {result[:100]}")
+            logger.debug(f"Formatted reactions for message {message_id}: {result[:100]}")
         return result
         
     except Exception as e:
-        logger.info(f"DEBUG: Error formatting reactions for message {getattr(message, 'id', 'unknown')}: {e}")
+        logger.debug(f"Error formatting reactions for message {getattr(message, 'id', 'unknown')}: {e}")
         return None
 
 

@@ -65,7 +65,7 @@ async def get_custom_emoji_name(agent, document_id) -> str:
     # Log at module level first
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"DEBUG: get_custom_emoji_name called with document_id={document_id}")
+    logger.debug(f"get_custom_emoji_name called with document_id={document_id}")
     
     try:
         from media.media_source import get_default_media_source_chain
@@ -75,13 +75,13 @@ async def get_custom_emoji_name(agent, document_id) -> str:
         # Try to get the document from the agent's client using the correct API
         result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[document_id]))
         if not result or len(result) == 0:
-            logger.info(f"DEBUG: get_custom_emoji_name: No document found for {document_id}")
+            logger.debug(f"get_custom_emoji_name: No document found for {document_id}")
             return "🎭"  # Fallback if document not found
         
         doc_obj = result[0]
         unique_id = get_unique_id(doc_obj)
         if not unique_id:
-            logger.info(f"DEBUG: get_custom_emoji_name: No unique_id for {document_id}")
+            logger.debug(f"get_custom_emoji_name: No unique_id for {document_id}")
             return "🎭"  # Fallback if no unique ID
         
         logger.info(f"Custom emoji in reaction: document_id={document_id}, unique_id={unique_id}")
@@ -111,7 +111,7 @@ async def get_custom_emoji_name(agent, document_id) -> str:
                 from telethon.tl.functions.messages import GetStickerSetRequest
                 from telethon.tl.types import InputStickerSetID
                 
-                logger.info(f"DEBUG: Querying sticker set for custom emoji {document_id}: set_id={sticker_set_id}")
+                logger.debug(f"Querying sticker set for custom emoji {document_id}: set_id={sticker_set_id}")
                 
                 sticker_set_result = await agent.client(
                     GetStickerSetRequest(
@@ -140,9 +140,9 @@ async def get_custom_emoji_name(agent, document_id) -> str:
                                 is_emoji_set = True
                     
                     if sticker_set_name:
-                        logger.info(f"DEBUG: Got sticker set info for custom emoji {document_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
+                        logger.debug(f"Got sticker set info for custom emoji {document_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
             except Exception as e:
-                logger.info(f"DEBUG: Failed to query sticker set for custom emoji {document_id}: {e}")
+                logger.debug(f"Failed to query sticker set for custom emoji {document_id}: {e}")
         
         # Use media pipeline to get the description
         media_chain = get_default_media_source_chain()
@@ -185,11 +185,11 @@ async def get_custom_emoji_name(agent, document_id) -> str:
         
     except Exception as e:
         # Log error but don't fail - just use fallback
-        logger.info(f"DEBUG: Error in get_custom_emoji_name for {document_id}: {type(e).__name__}: {e}")
+        logger.debug(f"Error in get_custom_emoji_name for {document_id}: {type(e).__name__}: {e}")
         import traceback
-        logger.info(f"DEBUG: Traceback: {traceback.format_exc()}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
     
-    logger.info(f"DEBUG: get_custom_emoji_name returning fallback for {document_id}")
+    logger.debug(f"get_custom_emoji_name returning fallback for {document_id}")
     return "🎭"  # Fallback placeholder
 
 

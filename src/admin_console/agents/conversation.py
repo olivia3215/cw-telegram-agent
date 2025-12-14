@@ -469,12 +469,12 @@ async def _replace_custom_emoji_in_reactions(
             # Get user info
             peer_id = getattr(reaction, 'peer_id', None)
             if not peer_id:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no peer_id")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) has no peer_id")
                 continue
             
             user_id = extract_user_id_from_peer(peer_id)
             if user_id is None:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no user_id")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) has no user_id")
                 continue
             
             # Get user name
@@ -483,7 +483,7 @@ async def _replace_custom_emoji_in_reactions(
             except Exception:
                 user_name = str(user_id)
             
-            logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) from {user_name}({user_id})")
+            logger.debug(f"Reaction {idx} on message {message_id} (admin) from {user_name}({user_id})")
             
             # Escape user_name to prevent XSS when inserted into HTML
             user_name_escaped = html.escape(user_name)
@@ -491,7 +491,7 @@ async def _replace_custom_emoji_in_reactions(
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no reaction object")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) has no reaction object")
                 continue
             
             # Build the reaction part
@@ -500,16 +500,16 @@ async def _replace_custom_emoji_in_reactions(
             # Check if it's a custom emoji (has document_id)
             if hasattr(reaction_obj, 'document_id'):
                 document_id = reaction_obj.document_id
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) is custom emoji with document_id={document_id}")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) is custom emoji with document_id={document_id}")
                 # Build img tag directly for custom emoji - always use img tag, not text replacement
                 emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
                 # Try to get emoji name for alt text, but don't fail if we can't
                 try:
                     emoji_name = await get_custom_emoji_name(agent, document_id)
-                    logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) custom emoji name: {emoji_name[:100]}")
+                    logger.debug(f"Reaction {idx} on message {message_id} (admin) custom emoji name: {emoji_name[:100]}")
                     alt_text = emoji_name if emoji_name else "🎭"
                 except Exception as e:
-                    logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) failed to get emoji name: {e}")
+                    logger.debug(f"Reaction {idx} on message {message_id} (admin) failed to get emoji name: {e}")
                     alt_text = "🎭"
                 # Escape alt_text for safe use in HTML attributes
                 alt_text_escaped = html.escape(alt_text)
@@ -518,11 +518,11 @@ async def _replace_custom_emoji_in_reactions(
                 reaction_part += img_tag
             elif hasattr(reaction_obj, 'emoticon'):
                 # Regular emoji - keep as is
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) is standard emoji: {reaction_obj.emoticon}")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) is standard emoji: {reaction_obj.emoticon}")
                 reaction_part += reaction_obj.emoticon
             else:
                 # Unknown reaction type - skip
-                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has unknown type")
+                logger.debug(f"Reaction {idx} on message {message_id} (admin) has unknown type")
                 continue
             
             reaction_parts.append(reaction_part)
@@ -530,14 +530,14 @@ async def _replace_custom_emoji_in_reactions(
         # Return rebuilt reactions string with img tags for custom emojis
         if reaction_parts:
             result = ', '.join(reaction_parts)
-            logger.info(f"DEBUG: Message {message_id} (admin) reactions rebuilt: {result[:100]}")
+            logger.debug(f"Message {message_id} (admin) reactions rebuilt: {result[:100]}")
             return result
         else:
             # If we couldn't rebuild (shouldn't happen), return original
-            logger.info(f"DEBUG: Message {message_id} (admin) couldn't rebuild reactions, returning original")
+            logger.debug(f"Message {message_id} (admin) couldn't rebuild reactions, returning original")
             return reactions_str
     except Exception as e:
-        logger.info(f"DEBUG: Error replacing custom emojis in reactions: {e}")
+        logger.debug(f"Error replacing custom emojis in reactions: {e}")
         return reactions_str
 
 
@@ -1611,7 +1611,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                             from telethon.tl.functions.messages import GetStickerSetRequest
                             from telethon.tl.types import InputStickerSetID
                             
-                            logger.info(f"DEBUG: Querying sticker set for custom emoji {doc_id}: set_id={sticker_set_id}")
+                            logger.debug(f"Querying sticker set for custom emoji {doc_id}: set_id={sticker_set_id}")
                             
                             sticker_set_result = await agent.client(
                                 GetStickerSetRequest(
@@ -1640,9 +1640,9 @@ def register_conversation_routes(agents_bp: Blueprint):
                                             is_emoji_set = True
                                 
                                 if sticker_set_name:
-                                    logger.info(f"DEBUG: Got sticker set info for custom emoji {doc_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
+                                    logger.debug(f"Got sticker set info for custom emoji {doc_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
                         except Exception as e:
-                            logger.info(f"DEBUG: Failed to query sticker set for custom emoji {doc_id}: {e}")
+                            logger.debug(f"Failed to query sticker set for custom emoji {doc_id}: {e}")
                     
                     # Use media pipeline to get/cache the emoji
                     # This will handle caching, downloading, and description generation
