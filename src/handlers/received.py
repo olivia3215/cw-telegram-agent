@@ -555,12 +555,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Check if summaries exist to determine how many messages to fetch
     # If no summaries exist, fetch messages based on chat type:
     # - Groups/channels: 150 messages
-    # - DMs: 500 messages
+    # - DMs: 200 messages
     # Otherwise, fetch 100 messages for normal operation
     highest_summarized_id = get_highest_summarized_message_id(agent, channel_id_int)
     if highest_summarized_id is None:
         is_group = is_group_or_channel(entity)
-        message_limit = 150 if is_group else 500
+        message_limit = 150 if is_group else 200
     else:
         message_limit = 100
     messages = await client.get_messages(entity, limit=message_limit)

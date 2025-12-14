@@ -119,8 +119,8 @@ async def perform_summarization(
     Perform summarization of unsummarized messages.
     
     Summarizes all messages except the most recent 20 that are not already summarized.
-    Processes messages in batches of at most 50. When there are more than 50 but fewer
-    than 100 messages, splits into two approximately equal halves.
+    Processes all messages requiring summarization in a single LLM call, even if that's
+    hundreds of messages.
     
     Args:
         agent: Agent instance
@@ -162,164 +162,130 @@ async def perform_summarization(
         logger.info(f"[{agent.name}] No messages to summarize for channel {channel_id}")
         return
     
-    # Get conversation context (only need to do this once)
+    logger.info(
+        f"[{agent.name}] Summarizing {len(messages_to_summarize)} messages for channel {channel_id}"
+    )
+    
+    # Get conversation context
     dialog = await agent.get_cached_entity(channel_id)
     is_group = is_group_or_channel(dialog)
     channel_name = await get_dialog_name(agent, channel_id)
     
-    # Get appropriate LLM instance (only need to do this once)
+    # Get appropriate LLM instance
     llm = get_channel_llm(agent, channel_id)
     
-    # Split messages into batches
-    def _split_into_batches(msgs: list) -> list[list]:
-        """
-        Split messages into batches of at most 50.
-        When there are more than 50 but fewer than 100 messages, split into two approximately equal halves.
-        """
-        total = len(msgs)
-        if total <= 50:
-            return [msgs]
-        
-        if total < 100:
-            # Split into two approximately equal halves
-            mid = total // 2
-            return [msgs[:mid], msgs[mid:]]
-        
-        # Split into batches of 50
-        batches = []
-        for i in range(0, total, 50):
-            batches.append(msgs[i:i + 50])
-        return batches
+    # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
+    summary_json = await agent._load_summary_content(channel_id, json_format=True)
     
-    batches = _split_into_batches(messages_to_summarize)
-    logger.info(
-        f"[{agent.name}] Splitting {len(messages_to_summarize)} messages into {len(batches)} batch(es) for summarization"
-    )
+    # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
+    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
     
-    # Process each batch in a loop
-    for batch_idx, batch_messages in enumerate(batches):
+    # Add current summaries JSON immediately before the conversation history
+    if summary_json:
+        system_prompt += "\n\n# Current Summaries\n\n"
+        system_prompt += "Current summaries (you can edit these by using their IDs):\n\n"
+        system_prompt += "```json\n"
+        system_prompt += summary_json
+        system_prompt += "\n```\n\n"
+    
+    # Process all messages to summarize
+    history_items = await process_message_history(messages_to_summarize, agent, media_chain)
+    
+    # Prepare history for LLM
+    combined_history = [
+        {
+            "sender": item.sender_display,
+            "sender_id": item.sender_id,
+            **({"sender_username": item.sender_username} if item.sender_username else {}),
+            "msg_id": item.message_id,
+            "is_agent": item.is_from_agent,
+            "parts": item.message_parts,
+            "reply_to_msg_id": item.reply_to_msg_id,
+            "ts_iso": item.timestamp,
+            "reactions": item.reactions,
+        }
+        for item in history_items
+    ]
+    
+    # Run LLM query with all messages at once
+    now_iso = clock.now(UTC).isoformat(timespec="seconds")
+    chat_type = "group" if is_group else "direct"
+    
+    try:
+        reply = await llm.query_structured(
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            history=combined_history,
+            history_size=len(combined_history),
+            timeout_s=None,
+        )
+    except Exception as e:
+        logger.exception(
+            f"[{agent.name}] Failed to perform summarization for channel {channel_id}: {e}"
+        )
+        return
+    
+    if not reply:
         logger.info(
-            f"[{agent.name}] Processing summarization batch {batch_idx + 1}/{len(batches)} "
-            f"({len(batch_messages)} messages) for channel {channel_id}"
+            f"[{agent.name}] LLM decided not to create summary for channel {channel_id}"
+        )
+        return
+    
+    # Parse and validate response - only allow think and summarize tasks
+    try:
+        # Parse with summarization_mode=True to mark think and summarize tasks as silent
+        tasks = await parse_llm_reply_fn(
+            reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent, summarization_mode=True
         )
         
-        # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
-        # Reload summaries each time since previous batches may have created new summaries
-        summary_json = await agent._load_summary_content(channel_id, json_format=True)
-        
-        # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
-        system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
-        
-        # Add current summaries JSON immediately before the conversation history
-        if summary_json:
-            system_prompt += "\n\n# Current Summaries\n\n"
-            system_prompt += "Current summaries (you can edit these by using their IDs):\n\n"
-            system_prompt += "```json\n"
-            system_prompt += summary_json
-            system_prompt += "\n```\n\n"
-        
-        # Process messages to summarize for this batch
-        history_items = await process_message_history(batch_messages, agent, media_chain)
-        
-        # Prepare history for LLM
-        combined_history = [
-            {
-                "sender": item.sender_display,
-                "sender_id": item.sender_id,
-                **({"sender_username": item.sender_username} if item.sender_username else {}),
-                "msg_id": item.message_id,
-                "is_agent": item.is_from_agent,
-                "parts": item.message_parts,
-                "reply_to_msg_id": item.reply_to_msg_id,
-                "ts_iso": item.timestamp,
-                "reactions": item.reactions,
-            }
-            for item in history_items
-        ]
-        
-        # Run LLM query for this batch
-        now_iso = clock.now(UTC).isoformat(timespec="seconds")
-        chat_type = "group" if is_group else "direct"
-        
-        try:
-            reply = await llm.query_structured(
-                system_prompt=system_prompt,
-                now_iso=now_iso,
-                chat_type=chat_type,
-                history=combined_history,
-                history_size=len(combined_history),
-                timeout_s=None,
-            )
-        except Exception as e:
-            logger.exception(
-                f"[{agent.name}] Failed to perform summarization for batch {batch_idx + 1}: {e}"
-            )
-            # Continue with next batch even if this one fails
-            continue
-        
-        if not reply:
-            logger.info(
-                f"[{agent.name}] LLM decided not to create summary for batch {batch_idx + 1}"
-            )
-            # Continue with next batch
-            continue
-        
-        # Parse and validate response - only allow think and summarize tasks
-        try:
-            # Parse with summarization_mode=True to mark think and summarize tasks as silent
-            tasks = await parse_llm_reply_fn(
-                reply, agent_id=agent.agent_id, channel_id=channel_id, agent=agent, summarization_mode=True
-            )
-            
-            # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
-            summarize_tasks = [t for t in tasks if t.type == "summarize"]
+        # Filter to only summarize tasks (think tasks are already filtered out by _execute_immediate_tasks)
+        summarize_tasks = [t for t in tasks if t.type == "summarize"]
 
-            # Execute summarize tasks (they are immediate tasks)
-            # Note: think tasks were already executed by _execute_immediate_tasks in parse_llm_reply,
-            # and they were marked as silent via summarization_mode=True
-            for summarize_task in summarize_tasks:
-                
-                # Check if this is an update to an existing summary by checking if the ID exists
-                # in the existing summaries. We only auto-fill dates for NEW summaries.
-                # For updates, dates are preserved in storage_helpers.py if not provided.
-                is_existing_summary = False
-                if summary_json and summarize_task.id:
-                    try:
-                        existing_summaries = json.loads(summary_json)
-                        if isinstance(existing_summaries, list):
-                            is_existing_summary = any(
-                                s.get("id") == summarize_task.id for s in existing_summaries
-                            )
-                    except (json.JSONDecodeError, AttributeError):
-                        # If parsing fails, assume it's a new summary to be safe
-                        pass
-                
-                # Auto-fill first and last message dates from batch_messages if not already set.
-                # Only do this for NEW summaries. For existing summaries, dates are preserved
-                # in storage_helpers.py if not provided, so we shouldn't overwrite them here.
-                if not is_existing_summary:
-                    if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
-                        first_date, last_date = extract_message_dates(batch_messages)
-                        if first_date and not summarize_task.params.get("first_message_date"):
-                            summarize_task.params["first_message_date"] = first_date
-                        if last_date and not summarize_task.params.get("last_message_date"):
-                            summarize_task.params["last_message_date"] = last_date
-                
-                await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
-                logger.info(
-                    f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id} "
-                    f"(batch {batch_idx + 1}/{len(batches)})"
-                )
-        except Exception as e:
-            logger.exception(
-                f"[{agent.name}] Failed to process summarization response for batch {batch_idx + 1}: {e}"
+        # Execute summarize tasks (they are immediate tasks)
+        # Note: think tasks were already executed by _execute_immediate_tasks in parse_llm_reply,
+        # and they were marked as silent via summarization_mode=True
+        for summarize_task in summarize_tasks:
+            
+            # Check if this is an update to an existing summary by checking if the ID exists
+            # in the existing summaries. We only auto-fill dates for NEW summaries.
+            # For updates, dates are preserved in storage_helpers.py if not provided.
+            is_existing_summary = False
+            if summary_json and summarize_task.id:
+                try:
+                    existing_summaries = json.loads(summary_json)
+                    if isinstance(existing_summaries, list):
+                        is_existing_summary = any(
+                            s.get("id") == summarize_task.id for s in existing_summaries
+                        )
+                except (json.JSONDecodeError, AttributeError):
+                    # If parsing fails, assume it's a new summary to be safe
+                    pass
+            
+            # Auto-fill first and last message dates from messages_to_summarize if not already set.
+            # Only do this for NEW summaries. For existing summaries, dates are preserved
+            # in storage_helpers.py if not provided, so we shouldn't overwrite them here.
+            if not is_existing_summary:
+                if not summarize_task.params.get("first_message_date") or not summarize_task.params.get("last_message_date"):
+                    first_date, last_date = extract_message_dates(messages_to_summarize)
+                    if first_date and not summarize_task.params.get("first_message_date"):
+                        summarize_task.params["first_message_date"] = first_date
+                    if last_date and not summarize_task.params.get("last_message_date"):
+                        summarize_task.params["last_message_date"] = last_date
+            
+            await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
+            logger.info(
+                f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id}"
             )
-            # Continue with next batch even if this one fails
-            continue
+    except Exception as e:
+        logger.exception(
+            f"[{agent.name}] Failed to process summarization response for channel {channel_id}: {e}"
+        )
+        return
     
     logger.info(
         f"[{agent.name}] Completed summarization of {len(messages_to_summarize)} messages "
-        f"in {len(batches)} batch(es) for channel {channel_id}"
+        f"for channel {channel_id}"
     )
 
 
@@ -352,9 +318,9 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
     
     # Fetch messages based on chat type:
     # - Groups/channels: 150 messages
-    # - DMs: 500 messages
+    # - DMs: 200 messages
     is_group = is_group_or_channel(entity)
-    message_limit = 150 if is_group else 500
+    message_limit = 150 if is_group else 200
     messages = await client.get_messages(entity, limit=message_limit)
     
     # Get media chain and inject media descriptions
