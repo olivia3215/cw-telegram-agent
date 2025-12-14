@@ -312,7 +312,6 @@ class DirectoryMediaSource(MediaSource):
                 # If we updated the record, write it back to disk and memory cache
                 if needs_update:
                     try:
-                        self._mem_cache[unique_id] = record.copy()
                         json_file = self.directory / f"{unique_id}.json"
                         temp_file = json_file.with_name(f"{json_file.name}.tmp")
                         temp_file.write_text(
@@ -320,6 +319,8 @@ class DirectoryMediaSource(MediaSource):
                             encoding="utf-8",
                         )
                         temp_file.replace(json_file)
+                        # Update memory cache only after successful disk write
+                        self._mem_cache[unique_id] = record.copy()
                         logger.info(
                             f"DirectoryMediaSource: updated cached record {unique_id} with new metadata"
                         )
