@@ -444,14 +444,20 @@ async def _replace_custom_emoji_in_reactions(
     if not reactions_str:
         return reactions_str
     
+    logger.info(f"Admin console: Processing reactions for message {message_id}")
+    
     try:
         reactions_obj = getattr(message, 'reactions', None)
         if not reactions_obj:
+            logger.info(f"Admin console: Message {message_id} has no reactions object")
             return reactions_str
         
         recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
         if not recent_reactions:
+            logger.info(f"Admin console: Message {message_id} has no recent_reactions")
             return reactions_str
+        
+        logger.info(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
         
         from utils import get_custom_emoji_name, extract_user_id_from_peer
         from handlers.received_helpers.message_processing import get_channel_name
@@ -459,14 +465,16 @@ async def _replace_custom_emoji_in_reactions(
         # Rebuild reactions string directly from reaction objects, using img tags for custom emojis
         # This is more reliable than trying to match and replace text in the formatted string
         reaction_parts = []
-        for reaction in recent_reactions:
+        for idx, reaction in enumerate(recent_reactions):
             # Get user info
             peer_id = getattr(reaction, 'peer_id', None)
             if not peer_id:
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no peer_id")
                 continue
             
             user_id = extract_user_id_from_peer(peer_id)
             if user_id is None:
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no user_id")
                 continue
             
             # Get user name
@@ -475,12 +483,15 @@ async def _replace_custom_emoji_in_reactions(
             except Exception:
                 user_name = str(user_id)
             
+            logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) from {user_name}({user_id})")
+            
             # Escape user_name to prevent XSS when inserted into HTML
             user_name_escaped = html.escape(user_name)
             
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has no reaction object")
                 continue
             
             # Build the reaction part
@@ -489,13 +500,16 @@ async def _replace_custom_emoji_in_reactions(
             # Check if it's a custom emoji (has document_id)
             if hasattr(reaction_obj, 'document_id'):
                 document_id = reaction_obj.document_id
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) is custom emoji with document_id={document_id}")
                 # Build img tag directly for custom emoji - always use img tag, not text replacement
                 emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
                 # Try to get emoji name for alt text, but don't fail if we can't
                 try:
                     emoji_name = await get_custom_emoji_name(agent, document_id)
+                    logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) custom emoji name: {emoji_name[:100]}")
                     alt_text = emoji_name if emoji_name else "🎭"
-                except Exception:
+                except Exception as e:
+                    logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) failed to get emoji name: {e}")
                     alt_text = "🎭"
                 # Escape alt_text for safe use in HTML attributes
                 alt_text_escaped = html.escape(alt_text)
@@ -504,21 +518,26 @@ async def _replace_custom_emoji_in_reactions(
                 reaction_part += img_tag
             elif hasattr(reaction_obj, 'emoticon'):
                 # Regular emoji - keep as is
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) is standard emoji: {reaction_obj.emoticon}")
                 reaction_part += reaction_obj.emoticon
             else:
                 # Unknown reaction type - skip
+                logger.info(f"DEBUG: Reaction {idx} on message {message_id} (admin) has unknown type")
                 continue
             
             reaction_parts.append(reaction_part)
         
         # Return rebuilt reactions string with img tags for custom emojis
         if reaction_parts:
-            return ', '.join(reaction_parts)
+            result = ', '.join(reaction_parts)
+            logger.info(f"DEBUG: Message {message_id} (admin) reactions rebuilt: {result[:100]}")
+            return result
         else:
             # If we couldn't rebuild (shouldn't happen), return original
+            logger.info(f"DEBUG: Message {message_id} (admin) couldn't rebuild reactions, returning original")
             return reactions_str
     except Exception as e:
-        logger.debug(f"Error replacing custom emojis in reactions: {e}")
+        logger.info(f"DEBUG: Error replacing custom emojis in reactions: {e}")
         return reactions_str
 
 
@@ -1552,14 +1571,92 @@ def register_conversation_routes(agents_bp: Blueprint):
                         return None, None
                     
                     # Get unique_id from document for use with media pipeline
-                    unique_id = getattr(doc, "file_unique_id", None)
+                    from telegram_media import get_unique_id
+                    unique_id = get_unique_id(doc)
                     if not unique_id:
-                        # Fallback to document_id as string if file_unique_id not available
-                        unique_id = str(doc_id)
+                        logger.warning(f"Custom emoji document {doc_id} has no unique_id")
+                        return None, None
+                    
+                    logger.info(f"Custom emoji: document_id={doc_id}, unique_id={unique_id}")
+                    
+                    # Extract sticker set information from document attributes
+                    sticker_set_name = None
+                    sticker_set_id = None
+                    sticker_access_hash = None
+                    sticker_name = None
+                    
+                    attrs = getattr(doc, "attributes", None)
+                    if isinstance(attrs, (list, tuple)):
+                        for a in attrs:
+                            # Check for DocumentAttributeSticker (regular sticker) or DocumentAttributeCustomEmoji
+                            if hasattr(a, "stickerset"):
+                                ss = getattr(a, "stickerset", None)
+                                if ss:
+                                    sticker_set_name = getattr(ss, "short_name", None)
+                                    sticker_set_id = getattr(ss, "id", None)
+                                    sticker_access_hash = getattr(ss, "access_hash", None)
+                                # Get sticker name (emoji character)
+                                sticker_name = getattr(a, "alt", None)
+                    
+                    # Also check emoji directly on document
+                    if not sticker_name:
+                        sticker_name = getattr(doc, "emoji", None)
+                    
+                    # If we have sticker_set_id but no short_name, query the set to get the name, title, and emoji status
+                    sticker_set_title = None
+                    is_emoji_set = None
+                    
+                    if sticker_set_id and not sticker_set_name:
+                        try:
+                            from telethon.tl.functions.messages import GetStickerSetRequest
+                            from telethon.tl.types import InputStickerSetID
+                            
+                            logger.info(f"DEBUG: Querying sticker set for custom emoji {doc_id}: set_id={sticker_set_id}")
+                            
+                            sticker_set_result = await agent.client(
+                                GetStickerSetRequest(
+                                    stickerset=InputStickerSetID(
+                                        id=sticker_set_id,
+                                        access_hash=sticker_access_hash or 0
+                                    ),
+                                    hash=0
+                                )
+                            )
+                            
+                            if sticker_set_result and hasattr(sticker_set_result, 'set'):
+                                set_obj = sticker_set_result.set
+                                sticker_set_name = getattr(set_obj, 'short_name', None)
+                                sticker_set_title = getattr(set_obj, 'title', None)
+                                
+                                # Check if this is an emoji set
+                                if hasattr(set_obj, 'emojis') and getattr(set_obj, 'emojis', False):
+                                    is_emoji_set = True
+                                else:
+                                    # Check set_type attribute if available
+                                    set_type = getattr(set_obj, 'set_type', None)
+                                    if set_type:
+                                        type_str = str(set_type)
+                                        if 'emoji' in type_str.lower() or 'Emoji' in type_str:
+                                            is_emoji_set = True
+                                
+                                if sticker_set_name:
+                                    logger.info(f"DEBUG: Got sticker set info for custom emoji {doc_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
+                        except Exception as e:
+                            logger.info(f"DEBUG: Failed to query sticker set for custom emoji {doc_id}: {e}")
                     
                     # Use media pipeline to get/cache the emoji
                     # This will handle caching, downloading, and description generation
                     media_chain = get_default_media_source_chain()
+                    
+                    logger.info(f"Calling media pipeline for custom emoji {doc_id}: unique_id={unique_id}, sticker_set={sticker_set_name}, is_emoji_set={is_emoji_set}, sticker_name={sticker_name}")
+                    
+                    # Build metadata dict to pass additional fields
+                    metadata = {}
+                    if sticker_set_title is not None:
+                        metadata['sticker_set_title'] = sticker_set_title
+                    if is_emoji_set is not None:
+                        metadata['is_emoji_set'] = is_emoji_set
+                    
                     record = await media_chain.get(
                         unique_id=unique_id,
                         agent=agent,
@@ -1569,11 +1666,18 @@ def register_conversation_routes(agents_bp: Blueprint):
                         sender_name=None,
                         channel_id=None,
                         channel_name=None,
+                        sticker_set_name=sticker_set_name,
+                        sticker_set_id=sticker_set_id,
+                        sticker_access_hash=sticker_access_hash,
+                        sticker_name=sticker_name,
+                        **metadata  # Pass additional metadata fields
                     )
                     
                     if not record:
                         logger.warning(f"Custom emoji {doc_id} (unique_id: {unique_id}) not found via media pipeline")
                         return None, None
+                    
+                    logger.info(f"Media pipeline returned record for custom emoji {doc_id}: status={record.get('status')}, description={record.get('description')[:50] if record.get('description') else None}")
                     
                     # After calling media_chain.get(), the file should be cached
                     # Find the cached file using unique_id
@@ -1762,16 +1866,16 @@ def register_conversation_routes(agents_bp: Blueprint):
                             media_bytes = await download_media_bytes(client, item.file_ref)
                             # Detect MIME type
                             mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
-                            return media_bytes, mime_type
+                            return media_bytes, mime_type, item
                     
-                    return None, None
+                    return None, None, None
                 except Exception as e:
                     logger.error(f"Error fetching media: {e}")
-                    return None, None
+                    return None, None, None
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
-                media_bytes, mime_type = agent.execute(_get_media(), timeout=30.0)
+                media_bytes, mime_type, media_item = agent.execute(_get_media(), timeout=30.0)
                 if media_bytes is None:
                     return jsonify({"error": "Media not found"}), 404
                 
@@ -1795,8 +1899,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         media_filename = f"{unique_id}{file_extension}"
                         media_file = state_media_dir / media_filename
                         if not media_file.exists():
-                            # Create a record using the same structure as normal media storage
-                            # This indicates the file is cached but description is pending
+                            # Create a proper record with full metadata from MediaItem
                             from clock import clock
                             from datetime import UTC
                             
@@ -1804,18 +1907,40 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 "unique_id": unique_id,
                                 "description": None,
                                 "status": MediaStatus.TEMPORARY_FAILURE.value,
-                                "failure_reason": "File cached from admin console, description pending",
+                                "failure_reason": "Downloaded from admin console, description pending",
                                 "ts": clock.now(UTC).isoformat(),
                             }
                             
-                            # Add MIME type if available
+                            # Add full metadata from MediaItem if available
+                            if media_item:
+                                # Add kind (required for proper classification)
+                                if hasattr(media_item.kind, "value"):
+                                    record["kind"] = media_item.kind.value
+                                else:
+                                    record["kind"] = str(media_item.kind)
+                                
+                                # Add sticker-specific metadata
+                                if media_item.sticker_set_name:
+                                    record["sticker_set_name"] = media_item.sticker_set_name
+                                if media_item.sticker_name:
+                                    record["sticker_name"] = media_item.sticker_name
+                                if media_item.sticker_set_id:
+                                    record["sticker_set_id"] = media_item.sticker_set_id
+                                if media_item.sticker_access_hash:
+                                    record["sticker_access_hash"] = media_item.sticker_access_hash
+                                
+                                # Add duration for videos/animations
+                                if media_item.duration:
+                                    record["duration"] = media_item.duration
+                            
+                            # Add MIME type
                             if mime_type:
                                 record["mime_type"] = mime_type
                             
                             try:
                                 cache_source.put(unique_id, record, media_bytes, file_extension)
                                 logger.debug(
-                                    f"Cached media file {media_filename} to {state_media_dir} for {unique_id}"
+                                    f"Cached media file {media_filename} with full metadata to {state_media_dir} for {unique_id}"
                                 )
                             except Exception as e:
                                 logger.warning(f"Failed to cache media file {media_filename}: {e}")

@@ -364,8 +364,9 @@ class AgentStorage:
                     )
                     
                     if not messages:
-                        logger.debug(
-                            f"[{self.agent_config_name}] No messages found for summary range {min_id_int}-{max_id_int}"
+                        logger.info(
+                            f"[{self.agent_config_name}] No messages found for summary {summary.get('id')} "
+                            f"range {min_id_int}-{max_id_int} in channel {channel_id}"
                         )
                         continue
                     
@@ -377,8 +378,9 @@ class AgentStorage:
                     ]
                     
                     if not filtered_messages:
-                        logger.debug(
+                        logger.info(
                             f"[{self.agent_config_name}] No messages in filtered range {min_id_int}-{max_id_int} "
+                            f"for summary {summary.get('id')} in channel {channel_id} "
                             f"(fetched {len(messages)} messages with adjusted boundaries)"
                         )
                         continue

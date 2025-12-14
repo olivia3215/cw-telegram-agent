@@ -14,5 +14,7 @@
   "duration": null,
   "skip_fallback": true,
   "mime_type": "image/webp",
-  "_on_disk": true
+  "_on_disk": true,
+  "is_emoji_set": false,
+  "sticker_set_title": "Naughty Nun"
 }
