@@ -1850,12 +1850,12 @@ def register_conversation_routes(agents_bp: Blueprint):
                     # Get the message
                     message = await client.get_messages(entity, ids=msg_id)
                     if not message:
-                        return None, None
+                        return None, None, None
                     
                     # Handle case where get_messages returns a list
                     if isinstance(message, list):
                         if len(message) == 0:
-                            return None, None
+                            return None, None, None
                         message = message[0]
                     
                     # Find the media item with matching unique_id
