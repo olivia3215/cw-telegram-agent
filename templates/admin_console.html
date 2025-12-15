@@ -3401,11 +3401,12 @@
                     
                     const summaries = data.summaries || [];
                     const messages = data.messages || [];
+                    const agentTimezone = data.agent_timezone;
                     conversationMessages = messages;
                     conversationTranslations = {};
                     showTranslation = false;
                     
-                    renderConversation(agentName, userId, summaries, messages);
+                    renderConversation(agentName, userId, summaries, messages, agentTimezone);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -3415,9 +3416,34 @@
                 });
         }
 
-        function renderConversation(agentName, userId, summaries, messages) {
+        function renderConversation(agentName, userId, summaries, messages, agentTimezone) {
             const container = document.getElementById('conversation-container');
             let html = '';
+            
+            // Helper function to convert UTC timestamp to agent timezone for display
+            function formatTimestamp(utcTimestamp) {
+                if (!utcTimestamp) return 'N/A';
+                try {
+                    const date = new Date(utcTimestamp);
+                    if (agentTimezone) {
+                        // Format with agent's timezone
+                        return date.toLocaleString('en-US', {
+                            timeZone: agentTimezone,
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        }).replace(',', '');
+                    }
+                    // Fallback to UTC if no timezone
+                    return utcTimestamp;
+                } catch (e) {
+                    return utcTimestamp;
+                }
+            }
             
             // Display summaries at the top (editable, styled like memories)
             if (summaries.length > 0) {
@@ -3576,7 +3602,7 @@
                     } else {
                         senderDisplay = msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>';
                     }
-                    let metadataLine = `${senderDisplay} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}`;
+                    let metadataLine = `${senderDisplay} • ${formatTimestamp(msg.timestamp)} • ID: ${msg.id}`;
                     if (msg.reply_to_msg_id) {
                         metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
                     }

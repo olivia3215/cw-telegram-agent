@@ -1283,7 +1283,11 @@ def register_conversation_routes(agents_bp: Blueprint):
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
                 messages = agent.execute(_get_messages(), timeout=30.0)
-                return jsonify({"messages": messages, "summaries": summaries})
+                return jsonify({
+                    "messages": messages,
+                    "summaries": summaries,
+                    "agent_timezone": str(agent.timezone) if agent.timezone else None
+                })
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
