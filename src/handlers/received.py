@@ -572,8 +572,8 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Check if summarization is needed (highest_summarized_id already fetched above)
     unsummarized_count = count_unsummarized_messages(messages, highest_summarized_id)
     
-    # If more than 50 unsummarized messages, perform summarization first
-    if unsummarized_count > 50:
+    # If 70 or more unsummarized messages, perform summarization first
+    if unsummarized_count >= 70:
         logger.info(
             f"[{agent.name}] {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
         )

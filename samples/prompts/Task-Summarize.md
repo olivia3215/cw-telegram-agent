@@ -4,7 +4,7 @@ You have the ability to create and manage conversation summaries to help maintai
 
 ## When Summarization is Needed
 
-The system will automatically request summarization when there are more than 50 unsummarized messages in a conversation. When this happens, you will be asked to create or update a summary entry covering messages that are not yet summarized. Do not summarize the most recent 20 or so messages.
+The system will automatically request summarization when there are 70 or more unsummarized messages in a conversation. When this happens, you will be asked to create or update a summary entry covering messages that are not yet summarized. Do not summarize the most recent 20 or so messages.
 
 ## How to Use Summarization
 
