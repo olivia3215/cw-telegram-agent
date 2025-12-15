@@ -16,7 +16,9 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file  # pyright: ignore[reportMissingImports]
 from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetStickerSetRequest  # pyright: ignore[reportMissingImports]
-from telethon.tl.types import InputStickerSetShortName  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
+    InputStickerSetShortName,
+)
 
 from clock import clock
 from config import STATE_DIRECTORY
@@ -50,6 +52,62 @@ logger = logging.getLogger(__name__)
 # Create media blueprint
 media_bp = Blueprint("media", __name__)
 
+
+async def _query_sticker_set_info(
+    client: TelegramClient, sticker_set_name: str
+) -> tuple[bool | None, str | None]:
+    """
+    Query Telegram API to get sticker set information.
+    
+    Args:
+        client: Telegram client
+        sticker_set_name: Short name of the sticker set
+        
+    Returns:
+        Tuple of (is_emoji_set, sticker_set_title)
+        - is_emoji_set: True if it's an emoji set, False if it's a regular sticker set, None if unable to determine
+        - sticker_set_title: The title/long name of the sticker set, or None if unable to determine
+    """
+    if not sticker_set_name:
+        return (None, None)
+    
+    try:
+        result = await client(
+            GetStickerSetRequest(
+                stickerset=InputStickerSetShortName(short_name=sticker_set_name),
+                hash=0,
+            )
+        )
+        
+        # Extract title and emoji set status from the result
+        is_emoji_set = False
+        sticker_set_title = None
+        
+        set_obj = getattr(result, "set", None)
+        if set_obj:
+            # Get the title
+            sticker_set_title = getattr(set_obj, "title", None)
+            if not sticker_set_title:
+                # Fallback to short_name if title is not available
+                sticker_set_title = getattr(set_obj, "short_name", None)
+            
+            # Check for emoji set indicators in the set object
+            # Emoji sets typically have emoji=True or a specific set type
+            if hasattr(set_obj, "emojis") and getattr(set_obj, "emojis", False):
+                is_emoji_set = True
+            # Check set type attribute if available
+            set_type = getattr(set_obj, "set_type", None)
+            if set_type:
+                # Check if set_type indicates emoji (varies by Telethon version)
+                type_str = str(set_type)
+                if "emoji" in type_str.lower() or "Emoji" in type_str:
+                    is_emoji_set = True
+        
+        return (is_emoji_set, sticker_set_title)
+    except Exception as e:
+        logger.warning(f"Failed to query Telegram for sticker set {sticker_set_name}: {e}")
+        return (None, None)
+
 @media_bp.route("/api/media")
 def api_media_list():
     """Get list of media files in a directory."""
@@ -77,101 +135,176 @@ def api_media_list():
 
         media_files = []
 
-        # Find all JSON files to get unique IDs
-        for json_file in media_dir.glob("*.json"):
-            try:
-                unique_id = json_file.stem
-
-                # Use MediaSource chain to get the record (applies all transformations)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+        # Create a single event loop for all async operations in this request
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Find all JSON files to get unique IDs
+            for json_file in media_dir.glob("*.json"):
                 try:
+                    unique_id = json_file.stem
+
+                    # Use MediaSource chain to get the record (applies all transformations)
                     record = loop.run_until_complete(
                         media_chain.get(unique_id=unique_id)
                     )
-                finally:
-                    loop.close()
 
-                if not record:
-                    logger.warning(f"No record found for {unique_id}")
-                    continue
+                    if not record:
+                        logger.warning(f"No record found for {unique_id}")
+                        continue
 
-                # Look for associated media file
-                media_file_path = find_media_file(media_dir, unique_id)
-                media_file = str(media_file_path) if media_file_path else None
+                    # Look for associated media file
+                    media_file_path = find_media_file(media_dir, unique_id)
+                    media_file = str(media_file_path) if media_file_path else None
 
-                mime_type = record.get("mime_type")
+                    mime_type = record.get("mime_type")
 
-                # Attempt to detect MIME type when missing (common for legacy stickers)
-                if (not mime_type) and media_file_path and media_file_path.exists():
-                    try:
-                        with open(media_file_path, "rb") as media_fp:
-                            file_head = media_fp.read(1024)
-                        detected_mime_type = detect_mime_type_from_bytes(file_head)
-                        if (
-                            detected_mime_type == "application/gzip"
-                            and media_file_path.suffix.lower() == ".tgs"
-                        ):
-                            mime_type = "application/x-tgsticker"
+                    # Attempt to detect MIME type when missing (common for legacy stickers)
+                    if (not mime_type) and media_file_path and media_file_path.exists():
+                        try:
+                            with open(media_file_path, "rb") as media_fp:
+                                file_head = media_fp.read(1024)
+                            detected_mime_type = detect_mime_type_from_bytes(file_head)
+                            if (
+                                detected_mime_type == "application/gzip"
+                                and media_file_path.suffix.lower() == ".tgs"
+                            ):
+                                mime_type = "application/x-tgsticker"
+                            else:
+                                mime_type = detected_mime_type
+                            logger.debug(
+                                "Detected MIME type %s for %s",
+                                mime_type,
+                                media_file_path.name,
+                            )
+                        except Exception as mime_error:  # pragma: no cover - defensive
+                            logger.warning(
+                                "Failed to detect MIME type for %s: %s",
+                                media_file_path,
+                                mime_error,
+                            )
+                            mime_type = record.get("mime_type")
+                    elif (
+                        mime_type == "application/gzip"
+                        and media_file_path
+                        and media_file_path.suffix.lower() == ".tgs"
+                    ):
+                        mime_type = "application/x-tgsticker"
+
+                    # Group by sticker set for organization
+                    kind = record.get("kind", "unknown")
+                    if is_tgs_mime_type(mime_type) and kind == "sticker":
+                        kind = "animated_sticker"
+
+                    # Extract sticker_name early so we can use it for emoji set detection
+                    sticker_name = record.get("sticker_name", "")
+
+                    if kind == "sticker" or kind == "animated_sticker":
+                        sticker_set = record.get("sticker_set_name")
+                        sticker_set_title = record.get("sticker_set_title")  # May be None for old records
+                        
+                        # If sticker has no set name, treat it as regular media based on type
+                        if not sticker_set:
+                            # Unnamed stickers are treated as images or videos
+                            if kind == "animated_sticker" or is_tgs_mime_type(mime_type):
+                                sticker_set = "Other Media - Videos"
+                            else:
+                                sticker_set = "Other Media - Images"
+                            sticker_set_title = None
+                            is_emoji_set = False
                         else:
-                            mime_type = detected_mime_type
-                        logger.debug(
-                            "Detected MIME type %s for %s",
-                            mime_type,
-                            media_file_path.name,
-                        )
-                    except Exception as mime_error:  # pragma: no cover - defensive
-                        logger.warning(
-                            "Failed to detect MIME type for %s: %s",
-                            media_file_path,
-                            mime_error,
-                        )
-                        mime_type = record.get("mime_type")
-                elif (
-                    mime_type == "application/gzip"
-                    and media_file_path
-                    and media_file_path.suffix.lower() == ".tgs"
-                ):
-                    mime_type = "application/x-tgsticker"
+                            # Check if we already have cached is_emoji_set and sticker_set_title
+                            is_emoji_set = record.get("is_emoji_set")
+                            if sticker_set_title is None:
+                                sticker_set_title = record.get("sticker_set_title")
+                            need_to_cache = False
+                            
+                            # Query Telegram if we're missing either piece of information
+                            if is_emoji_set is None or sticker_set_title is None:
+                                try:
+                                    # Get puppet master client for Telegram queries
+                                    puppet_master = get_puppet_master_manager()
+                                    if puppet_master.is_configured:
+                                        # Use puppet master's run() method to execute in its event loop
+                                        def _query_factory(client: TelegramClient):
+                                            return _query_sticker_set_info(client, sticker_set)
+                                        
+                                        queried_is_emoji, queried_title = puppet_master.run(_query_factory, timeout=10)
+                                        
+                                        # Use queried values if we got them
+                                        if is_emoji_set is None and queried_is_emoji is not None:
+                                            is_emoji_set = queried_is_emoji
+                                            need_to_cache = True
+                                        if sticker_set_title is None and queried_title is not None:
+                                            sticker_set_title = queried_title
+                                            need_to_cache = True
+                                except Exception as e:
+                                    logger.warning(f"Failed to query sticker set info for {sticker_set}: {e}")
+                                
+                                # Default to False for is_emoji_set if we couldn't determine
+                                if is_emoji_set is None:
+                                    is_emoji_set = False
+                            
+                            # Cache the information if we just queried for it
+                            if need_to_cache:
+                                if is_emoji_set is not None:
+                                    record["is_emoji_set"] = is_emoji_set
+                                if sticker_set_title is not None:
+                                    record["sticker_set_title"] = sticker_set_title
+                                cache_source.put(unique_id, record)
+                    else:
+                        # For non-stickers, create categorized "Other Media" groups
+                        if kind == "photo":
+                            sticker_set = "Other Media - Images"
+                        elif kind in ("video", "animation"):
+                            sticker_set = "Other Media - Videos"
+                        elif kind == "audio":
+                            sticker_set = "Other Media - Audio"
+                        else:
+                            # Unknown kinds: treat as images if image MIME type, otherwise generic "Other Media"
+                            if mime_type and mime_type.startswith("image/"):
+                                sticker_set = "Other Media - Images"
+                            elif mime_type and (mime_type.startswith("video/") or is_tgs_mime_type(mime_type)):
+                                sticker_set = "Other Media - Videos"
+                            elif mime_type and mime_type.startswith("audio/"):
+                                sticker_set = "Other Media - Audio"
+                            else:
+                                sticker_set = "Other Media"
+                        sticker_set_title = None
+                        is_emoji_set = False
 
-                # Group by sticker set for organization
-                kind = record.get("kind", "unknown")
-                if is_tgs_mime_type(mime_type) and kind == "sticker":
-                    kind = "animated_sticker"
+                    # Add emoji description for sticker names
+                    emoji_description = ""
+                    if sticker_name and kind in ("sticker", "animated_sticker"):
+                        try:
+                            emoji_description = get_emoji_unicode_name(sticker_name)
+                        except Exception:
+                            emoji_description = ""
 
-                if kind == "sticker" or kind == "animated_sticker":
-                    sticker_set = record.get("sticker_set_name") or "Other Media"
-                else:
-                    sticker_set = "Other Media"
+                    media_files.append(
+                        {
+                            "unique_id": unique_id,
+                            "json_file": str(json_file),
+                            "media_file": media_file,
+                            "description": record.get("description"),
+                            "kind": kind,
+                            "sticker_set_name": sticker_set,
+                            "sticker_set_title": sticker_set_title,
+                            "sticker_name": sticker_name,
+                            "emoji_description": emoji_description,
+                            "is_emoji_set": is_emoji_set,
+                            "status": record.get("status", "unknown"),
+                            "failure_reason": record.get("failure_reason"),
+                            "mime_type": mime_type,
+                        }
+                    )
 
-                # Add emoji description for sticker names
-                sticker_name = record.get("sticker_name", "")
-                emoji_description = ""
-                if sticker_name and kind in ("sticker", "animated_sticker"):
-                    try:
-                        emoji_description = get_emoji_unicode_name(sticker_name)
-                    except Exception:
-                        emoji_description = ""
-
-                media_files.append(
-                    {
-                        "unique_id": unique_id,
-                        "json_file": str(json_file),
-                        "media_file": media_file,
-                        "description": record.get("description"),
-                        "kind": kind,
-                        "sticker_set_name": sticker_set,
-                        "sticker_name": sticker_name,
-                        "emoji_description": emoji_description,
-                        "status": record.get("status", "unknown"),
-                        "failure_reason": record.get("failure_reason"),
-                        "mime_type": mime_type,
-                    }
-                )
-
-            except Exception as e:
-                logger.error(f"Error processing {json_file}: {e}")
-                continue
+                except Exception as e:
+                    logger.error(f"Error processing {json_file}: {e}")
+                    continue
+        finally:
+            loop.close()
 
         # Group by sticker set
         grouped_media = {}
@@ -308,30 +441,10 @@ def api_refresh_from_ai(unique_id: str):
                 "error": f"Puppetmaster is required for media operations. {str(e)}"
             }), 400
         
-        # Get the puppetmaster's client
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            client = loop.run_until_complete(puppet_master._ensure_client())
-            agent = MinimalAgent(client)
-            logger.info(
-                "Refreshing AI description for %s using puppetmaster",
-                unique_id,
-            )
-        except Exception as e:
-            logger.error(f"Failed to get puppetmaster client: {e}")
-            loop.close()
-            return jsonify({"error": f"Could not get puppetmaster client: {e}"}), 400
-
-        # For refresh, we want to bypass cached results and force fresh AI generation
-        # Create a minimal chain with just the AI generation source
-
         # Find the media file
         media_file = find_media_file(media_dir, unique_id)
 
         if not media_file:
-            loop.close()
             return jsonify({"error": "Media file not found"}), 404
 
         # Pass the media file Path directly as the doc parameter
@@ -389,47 +502,41 @@ def api_refresh_from_ai(unique_id: str):
         else:
             media_kind = data.get("kind", "sticker")
 
-        # For media editor, we don't have a real Telegram document
-        # download_media_bytes supports Path objects directly
-        # The client is already connected (from puppetmaster or agent initialization above)
-        try:
-            record = loop.run_until_complete(
-                media_chain.get(
-                    unique_id=unique_id,
-                    agent=agent,
-                    doc=fake_doc,  # Path object - download_media_bytes handles this
-                    kind=media_kind,
-                    sticker_set_name=data.get("sticker_set_name"),
-                    sticker_name=data.get("sticker_name"),
-                    sender_id=None,
-                    sender_name=None,
-                    channel_id=None,
-                    channel_name=None,
-                    media_ts=None,
-                    duration=data.get(
-                        "duration"
-                    ),  # Include duration for video/animated stickers
-                    mime_type=mime_type,  # Pass MIME type in metadata so it's available early
-                    skip_fallback=True,
-                )
+        # Run the media chain in the puppet master's event loop
+        async def _refresh_coro(client: TelegramClient):
+            agent = MinimalAgent(client)
+            logger.info(
+                "Refreshing AI description for %s using puppetmaster",
+                unique_id,
             )
-        finally:
-            # Properly clean up async resources before closing the loop
-            try:
-                # Cancel all pending tasks
-                pending = asyncio.all_tasks(loop)
-                for task in pending:
-                    task.cancel()
-                
-                # Wait for tasks to complete cancellation
-                if pending:
-                    loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
-            except Exception as e:
-                logger.warning(f"Error cleaning up async tasks: {e}")
-            finally:
-                loop.close()
+            
+            # For media editor, we don't have a real Telegram document
+            # download_media_bytes supports Path objects directly
+            record = await media_chain.get(
+                unique_id=unique_id,
+                agent=agent,
+                doc=fake_doc,  # Path object - download_media_bytes handles this
+                kind=media_kind,
+                sticker_set_name=data.get("sticker_set_name"),
+                sticker_name=data.get("sticker_name"),
+                sender_id=None,
+                sender_name=None,
+                channel_id=None,
+                channel_name=None,
+                media_ts=None,
+                duration=data.get(
+                    "duration"
+                ),  # Include duration for video/animated stickers
+                mime_type=mime_type,  # Pass MIME type in metadata so it's available early
+                skip_fallback=True,
+            )
+            return record
+        
+        try:
+            record = puppet_master.run(_refresh_coro, timeout=120)
+        except Exception as e:
+            logger.error(f"Failed to refresh AI description: {e}")
+            return jsonify({"error": f"Failed to refresh AI description: {e}"}), 500
 
         if record:
             # AIChainMediaSource has already cached the result to disk
@@ -691,6 +798,30 @@ async def _import_sticker_set_async(
                     f"Original error: {error_msg}"
                 ) from e
 
+        # Extract sticker set title (long name) and emoji set status from the result
+        sticker_set_title = None
+        is_emoji_set_for_import = False
+        if hasattr(result, "set"):
+            set_obj = result.set
+            sticker_set_title = getattr(set_obj, "title", None)
+            if not sticker_set_title:
+                # Fallback to short_name if title is not available
+                sticker_set_title = getattr(set_obj, "short_name", None)
+            
+            # Determine if this is an emoji set
+            if hasattr(set_obj, "emojis") and getattr(set_obj, "emojis", False):
+                is_emoji_set_for_import = True
+            # Check set type attribute if available
+            set_type = getattr(set_obj, "set_type", None)
+            if set_type:
+                type_str = str(set_type)
+                if "emoji" in type_str.lower() or "Emoji" in type_str:
+                    is_emoji_set_for_import = True
+        
+        logger.info(
+            f"Sticker set '{sticker_set_name}' has title: {sticker_set_title}, is_emoji_set: {is_emoji_set_for_import}"
+        )
+
         # Process each document using the same pattern as run.py
         # Convert result.documents to list to handle dict_values case
         logger.info(f"result.documents type: {type(result.documents)}")
@@ -755,7 +886,9 @@ async def _import_sticker_set_async(
                         "unique_id": unique_id,
                         "kind": media_kind,
                         "sticker_set_name": sticker_set_name,
+                        "sticker_set_title": sticker_set_title,  # Store long name (title)
                         "sticker_name": sticker_name,
+                        "is_emoji_set": is_emoji_set_for_import,  # Use value from set query
                         "description": None,  # Leave empty, use AI refresh when needed
                         "status": "pending_description",
                         "ts": clock.now(UTC).isoformat(),
@@ -779,7 +912,9 @@ async def _import_sticker_set_async(
                         "unique_id": unique_id,
                         "kind": error_kind,
                         "sticker_set_name": sticker_set_name,
+                        "sticker_set_title": sticker_set_title,  # Store long name (title)
                         "sticker_name": sticker_name,
+                        "is_emoji_set": is_emoji_set_for_import,  # Use value from set query
                         "description": None,
                         "status": "error",
                         "failure_reason": f"Download failed: {str(e)}",

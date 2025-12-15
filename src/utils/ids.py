@@ -53,25 +53,143 @@ def extract_sticker_name_from_document(doc) -> str | None:
 
 async def get_custom_emoji_name(agent, document_id) -> str:
     """
-    Get the name of a custom emoji from its document ID.
+    Get the description of a custom emoji from its document ID using the media pipeline.
     
     Args:
         agent: The agent instance with client access
         document_id: Telegram document ID for the custom emoji
         
     Returns:
-        Custom emoji name in [name] format, or fallback placeholder
+        Custom emoji description in ⟦media⟧ format, or fallback placeholder
     """
-    try:
-        # Try to get the document from the agent's client
-        doc = await agent.client.get_documents(document_id)
-        if doc and len(doc) > 0:
-            sticker_name = extract_sticker_name_from_document(doc[0])
-            if sticker_name:
-                return f"[{sticker_name}]"  # Use sticker name in brackets
-    except Exception:
-        pass  # Fall through to fallback
+    # Log at module level first
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"get_custom_emoji_name called with document_id={document_id}")
     
+    try:
+        from media.media_source import get_default_media_source_chain
+        from telegram_media import get_unique_id
+        from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest
+        
+        # Try to get the document from the agent's client using the correct API
+        result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[document_id]))
+        if not result or len(result) == 0:
+            logger.debug(f"get_custom_emoji_name: No document found for {document_id}")
+            return "🎭"  # Fallback if document not found
+        
+        doc_obj = result[0]
+        unique_id = get_unique_id(doc_obj)
+        if not unique_id:
+            logger.debug(f"get_custom_emoji_name: No unique_id for {document_id}")
+            return "🎭"  # Fallback if no unique ID
+        
+        logger.info(f"Custom emoji in reaction: document_id={document_id}, unique_id={unique_id}")
+        
+        # Extract sticker metadata
+        sticker_name = extract_sticker_name_from_document(doc_obj)
+        sticker_set_name = None
+        sticker_set_id = None
+        sticker_access_hash = None
+        
+        attrs = getattr(doc_obj, "attributes", None)
+        if isinstance(attrs, (list, tuple)):
+            for a in attrs:
+                if hasattr(a, "stickerset"):
+                    ss = getattr(a, "stickerset", None)
+                    if ss:
+                        sticker_set_name = getattr(ss, "short_name", None)
+                        sticker_set_id = getattr(ss, "id", None)
+                        sticker_access_hash = getattr(ss, "access_hash", None)
+        
+        # If we have sticker_set_id but no short_name, query the set to get the name, title, and emoji status
+        sticker_set_title = None
+        is_emoji_set = None
+        
+        if sticker_set_id and not sticker_set_name:
+            try:
+                from telethon.tl.functions.messages import GetStickerSetRequest
+                from telethon.tl.types import InputStickerSetID
+                
+                logger.debug(f"Querying sticker set for custom emoji {document_id}: set_id={sticker_set_id}")
+                
+                sticker_set_result = await agent.client(
+                    GetStickerSetRequest(
+                        stickerset=InputStickerSetID(
+                            id=sticker_set_id,
+                            access_hash=sticker_access_hash or 0
+                        ),
+                        hash=0
+                    )
+                )
+                
+                if sticker_set_result and hasattr(sticker_set_result, 'set'):
+                    set_obj = sticker_set_result.set
+                    sticker_set_name = getattr(set_obj, 'short_name', None)
+                    sticker_set_title = getattr(set_obj, 'title', None)
+                    
+                    # Check if this is an emoji set
+                    if hasattr(set_obj, 'emojis') and getattr(set_obj, 'emojis', False):
+                        is_emoji_set = True
+                    else:
+                        # Check set_type attribute if available
+                        set_type = getattr(set_obj, 'set_type', None)
+                        if set_type:
+                            type_str = str(set_type)
+                            if 'emoji' in type_str.lower() or 'Emoji' in type_str:
+                                is_emoji_set = True
+                    
+                    if sticker_set_name:
+                        logger.debug(f"Got sticker set info for custom emoji {document_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
+            except Exception as e:
+                logger.debug(f"Failed to query sticker set for custom emoji {document_id}: {e}")
+        
+        # Use media pipeline to get the description
+        media_chain = get_default_media_source_chain()
+        
+        logger.info(f"Calling media pipeline for reaction custom emoji {document_id}: unique_id={unique_id}, sticker_set={sticker_set_name}, is_emoji_set={is_emoji_set}, sticker_name={sticker_name}")
+        
+        # Build metadata dict to pass additional fields
+        metadata = {}
+        if sticker_set_title is not None:
+            metadata['sticker_set_title'] = sticker_set_title
+        if is_emoji_set is not None:
+            metadata['is_emoji_set'] = is_emoji_set
+        
+        record = await media_chain.get(
+            unique_id=unique_id,
+            agent=agent,
+            doc=doc_obj,
+            kind="sticker",  # Custom emojis are treated as stickers
+            sender_id=None,
+            sender_name=None,
+            channel_id=None,
+            channel_name=None,
+            sticker_set_name=sticker_set_name,
+            sticker_set_id=sticker_set_id,
+            sticker_access_hash=sticker_access_hash,
+            sticker_name=sticker_name,
+            **metadata  # Pass additional metadata fields
+        )
+        
+        if record and record.get("description"):
+            # Return in ⟦media⟧ format
+            logger.info(f"Media pipeline returned description for reaction custom emoji {document_id}: {record.get('description')[:50]}")
+            return f"⟦media⟧ {record['description']}"
+        
+        logger.info(f"Media pipeline returned no description for reaction custom emoji {document_id}, using fallback")
+        
+        # Fallback: use sticker name if available
+        if sticker_name:
+            return f"⟦media⟧ {sticker_name} custom emoji"
+        
+    except Exception as e:
+        # Log error but don't fail - just use fallback
+        logger.debug(f"Error in get_custom_emoji_name for {document_id}: {type(e).__name__}: {e}")
+        import traceback
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+    
+    logger.debug(f"get_custom_emoji_name returning fallback for {document_id}")
     return "🎭"  # Fallback placeholder
 
 

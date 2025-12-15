@@ -295,6 +295,39 @@ class DirectoryMediaSource(MediaSource):
                     f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
                 )
                 record = self._mem_cache[unique_id].copy()
+                
+                # Merge new metadata fields into the cached record if provided
+                # This allows updating cached records with additional metadata
+                # (like sticker_set_title, is_emoji_set) without regenerating
+                needs_update = False
+                for key, value in metadata.items():
+                    if key != "skip_fallback" and value is not None:
+                        if key not in record or record[key] != value:
+                            record[key] = value
+                            needs_update = True
+                            logger.debug(
+                                f"DirectoryMediaSource: updating cached record {unique_id} with {key}={value}"
+                            )
+                
+                # If we updated the record, write it back to disk and memory cache
+                if needs_update:
+                    try:
+                        json_file = self.directory / f"{unique_id}.json"
+                        temp_file = json_file.with_name(f"{json_file.name}.tmp")
+                        temp_file.write_text(
+                            json.dumps(record, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        temp_file.replace(json_file)
+                        # Update memory cache only after successful disk write
+                        self._mem_cache[unique_id] = record.copy()
+                        logger.info(
+                            f"DirectoryMediaSource: updated cached record {unique_id} with new metadata"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"DirectoryMediaSource: failed to update cached record {unique_id}: {e}"
+                        )
 
                 if skip_fallback:
                     return record

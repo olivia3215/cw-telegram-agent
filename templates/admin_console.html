@@ -405,7 +405,7 @@
                     </div>
                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
                         <select id="sticker-set-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 220px;">
-                            <option value="">Jump to sticker set…</option>
+                            <option value="">Jump to…</option>
                         </select>
                     </div>
                 </div>
@@ -848,21 +848,56 @@
                     stickerSetFirstMediaMap = {};
                     let globalIndex = 0;
 
+                    // Track display names for each sticker set
+                    const stickerSetDisplayNames = {};
+                    const stickerSetTypes = {}; // Track if set is emoji or sticker
+                    
                     for (const [stickerSet, mediaFiles] of Object.entries(data.grouped_media)) {
                         if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) {
                             continue;
                         }
+
+                        // Determine display name for this set (use first media item's title if available)
+                        let displayName = stickerSet;
+                        const firstMedia = mediaFiles[0];
+                        if (firstMedia && firstMedia.sticker_set_title && firstMedia.sticker_set_title !== stickerSet) {
+                            displayName = `${stickerSet} (${firstMedia.sticker_set_title})`;
+                        }
+                        
+                        // Check if this is an emoji set
+                        const isEmojiSet = firstMedia && firstMedia.is_emoji_set;
+                        stickerSetTypes[stickerSet] = isEmojiSet;
+                        
+                        // Add prefix to distinguish emoji sets from sticker sets
+                        if (isEmojiSet) {
+                            displayName = `🎨 Emoji Set: ${displayName}`;
+                        } else if (stickerSet !== "Other Media" && !stickerSet.startsWith("Other Media -")) {
+                            displayName = `📎 Sticker Set: ${displayName}`;
+                        }
+                        
+                        stickerSetDisplayNames[stickerSet] = displayName;
 
                         stickerSetStartIndexMap[stickerSet] = globalIndex;
                         stickerSetOrder.push(stickerSet);
                         stickerSetFirstMediaMap[stickerSet] = mediaFiles[0]?.unique_id || null;
 
                         mediaFiles.forEach(media => {
-                            media.sticker_set_display = stickerSet;
+                            // Store the base display name (without prefix) for section headers
+                            let baseDisplayName = stickerSet;
+                            if (media.sticker_set_title && media.sticker_set_title !== stickerSet) {
+                                baseDisplayName = `${stickerSet} (${media.sticker_set_title})`;
+                            }
+                            media.sticker_set_display = baseDisplayName;
+                            media.sticker_set_display_with_prefix = displayName;
+                            media.is_emoji_set = isEmojiSet;
                             allMediaFiles.push(media);
                             globalIndex += 1;
                         });
                     }
+                    
+                    // Store display names and types for use in dropdown
+                    window.stickerSetDisplayNames = stickerSetDisplayNames;
+                    window.stickerSetTypes = stickerSetTypes;
 
                     // Reset to page 1 unless preservePage is true
                     if (!preservePage) {
@@ -925,7 +960,9 @@
                     if (lastStickerSet !== null) {
                         html += '</div>'; // Close previous grid
                     }
-                    html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${media.sticker_set_display}</h2>`;
+                    // Use prefix version for section headers to distinguish emoji from sticker sets
+                    const headerText = media.sticker_set_display_with_prefix || media.sticker_set_display;
+                    html += `<h2 style="margin: 16px 0 8px 0; color: #2c3e50; font-size: 18px; font-weight: 600;">${headerText}</h2>`;
                     html += '<div class="media-grid">';
                     lastStickerSet = media.sticker_set_display;
                 }
@@ -1074,7 +1111,7 @@
 
             const placeholder = document.createElement('option');
             placeholder.value = '';
-            placeholder.textContent = 'Jump to sticker set…';
+            placeholder.textContent = 'Jump to…';
             stickerSetSelect.appendChild(placeholder);
 
             if (!stickerSetOrder.length) {
@@ -1083,10 +1120,37 @@
                 return;
             }
 
+            // Group sets by type: stickers, custom emoji, and other media
+            const stickerSets = [];
+            const emojiSets = [];
+            const otherMedia = [];
+            
             stickerSetOrder.forEach((setName) => {
+                const displayName = (window.stickerSetDisplayNames && window.stickerSetDisplayNames[setName]) 
+                    ? window.stickerSetDisplayNames[setName] 
+                    : setName;
+                const isEmojiSet = window.stickerSetTypes && window.stickerSetTypes[setName];
+                
+                if (setName.startsWith("Other Media")) {
+                    otherMedia.push({ value: setName, text: displayName });
+                } else if (isEmojiSet) {
+                    emojiSets.push({ value: setName, text: displayName });
+                } else {
+                    stickerSets.push({ value: setName, text: displayName });
+                }
+            });
+            
+            // Sort each group case-insensitively by display text
+            const caseInsensitiveSort = (a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: 'base' });
+            stickerSets.sort(caseInsensitiveSort);
+            emojiSets.sort(caseInsensitiveSort);
+            otherMedia.sort(caseInsensitiveSort);
+            
+            // Add all sets in order: stickers, emoji, other
+            [...stickerSets, ...emojiSets, ...otherMedia].forEach(({ value, text }) => {
                 const option = document.createElement('option');
-                option.value = setName;
-                option.textContent = setName;
+                option.value = value;
+                option.textContent = text;
                 stickerSetSelect.appendChild(option);
             });
 
@@ -1262,6 +1326,17 @@
             const displayName = (media.sticker_name && media.emoji_description)
                 ? `${media.sticker_name} (${media.emoji_description})`
                 : stickerName;
+            
+            // Add document ID to title if it's not already shown
+            const titleWithId = (displayName !== media.unique_id && media.unique_id)
+                ? `${displayName} [${media.unique_id}]`
+                : displayName;
+            
+            // Determine type display - show "custom emoji" for emoji sets
+            let typeDisplay = media.kind;
+            if ((media.kind === 'sticker' || media.kind === 'animated_sticker') && media.is_emoji_set) {
+                typeDisplay = media.kind === 'animated_sticker' ? 'custom emoji (animated)' : 'custom emoji';
+            }
 
             return `
                 <div class="media-item" id="media-item-${media.unique_id}" style="border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box;">
@@ -1269,9 +1344,9 @@
                         ${mediaElement}
                     </div>
                     <div class="media-info">
-                        <h3 style="margin-top: 10px; margin-bottom: 10px;">${displayName}</h3>
-                        <p><strong>Type:</strong> ${media.kind}</p>
-                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_name}</p>` : ''}
+                        <h3 style="margin-top: 10px; margin-bottom: 10px;">${titleWithId}</h3>
+                        <p><strong>Type:</strong> ${typeDisplay}</p>
+                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_display || media.sticker_set_name}</p>` : ''}
                         <p><strong>Status:</strong> ${media.status}</p>
                         ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
 
