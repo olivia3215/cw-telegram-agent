@@ -1290,7 +1290,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                 return jsonify({
                     "messages": messages,
                     "summaries": summaries,
-                    "agent_timezone": str(agent_tz) if agent_tz else "UTC"
+                    "agent_timezone": str(agent_tz)
                 })
             except RuntimeError as e:
                 error_msg = str(e).lower()
