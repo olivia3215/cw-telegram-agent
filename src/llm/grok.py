@@ -370,17 +370,12 @@ class GrokLLM(LLM):
             for i, msg in enumerate(messages):
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
-                logger.info(f"  Turn {i+1} ({role}):")
-                # Split content into parts by newline to match Gemini's format
-                parts = content.split('\n')
-                for j, part in enumerate(parts):
-                    if part.strip():  # Only log non-empty parts
-                        # Replace newlines with \n for better log readability
-                        part_display = part.replace("\n", "\\n")
-                        # Truncate very long text for readability
-                        if len(part_display) > 5000:
-                            part_display = part_display[:5000] + "... [truncated]"
-                        logger.info(f"    Part {j+1}: {part_display}")
+                # Replace newlines with \n for better log readability
+                content_display = content.replace("\n", "\\n")
+                # Truncate very long text for readability
+                if len(content_display) > 5000:
+                    content_display = content_display[:5000] + "... [truncated]"
+                logger.info(f"  Turn {i+1} ({role}): {content_display}")
             logger.info("=== END GROK_DEBUG_LOGGING: PROMPT ===")
 
         model_name = model or self.model_name

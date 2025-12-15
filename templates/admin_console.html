@@ -3421,13 +3421,14 @@
             let html = '';
             
             // Helper function to convert UTC timestamp to agent timezone for display
+            // Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
             function formatTimestamp(utcTimestamp) {
                 if (!utcTimestamp) return 'N/A';
                 try {
                     const date = new Date(utcTimestamp);
                     if (agentTimezone) {
-                        // Format with agent's timezone
-                        return date.toLocaleString('en-US', {
+                        // Format: YYYY-MM-DD HH:MM:SS TZ (matching prompt format)
+                        const formatted = date.toLocaleString('en-US', {
                             timeZone: agentTimezone,
                             year: 'numeric',
                             month: '2-digit',
@@ -3435,8 +3436,15 @@
                             hour: '2-digit',
                             minute: '2-digit',
                             second: '2-digit',
-                            hour12: false
-                        }).replace(',', '');
+                            hour12: false,
+                            timeZoneName: 'short'
+                        });
+                        // Convert from "MM/DD/YYYY, HH:MM:SS TZ" to "YYYY-MM-DD HH:MM:SS TZ"
+                        const parts = formatted.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}:\d{2}:\d{2})\s+(.+)/);
+                        if (parts) {
+                            return `${parts[3]}-${parts[1]}-${parts[2]} ${parts[4]} ${parts[5]}`;
+                        }
+                        return formatted;
                     }
                     // Fallback to UTC if no timezone
                     return utcTimestamp;
