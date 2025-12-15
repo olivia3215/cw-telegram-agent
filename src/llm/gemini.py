@@ -646,19 +646,30 @@ class GeminiLLM(LLM):
             )
 
             # Check for prohibited content before extraction
-            if (
-                response is not None
-                and hasattr(response, "candidates")
-                and response.candidates
-            ):
-                cand = response.candidates[0]
-                if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
-                    logger.warning(
-                        "Gemini returned prohibited content - treating as retryable failure"
-                    )
-                    raise Exception(
-                        "Temporary error: prohibited content - will retry"
-                    )
+            # Check both prompt_feedback.block_reason and candidate.finish_reason
+            if response is not None:
+                # Check prompt_feedback for blocked content (happens when prompt itself is blocked)
+                if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+                    if hasattr(response.prompt_feedback, "block_reason"):
+                        block_reason = response.prompt_feedback.block_reason
+                        if block_reason and str(block_reason) != "BLOCK_REASON_UNSPECIFIED":
+                            logger.warning(
+                                f"Gemini blocked prompt due to {block_reason} - treating as retryable failure"
+                            )
+                            raise Exception(
+                                f"Temporary error: prompt blocked ({block_reason}) - will retry"
+                            )
+                
+                # Check candidate finish_reason for blocked content (happens when response is blocked)
+                if hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                        logger.warning(
+                            "Gemini returned prohibited content - treating as retryable failure"
+                        )
+                        raise Exception(
+                            "Temporary error: prohibited content - will retry"
+                        )
             
             # Extract the first candidate's text safely using the helper
             text = _extract_response_text(response)
@@ -902,15 +913,24 @@ class GeminiLLM(LLM):
             )
 
             # Check for prohibited content
-            if (
-                response is not None
-                and hasattr(response, "candidates")
-                and response.candidates
-            ):
-                cand = response.candidates[0]
-                if hasattr(cand, "finish_reason") and cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
-                    logger.warning("Gemini returned prohibited content for JSON schema query")
-                    raise Exception("Temporary error: prohibited content - will retry")
+            # Check both prompt_feedback.block_reason and candidate.finish_reason
+            if response is not None:
+                # Check prompt_feedback for blocked content (happens when prompt itself is blocked)
+                if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+                    if hasattr(response.prompt_feedback, "block_reason"):
+                        block_reason = response.prompt_feedback.block_reason
+                        if block_reason and str(block_reason) != "BLOCK_REASON_UNSPECIFIED":
+                            logger.warning(
+                                f"Gemini blocked prompt for JSON schema query due to {block_reason}"
+                            )
+                            raise Exception(f"Temporary error: prompt blocked ({block_reason}) - will retry")
+                
+                # Check candidate finish_reason for blocked content (happens when response is blocked)
+                if hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if hasattr(cand, "finish_reason") and cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
+                        logger.warning("Gemini returned prohibited content for JSON schema query")
+                        raise Exception("Temporary error: prohibited content - will retry")
 
             # Extract text from response
             text = _extract_response_text(response)
