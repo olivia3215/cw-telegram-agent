@@ -1283,9 +1283,8 @@ def register_conversation_routes(agents_bp: Blueprint):
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
                 messages = agent.execute(_get_messages(), timeout=30.0)
-                # Get agent timezone with fallback to server timezone
-                from utils import get_agent_timezone
-                agent_tz = get_agent_timezone(agent)
+                # Get agent timezone (property handles fallback to server timezone)
+                agent_tz = agent.timezone
                 
                 return jsonify({
                     "messages": messages,

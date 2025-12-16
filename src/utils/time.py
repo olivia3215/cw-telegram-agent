@@ -29,22 +29,6 @@ TZ_ABBREVIATIONS: dict[str, str] = {
 logger = logging.getLogger(__name__)
 
 
-def get_agent_timezone(agent):
-    """Return the agent's timezone, defaulting to the server timezone when absent."""
-    tz = getattr(agent, "timezone", None)
-    if isinstance(tz, ZoneInfo):
-        return tz
-    if isinstance(tz, str):
-        try:
-            return ZoneInfo(tz)
-        except Exception:
-            pass
-    if tz is not None and hasattr(tz, "tzname"):
-        return tz
-    current = clock.now().astimezone()
-    return current.tzinfo or ZoneInfo("UTC")
-
-
 def resolve_timezone(abbrev: str) -> ZoneInfo | None:
     tz_name = TZ_ABBREVIATIONS.get(abbrev.upper())
     if not tz_name:
@@ -87,7 +71,7 @@ def parse_datetime_with_optional_tz(value: str, default_tz: ZoneInfo) -> datetim
 
 def normalize_created_string(raw_value, agent) -> str:
     """Normalize a created timestamp into the agent's timezone-friendly string."""
-    agent_tz = get_agent_timezone(agent)
+    agent_tz = agent.timezone
 
     current = agent.get_current_time().astimezone(agent_tz)
 
@@ -114,7 +98,7 @@ def normalize_created_string(raw_value, agent) -> str:
 
 def memory_sort_key(memory: dict, agent) -> tuple:
     """Return a tuple usable for sorting memories chronologically in the agent's timezone."""
-    agent_tz = get_agent_timezone(agent)
+    agent_tz = agent.timezone
     created = memory.get("created")
     if not created:
         return (dt_date.min, 1, dt_time.min.replace(tzinfo=agent_tz), memory.get("id", ""))

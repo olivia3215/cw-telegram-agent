@@ -13,7 +13,6 @@ from utils.ids import (
 )
 from utils.time import (
     TZ_ABBREVIATIONS,
-    get_agent_timezone,
     normalize_created_string,
     parse_datetime_with_optional_tz,
     resolve_timezone,
@@ -43,7 +42,6 @@ __all__ = [
     "extract_user_id_from_peer",
     # Time utilities
     "TZ_ABBREVIATIONS",
-    "get_agent_timezone",
     "normalize_created_string",
     "parse_datetime_with_optional_tz",
     "resolve_timezone",

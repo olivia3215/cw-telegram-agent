@@ -69,25 +69,9 @@ class Agent(
         # If not provided, default to name for backward compatibility
         self.config_name = config_name if config_name is not None else name
 
-        # Set timezone: use provided timezone, or default to server's local timezone
-        if timezone is None:
-            # Get server's local timezone
-            self.timezone = clock.now().astimezone().tzinfo
-            logger.debug(f"Agent {name}: Using server timezone {self.timezone}")
-        elif isinstance(timezone, str):
-            # Parse timezone string to ZoneInfo
-            try:
-                self.timezone = ZoneInfo(timezone)
-                logger.info(f"Agent {name}: Using timezone {timezone}")
-            except Exception as e:
-                logger.warning(
-                    f"Agent {name}: Invalid timezone '{timezone}', falling back to server timezone: {e}"
-                )
-                self.timezone = clock.now().astimezone().tzinfo
-        else:
-            # Assume it's already a timezone object
-            self.timezone = timezone
-            logger.debug(f"Agent {name}: Using timezone {timezone}")
+        # Store raw timezone value (will be normalized via property on first access)
+        self._timezone_raw = timezone
+        self._timezone_normalized = None
 
         # Multi-set config (lists)
         self.sticker_set_names = list(
@@ -134,6 +118,35 @@ class Agent(
             self._llm = create_llm_from_name(self._llm_name)
 
         return self._llm
+
+    @property
+    def timezone(self):
+        """Return the agent's timezone, defaulting to the server timezone when absent.
+        """
+        # Return cached normalized value if available
+        if self._timezone_normalized is not None:
+            return self._timezone_normalized
+        
+        # Normalize the timezone
+        tz = self._timezone_raw
+        if isinstance(tz, ZoneInfo):
+            self._timezone_normalized = tz
+        elif isinstance(tz, str):
+            try:
+                self._timezone_normalized = ZoneInfo(tz)
+            except Exception:
+                # Invalid timezone string, fall back to server timezone
+                current = clock.now().astimezone()
+                self._timezone_normalized = current.tzinfo or ZoneInfo("UTC")
+        elif tz is not None and hasattr(tz, "tzname"):
+            # Some other timezone object with tzname method, use as-is
+            self._timezone_normalized = tz
+        else:
+            # Fallback to server timezone (or UTC if that fails)
+            current = clock.now().astimezone()
+            self._timezone_normalized = current.tzinfo or ZoneInfo("UTC")
+        
+        return self._timezone_normalized
 
     def get_current_time(self):
         """Get the current time in the agent's timezone."""
