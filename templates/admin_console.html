@@ -3374,6 +3374,7 @@
         let conversationMessages = [];
         let conversationTranslations = {};
         let showTranslation = false;
+        let conversationAgentTimezone = null;
 
         function loadConversation() {
             const agentSelect = document.getElementById('conversations-agent-select');
@@ -3404,6 +3405,7 @@
                     const agentTimezone = data.agent_timezone;
                     conversationMessages = messages;
                     conversationTranslations = {};
+                    conversationAgentTimezone = agentTimezone;
                     showTranslation = false;
                     
                     renderConversation(agentName, userId, summaries, messages, agentTimezone);
@@ -4015,11 +4017,15 @@
                             .then(response => response.json())
                             .then(data => {
                                 if (!data.error) {
-                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                                    // Update stored timezone if provided
+                                    if (data.agent_timezone) {
+                                        conversationAgentTimezone = data.agent_timezone;
+                                    }
+                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
                                 }
                             });
                     } else {
-                        renderConversation(agentName, userId, [], conversationMessages);
+                        renderConversation(agentName, userId, [], conversationMessages, conversationAgentTimezone);
                     }
                 })
                 .catch(error => {
@@ -4036,7 +4042,11 @@
                     .then(response => response.json())
                     .then(data => {
                         if (!data.error) {
-                            renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                            // Update stored timezone if provided
+                            if (data.agent_timezone) {
+                                conversationAgentTimezone = data.agent_timezone;
+                            }
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
                         }
                     });
             }
