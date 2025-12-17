@@ -22,7 +22,6 @@ from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
-from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import MediaStatus, get_default_media_source_chain
@@ -218,6 +217,7 @@ async def _replace_custom_emojis_with_images(
     """
     Replace custom emoji characters in HTML with img tags that display the custom emoji images.
     This is a central helper that can be used for both message text and reactions.
+    
     
     Args:
         html_text: HTML text that may contain custom emoji characters
@@ -640,6 +640,7 @@ def markdown_to_html(text: str) -> str:
         html_output = html_output.replace(escaped_placeholder, link_html)
     
     return html_output
+
 
 # Translation JSON schema for message translation
 _TRANSLATION_SCHEMA = {
@@ -1208,7 +1209,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                             if is_forwarded_story:
                                 text = ""  # Clear text since we're using parts instead
                             elif not text:
-                                text = story_html
+                                text = story_html  # HTML for display
                         
                         # Add story media parts if we extracted any
                         parts.extend(story_media_parts)
@@ -1218,7 +1219,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                             story_text = "Forwarded story"
                             if story_from_name:
                                 # Escape story_from_name before inserting into string to prevent XSS
-                                # (markdown_to_html will also escape, but defense in depth)
+                                # (frontend markdownToHtml will also escape, but defense in depth)
                                 story_from_name_escaped = html.escape(story_from_name)
                                 story_text = f"Forwarded story from {story_from_name_escaped}"
                             # Convert to HTML (additional escaping for safety)
@@ -1283,7 +1284,14 @@ def register_conversation_routes(agents_bp: Blueprint):
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
                 messages = agent.execute(_get_messages(), timeout=30.0)
-                return jsonify({"messages": messages, "summaries": summaries})
+                # Get agent timezone identifier (IANA format for JavaScript compatibility)
+                agent_tz_id = agent.get_timezone_identifier()
+                
+                return jsonify({
+                    "messages": messages,
+                    "summaries": summaries,
+                    "agent_timezone": agent_tz_id
+                })
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
@@ -1330,12 +1338,8 @@ def register_conversation_routes(agents_bp: Blueprint):
                 logger.warning(f"Cannot translate conversation - event loop check failed: {e}")
                 return jsonify({"error": "Agent client event loop is not available"}), 503
 
-            # Get media LLM
-            try:
-                media_llm = get_media_llm()
-            except Exception as e:
-                logger.error(f"Failed to get media LLM: {e}")
-                return jsonify({"error": "Media LLM not available"}), 503
+            # Use the agent's LLM for translation
+            agent_llm = agent.llm
 
             # Build translation prompt with messages as structured JSON
             # This avoids issues with unescaped quotes/newlines in message text
@@ -1380,7 +1384,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         f"{translation_prompt}"
                     )
                     
-                    result_text = await media_llm.query_with_json_schema(
+                    result_text = await agent_llm.query_with_json_schema(
                         system_prompt=system_prompt,
                         json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                         model=None,  # Use default model

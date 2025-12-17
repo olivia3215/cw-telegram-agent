@@ -89,7 +89,7 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
         return existing_schedule or {
             "version": "1.0",
             "agent_name": agent.name,
-            "timezone": str(agent.timezone),
+            "timezone": agent.get_timezone_identifier(),
             "last_extended": None,
             "activities": [],
         }

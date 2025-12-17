@@ -69,25 +69,9 @@ class Agent(
         # If not provided, default to name for backward compatibility
         self.config_name = config_name if config_name is not None else name
 
-        # Set timezone: use provided timezone, or default to server's local timezone
-        if timezone is None:
-            # Get server's local timezone
-            self.timezone = clock.now().astimezone().tzinfo
-            logger.debug(f"Agent {name}: Using server timezone {self.timezone}")
-        elif isinstance(timezone, str):
-            # Parse timezone string to ZoneInfo
-            try:
-                self.timezone = ZoneInfo(timezone)
-                logger.info(f"Agent {name}: Using timezone {timezone}")
-            except Exception as e:
-                logger.warning(
-                    f"Agent {name}: Invalid timezone '{timezone}', falling back to server timezone: {e}"
-                )
-                self.timezone = clock.now().astimezone().tzinfo
-        else:
-            # Assume it's already a timezone object
-            self.timezone = timezone
-            logger.debug(f"Agent {name}: Using timezone {timezone}")
+        # Store raw timezone value (will be normalized via property on first access)
+        self._timezone_raw = timezone
+        self._timezone_normalized = None
 
         # Multi-set config (lists)
         self.sticker_set_names = list(
@@ -134,6 +118,82 @@ class Agent(
             self._llm = create_llm_from_name(self._llm_name)
 
         return self._llm
+
+    @property
+    def timezone(self):
+        """Return the agent's timezone, defaulting to the server timezone when absent.
+        
+        Always returns a ZoneInfo object (IANA timezone) for consistency.
+        If the server timezone is a datetime.timezone (fixed offset), falls back to UTC
+        since we cannot reliably map offsets to IANA timezones.
+        """
+        # Return cached normalized value if available
+        if self._timezone_normalized is not None:
+            return self._timezone_normalized
+        
+        # Normalize the timezone
+        tz = self._timezone_raw
+        if isinstance(tz, ZoneInfo):
+            self._timezone_normalized = tz
+        elif isinstance(tz, str):
+            try:
+                self._timezone_normalized = ZoneInfo(tz)
+            except Exception:
+                # Invalid timezone string, fall back to server timezone
+                # But convert to ZoneInfo if possible, otherwise use UTC
+                self._timezone_normalized = self._normalize_server_timezone()
+        elif tz is not None and hasattr(tz, "key"):
+            # ZoneInfo-like object with key attribute (IANA identifier)
+            try:
+                self._timezone_normalized = ZoneInfo(tz.key)
+            except Exception:
+                self._timezone_normalized = ZoneInfo("UTC")
+        else:
+            # Fallback to server timezone (or UTC if that fails)
+            self._timezone_normalized = self._normalize_server_timezone()
+        
+        return self._timezone_normalized
+    
+    def _normalize_server_timezone(self) -> ZoneInfo:
+        """Normalize the server's timezone to a ZoneInfo object.
+        
+        If the server timezone is a datetime.timezone (fixed offset),
+        returns UTC since we cannot reliably map offsets to IANA timezones.
+        """
+        current = clock.now().astimezone()
+        server_tz = current.tzinfo
+        
+        if isinstance(server_tz, ZoneInfo):
+            return server_tz
+        elif hasattr(server_tz, "key"):
+            # ZoneInfo-like object with IANA identifier
+            try:
+                return ZoneInfo(server_tz.key)
+            except Exception:
+                pass
+        
+        # datetime.timezone or other non-IANA timezone - use UTC
+        # We can't reliably map fixed offsets to IANA timezones
+        logger.debug(
+            f"Agent {self.name}: Server timezone {server_tz} is not IANA-compatible, "
+            "falling back to UTC"
+        )
+        return ZoneInfo("UTC")
+    
+    def get_timezone_identifier(self) -> str:
+        """Get the IANA timezone identifier string for this agent's timezone.
+        
+        Returns a string suitable for JavaScript's toLocaleString timeZone parameter.
+        Always returns a valid IANA timezone identifier (e.g., "America/Los_Angeles").
+        """
+        tz = self.timezone
+        if isinstance(tz, ZoneInfo):
+            return tz.key
+        elif hasattr(tz, "key"):
+            return tz.key
+        else:
+            # Fallback to UTC if somehow we don't have a ZoneInfo
+            return "UTC"
 
     def get_current_time(self):
         """Get the current time in the agent's timezone."""

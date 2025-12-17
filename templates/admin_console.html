@@ -3374,6 +3374,7 @@
         let conversationMessages = [];
         let conversationTranslations = {};
         let showTranslation = false;
+        let conversationAgentTimezone = null;
 
         function loadConversation() {
             const agentSelect = document.getElementById('conversations-agent-select');
@@ -3401,11 +3402,13 @@
                     
                     const summaries = data.summaries || [];
                     const messages = data.messages || [];
+                    const agentTimezone = data.agent_timezone;
                     conversationMessages = messages;
                     conversationTranslations = {};
+                    conversationAgentTimezone = agentTimezone;
                     showTranslation = false;
                     
-                    renderConversation(agentName, userId, summaries, messages);
+                    renderConversation(agentName, userId, summaries, messages, agentTimezone);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -3415,9 +3418,40 @@
                 });
         }
 
-        function renderConversation(agentName, userId, summaries, messages) {
+        function renderConversation(agentName, userId, summaries, messages, agentTimezone) {
             const container = document.getElementById('conversation-container');
             let html = '';
+            
+            // Helper function to convert UTC timestamp to agent timezone for display
+            // Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
+            function formatTimestamp(utcTimestamp) {
+                if (!utcTimestamp) return 'N/A';
+                try {
+                    const date = new Date(utcTimestamp);
+                    // Use agentTimezone if provided (backend sends fallback to server timezone)
+                    // Format: YYYY-MM-DD HH:MM:SS TZ (matching prompt format)
+                    const tz = agentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const formatted = date.toLocaleString('en-US', {
+                        timeZone: tz,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false,
+                        timeZoneName: 'short'
+                    });
+                    // Convert from "MM/DD/YYYY, HH:MM:SS TZ" to "YYYY-MM-DD HH:MM:SS TZ"
+                    const parts = formatted.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}:\d{2}:\d{2})\s+(.+)/);
+                    if (parts) {
+                        return `${parts[3]}-${parts[1]}-${parts[2]} ${parts[4]} ${parts[5]}`;
+                    }
+                    return formatted;
+                } catch (e) {
+                    return utcTimestamp;
+                }
+            }
             
             // Display summaries at the top (editable, styled like memories)
             if (summaries.length > 0) {
@@ -3501,10 +3535,10 @@
                         msg.parts.forEach(part => {
                             if (part.kind === 'text' && part.text) {
                                 hasTextContent = true;
+                                // Text is already HTML (from backend)
                                 const partText = showTranslation && conversationTranslations[msg.id] 
                                     ? conversationTranslations[msg.id] 
                                     : part.text;
-                                // Text may contain HTML formatting (bold, italic, etc.) - render it
                                 // Use CSS to ensure emojis render consistently (don't apply font-weight/font-style to emojis)
                                 contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText}</div>`;
                             } else if (part.kind === 'media') {
@@ -3555,10 +3589,10 @@
                     
                     // Fallback to text if no parts or if parts didn't include text
                     if (!hasTextContent && msg.text) {
+                        // Text is already HTML (from backend)
                         const displayText = showTranslation && conversationTranslations[msg.id] 
                             ? conversationTranslations[msg.id] 
                             : msg.text;
-                        // Text may contain HTML formatting (bold, italic, etc.) - render it
                         contentHtml = `<div style="white-space: pre-wrap;">${displayText}</div>`;
                     }
                     
@@ -3576,7 +3610,7 @@
                     } else {
                         senderDisplay = msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>';
                     }
-                    let metadataLine = `${senderDisplay} • ${msg.timestamp || 'N/A'} • ID: ${msg.id}`;
+                    let metadataLine = `${senderDisplay} • ${formatTimestamp(msg.timestamp)} • ID: ${msg.id}`;
                     if (msg.reply_to_msg_id) {
                         metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
                     }
@@ -3983,11 +4017,15 @@
                             .then(response => response.json())
                             .then(data => {
                                 if (!data.error) {
-                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                                    // Update stored timezone if provided
+                                    if (data.agent_timezone) {
+                                        conversationAgentTimezone = data.agent_timezone;
+                                    }
+                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
                                 }
                             });
                     } else {
-                        renderConversation(agentName, userId, [], conversationMessages);
+                        renderConversation(agentName, userId, [], conversationMessages, conversationAgentTimezone);
                     }
                 })
                 .catch(error => {
@@ -4004,7 +4042,11 @@
                     .then(response => response.json())
                     .then(data => {
                         if (!data.error) {
-                            renderConversation(agentName, userId, data.summaries || [], conversationMessages);
+                            // Update stored timezone if provided
+                            if (data.agent_timezone) {
+                                conversationAgentTimezone = data.agent_timezone;
+                            }
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
                         }
                     });
             }
