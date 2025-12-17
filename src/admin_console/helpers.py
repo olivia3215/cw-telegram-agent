@@ -8,8 +8,10 @@ Shared helper functions for the admin console.
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
 from config import STATE_DIRECTORY
@@ -143,3 +145,158 @@ def get_work_queue() -> Any:
     """Get the global work queue singleton instance."""
     from task_graph import WorkQueue
     return WorkQueue.get_instance()
+
+
+def get_available_timezones() -> list[dict[str, Any]]:
+    """Get list of available timezone options with major cities, ordered by GMT offset.
+    
+    Returns a list of dictionaries with 'value' (IANA timezone), 'label' (display name),
+    and 'offset_hours' (offset from GMT in hours). One entry per UTC offset with
+    multiple cities/countries listed in the display name.
+    """
+    # Group timezones by offset: (canonical_iana_tz, [list of cities/countries])
+    timezone_groups = [
+        # UTC-12
+        ("Pacific/Baker_Island", ["Baker Island"]),
+        
+        # UTC-11
+        ("Pacific/Honolulu", ["Honolulu", "Midway"]),
+        
+        # UTC-10
+        ("America/Adak", ["Adak"]),
+        
+        # UTC-9
+        ("America/Anchorage", ["Anchorage", "Juneau", "Nome"]),
+        
+        # UTC-8
+        ("America/Los_Angeles", ["Los Angeles", "Vancouver", "Tijuana", "Seattle", "San Francisco"]),
+        
+        # UTC-7
+        ("America/Denver", ["Denver", "Phoenix", "Edmonton", "Chihuahua", "Calgary"]),
+        
+        # UTC-6
+        ("America/Chicago", ["Chicago", "Mexico City", "Winnipeg", "Guatemala City", "Dallas"]),
+        
+        # UTC-5
+        ("America/New_York", ["New York", "Toronto", "Havana", "Bogotá", "Lima", "Miami"]),
+        
+        # UTC-4
+        ("America/Halifax", ["Halifax", "Caracas", "Santiago", "La Paz"]),
+        
+        # UTC-3:30
+        ("America/St_Johns", ["St. John's"]),
+        
+        # UTC-3
+        ("America/Sao_Paulo", ["São Paulo", "Buenos Aires", "Montevideo", "Brasília"]),
+        
+        # UTC-2
+        ("Atlantic/South_Georgia", ["South Georgia"]),
+        
+        # UTC-1
+        ("Atlantic/Azores", ["Azores", "Cape Verde"]),
+        
+        # UTC+0
+        ("Europe/London", ["London", "Dublin", "Casablanca", "Accra", "Lisbon", "Reykjavik"]),
+        
+        # UTC+1
+        ("Europe/Paris", ["Paris", "Berlin", "Rome", "Madrid", "Amsterdam", "Brussels", "Vienna", "Stockholm", "Warsaw", "Lagos", "Algiers"]),
+        
+        # UTC+2
+        ("Europe/Athens", ["Athens", "Bucharest", "Helsinki", "Kyiv", "Cairo", "Johannesburg", "Jerusalem"]),
+        
+        # UTC+3
+        ("Europe/Moscow", ["Moscow", "Istanbul", "Baghdad", "Riyadh", "Addis Ababa", "Nairobi"]),
+        
+        # UTC+3:30
+        ("Asia/Tehran", ["Tehran"]),
+        
+        # UTC+4
+        ("Asia/Dubai", ["Dubai", "Baku", "Yerevan", "Muscat", "Mauritius"]),
+        
+        # UTC+4:30
+        ("Asia/Kabul", ["Kabul"]),
+        
+        # UTC+5
+        ("Asia/Karachi", ["Karachi", "Tashkent", "Samarkand", "Islamabad"]),
+        
+        # UTC+5:30
+        ("Asia/Kolkata", ["Mumbai", "Delhi", "Kolkata", "Bangalore", "Chennai", "Hyderabad", "India"]),
+        
+        # UTC+5:45
+        ("Asia/Kathmandu", ["Kathmandu", "Nepal"]),
+        
+        # UTC+6
+        ("Asia/Dhaka", ["Dhaka", "Almaty", "Thimphu", "Bangladesh", "Kazakhstan"]),
+        
+        # UTC+6:30
+        ("Asia/Yangon", ["Yangon", "Myanmar"]),
+        
+        # UTC+7
+        ("Asia/Bangkok", ["Bangkok", "Ho Chi Minh City", "Jakarta", "Phnom Penh", "Vientiane", "Thailand", "Vietnam", "Indonesia"]),
+        
+        # UTC+8
+        ("Asia/Shanghai", ["Shanghai", "Beijing", "Hong Kong", "Singapore", "Taipei", "Manila", "Kuala Lumpur", "Perth", "China", "Philippines", "Malaysia"]),
+        
+        # UTC+9
+        ("Asia/Tokyo", ["Tokyo", "Seoul", "Pyongyang", "Japan", "South Korea"]),
+        
+        # UTC+9:30
+        ("Australia/Adelaide", ["Adelaide", "Darwin"]),
+        
+        # UTC+10
+        ("Australia/Sydney", ["Sydney", "Melbourne", "Brisbane", "Port Moresby", "Guam", "Australia"]),
+        
+        # UTC+10:30
+        ("Australia/Lord_Howe", ["Lord Howe Island"]),
+        
+        # UTC+11
+        ("Pacific/Guadalcanal", ["Guadalcanal", "Norfolk Island"]),
+        
+        # UTC+12
+        ("Pacific/Auckland", ["Auckland", "Fiji", "Majuro", "New Zealand"]),
+        
+        # UTC+12:45
+        ("Pacific/Chatham", ["Chatham Islands"]),
+        
+        # UTC+13
+        ("Pacific/Tongatapu", ["Tongatapu", "Tonga"]),
+        
+        # UTC+14
+        ("Pacific/Kiritimati", ["Kiritimati"]),
+    ]
+    
+    # Calculate offsets and create consolidated list
+    now = datetime.now(ZoneInfo("UTC"))
+    timezones = []
+    
+    for tz_name, cities in timezone_groups:
+        try:
+            tz = ZoneInfo(tz_name)
+            # Get current UTC offset in hours
+            offset = tz.utcoffset(now)
+            offset_hours = offset.total_seconds() / 3600
+            
+            # Format offset string (e.g., "+05:30", "-08:00")
+            offset_sign = "+" if offset_hours >= 0 else "-"
+            offset_abs = abs(offset_hours)
+            offset_hours_int = int(offset_abs)
+            offset_minutes = int((offset_abs - offset_hours_int) * 60)
+            offset_str = f"{offset_sign}{offset_hours_int:02d}:{offset_minutes:02d}"
+            
+            # Create label with cities and offset (remove duplicates and sort)
+            cities_str = ", ".join(sorted(set(cities)))
+            label = f"{cities_str} ({offset_str})"
+            
+            timezones.append({
+                "value": tz_name,
+                "label": label,
+                "offset_hours": offset_hours,
+            })
+        except Exception as e:
+            logger.warning(f"Error processing timezone {tz_name}: {e}")
+            continue
+    
+    # Sort by offset (most negative to most positive)
+    timezones.sort(key=lambda x: x["offset_hours"])
+    
+    return timezones

@@ -2702,6 +2702,8 @@
                     const currentLLM = data.llm || '';
                     const availableLLMs = data.available_llms || [];
                     const prompt = data.prompt || '';
+                    const currentTimezone = data.timezone || '';
+                    const availableTimezones = data.available_timezones || [];
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -2712,6 +2714,17 @@
                                     const classAttr = isExpensive ? 'class="expensive"' : '';
                                     const styleAttr = isExpensive ? 'style="color: #800000 !important;"' : '';
                                     return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''} ${classAttr} ${styleAttr}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                }).join('')}
+                            </select>
+                            
+                            <h3>Agent Timezone</h3>
+                            <select id="agent-timezone-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentTimezone('${agentName}', this.value)">
+                                <option value="">Server Default</option>
+                                ${availableTimezones.map(tz => {
+                                    // Escape HTML entities for safety
+                                    const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                                    const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                    return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
                                 }).join('')}
                             </select>
                             
@@ -2756,6 +2769,33 @@
                     return;
                 }
                 alert('Error updating LLM: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentTimezone(agentName, timezone) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/timezone`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ timezone: timezone })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error updating timezone: ' + data.error);
+                    // Reload to restore previous value
+                    loadAgentConfiguration(agentName);
+                } else {
+                    alert('Timezone updated successfully');
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error updating timezone: ' + error);
                 loadAgentConfiguration(agentName);
             });
         }
