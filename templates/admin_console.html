@@ -4211,12 +4211,14 @@
         let globalDocsConfigDir = '';
         let globalDocsCurrentFilename = '';
         let globalDocsSaveTimeout = null;
+        let globalDocsFilenameTimeout = null;
         let globalDocsContent = '';
         
         // Agent docs state
         let agentDocsCurrentAgent = '';
         let agentDocsCurrentFilename = '';
         let agentDocsSaveTimeout = null;
+        let agentDocsFilenameTimeout = null;
         let agentDocsContent = '';
         
         // Load config directories for global docs
@@ -4394,6 +4396,10 @@
         // Debounced filename change for global docs
         function debounceGlobalDocsFilename() {
             return function() {
+                if (globalDocsFilenameTimeout) {
+                    clearTimeout(globalDocsFilenameTimeout);
+                }
+                
                 const filenameInput = document.getElementById('global-docs-filename');
                 if (!filenameInput) return;
                 
@@ -4412,7 +4418,7 @@
                 
                 if (statusEl) statusEl.textContent = 'Renaming...';
                 
-                setTimeout(async () => {
+                globalDocsFilenameTimeout = setTimeout(async () => {
                     try {
                         const response = await fetch(`/admin/api/docs/${encodeURIComponent(globalDocsCurrentFilename)}/rename?config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
                             method: 'POST',
@@ -4753,6 +4759,10 @@
         // Debounced filename change for agent docs
         function debounceAgentDocsFilename(configDir) {
             return function() {
+                if (agentDocsFilenameTimeout) {
+                    clearTimeout(agentDocsFilenameTimeout);
+                }
+                
                 const filenameInput = document.getElementById('agent-docs-filename');
                 if (!filenameInput) return;
                 
@@ -4771,7 +4781,7 @@
                 
                 if (statusEl) statusEl.textContent = 'Renaming...';
                 
-                setTimeout(async () => {
+                agentDocsFilenameTimeout = setTimeout(async () => {
                     try {
                         const response = await fetch(`/admin/api/docs/${encodeURIComponent(agentDocsCurrentFilename)}/rename?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`, {
                             method: 'POST',
