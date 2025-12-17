@@ -142,9 +142,6 @@ class Agent(
                 # Invalid timezone string, fall back to server timezone
                 # But convert to ZoneInfo if possible, otherwise use UTC
                 self._timezone_normalized = self._normalize_server_timezone()
-        elif tz is not None and isinstance(tz, ZoneInfo):
-            # Already a ZoneInfo
-            self._timezone_normalized = tz
         elif tz is not None and hasattr(tz, "key"):
             # ZoneInfo-like object with key attribute (IANA identifier)
             try:
