@@ -370,12 +370,8 @@ class GrokLLM(LLM):
             for i, msg in enumerate(messages):
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
-                # Replace newlines with \n for better log readability
-                content_display = content.replace("\n", "\\n")
-                # Truncate very long text for readability
-                if len(content_display) > 5000:
-                    content_display = content_display[:5000] + "... [truncated]"
-                logger.info(f"  Turn {i+1} ({role}): {content_display}")
+                # Show full content without truncation
+                logger.info(f"  Turn {i+1} ({role}):\n{content}")
             logger.info("=== END GROK_DEBUG_LOGGING: PROMPT ===")
 
         model_name = model or self.model_name
