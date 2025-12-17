@@ -4473,8 +4473,9 @@
                 });
 
                 if (response.ok) {
-                    loadGlobalDocsList();
-                    document.getElementById('global-docs-select').value = filename;
+                    loadGlobalDocsList().then(() => {
+                        document.getElementById('global-docs-select').value = filename;
+                    });
                     loadGlobalDoc(filename);
                 } else {
                     throw new Error('Create failed');
@@ -4840,8 +4841,9 @@
                 });
 
                 if (response.ok) {
-                    loadAgentDocs(agentConfigName);
-                    document.getElementById('agent-docs-select').value = filename;
+                    loadAgentDocs(agentConfigName).then(() => {
+                        document.getElementById('agent-docs-select').value = filename;
+                    });
                     loadAgentDoc(filename, configDir);
                 } else {
                     throw new Error('Create failed');
