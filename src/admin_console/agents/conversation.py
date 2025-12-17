@@ -641,6 +641,7 @@ def markdown_to_html(text: str) -> str:
     
     return html_output
 
+
 # Translation JSON schema for message translation
 _TRANSLATION_SCHEMA = {
     "type": "object",
@@ -656,7 +657,7 @@ _TRANSLATION_SCHEMA = {
                     },
                     "translated_text": {
                         "type": "string",
-                        "description": "The English translation of the message text, preserving HTML formatting (bold, italic, links, etc.)"
+                        "description": "The English translation of the message text"
                     }
                 },
                 "required": ["message_id", "translated_text"],
@@ -1169,7 +1170,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 )
                                 parts.append({
                                     "kind": "text",
-                                    "text": part_html  # HTML for display
+                                    "text": part_html
                                 })
                             elif part.get("kind") == "media":
                                 parts.append({
@@ -1201,14 +1202,14 @@ def register_conversation_routes(agents_bp: Blueprint):
                             # If we don't have raw text, entities won't work anyway, so skip emoji replacement
                             parts.append({
                                 "kind": "text",
-                                "text": story_html  # HTML for display
+                                "text": story_html
                             })
                             # For forwarded stories, we've added the story text to parts, so we should clear text
                             # to avoid the frontend potentially rendering both. The frontend will use parts if available.
                             if is_forwarded_story:
                                 text = ""  # Clear text since we're using parts instead
                             elif not text:
-                                text = story_text
+                                text = story_html  # HTML for display
                         
                         # Add story media parts if we extracted any
                         parts.extend(story_media_parts)
@@ -1225,7 +1226,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                             story_html = markdown_to_html(story_text)
                             parts.append({
                                 "kind": "text",
-                                "text": story_html  # HTML for display
+                                "text": story_html
                             })
                             # Also update the main text field for consistency
                             if not text:
@@ -1239,37 +1240,31 @@ def register_conversation_routes(agents_bp: Blueprint):
                             # Check if it's a forwarded message (regular forward, not story)
                             if fwd_from and not is_forwarded_story:
                                 # Regular forwarded message with no content - add placeholder
-                                placeholder_text = "[Forwarded message]"
-                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": placeholder_html  # HTML for display
+                                    "text": "[Forwarded message]"
                                 })
-                                text = placeholder_html
+                                text = "[Forwarded message]"
                             elif fwd_from:
                                 # Has fwd_from but wasn't detected as story - might be a story we didn't detect
                                 # Add a generic forwarded story placeholder
-                                placeholder_text = "[Forwarded story]"
-                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": placeholder_html  # HTML for display
+                                    "text": "[Forwarded story]"
                                 })
-                                text = placeholder_html
+                                text = "[Forwarded story]"
                             else:
                                 # Some other empty message - add placeholder so it appears
-                                placeholder_text = "[Message]"
-                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": placeholder_html  # HTML for display
+                                    "text": "[Message]"
                                 })
-                                text = placeholder_html
+                                text = "[Message]"
                         
                         messages.append({
                             "id": str(message.id),
-                            "text": text,  # HTML for display
-                            "parts": parts,  # Include formatted parts (text + media), all in HTML
+                            "text": text,
+                            "parts": parts,  # Include formatted parts (text + media)
                             "sender_id": str(sender_id) if sender_id else None,
                             "sender_name": sender_name,
                             "is_from_agent": is_from_agent,
@@ -1347,32 +1342,15 @@ def register_conversation_routes(agents_bp: Blueprint):
             agent_llm = agent.llm
 
             # Build translation prompt with messages as structured JSON
-            # Send HTML to LLM and ask it to preserve HTML formatting in translations
+            # This avoids issues with unescaped quotes/newlines in message text
             messages_for_prompt = []
             for msg in messages:
                 msg_id = msg.get("id", "")
-                # Extract HTML from parts first (preferred), then fall back to main text field
-                msg_html = ""
-                parts = msg.get("parts", [])
-                if parts:
-                    # Collect all text parts (already HTML)
-                    text_parts = []
-                    for part in parts:
-                        if part.get("kind") == "text":
-                            part_html = part.get("text", "")
-                            if part_html:
-                                text_parts.append(part_html)
-                    if text_parts:
-                        msg_html = " ".join(text_parts)
-                
-                # Fall back to main text field if no parts or no text in parts
-                if not msg_html:
-                    msg_html = msg.get("text", "")
-                
-                if msg_html:
+                msg_text = msg.get("text", "")
+                if msg_text:
                     messages_for_prompt.append({
                         "message_id": str(msg_id),
-                        "text": msg_html
+                        "text": msg_text
                     })
             
             # Convert to JSON string for the prompt (properly escaped)
@@ -1381,24 +1359,19 @@ def register_conversation_routes(agents_bp: Blueprint):
             
             translation_prompt = (
                 "Translate the conversation messages into English.\n"
-                "The messages contain HTML formatting (bold, italic, links, etc.). "
-                "IMPORTANT: Preserve all HTML formatting in your translations. "
-                "If the original has <strong>bold</strong> text, the translation should also have <strong>bold</strong> text. "
-                "If the original has <em>italic</em> text, the translation should also have <em>italic</em> text. "
-                "Preserve <a> links, <code> code blocks, and all other HTML tags.\n"
+                "Preserve the message structure and return a JSON object with translations.\n"
                 "\n"
                 "Return a JSON object with this structure:\n"
                 "{\n"
                 "  \"translations\": [\n"
-                "    {\"message_id\": \"123\", \"translated_text\": \"English translation with <strong>HTML</strong> preserved\"},\n"
+                "    {\"message_id\": \"123\", \"translated_text\": \"English translation here\"},\n"
                 "    ...\n"
                 "  ]\n"
                 "}\n"
                 "\n"
-                "Translate all messages provided, maintaining the order and message IDs. "
-                "Ensure all JSON is properly formatted and preserves HTML formatting.\n"
+                "Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."
                 "\n"
-                "Input messages (as JSON, with HTML formatting):\n"
+                "Input messages (as JSON):\n"
                 f"{messages_json}\n"
             )
 
@@ -1476,11 +1449,11 @@ def register_conversation_routes(agents_bp: Blueprint):
             try:
                 translations = agent.execute(_translate_messages(), timeout=60.0)
                 
-                # Convert to dict for easy lookup
-                # Translation text comes from LLM as HTML (preserves formatting)
-                # No escaping needed - HTML is already properly formatted
+                # Convert to dict for easy lookup and sanitize translation text
+                # Translation text comes from LLM and may contain HTML/markdown that needs sanitization
+                # Use markdown_to_html() to escape HTML and safely process any markdown formatting
                 translation_dict = {
-                    t["message_id"]: t["translated_text"]
+                    t["message_id"]: markdown_to_html(t["translated_text"]) 
                     for t in translations
                 }
                 
