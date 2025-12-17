@@ -22,27 +22,106 @@ logger = logging.getLogger(__name__)
 docs_bp = Blueprint("docs", __name__)
 
 
+def validate_config_dir(config_dir: str) -> bool:
+    """
+    Validate that config_dir is one of the allowed CONFIG_DIRECTORIES.
+    
+    Args:
+        config_dir: Config directory path to validate
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if not config_dir:
+        return False
+    
+    # Check against whitelist of allowed config directories
+    return config_dir in CONFIG_DIRECTORIES
+
+
+def validate_agent_config_name(agent_config_name: str | None) -> bool:
+    """
+    Validate that agent_config_name is safe (no path traversal).
+    
+    Args:
+        agent_config_name: Agent config name to validate (can be None)
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if agent_config_name is None:
+        return True  # None is valid (for global docs)
+    
+    if not agent_config_name:
+        return False
+    
+    # Prevent directory traversal (reject both forward and backslashes)
+    if "/" in agent_config_name or "\\" in agent_config_name:
+        return False
+    
+    # Prevent parent directory references
+    if ".." in agent_config_name:
+        return False
+    
+    # Basic validation: no null bytes, reasonable length
+    if "\x00" in agent_config_name or len(agent_config_name) > 255:
+        return False
+    
+    return True
+
+
 def resolve_docs_path(config_dir: str, agent_config_name: str | None = None) -> Path:
     """
     Resolve a docs directory path.
     
     Args:
-        config_dir: Config directory path (relative or absolute)
+        config_dir: Config directory path (must be from CONFIG_DIRECTORIES whitelist)
         agent_config_name: Agent config name (without .md extension) for agent-specific docs, or None for global docs
         
     Returns:
         Path to the docs directory
+        
+    Raises:
+        ValueError: If config_dir or agent_config_name are invalid
     """
-    config_path = Path(config_dir)
+    # Validate inputs
+    if not validate_config_dir(config_dir):
+        raise ValueError(f"Invalid config_dir: {config_dir} not in allowed CONFIG_DIRECTORIES")
     
-    # If it's an absolute path, use it as-is
+    if not validate_agent_config_name(agent_config_name):
+        raise ValueError(f"Invalid agent_config_name: contains path traversal characters")
+    
+    config_path = Path(config_dir)
+    project_root = Path(__file__).parent.parent.parent
+    
+    # Resolve the base config directory path
     if config_path.is_absolute():
-        base_path = config_path
+        base_path = config_path.resolve()
     else:
         # For relative paths, resolve relative to the project root (parent of src/)
-        project_root = Path(__file__).parent.parent.parent
-        base_path = project_root / config_dir
-        base_path = base_path.resolve()
+        base_path = (project_root / config_dir).resolve()
+    
+    # Ensure the resolved path is actually within the intended config directory
+    # This prevents path traversal even if somehow a malicious value passed validation
+    allowed_paths = [
+        (Path(d).resolve() if Path(d).is_absolute() else (project_root / d).resolve())
+        for d in CONFIG_DIRECTORIES
+    ]
+    
+    # Verify that base_path matches one of the allowed paths
+    # Since we already validated config_dir is in CONFIG_DIRECTORIES, this should always pass,
+    # but this provides defense-in-depth against path traversal
+    base_path_resolved = base_path.resolve()
+    is_valid = False
+    for allowed_path in allowed_paths:
+        allowed_path_resolved = allowed_path.resolve()
+        # Check if paths match (handles symlinks and different representations)
+        if base_path_resolved == allowed_path_resolved:
+            is_valid = True
+            break
+    
+    if not is_valid:
+        raise ValueError(f"Resolved config_dir path {base_path_resolved} is not within allowed CONFIG_DIRECTORIES")
     
     if agent_config_name:
         # Agent-specific docs: {configdir}/agents/{agent_name}/docs/
@@ -50,6 +129,12 @@ def resolve_docs_path(config_dir: str, agent_config_name: str | None = None) -> 
     else:
         # Global docs: {configdir}/docs/
         docs_path = base_path / "docs"
+    
+    # Final safety check: ensure the resolved docs_path is within the base_path
+    try:
+        docs_path.resolve().relative_to(base_path.resolve())
+    except ValueError:
+        raise ValueError(f"Resolved docs_path {docs_path} is not within config directory {base_path}")
     
     return docs_path
 
@@ -88,6 +173,12 @@ def api_docs_list():
         if not config_dir:
             return jsonify({"error": "Missing config_dir parameter"}), 400
         
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(agent_config_name):
+            return jsonify({"error": "Invalid agent_config_name parameter"}), 400
+        
         docs_dir = resolve_docs_path(config_dir, agent_config_name)
         
         # Ensure directory exists
@@ -124,6 +215,12 @@ def api_get_doc(filename: str):
         if not config_dir:
             return jsonify({"error": "Missing config_dir parameter"}), 400
         
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(agent_config_name):
+            return jsonify({"error": "Invalid agent_config_name parameter"}), 400
+        
         if not validate_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
         
@@ -156,6 +253,12 @@ def api_update_doc(filename: str):
         
         if not config_dir:
             return jsonify({"error": "Missing config_dir parameter"}), 400
+        
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(agent_config_name):
+            return jsonify({"error": "Invalid agent_config_name parameter"}), 400
         
         if not validate_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
@@ -193,6 +296,12 @@ def api_delete_doc(filename: str):
         if not config_dir:
             return jsonify({"error": "Missing config_dir parameter"}), 400
         
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(agent_config_name):
+            return jsonify({"error": "Invalid agent_config_name parameter"}), 400
+        
         if not validate_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
         
@@ -221,6 +330,12 @@ def api_rename_doc(filename: str):
         
         if not config_dir:
             return jsonify({"error": "Missing config_dir parameter"}), 400
+        
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(agent_config_name):
+            return jsonify({"error": "Invalid agent_config_name parameter"}), 400
         
         if not validate_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
@@ -266,6 +381,12 @@ def api_move_doc(filename: str):
         if not from_config_dir:
             return jsonify({"error": "Missing from_config_dir parameter"}), 400
         
+        if not validate_config_dir(from_config_dir):
+            return jsonify({"error": "Invalid from_config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(from_agent_config_name):
+            return jsonify({"error": "Invalid from_agent_config_name parameter"}), 400
+        
         if not validate_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
         
@@ -278,6 +399,12 @@ def api_move_doc(filename: str):
         
         if not to_config_dir:
             return jsonify({"error": "Missing to_config_dir"}), 400
+        
+        if not validate_config_dir(to_config_dir):
+            return jsonify({"error": "Invalid to_config_dir parameter"}), 400
+        
+        if not validate_agent_config_name(to_agent_config_name):
+            return jsonify({"error": "Invalid to_agent_config_name parameter"}), 400
         
         # Resolve source and destination paths
         from_docs_dir = resolve_docs_path(from_config_dir, from_agent_config_name)
