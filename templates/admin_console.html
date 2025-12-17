@@ -4816,8 +4816,9 @@
                 const agentsResponse = await fetch('/admin/api/agents');
                 const agentsData = await agentsResponse.json();
                 const agent = agentsData.agents.find(a => a.config_name === agentConfigName);
+                
                 // Get config directory from agent or use first available
-                let configDir = agent.config_directory;
+                let configDir = agent?.config_directory;
                 if (!configDir) {
                     const configDirsResponse = await fetch('/admin/api/config-directories');
                     const configDirsData = await configDirsResponse.json();
@@ -4866,8 +4867,9 @@
                 const agentsResponse = await fetch('/admin/api/agents');
                 const agentsData = await agentsResponse.json();
                 const agent = agentsData.agents.find(a => a.config_name === agentDocsCurrentAgent);
+                
                 // Get config directory from agent or use first available
-                let configDir = agent.config_directory;
+                let configDir = agent?.config_directory;
                 if (!configDir) {
                     const configDirsResponse = await fetch('/admin/api/config-directories');
                     const configDirsData = await configDirsResponse.json();
