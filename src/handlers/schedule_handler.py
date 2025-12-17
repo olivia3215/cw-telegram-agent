@@ -323,7 +323,7 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
             schedule = {
                 "version": "1.0",
                 "agent_name": agent.name,
-                "timezone": str(agent.timezone),
+                "timezone": agent.get_timezone_identifier(),
                 "last_extended": None,
                 "activities": [],
             }

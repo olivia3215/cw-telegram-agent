@@ -81,9 +81,15 @@ def test_agent_with_no_timezone_uses_server_default():
         role_prompt_names=["Chatbot"],
         timezone=None,
     )
-    # Should use server's timezone
+    # Should use server's timezone (normalized to ZoneInfo)
     assert agent.timezone is not None
-    assert agent.timezone == datetime.now().astimezone().tzinfo
+    server_tz = datetime.now().astimezone().tzinfo
+    if isinstance(server_tz, ZoneInfo):
+        assert agent.timezone == server_tz
+    else:
+        # If server timezone is datetime.timezone, we fall back to UTC
+        assert isinstance(agent.timezone, ZoneInfo)
+        assert agent.timezone == ZoneInfo("UTC")
 
 
 def test_agent_with_invalid_timezone_falls_back_to_server():
@@ -95,9 +101,15 @@ def test_agent_with_invalid_timezone_falls_back_to_server():
         role_prompt_names=["Chatbot"],
         timezone="Invalid/Timezone",
     )
-    # Should fall back to server's timezone
+    # Should fall back to server's timezone (normalized to ZoneInfo)
     assert agent.timezone is not None
-    assert agent.timezone == datetime.now().astimezone().tzinfo
+    server_tz = datetime.now().astimezone().tzinfo
+    if isinstance(server_tz, ZoneInfo):
+        assert agent.timezone == server_tz
+    else:
+        # If server timezone is datetime.timezone, we fall back to UTC
+        assert isinstance(agent.timezone, ZoneInfo)
+        assert agent.timezone == ZoneInfo("UTC")
 
 
 def test_agent_get_current_time_returns_timezone_aware_datetime():
@@ -171,3 +183,30 @@ You are a test agent.
     assert parsed is not None
     # Empty timezone should be normalized to None
     assert parsed.get("timezone") is None
+
+
+def test_get_timezone_identifier_returns_iana_string():
+    """Test that get_timezone_identifier always returns a valid IANA timezone identifier."""
+    # Test with explicit IANA timezone
+    agent = Agent(
+        name="TestAgent",
+        phone="+15551234567",
+        instructions="Test",
+        role_prompt_names=["Chatbot"],
+        timezone="America/Los_Angeles",
+    )
+    assert agent.get_timezone_identifier() == "America/Los_Angeles"
+    
+    # Test with no timezone (should return UTC or server IANA timezone)
+    agent_no_tz = Agent(
+        name="TestAgent2",
+        phone="+15551234568",
+        instructions="Test",
+        role_prompt_names=["Chatbot"],
+        timezone=None,
+    )
+    tz_id = agent_no_tz.get_timezone_identifier()
+    # Should be a valid IANA timezone identifier (not an offset like "PST" or "UTC-08:00")
+    assert isinstance(tz_id, str)
+    assert "/" in tz_id or tz_id == "UTC"  # IANA identifiers have "/" or are "UTC"
+    assert "UTC-" not in tz_id  # Should not be an offset string
