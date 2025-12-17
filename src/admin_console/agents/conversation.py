@@ -22,7 +22,6 @@ from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 from handlers.received_helpers.message_processing import format_message_reactions
 from handlers.received import parse_llm_reply
 from handlers.received_helpers.summarization import trigger_summarization_directly
-from llm.media_helper import get_media_llm
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import MediaStatus, get_default_media_source_chain
@@ -218,6 +217,7 @@ async def _replace_custom_emojis_with_images(
     """
     Replace custom emoji characters in HTML with img tags that display the custom emoji images.
     This is a central helper that can be used for both message text and reactions.
+    
     
     Args:
         html_text: HTML text that may contain custom emoji characters
@@ -656,7 +656,7 @@ _TRANSLATION_SCHEMA = {
                     },
                     "translated_text": {
                         "type": "string",
-                        "description": "The English translation of the message text"
+                        "description": "The English translation of the message text, preserving HTML formatting (bold, italic, links, etc.)"
                     }
                 },
                 "required": ["message_id", "translated_text"],
@@ -1169,7 +1169,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                                 )
                                 parts.append({
                                     "kind": "text",
-                                    "text": part_html
+                                    "text": part_html  # HTML for display
                                 })
                             elif part.get("kind") == "media":
                                 parts.append({
@@ -1201,14 +1201,14 @@ def register_conversation_routes(agents_bp: Blueprint):
                             # If we don't have raw text, entities won't work anyway, so skip emoji replacement
                             parts.append({
                                 "kind": "text",
-                                "text": story_html
+                                "text": story_html  # HTML for display
                             })
                             # For forwarded stories, we've added the story text to parts, so we should clear text
                             # to avoid the frontend potentially rendering both. The frontend will use parts if available.
                             if is_forwarded_story:
                                 text = ""  # Clear text since we're using parts instead
                             elif not text:
-                                text = story_html
+                                text = story_text
                         
                         # Add story media parts if we extracted any
                         parts.extend(story_media_parts)
@@ -1218,14 +1218,14 @@ def register_conversation_routes(agents_bp: Blueprint):
                             story_text = "Forwarded story"
                             if story_from_name:
                                 # Escape story_from_name before inserting into string to prevent XSS
-                                # (markdown_to_html will also escape, but defense in depth)
+                                # (frontend markdownToHtml will also escape, but defense in depth)
                                 story_from_name_escaped = html.escape(story_from_name)
                                 story_text = f"Forwarded story from {story_from_name_escaped}"
                             # Convert to HTML (additional escaping for safety)
                             story_html = markdown_to_html(story_text)
                             parts.append({
                                 "kind": "text",
-                                "text": story_html
+                                "text": story_html  # HTML for display
                             })
                             # Also update the main text field for consistency
                             if not text:
@@ -1239,31 +1239,37 @@ def register_conversation_routes(agents_bp: Blueprint):
                             # Check if it's a forwarded message (regular forward, not story)
                             if fwd_from and not is_forwarded_story:
                                 # Regular forwarded message with no content - add placeholder
+                                placeholder_text = "[Forwarded message]"
+                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": "[Forwarded message]"
+                                    "text": placeholder_html  # HTML for display
                                 })
-                                text = "[Forwarded message]"
+                                text = placeholder_html
                             elif fwd_from:
                                 # Has fwd_from but wasn't detected as story - might be a story we didn't detect
                                 # Add a generic forwarded story placeholder
+                                placeholder_text = "[Forwarded story]"
+                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": "[Forwarded story]"
+                                    "text": placeholder_html  # HTML for display
                                 })
-                                text = "[Forwarded story]"
+                                text = placeholder_html
                             else:
                                 # Some other empty message - add placeholder so it appears
+                                placeholder_text = "[Message]"
+                                placeholder_html = html.escape(placeholder_text)
                                 parts.append({
                                     "kind": "text",
-                                    "text": "[Message]"
+                                    "text": placeholder_html  # HTML for display
                                 })
-                                text = "[Message]"
+                                text = placeholder_html
                         
                         messages.append({
                             "id": str(message.id),
-                            "text": text,
-                            "parts": parts,  # Include formatted parts (text + media)
+                            "text": text,  # HTML for display
+                            "parts": parts,  # Include formatted parts (text + media), all in HTML
                             "sender_id": str(sender_id) if sender_id else None,
                             "sender_name": sender_name,
                             "is_from_agent": is_from_agent,
@@ -1337,23 +1343,36 @@ def register_conversation_routes(agents_bp: Blueprint):
                 logger.warning(f"Cannot translate conversation - event loop check failed: {e}")
                 return jsonify({"error": "Agent client event loop is not available"}), 503
 
-            # Get media LLM
-            try:
-                media_llm = get_media_llm()
-            except Exception as e:
-                logger.error(f"Failed to get media LLM: {e}")
-                return jsonify({"error": "Media LLM not available"}), 503
+            # Use the agent's LLM for translation
+            agent_llm = agent.llm
 
             # Build translation prompt with messages as structured JSON
-            # This avoids issues with unescaped quotes/newlines in message text
+            # Send HTML to LLM and ask it to preserve HTML formatting in translations
             messages_for_prompt = []
             for msg in messages:
                 msg_id = msg.get("id", "")
-                msg_text = msg.get("text", "")
-                if msg_text:
+                # Extract HTML from parts first (preferred), then fall back to main text field
+                msg_html = ""
+                parts = msg.get("parts", [])
+                if parts:
+                    # Collect all text parts (already HTML)
+                    text_parts = []
+                    for part in parts:
+                        if part.get("kind") == "text":
+                            part_html = part.get("text", "")
+                            if part_html:
+                                text_parts.append(part_html)
+                    if text_parts:
+                        msg_html = " ".join(text_parts)
+                
+                # Fall back to main text field if no parts or no text in parts
+                if not msg_html:
+                    msg_html = msg.get("text", "")
+                
+                if msg_html:
                     messages_for_prompt.append({
                         "message_id": str(msg_id),
-                        "text": msg_text
+                        "text": msg_html
                     })
             
             # Convert to JSON string for the prompt (properly escaped)
@@ -1362,19 +1381,24 @@ def register_conversation_routes(agents_bp: Blueprint):
             
             translation_prompt = (
                 "Translate the conversation messages into English.\n"
-                "Preserve the message structure and return a JSON object with translations.\n"
+                "The messages contain HTML formatting (bold, italic, links, etc.). "
+                "IMPORTANT: Preserve all HTML formatting in your translations. "
+                "If the original has <strong>bold</strong> text, the translation should also have <strong>bold</strong> text. "
+                "If the original has <em>italic</em> text, the translation should also have <em>italic</em> text. "
+                "Preserve <a> links, <code> code blocks, and all other HTML tags.\n"
                 "\n"
                 "Return a JSON object with this structure:\n"
                 "{\n"
                 "  \"translations\": [\n"
-                "    {\"message_id\": \"123\", \"translated_text\": \"English translation here\"},\n"
+                "    {\"message_id\": \"123\", \"translated_text\": \"English translation with <strong>HTML</strong> preserved\"},\n"
                 "    ...\n"
                 "  ]\n"
                 "}\n"
                 "\n"
-                "Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."
+                "Translate all messages provided, maintaining the order and message IDs. "
+                "Ensure all JSON is properly formatted and preserves HTML formatting.\n"
                 "\n"
-                "Input messages (as JSON):\n"
+                "Input messages (as JSON, with HTML formatting):\n"
                 f"{messages_json}\n"
             )
 
@@ -1387,7 +1411,7 @@ def register_conversation_routes(agents_bp: Blueprint):
                         f"{translation_prompt}"
                     )
                     
-                    result_text = await media_llm.query_with_json_schema(
+                    result_text = await agent_llm.query_with_json_schema(
                         system_prompt=system_prompt,
                         json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                         model=None,  # Use default model
@@ -1452,11 +1476,11 @@ def register_conversation_routes(agents_bp: Blueprint):
             try:
                 translations = agent.execute(_translate_messages(), timeout=60.0)
                 
-                # Convert to dict for easy lookup and sanitize translation text
-                # Translation text comes from LLM and may contain HTML/markdown that needs sanitization
-                # Use markdown_to_html() to escape HTML and safely process any markdown formatting
+                # Convert to dict for easy lookup
+                # Translation text comes from LLM as HTML (preserves formatting)
+                # No escaping needed - HTML is already properly formatted
                 translation_dict = {
-                    t["message_id"]: markdown_to_html(t["translated_text"]) 
+                    t["message_id"]: t["translated_text"]
                     for t in translations
                 }
                 

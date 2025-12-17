@@ -3535,10 +3535,10 @@
                         msg.parts.forEach(part => {
                             if (part.kind === 'text' && part.text) {
                                 hasTextContent = true;
+                                // Text is already HTML (from backend)
                                 const partText = showTranslation && conversationTranslations[msg.id] 
                                     ? conversationTranslations[msg.id] 
                                     : part.text;
-                                // Text may contain HTML formatting (bold, italic, etc.) - render it
                                 // Use CSS to ensure emojis render consistently (don't apply font-weight/font-style to emojis)
                                 contentHtml += `<div style="white-space: pre-wrap; margin-bottom: 4px;">${partText}</div>`;
                             } else if (part.kind === 'media') {
@@ -3589,10 +3589,10 @@
                     
                     // Fallback to text if no parts or if parts didn't include text
                     if (!hasTextContent && msg.text) {
+                        // Text is already HTML (from backend)
                         const displayText = showTranslation && conversationTranslations[msg.id] 
                             ? conversationTranslations[msg.id] 
                             : msg.text;
-                        // Text may contain HTML formatting (bold, italic, etc.) - render it
                         contentHtml = `<div style="white-space: pre-wrap;">${displayText}</div>`;
                     }
                     
