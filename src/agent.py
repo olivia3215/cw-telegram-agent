@@ -160,6 +160,40 @@ class Agent(
         If the server timezone is a datetime.timezone (fixed offset),
         returns UTC since we cannot reliably map offsets to IANA timezones.
         """
+        import os
+        from pathlib import Path
+
+        # Try to get timezone from environment variable
+        tz_env = os.environ.get("TZ")
+        if tz_env:
+            try:
+                return ZoneInfo(tz_env)
+            except Exception:
+                pass
+
+        # Try to read from /etc/timezone (common on Linux)
+        try:
+            tz_path = Path("/etc/timezone")
+            if tz_path.exists():
+                tz_name = tz_path.read_text().strip()
+                if tz_name:
+                    return ZoneInfo(tz_name)
+        except Exception:
+            pass
+
+        # Try to read from /etc/localtime symlink
+        try:
+            localtime_path = Path("/etc/localtime")
+            if localtime_path.exists() and localtime_path.is_symlink():
+                target = os.readlink(localtime_path)
+                # target is usually something like /usr/share/zoneinfo/America/Los_Angeles
+                if "zoneinfo/" in target:
+                    tz_name = target.split("zoneinfo/")[-1]
+                    return ZoneInfo(tz_name)
+        except Exception:
+            pass
+
+        # Try to detect via astimezone()
         current = clock.now().astimezone()
         server_tz = current.tzinfo
         
