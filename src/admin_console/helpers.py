@@ -117,26 +117,46 @@ def get_default_llm() -> str:
 def get_available_llms() -> list[dict[str, Any]]:
     """Get list of available LLM options with metadata."""
     llms = [
-        {"value": "gemini-3-pro-preview", "label": "gemini-3-pro-preview", "expensive": True},
-        {"value": "gemini-2.5-pro", "label": "gemini-2.5-pro", "expensive": False},
+        {
+            "value": "gemini-3-pro-preview",
+            "label": "gemini-3-pro-preview ($2.00 / $12.00)",
+            "expensive": True,
+        },
+        {
+            "value": "gemini-2.5-pro",
+            "label": "gemini-2.5-pro ($1.25 / $10.00)",
+            "expensive": False,
+        },
         {
             "value": "gemini-3-flash-preview",
-            "label": "gemini-3-flash-preview",
+            "label": "gemini-3-flash-preview ($0.50 / $3.00)",
             "expensive": False,
         },
         {
             "value": "gemini-2.5-flash-lite-preview-09-2025",
-            "label": "gemini-2.5-flash-lite-preview-09-2025",
+            "label": "gemini-2.5-flash-lite-preview-09-2025 ($0.10 / $0.40)",
             "expensive": False,
         },
-        {"value": "gemini-2.0-flash", "label": "gemini-2.0-flash", "expensive": False},
-        {"value": "gemini-2.0-flash-lite", "label": "gemini-2.0-flash-lite", "expensive": False},
+        {
+            "value": "gemini-2.0-flash",
+            "label": "gemini-2.0-flash ($0.10 / $0.40)",
+            "expensive": False,
+        },
+        {
+            "value": "gemini-2.0-flash-lite",
+            "label": "gemini-2.0-flash-lite ($0.07 / $0.30)",
+            "expensive": False,
+        },
         {
             "value": "grok-4-1-fast-non-reasoning",
-            "label": "grok-4-1-fast-non-reasoning",
+            "label": "grok-4-1-fast-non-reasoning ($0.20 / $0.50)",
             "expensive": False,
         },
-        {"value": "grok-4-0709", "label": "grok-4-0709", "expensive": True},
+        {
+            "value": "grok-4-0709",
+            "label": "grok-4-0709 ($3.00 / $15.00)",
+            "expensive": True,
+        },
     ]
     return llms
 
