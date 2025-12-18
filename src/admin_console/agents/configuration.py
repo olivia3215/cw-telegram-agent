@@ -7,7 +7,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name, get_available_llms, get_default_llm
+from admin_console.helpers import get_agent_by_name, get_available_llms, get_available_timezones, get_default_llm
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,19 @@ def register_configuration_routes(agents_bp: Blueprint):
                 else:
                     llm["is_default"] = False
 
+            # Get current timezone (IANA timezone string or None)
+            # Only return a timezone if explicitly configured; otherwise return None
+            # so the frontend shows "Server Default" selected
+            current_timezone = agent._timezone_raw if agent._timezone_raw else None
+            
+            available_timezones = get_available_timezones()
+
             return jsonify({
                 "llm": current_llm,
                 "available_llms": available_llms,
                 "prompt": agent.instructions,
+                "timezone": current_timezone,
+                "available_timezones": available_timezones,
             })
         except Exception as e:
             logger.error(f"Error getting configuration for {agent_config_name}: {e}")
@@ -140,4 +149,61 @@ def register_configuration_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating prompt for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/timezone", methods=["PUT"])
+    def api_update_agent_timezone(agent_config_name: str):
+        """Update agent timezone."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.config_directory:
+                return jsonify({"error": "Agent has no config directory"}), 400
+
+            data = request.json
+            timezone = data.get("timezone", "").strip()
+
+            # Find agent's markdown file
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            if not agent_file.exists():
+                return jsonify({"error": "Agent configuration file not found"}), 404
+
+            # Read and parse the markdown file
+            content = agent_file.read_text(encoding="utf-8")
+            from register_agents import extract_fields_from_markdown
+            fields = extract_fields_from_markdown(content)
+
+            # Update Agent Timezone field (remove if empty)
+            if not timezone:
+                # Remove timezone field to use server default
+                if "Agent Timezone" in fields:
+                    del fields["Agent Timezone"]
+            else:
+                # Validate timezone before saving
+                try:
+                    from zoneinfo import ZoneInfo
+                    ZoneInfo(timezone)  # Validate it's a valid IANA timezone
+                    fields["Agent Timezone"] = timezone
+                except Exception as e:
+                    return jsonify({"error": f"Invalid timezone: {e}"}), 400
+
+            # Reconstruct markdown file
+            lines = []
+            for field_name, field_value in fields.items():
+                lines.append(f"# {field_name}")
+                lines.append(str(field_value).strip())
+                lines.append("")
+
+            agent_file.write_text("\n".join(lines), encoding="utf-8")
+
+            # Update agent's timezone in place (don't disconnect client or re-register)
+            # Timezone changes don't require reconnection to Telegram
+            agent._timezone_raw = timezone if timezone else None
+            agent._timezone_normalized = None  # Reset cached normalized timezone to force recalculation
+
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating timezone for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
