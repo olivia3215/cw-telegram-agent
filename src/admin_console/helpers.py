@@ -160,9 +160,10 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("Pacific/Baker_Island", ["Baker Island"]),
         
         # UTC-11
-        ("Pacific/Honolulu", ["Honolulu", "Midway"]),
+        ("Pacific/Midway", ["Midway"]),
         
         # UTC-10
+        ("Pacific/Honolulu", ["Honolulu"]),
         ("America/Adak", ["Adak"]),
         
         # UTC-9
