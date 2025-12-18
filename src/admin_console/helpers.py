@@ -173,17 +173,20 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("America/Los_Angeles", ["Los Angeles", "Vancouver", "Tijuana", "Seattle", "San Francisco"]),
         
         # UTC-7
-        ("America/Denver", ["Denver", "Edmonton", "Chihuahua", "Calgary"]),
+        ("America/Denver", ["Denver", "Edmonton", "Calgary"]),
         ("America/Phoenix", ["Phoenix", "Arizona"]),
         
         # UTC-6
-        ("America/Chicago", ["Chicago", "Mexico City", "Winnipeg", "Guatemala City", "Dallas"]),
+        ("America/Chicago", ["Chicago", "Winnipeg", "Dallas"]),
+        ("America/Mexico_City", ["Mexico City", "Guatemala City", "Chihuahua"]),
         
         # UTC-5
-        ("America/New_York", ["New York", "Toronto", "Havana", "Bogotá", "Lima", "Miami"]),
+        ("America/New_York", ["New York", "Toronto", "Havana", "Miami"]),
+        ("America/Bogota", ["Bogotá", "Lima"]),
         
         # UTC-4
-        ("America/Halifax", ["Halifax", "Caracas", "La Paz"]),
+        ("America/Halifax", ["Halifax"]),
+        ("America/Caracas", ["Caracas", "La Paz"]),
         ("America/Santiago", ["Santiago"]),
         
         # UTC-3:30
@@ -196,16 +199,22 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("Atlantic/South_Georgia", ["South Georgia"]),
         
         # UTC-1
-        ("Atlantic/Azores", ["Azores", "Cape Verde"]),
+        ("Atlantic/Azores", ["Azores"]),
+        ("Atlantic/Cape_Verde", ["Cape Verde"]),
         
         # UTC+0
-        ("Europe/London", ["London", "Dublin", "Casablanca", "Accra", "Lisbon", "Reykjavik"]),
+        ("Europe/London", ["London", "Dublin", "Lisbon"]),
+        ("Africa/Casablanca", ["Casablanca"]),
+        ("Africa/Accra", ["Accra", "Reykjavik"]),
         
         # UTC+1
-        ("Europe/Paris", ["Paris", "Berlin", "Rome", "Madrid", "Amsterdam", "Brussels", "Vienna", "Stockholm", "Warsaw", "Lagos", "Algiers"]),
+        ("Europe/Paris", ["Paris", "Berlin", "Rome", "Madrid", "Amsterdam", "Brussels", "Vienna", "Stockholm", "Warsaw"]),
+        ("Africa/Lagos", ["Lagos", "Algiers"]),
         
         # UTC+2
-        ("Europe/Athens", ["Athens", "Bucharest", "Helsinki", "Kyiv", "Cairo", "Johannesburg", "Jerusalem"]),
+        ("Europe/Athens", ["Athens", "Bucharest", "Helsinki", "Kyiv", "Jerusalem"]),
+        ("Africa/Cairo", ["Cairo"]),
+        ("Africa/Johannesburg", ["Johannesburg"]),
         
         # UTC+3
         ("Europe/Moscow", ["Moscow", "Istanbul", "Baghdad", "Riyadh", "Addis Ababa", "Nairobi"]),
@@ -221,6 +230,7 @@ def get_available_timezones() -> list[dict[str, Any]]:
         
         # UTC+5
         ("Asia/Karachi", ["Karachi", "Tashkent", "Samarkand", "Islamabad"]),
+        ("Asia/Almaty", ["Almaty", "Kazakhstan"]),
         
         # UTC+5:30
         ("Asia/Kolkata", ["Mumbai", "Delhi", "Kolkata", "Bangalore", "Chennai", "Hyderabad", "India"]),
@@ -229,7 +239,7 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("Asia/Kathmandu", ["Kathmandu", "Nepal"]),
         
         # UTC+6
-        ("Asia/Dhaka", ["Dhaka", "Almaty", "Thimphu", "Bangladesh", "Kazakhstan"]),
+        ("Asia/Dhaka", ["Dhaka", "Thimphu", "Bangladesh"]),
         
         # UTC+6:30
         ("Asia/Yangon", ["Yangon", "Myanmar"]),
@@ -244,19 +254,25 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("Asia/Tokyo", ["Tokyo", "Seoul", "Pyongyang", "Japan", "South Korea"]),
         
         # UTC+9:30
-        ("Australia/Adelaide", ["Adelaide", "Darwin"]),
+        ("Australia/Adelaide", ["Adelaide"]),
+        ("Australia/Darwin", ["Darwin"]),
         
         # UTC+10
-        ("Australia/Sydney", ["Sydney", "Melbourne", "Brisbane", "Port Moresby", "Guam", "Australia"]),
+        ("Australia/Sydney", ["Sydney", "Melbourne", "Australia"]),
+        ("Australia/Brisbane", ["Brisbane"]),
+        ("Pacific/Port_Moresby", ["Port Moresby", "Guam"]),
         
         # UTC+10:30
         ("Australia/Lord_Howe", ["Lord Howe Island"]),
         
         # UTC+11
-        ("Pacific/Guadalcanal", ["Guadalcanal", "Norfolk Island"]),
+        ("Pacific/Guadalcanal", ["Guadalcanal"]),
+        ("Pacific/Norfolk", ["Norfolk Island"]),
         
         # UTC+12
-        ("Pacific/Auckland", ["Auckland", "Fiji", "Majuro", "New Zealand"]),
+        ("Pacific/Auckland", ["Auckland", "New Zealand"]),
+        ("Pacific/Fiji", ["Fiji"]),
+        ("Pacific/Majuro", ["Majuro"]),
         
         # UTC+12:45
         ("Pacific/Chatham", ["Chatham Islands"]),
