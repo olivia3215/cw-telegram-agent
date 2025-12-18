@@ -27,6 +27,7 @@ from clock import clock
 from exceptions import ShutdownException
 from utils import format_message_content_for_logging
 from register_agents import register_all_agents
+from prompt_loader import load_system_prompt
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from admin_console.app import start_admin_console
@@ -648,6 +649,16 @@ async def main():
         admin_port = 5001
 
     register_all_agents()
+    
+    # Check that Instructions.md can be found in one of the configuration directories
+    try:
+        load_system_prompt("Instructions")
+    except RuntimeError as e:
+        logger.error(f"Startup check failed: {e}")
+        logger.error("The 'Instructions.md' prompt must be available in one of the configuration directories.")
+        logger.error("Make sure your CINDY_AGENT_CONFIG_PATH includes the directory containing 'prompts/Instructions.md'.")
+        return
+
     agents_list = list(all_agents())
 
     admin_server = None

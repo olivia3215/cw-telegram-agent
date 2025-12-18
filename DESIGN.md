@@ -591,8 +591,10 @@ Each plan entry typically contains:
 The system supports multiple role prompts that are combined to create complex agent personalities:
 
 **Loading Process:**
-1. **Agent-specific prompts** (highest priority): `samples/agents/{AgentName}/prompts/{PromptName}.md`
-2. **Global prompts** (fallback): `samples/prompts/{PromptName}.md`
+1. **Agent-specific prompts** (highest priority): `{config_dir}/agents/{AgentName}/prompts/{PromptName}.md`
+2. **Global prompts** (fallback): `{config_dir}/prompts/{PromptName}.md`
+
+Prompts are searched for across all directories in `CINDY_AGENT_CONFIG_PATH` (defaulting to `samples:configdir` if not set). Shared prompts (e.g., `Instructions.md`, `Task-*.md`) are typically located in `configdir/prompts`, while agent-specific personality prompts (e.g., `Chatbot.md`, `Roleplay.md`) are located in `samples/prompts`.
 
 **Combination Order:**
 1. Instructions prompt (`Instructions.md`) - shared across all LLMs
