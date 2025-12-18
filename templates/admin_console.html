@@ -4454,10 +4454,22 @@
                         
                         if (response.ok) {
                             const data = await response.json();
-                            globalDocsCurrentFilename = data.filename;
+                            const newFilename = data.filename;
+                            globalDocsCurrentFilename = newFilename;
+                            
+                            // Update handlers with new filename to allow further saves/renames
+                            const contentTextarea = document.getElementById('global-docs-content');
+                            if (contentTextarea) {
+                                contentTextarea.oninput = debounceGlobalDocsSave(configDir, newFilename);
+                            }
+                            const filenameInput = document.getElementById('global-docs-filename');
+                            if (filenameInput) {
+                                filenameInput.oninput = debounceGlobalDocsFilename(configDir, newFilename);
+                            }
+
                             // Refresh the document list dropdown
                             loadGlobalDocsList().then(() => {
-                                document.getElementById('global-docs-select').value = data.filename;
+                                document.getElementById('global-docs-select').value = newFilename;
                             });
                             if (statusEl) statusEl.textContent = 'Renamed';
                             setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
@@ -4843,10 +4855,22 @@
                         
                         if (response.ok) {
                             const data = await response.json();
-                            agentDocsCurrentFilename = data.filename;
+                            const newFilename = data.filename;
+                            agentDocsCurrentFilename = newFilename;
+                            
+                            // Update handlers with new filename to allow further saves/renames
+                            const contentTextarea = document.getElementById('agent-docs-content');
+                            if (contentTextarea) {
+                                contentTextarea.oninput = debounceAgentDocsSave(configDir, agentConfigName, newFilename);
+                            }
+                            const filenameInput = document.getElementById('agent-docs-filename');
+                            if (filenameInput) {
+                                filenameInput.oninput = debounceAgentDocsFilename(configDir, agentConfigName, newFilename);
+                            }
+
                             // Refresh the document list dropdown
                             loadAgentDocs(agentConfigName).then(() => {
-                                document.getElementById('agent-docs-select').value = data.filename;
+                                document.getElementById('agent-docs-select').value = newFilename;
                             });
                             if (statusEl) statusEl.textContent = 'Renamed';
                             setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
