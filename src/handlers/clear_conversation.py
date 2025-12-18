@@ -55,7 +55,7 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
         )
         
         # Clear summaries and plans if agent has reset_context_on_first_message enabled
-        if agent.reset_context_on_first_message or "ResetContextOnFirstMessage" in agent.role_prompt_names:
+        if agent.reset_context_on_first_message:
             from handlers.storage_helpers import clear_plans_and_summaries
             clear_plans_and_summaries(agent, channel_id)
     except Exception as e:
