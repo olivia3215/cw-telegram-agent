@@ -157,7 +157,7 @@ def get_available_timezones() -> list[dict[str, Any]]:
     # Group timezones by offset: (canonical_iana_tz, [list of cities/countries])
     timezone_groups = [
         # UTC-12
-        ("Pacific/Baker_Island", ["Baker Island"]),
+        ("Etc/GMT+12", ["Baker Island", "Howland Island"]),
         
         # UTC-11
         ("Pacific/Midway", ["Midway"]),
@@ -173,7 +173,8 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("America/Los_Angeles", ["Los Angeles", "Vancouver", "Tijuana", "Seattle", "San Francisco"]),
         
         # UTC-7
-        ("America/Denver", ["Denver", "Phoenix", "Edmonton", "Chihuahua", "Calgary"]),
+        ("America/Denver", ["Denver", "Edmonton", "Chihuahua", "Calgary"]),
+        ("America/Phoenix", ["Phoenix", "Arizona"]),
         
         # UTC-6
         ("America/Chicago", ["Chicago", "Mexico City", "Winnipeg", "Guatemala City", "Dallas"]),
