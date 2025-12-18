@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
-# Load the conversation module directly (since agents/ is not a package)
-_conversation_path = Path(__file__).parent.parent / "src" / "admin_console" / "agents" / "conversation.py"
-_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
-_conversation_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_conversation_module)
-_replace_custom_emoji_in_reactions = _conversation_module._replace_custom_emoji_in_reactions
+# Load the conversation_get module directly (since agents/ is not a package)
+_conversation_get_path = Path(__file__).parent.parent / "src" / "admin_console" / "agents" / "conversation_get.py"
+_spec = importlib.util.spec_from_file_location("conversation_get", _conversation_get_path)
+_conversation_get_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_conversation_get_module)
+_replace_custom_emoji_in_reactions = _conversation_get_module._replace_custom_emoji_in_reactions
 
 
 @pytest.mark.asyncio
