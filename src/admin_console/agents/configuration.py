@@ -36,15 +36,9 @@ def register_configuration_routes(agents_bp: Blueprint):
                     llm["is_default"] = False
 
             # Get current timezone (IANA timezone string or None)
-            current_timezone = None
-            if agent._timezone_raw:
-                current_timezone = agent._timezone_raw
-            elif hasattr(agent, 'timezone') and agent.timezone:
-                # Fallback: get IANA identifier from ZoneInfo object
-                try:
-                    current_timezone = agent.timezone.key
-                except AttributeError:
-                    pass
+            # Only return a timezone if explicitly configured; otherwise return None
+            # so the frontend shows "Server Default" selected
+            current_timezone = agent._timezone_raw if agent._timezone_raw else None
             
             available_timezones = get_available_timezones()
 
