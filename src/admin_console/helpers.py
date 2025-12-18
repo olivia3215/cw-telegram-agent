@@ -182,7 +182,8 @@ def get_available_timezones() -> list[dict[str, Any]]:
         ("America/New_York", ["New York", "Toronto", "Havana", "Bogotá", "Lima", "Miami"]),
         
         # UTC-4
-        ("America/Halifax", ["Halifax", "Caracas", "Santiago", "La Paz"]),
+        ("America/Halifax", ["Halifax", "Caracas", "La Paz"]),
+        ("America/Santiago", ["Santiago"]),
         
         # UTC-3:30
         ("America/St_Johns", ["St. John's"]),
