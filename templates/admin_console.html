@@ -4695,11 +4695,12 @@
             `;
             
             // Setup handlers (similar to global docs)
+            // Capture all state at creation time to avoid race conditions
             const filenameInput = document.getElementById('agent-docs-filename');
-            filenameInput.oninput = debounceAgentDocsFilename(configDir);
+            filenameInput.oninput = debounceAgentDocsFilename(configDir, agentDocsCurrentAgent, filename);
 
             const contentTextarea = document.getElementById('agent-docs-content');
-            contentTextarea.oninput = debounceAgentDocsSave(configDir);
+            contentTextarea.oninput = debounceAgentDocsSave(configDir, agentDocsCurrentAgent, filename);
 
             // Setup move destination change handler
             const moveSelect = document.getElementById('agent-docs-move-destination');
@@ -4714,7 +4715,8 @@
         }
         
         // Debounced save for agent docs
-        function debounceAgentDocsSave(configDir) {
+        // Captures configDir, agentConfigName, and filename to avoid race conditions
+        function debounceAgentDocsSave(configDir, agentConfigName, filename) {
             return function() {
                 if (agentDocsSaveTimeout) {
                     clearTimeout(agentDocsSaveTimeout);
@@ -4724,6 +4726,13 @@
                 if (statusEl) statusEl.textContent = 'Typing...';
                 
                 agentDocsSaveTimeout = setTimeout(async () => {
+                    // Verify we're still editing the same document (user may have switched)
+                    if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                        // User switched agents/documents, don't save
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
                     const contentTextarea = document.getElementById('agent-docs-content');
                     if (!contentTextarea) return;
                     
@@ -4736,7 +4745,8 @@
                     if (statusEl) statusEl.textContent = 'Saving...';
                     
                     try {
-                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(agentDocsCurrentFilename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`, {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ content: newContent })
@@ -4757,7 +4767,8 @@
         }
         
         // Debounced filename change for agent docs
-        function debounceAgentDocsFilename(configDir) {
+        // Captures configDir, agentConfigName, and filename to avoid race conditions
+        function debounceAgentDocsFilename(configDir, agentConfigName, filename) {
             return function() {
                 if (agentDocsFilenameTimeout) {
                     clearTimeout(agentDocsFilenameTimeout);
@@ -4769,7 +4780,14 @@
                 const newFilename = filenameInput.value.trim();
                 const statusEl = document.getElementById('agent-docs-filename-status');
                 
-                if (!newFilename || newFilename === agentDocsCurrentFilename) {
+                // Verify we're still editing the same document (user may have switched)
+                if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                    // User switched agents/documents, don't rename
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename || newFilename === filename) {
                     if (statusEl) statusEl.textContent = '';
                     return;
                 }
@@ -4782,8 +4800,16 @@
                 if (statusEl) statusEl.textContent = 'Renaming...';
                 
                 agentDocsFilenameTimeout = setTimeout(async () => {
+                    // Double-check we're still editing the same document before renaming
+                    if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                        // User switched agents/documents, don't rename
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
                     try {
-                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(agentDocsCurrentFilename)}/rename?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`, {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ new_filename: newFilename })
@@ -4793,7 +4819,7 @@
                             const data = await response.json();
                             agentDocsCurrentFilename = data.filename;
                             // Refresh the document list dropdown
-                            loadAgentDocs(agentDocsCurrentAgent).then(() => {
+                            loadAgentDocs(agentConfigName).then(() => {
                                 document.getElementById('agent-docs-select').value = data.filename;
                             });
                             if (statusEl) statusEl.textContent = 'Renamed';
