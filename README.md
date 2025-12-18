@@ -206,7 +206,7 @@ Notes:
   The `LLM` field specifies which LLM to use:
   - `gemini` or names starting with `gemini` (e.g., `gemini-2.0-flash`) - uses Gemini LLM
   - `grok` or names starting with `grok` (e.g., `grok-4-fast-non-reasoning`) - uses Grok LLM
-  - If omitted, defaults to Gemini with `gemini-2.5-flash-preview-09-2025`
+  - If omitted, defaults to Gemini with `gemini-3-flash-preview`
 * **Reserved names:** Agent display names and config file names (the filename without `.md`) cannot be `media` (reserved for system directories).
 * **Uniqueness:** Both agent display names (from the `Agent Name` field) and config file names (the filename without `.md`) must be unique across all config directories. If two config files have the same filename but different display names, only the first one will be registered to prevent state directory conflicts.
 

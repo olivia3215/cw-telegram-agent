@@ -109,7 +109,7 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
 
 def get_default_llm() -> str:
     """Get the default LLM name (system default)."""
-    return "gemini-2.5-flash-preview-09-2025"  # Default Gemini model
+    return "gemini-3-flash-preview"  # Default Gemini model
 
 
 def get_available_llms() -> list[dict[str, Any]]:
@@ -118,8 +118,8 @@ def get_available_llms() -> list[dict[str, Any]]:
         {"value": "gemini-3-pro-preview", "label": "gemini-3-pro-preview", "expensive": True},
         {"value": "gemini-2.5-pro", "label": "gemini-2.5-pro", "expensive": False},
         {
-            "value": "gemini-2.5-flash-preview-09-2025",
-            "label": "gemini-2.5-flash-preview-09-2025",
+            "value": "gemini-3-flash-preview",
+            "label": "gemini-3-flash-preview",
             "expensive": False,
         },
         {

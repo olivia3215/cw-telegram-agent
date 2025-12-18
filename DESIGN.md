@@ -20,7 +20,7 @@ We never send a `system` role to Gemini. Instead:
   - `user` turns — all non-agent speakers
   - `model` turns — the agent’s prior messages (we remap `assistant → model`)
 
-This is required by newer Gemini families (e.g., `gemini-2.5-flash-preview-09-2025`) that reject `system` content and only accept `user`/`model` roles.
+This is required by newer Gemini families (e.g., `gemini-3-flash-preview`) that reject `system` content and only accept `user`/`model` roles.
 
 ### History ordering and target message
 
@@ -621,8 +621,8 @@ The system supports multiple role prompts that are combined to create complex ag
 The system routes LLM requests based on the `LLM` field in agent configuration:
 
 - **Gemini LLMs**: Names starting with `gemini` route through `llm/gemini.py`
-  - Default model: `gemini-2.5-flash-preview-09-2025` (if name is just `gemini`)
-  - Specific models: `gemini-2.0-flash`, `gemini-2.5-flash-preview-09-2025`, etc.
+  - Default model: `gemini-3-flash-preview` (if name is just `gemini`)
+  - Specific models: `gemini-2.0-flash`, `gemini-3-flash-preview`, etc.
 
 - **Grok LLMs**: Names starting with `grok` route through `llm/grok.py`
   - Default model: `grok-4-fast-non-reasoning` (if name is just `grok`)

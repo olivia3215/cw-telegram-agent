@@ -185,7 +185,7 @@ All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which co
 
 **For existing LLMs:**
 * Update the model string in agent configuration (`LLM` field)
-* Gemini defaults to `gemini-2.5-flash-preview-09-2025` if name is just `gemini`
+* Gemini defaults to `gemini-3-flash-preview` if name is just `gemini`
 * Grok defaults to `grok-4-fast-non-reasoning` if name is just `grok`
 
 **For new LLM providers:**

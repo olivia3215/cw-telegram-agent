@@ -274,9 +274,9 @@ You are Heidi...
 LLM names are routed based on their prefix:
 
 - **Gemini LLMs**: Names starting with `gemini` route through `llm/gemini.py`
-  - `gemini` → uses default model `gemini-2.5-flash-preview-09-2025`
+  - `gemini` → uses default model `gemini-3-flash-preview`
   - `gemini-2.0-flash` → uses the specified model name
-  - `gemini-2.5-flash-preview-09-2025` → uses the specified model name
+  - `gemini-3-flash-preview` → uses the specified model name
 
 - **Grok LLMs**: Names starting with `grok` route through `llm/grok.py`
   - `grok` → uses default model `grok-4-fast-non-reasoning`
@@ -284,7 +284,7 @@ LLM names are routed based on their prefix:
 
 ### Default Behavior
 
-If the `LLM` field is omitted, the agent defaults to Gemini with model `gemini-2.5-flash-preview-09-2025`.
+If the `LLM` field is omitted, the agent defaults to Gemini with model `gemini-3-flash-preview`.
 
 ### API Keys Required
 
