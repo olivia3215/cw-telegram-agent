@@ -594,7 +594,7 @@ The system supports multiple role prompts that are combined to create complex ag
 1. **Agent-specific prompts** (highest priority): `{config_dir}/agents/{AgentName}/prompts/{PromptName}.md`
 2. **Global prompts** (fallback): `{config_dir}/prompts/{PromptName}.md`
 
-Prompts are searched for across all directories in `CINDY_AGENT_CONFIG_PATH` (defaulting to `samples` if not set). Note that shared prompts (e.g., `Instructions.md`, `Task-*.md`) are typically located in a `configdir/prompts` directory that must be included in the configuration path. Agent-specific personality prompts (e.g., `Chatbot.md`, `Roleplay.md`) are located in `samples/prompts`.
+Prompts are searched for across all directories in `CINDY_AGENT_CONFIG_PATH` (defaulting to `samples:configdir` if not set). Shared prompts (e.g., `Instructions.md`, `Task-*.md`) are typically located in `configdir/prompts`, while agent-specific personality prompts (e.g., `Chatbot.md`, `Roleplay.md`) are located in `samples/prompts`.
 
 **Combination Order:**
 1. Instructions prompt (`Instructions.md`) - shared across all LLMs

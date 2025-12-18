@@ -22,8 +22,8 @@ def _parse_config_directories() -> list[str]:
         if dirs:
             return dirs
 
-    # Default to samples directory if CINDY_AGENT_CONFIG_PATH is not set or contains only whitespace/separators
-    return ["samples"]
+    # Default to samples and configdir directories if CINDY_AGENT_CONFIG_PATH is not set or contains only whitespace/separators
+    return ["samples", "configdir"]
 
 
 CONFIG_DIRECTORIES: list[str] = _parse_config_directories()

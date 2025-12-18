@@ -88,7 +88,7 @@ All role prompts are loaded from the global `prompts/` directory within each con
 1. **First configuration directory**: `{config_dir}/prompts/{PromptName}.md`
 2. **Additional configuration directories**: If multiple config directories are specified (separated by colons), the system searches each in order
 
-**Note:** For the agent to function correctly, you must include `configdir` in your `CINDY_AGENT_CONFIG_PATH` so it can find the required shared prompts like `Instructions.md`.
+**Note:** The system defaults to searching `samples:configdir` for these prompts if `CINDY_AGENT_CONFIG_PATH` is not set. This ensures that both sample agents and the required shared prompts like `Instructions.md` are available by default.
 
 ### System Prompt Structure
 

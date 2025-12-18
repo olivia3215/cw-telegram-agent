@@ -230,7 +230,7 @@ config-dir/
 
 **Prompt separation:** Shared system prompts (e.g., `Instructions.md`, `Task-*.md`) are located in `configdir/prompts`. These prompts are essential for the agent's operation and must be included on your configuration path. Sample agent-specific prompts (e.g., `Chatbot.md`, `Roleplay.md`) are located in `samples/prompts`.
 
-**Default location:** If `CINDY_AGENT_CONFIG_PATH` is not set, the system defaults to the `samples` directory. Note that since shared prompts have been moved to `configdir/prompts`, you must now explicitly include `configdir` in your `CINDY_AGENT_CONFIG_PATH` for the agent to start successfully.
+**Default location:** If `CINDY_AGENT_CONFIG_PATH` is not set, the system defaults to `samples:configdir`. This ensures that both sample agents and the required shared prompts are available by default.
 
 ---
 
