@@ -5,12 +5,27 @@
 
 import logging
 import uuid
+import asyncio
+from typing import Dict
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from telegram_util import get_channel_name, is_group_or_channel
 
 logger = logging.getLogger(__name__)
+
+# Global dictionary of locks to prevent concurrent insertions for the same conversation
+_conversation_locks: Dict[tuple, asyncio.Lock] = {}
+_conversation_locks_lock = asyncio.Lock()
+
+
+async def _get_lock_for_conversation(agent_id: int, channel_id: int) -> asyncio.Lock:
+    """Get or create a lock for a specific conversation."""
+    key = (agent_id, channel_id)
+    async with _conversation_locks_lock:
+        if key not in _conversation_locks:
+            _conversation_locks[key] = asyncio.Lock()
+        return _conversation_locks[key]
 
 
 def make_wait_task(
@@ -109,6 +124,7 @@ async def insert_received_task_for_conversation(
     """
     if work_queue is None:
         work_queue = WorkQueue.get_instance()
+    
     agent = get_agent_for_id(recipient_id)
     preserved_tasks = []
     # Find the existing graph for this conversation
@@ -120,197 +136,214 @@ async def insert_received_task_for_conversation(
         # If conversion fails, use as-is (shouldn't happen, but be defensive)
         agent_id_int = recipient_id
         channel_id_int = channel_id
-    old_graph = work_queue.graph_for_conversation(agent_id_int, channel_id_int)
 
-    # Check if there's already an active received task for this conversation
-    if old_graph:
-        for task in old_graph.tasks:
-            if task.type == "received" and not task.status.is_completed():
-                # There's already an active received task
-                if is_callout:
-                    task.params["callout"] = is_callout
-                if message_id:
-                    task.params["message_id"] = message_id
-                if xsend_intent is not None:
-                    task.params["xsend_intent"] = xsend_intent
-                if reaction_message_id is not None:
-                    task.params["reaction_message_id"] = reaction_message_id
-                if clear_mentions:
-                    task.params["clear_mentions"] = True
-                if clear_reactions:
-                    task.params["clear_reactions"] = True
-                logger.info(
-                    f"[{recipient_id}] Skipping received task creation - active received task {task.id} "
-                    f"(status: {task.status}) already exists for conversation {channel_id}"
+    lock = await _get_lock_for_conversation(agent_id_int, channel_id_int)
+    async with lock:
+        old_graph = work_queue.graph_for_conversation(agent_id_int, channel_id_int)
+
+        # Check if there's already an active received task for this conversation
+        if old_graph:
+            for task in old_graph.tasks:
+                if task.type == "received" and not task.status.is_completed():
+                    # There's already an active received task
+                    if is_callout:
+                        task.params["callout"] = is_callout
+                    if message_id:
+                        task.params["message_id"] = message_id
+                    if xsend_intent is not None:
+                        task.params["xsend_intent"] = xsend_intent
+                    if reaction_message_id is not None:
+                        task.params["reaction_message_id"] = reaction_message_id
+                    if clear_mentions:
+                        task.params["clear_mentions"] = True
+                    if clear_reactions:
+                        task.params["clear_reactions"] = True
+                    logger.info(
+                        f"[{recipient_id}] Skipping received task creation - active received task {task.id} "
+                        f"(status: {task.status}) already exists for conversation {channel_id}"
+                    )
+                    # Save the work queue state after updating existing task params
+                    try:
+                        work_queue.save()
+                        logger.debug(f"[{recipient_id}] Saved work queue state after updating task {task.id}")
+                    except Exception as e:
+                        logger.error(f"[{recipient_id}] Failed to save work queue state: {e}")
+                    return
+            # Log if we found a graph but no active received task (for debugging duplicates)
+            received_tasks = [t for t in old_graph.tasks if t.type == "received"]
+            if received_tasks:
+                logger.debug(
+                    f"[{recipient_id}] Found graph for conversation {channel_id} with {len(received_tasks)} "
+                    f"received task(s), but all are completed. Statuses: {[t.status for t in received_tasks]}"
                 )
-                return
-        # Log if we found a graph but no active received task (for debugging duplicates)
-        received_tasks = [t for t in old_graph.tasks if t.type == "received"]
-        if received_tasks:
-            logger.debug(
-                f"[{recipient_id}] Found graph for conversation {channel_id} with {len(received_tasks)} "
-                f"received task(s), but all are completed. Statuses: {[t.status for t in received_tasks]}"
+
+        last_task = None
+        preserved_online_wait_task = None
+        preserved_responsiveness_delay_task = None
+        if old_graph:
+            # Find the old received task to check for responsiveness delay task ID
+            old_received_task = None
+            for old_task in old_graph.tasks:
+                if old_task.type == "received":
+                    old_received_task = old_task
+                    break
+            
+            # preserve tasks from the old graph, but mark some as done
+            for old_task in old_graph.tasks:
+                old_task.params.get("callout")
+                # Preserve tasks marked with preserve:True (e.g., wait tasks keeping resources alive)
+                preserve = old_task.params.get("preserve", False)
+                # Also preserve online wait tasks to maintain "already online" status
+                is_online_wait = old_task.type == "wait" and old_task.params.get("online", False) and old_task.status == TaskStatus.PENDING
+                # Also preserve responsiveness delay wait tasks
+                is_responsiveness_delay = False
+                if old_received_task:
+                    responsiveness_delay_task_id = old_received_task.params.get("responsiveness_delay_task_id")
+                    if responsiveness_delay_task_id and old_task.id == responsiveness_delay_task_id and old_task.status == TaskStatus.PENDING:
+                        is_responsiveness_delay = True
+                
+                if preserve and not old_task.status.is_completed():
+                    # Only set last_task if it's not a wait task with preserve:true
+                    # Wait tasks with preserve:true should run independently and not block other tasks
+                    if not (old_task.type == "wait" and preserve):
+                        last_task = old_task.id
+                elif is_online_wait:
+                    # Preserve online wait task to maintain "already online" status
+                    # Don't mark it as CANCELLED - keep it PENDING
+                    preserved_online_wait_task = old_task
+                    logger.debug(
+                        f"[{recipient_id}] Preserving online wait task {old_task.id} from old graph"
+                    )
+                elif is_responsiveness_delay:
+                    # Preserve responsiveness delay task so new received task can use it
+                    # Don't mark it as CANCELLED - keep it PENDING
+                    preserved_responsiveness_delay_task = old_task
+                    logger.debug(
+                        f"[{recipient_id}] Preserving responsiveness delay task {old_task.id} from old graph"
+                    )
+                else:
+                    old_task.status = TaskStatus.CANCELLED
+                # save all the old tasks, because even if they're done,
+                # other tasks might depend on them.
+                preserved_tasks.append(old_task)
+
+            # Remove the old graph completely
+            work_queue.remove(old_graph)
+            # if preserved_tasks:
+            #     logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
+
+        def conversation_matcher(ctx):
+            return (
+                ctx.get("channel_id") == channel_id and ctx.get("agent_id") == recipient_id
             )
 
-    last_task = None
-    preserved_online_wait_task = None
-    preserved_responsiveness_delay_task = None
-    if old_graph:
-        # Find the old received task to check for responsiveness delay task ID
-        old_received_task = None
-        for old_task in old_graph.tasks:
-            if old_task.type == "received":
-                old_received_task = old_task
-                break
+        work_queue.remove_all(conversation_matcher)
+
+        agent = get_agent_for_id(recipient_id)
+        if not agent:
+            raise RuntimeError(f"Agent ID {recipient_id} not found")
+        client = agent.client
+        if not client:
+            raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+
+        # build params
+        task_params = {}
+        if message_id is not None:
+            task_params["message_id"] = message_id
+        if is_callout:
+            task_params["callout"] = True
+        if xsend_intent is not None:
+            task_params["xsend_intent"] = xsend_intent
+        if summarization_mode:
+            task_params["summarization_mode"] = True
+        if reaction_message_id is not None:
+            task_params["reaction_message_id"] = reaction_message_id
+        if clear_mentions:
+            task_params["clear_mentions"] = True
+        if clear_reactions:
+            task_params["clear_reactions"] = True
+
+        assert recipient_id
+        recipient_name = await get_channel_name(agent, recipient_id)
+        channel_name = await get_channel_name(agent, channel_id)
+
+        graph_id = f"recv-{uuid.uuid4().hex[:8]}"
+
+        # Build new graph context, copying fetched_resources from old graph if present
+        new_context = {
+            "agent_id": recipient_id,
+            "channel_id": channel_id,
+            "agent_name": recipient_name,
+            "channel_name": channel_name,
+        }
+
+        is_group_chat = False
+        try:
+            dialog = await agent.get_cached_entity(channel_id)
+            is_group_chat = bool(is_group_or_channel(dialog))
+        except Exception:
+            # Fallback heuristic: negative ids normally correspond to group/channel chats.
+            is_group_chat = channel_id is not None and channel_id < 0
+
+        new_context["is_group_chat"] = is_group_chat
+
+        # Copy fetched resources from old graph if they exist
+        if old_graph and "fetched_resources" in old_graph.context:
+            new_context["fetched_resources"] = old_graph.context["fetched_resources"]
+            logger.info(
+                f"[{recipient_name}] Copied {len(new_context['fetched_resources'])} fetched resource(s) from old graph"
+            )
+
+        new_graph = TaskGraph(
+            id=graph_id,
+            context=new_context,
+            tasks=preserved_tasks,
+        )
+
+        # Add preserved online wait task to new graph if it exists
+        if preserved_online_wait_task:
+            # Reset status to PENDING (it was in preserved_tasks but status might have been changed)
+            preserved_online_wait_task.status = TaskStatus.PENDING
+            # Make sure it's in the new graph (it should already be in preserved_tasks, but ensure it's there)
+            if preserved_online_wait_task not in new_graph.tasks:
+                new_graph.add_task(preserved_online_wait_task)
+            logger.debug(
+                f"[{recipient_name}] Preserved online wait task {preserved_online_wait_task.id} in new graph"
+            )
+
+        # Add preserved responsiveness delay task to new graph if it exists
+        if preserved_responsiveness_delay_task:
+            # Reset status to PENDING (it was in preserved_tasks but status might have been changed)
+            preserved_responsiveness_delay_task.status = TaskStatus.PENDING
+            # Make sure it's in the new graph (it should already be in preserved_tasks, but ensure it's there)
+            if preserved_responsiveness_delay_task not in new_graph.tasks:
+                new_graph.add_task(preserved_responsiveness_delay_task)
+            # Store the delay task ID in the received task params so handle_received can use it
+            task_params["responsiveness_delay_task_id"] = preserved_responsiveness_delay_task.id
+            logger.debug(
+                f"[{recipient_name}] Preserved responsiveness delay task {preserved_responsiveness_delay_task.id} in new graph"
+            )
+
+        task_id = f"received-{uuid.uuid4().hex[:8]}"
+        received_task = TaskNode(
+            id=task_id,
+            type="received",
+            params=task_params,
+            depends_on=[last_task] if last_task else [],
+        )
+        # If we preserved a responsiveness delay task, make the received task depend on it
+        if preserved_responsiveness_delay_task:
+            received_task.depends_on.append(preserved_responsiveness_delay_task.id)
+        new_graph.add_task(received_task)
+        work_queue.add_graph(new_graph)
         
-        # preserve tasks from the old graph, but mark some as done
-        for old_task in old_graph.tasks:
-            old_task.params.get("callout")
-            # Preserve tasks marked with preserve:True (e.g., wait tasks keeping resources alive)
-            preserve = old_task.params.get("preserve", False)
-            # Also preserve online wait tasks to maintain "already online" status
-            is_online_wait = old_task.type == "wait" and old_task.params.get("online", False) and old_task.status == TaskStatus.PENDING
-            # Also preserve responsiveness delay wait tasks
-            is_responsiveness_delay = False
-            if old_received_task:
-                responsiveness_delay_task_id = old_received_task.params.get("responsiveness_delay_task_id")
-                if responsiveness_delay_task_id and old_task.id == responsiveness_delay_task_id and old_task.status == TaskStatus.PENDING:
-                    is_responsiveness_delay = True
-            
-            if preserve and not old_task.status.is_completed():
-                # Only set last_task if it's not a wait task with preserve:true
-                # Wait tasks with preserve:true should run independently and not block other tasks
-                if not (old_task.type == "wait" and preserve):
-                    last_task = old_task.id
-            elif is_online_wait:
-                # Preserve online wait task to maintain "already online" status
-                # Don't mark it as CANCELLED - keep it PENDING
-                preserved_online_wait_task = old_task
-                logger.debug(
-                    f"[{recipient_id}] Preserving online wait task {old_task.id} from old graph"
-                )
-            elif is_responsiveness_delay:
-                # Preserve responsiveness delay task so new received task can use it
-                # Don't mark it as CANCELLED - keep it PENDING
-                preserved_responsiveness_delay_task = old_task
-                logger.debug(
-                    f"[{recipient_id}] Preserving responsiveness delay task {old_task.id} from old graph"
-                )
-            else:
-                old_task.status = TaskStatus.CANCELLED
-            # save all the old tasks, because even if they're done,
-            # other tasks might depend on them.
-            preserved_tasks.append(old_task)
+        # Save the work queue state after adding a new graph
+        try:
+            work_queue.save()
+            logger.debug(f"[{recipient_name}] Saved work queue state after inserting task {task_id}")
+        except Exception as e:
+            logger.error(f"[{recipient_name}] Failed to save work queue state: {e}")
 
-        # Remove the old graph completely
-        work_queue.remove(old_graph)
-        # if preserved_tasks:
-        #     logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
-
-    def conversation_matcher(ctx):
-        return (
-            ctx.get("channel_id") == channel_id and ctx.get("agent_id") == recipient_id
-        )
-
-    work_queue.remove_all(conversation_matcher)
-
-    agent = get_agent_for_id(recipient_id)
-    if not agent:
-        raise RuntimeError(f"Agent ID {recipient_id} not found")
-    client = agent.client
-    if not client:
-        raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
-
-    # build params
-    task_params = {}
-    if message_id is not None:
-        task_params["message_id"] = message_id
-    if is_callout:
-        task_params["callout"] = True
-    if xsend_intent is not None:
-        task_params["xsend_intent"] = xsend_intent
-    if summarization_mode:
-        task_params["summarization_mode"] = True
-    if reaction_message_id is not None:
-        task_params["reaction_message_id"] = reaction_message_id
-    if clear_mentions:
-        task_params["clear_mentions"] = True
-    if clear_reactions:
-        task_params["clear_reactions"] = True
-
-    assert recipient_id
-    recipient_name = await get_channel_name(agent, recipient_id)
-    channel_name = await get_channel_name(agent, channel_id)
-
-    graph_id = f"recv-{uuid.uuid4().hex[:8]}"
-
-    # Build new graph context, copying fetched_resources from old graph if present
-    new_context = {
-        "agent_id": recipient_id,
-        "channel_id": channel_id,
-        "agent_name": recipient_name,
-        "channel_name": channel_name,
-    }
-
-    is_group_chat = False
-    try:
-        dialog = await agent.get_cached_entity(channel_id)
-        is_group_chat = bool(is_group_or_channel(dialog))
-    except Exception:
-        # Fallback heuristic: negative ids normally correspond to group/channel chats.
-        is_group_chat = channel_id is not None and channel_id < 0
-
-    new_context["is_group_chat"] = is_group_chat
-
-    # Copy fetched resources from old graph if they exist
-    if old_graph and "fetched_resources" in old_graph.context:
-        new_context["fetched_resources"] = old_graph.context["fetched_resources"]
         logger.info(
-            f"[{recipient_name}] Copied {len(new_context['fetched_resources'])} fetched resource(s) from old graph"
+            f"[{recipient_name}] Inserted 'received' task {task_id} in conversation {channel_name} in graph {graph_id}"
         )
-
-    new_graph = TaskGraph(
-        id=graph_id,
-        context=new_context,
-        tasks=preserved_tasks,
-    )
-
-    # Add preserved online wait task to new graph if it exists
-    if preserved_online_wait_task:
-        # Reset status to PENDING (it was in preserved_tasks but status might have been changed)
-        preserved_online_wait_task.status = TaskStatus.PENDING
-        # Make sure it's in the new graph (it should already be in preserved_tasks, but ensure it's there)
-        if preserved_online_wait_task not in new_graph.tasks:
-            new_graph.add_task(preserved_online_wait_task)
-        logger.debug(
-            f"[{recipient_name}] Preserved online wait task {preserved_online_wait_task.id} in new graph"
-        )
-
-    # Add preserved responsiveness delay task to new graph if it exists
-    if preserved_responsiveness_delay_task:
-        # Reset status to PENDING (it was in preserved_tasks but status might have been changed)
-        preserved_responsiveness_delay_task.status = TaskStatus.PENDING
-        # Make sure it's in the new graph (it should already be in preserved_tasks, but ensure it's there)
-        if preserved_responsiveness_delay_task not in new_graph.tasks:
-            new_graph.add_task(preserved_responsiveness_delay_task)
-        # Store the delay task ID in the received task params so handle_received can use it
-        task_params["responsiveness_delay_task_id"] = preserved_responsiveness_delay_task.id
-        logger.debug(
-            f"[{recipient_name}] Preserved responsiveness delay task {preserved_responsiveness_delay_task.id} in new graph"
-        )
-
-    task_id = f"received-{uuid.uuid4().hex[:8]}"
-    received_task = TaskNode(
-        id=task_id,
-        type="received",
-        params=task_params,
-        depends_on=[last_task] if last_task else [],
-    )
-    # If we preserved a responsiveness delay task, make the received task depend on it
-    if preserved_responsiveness_delay_task:
-        received_task.depends_on.append(preserved_responsiveness_delay_task.id)
-    new_graph.add_task(received_task)
-    work_queue.add_graph(new_graph)
-    logger.info(
-        f"[{recipient_name}] Inserted 'received' task in conversation {channel_name} in graph {graph_id}"
-    )

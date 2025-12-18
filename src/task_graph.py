@@ -276,18 +276,21 @@ class WorkQueue:
                             if responsiveness <= 0:
                                 # Check if there are any xsend-triggered received tasks
                                 # xsend tasks bypass schedule delays and should be processed immediately
-                                has_xsend_task = False
+                                has_bypass_task = False
                                 for task in graph.tasks:
                                     if (
                                         task.type == "received"
                                         and not task.status.is_completed()
                                         and task.params.get("xsend_intent")
                                     ):
-                                        has_xsend_task = True
+                                        has_bypass_task = True
                                         break
                                 
-                                if not has_xsend_task:
-                                    # Agent is asleep and no xsend tasks, skip this graph
+                                if not has_bypass_task:
+                                    # Agent is asleep and no bypass tasks, skip this graph
+                                    logger.debug(
+                                        f"[{agent_id}] Skipping graph {graph.id} - agent responsiveness is {responsiveness}"
+                                    )
                                     continue
                     except Exception:
                         # If we can't check responsiveness, proceed normally

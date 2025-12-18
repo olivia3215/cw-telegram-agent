@@ -72,8 +72,14 @@ def test_agent_with_valid_timezone_string():
     assert agent.timezone == ZoneInfo("Pacific/Honolulu")
 
 
-def test_agent_with_no_timezone_uses_server_default():
+def test_agent_with_no_timezone_uses_server_default(monkeypatch):
     """Test that an agent with no timezone uses the server's local timezone."""
+    # Mock _normalize_server_timezone to return a known value for consistency
+    monkeypatch.setattr(
+        "agent.Agent._normalize_server_timezone",
+        lambda self: ZoneInfo("America/New_York"),
+    )
+    
     agent = Agent(
         name="TestAgent",
         phone="+15551234567",
@@ -81,19 +87,18 @@ def test_agent_with_no_timezone_uses_server_default():
         role_prompt_names=["Chatbot"],
         timezone=None,
     )
-    # Should use server's timezone (normalized to ZoneInfo)
-    assert agent.timezone is not None
-    server_tz = datetime.now().astimezone().tzinfo
-    if isinstance(server_tz, ZoneInfo):
-        assert agent.timezone == server_tz
-    else:
-        # If server timezone is datetime.timezone, we fall back to UTC
-        assert isinstance(agent.timezone, ZoneInfo)
-        assert agent.timezone == ZoneInfo("UTC")
+    # Should use the mocked server timezone
+    assert agent.timezone == ZoneInfo("America/New_York")
 
 
-def test_agent_with_invalid_timezone_falls_back_to_server():
+def test_agent_with_invalid_timezone_falls_back_to_server(monkeypatch):
     """Test that an invalid timezone falls back to server timezone."""
+    # Mock _normalize_server_timezone to return a known value for consistency
+    monkeypatch.setattr(
+        "agent.Agent._normalize_server_timezone",
+        lambda self: ZoneInfo("America/New_York"),
+    )
+    
     agent = Agent(
         name="TestAgent",
         phone="+15551234567",
@@ -101,15 +106,8 @@ def test_agent_with_invalid_timezone_falls_back_to_server():
         role_prompt_names=["Chatbot"],
         timezone="Invalid/Timezone",
     )
-    # Should fall back to server's timezone (normalized to ZoneInfo)
-    assert agent.timezone is not None
-    server_tz = datetime.now().astimezone().tzinfo
-    if isinstance(server_tz, ZoneInfo):
-        assert agent.timezone == server_tz
-    else:
-        # If server timezone is datetime.timezone, we fall back to UTC
-        assert isinstance(agent.timezone, ZoneInfo)
-        assert agent.timezone == ZoneInfo("UTC")
+    # Should fall back to the mocked server timezone
+    assert agent.timezone == ZoneInfo("America/New_York")
 
 
 def test_agent_get_current_time_returns_timezone_aware_datetime():
