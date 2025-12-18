@@ -29,6 +29,7 @@ from handlers.received_helpers.llm_query import (
 )
 from handlers.received_helpers.prompt_builder import (
     build_complete_system_prompt,
+    is_conversation_start,
 )
 from handlers.received_helpers.summarization import (
     get_highest_summarized_message_id,
@@ -564,6 +565,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     else:
         message_limit = 100
     messages = await client.get_messages(entity, limit=message_limit)
+
+    # If "Reset Context On First Message" is enabled, clear summaries and plans if this is the first message
+    if agent.reset_context_on_first_message and is_conversation_start(agent, messages, highest_summarized_id):
+        from handlers.storage_helpers import clear_plans_and_summaries
+        clear_plans_and_summaries(agent, channel_id_int)
+        # Re-check highest summarized ID after clearing
+        highest_summarized_id = None
+
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
         messages, agent=agent, peer_id=channel_id
@@ -634,7 +643,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     system_prompt = await build_complete_system_prompt(
         agent,
         channel_id,
-        messages_for_history,  # Use filtered messages for context, but summaries are already loaded
+        messages,  # Use full messages for context start check, but summaries are already loaded
         media_chain,
         is_group,
         channel_name,

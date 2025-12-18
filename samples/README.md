@@ -421,6 +421,42 @@ The agent can also retrieve their full schedule to answer questions about future
 
 **Agent**: [Uses retrieve task with `file://schedule.json`] "Let me check my schedule... I have a meeting from 2-3 PM, but I'm free after that!"
 
+## Reset Context On First Message
+
+Agents can be configured to automatically reset their conversation context (plans and summaries) when a new conversation begins. This is particularly useful for role-play or dungeon master agents where each new interaction should start from a clean state.
+
+### Configuration
+
+Add the `Reset Context On First Message` section to your agent's markdown file. The content of the section is ignored; its presence alone enables the behavior:
+
+```markdown
+# Agent Name
+DungeonMaster
+
+# Reset Context On First Message
+(Any text here is ignored)
+
+# Role Prompt
+Adventure
+
+# Agent Instructions
+...
+```
+
+### How It Works
+
+When this section is present in an agent's configuration:
+
+1. **Start of Conversation Detection**: When the agent receives a message and the conversation history is empty (or only contains that one message), it's considered the "start of a conversation". This happens during the very first interaction or after a user has "Cleared History" in Telegram.
+2. **Context Erasure**: At the start of a conversation, the agent automatically:
+   - Erases all `plan`s for the conversation
+   - Erases all conversation summaries
+3. **Fresh Start**: The agent starts with a clean slate, unaffected by previous interactions or summaries from before the history was cleared.
+
+### Manual Reset
+
+This configuration also affects the `clear-conversation` task. If an agent with this setting processes a `clear-conversation` task (e.g., triggered by a command or an intention), it will also clear all plans and summaries for that conversation.
+
 ## Configuration
 
 To use custom prompt directories, set the `CINDY_AGENT_CONFIG_PATH` environment variable:

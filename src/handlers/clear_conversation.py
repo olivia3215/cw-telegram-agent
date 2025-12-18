@@ -54,30 +54,10 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
             f"[{agent.name}] Successfully cleared conversation with [{channel_name}]"
         )
         
-        # Clear summaries and plans if agent has ResetContextOnFirstMessage role prompt
-        if "ResetContextOnFirstMessage" in agent.role_prompt_names:
-            logger.info(
-                f"[{agent.name}] Agent has ResetContextOnFirstMessage role, clearing summaries and plans for channel [{channel_name}]"
-            )
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-            
-            # Clear summaries
-            def clear_summaries(entries, payload):
-                return [], payload
-            mutate_property_entries(
-                memory_file, "summary", default_id_prefix="summary", mutator=clear_summaries
-            )
-            
-            # Clear plans
-            def clear_plans(entries, payload):
-                return [], payload
-            mutate_property_entries(
-                memory_file, "plan", default_id_prefix="plan", mutator=clear_plans
-            )
-            
-            logger.info(
-                f"[{agent.name}] Cleared summaries and plans for channel [{channel_name}]"
-            )
+        # Clear summaries and plans if agent has reset_context_on_first_message enabled
+        if agent.reset_context_on_first_message or "ResetContextOnFirstMessage" in agent.role_prompt_names:
+            from handlers.storage_helpers import clear_plans_and_summaries
+            clear_plans_and_summaries(agent, channel_id)
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to clear conversation with [{channel_name}]: {e}"
