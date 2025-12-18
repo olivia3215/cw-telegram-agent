@@ -136,28 +136,6 @@ class GeminiLLM(LLM):
 
         return rest_settings
 
-    IMAGE_DESCRIPTION_PROMPT = (
-        "You are given a single image. Describe the scene in rich detail so a reader "
-        "can understand it without seeing the image. Include salient objects, colors, "
-        "relations, actions, and setting. "
-        "Output the description as a single string without markdown formatting. "
-    )
-
-    VIDEO_DESCRIPTION_PROMPT = (
-        "You are given a short video. Describe what happens in the video in rich detail "
-        "so a reader can understand it without seeing the video. Include salient objects, "
-        "colors, actions, movement, and what the video shows. "
-        "Output the description as a single string without markdown formatting. "
-    )
-
-    AUDIO_DESCRIPTION_PROMPT = (
-        "You are given an audio file. Describe what you hear in rich detail "
-        "so a reader can understand the audio content without hearing it. Include "
-        "a complete speech transcription, music, sounds, and any other audio elements. "
-        "Estimate the speaker's age, gender, and accent if they are human. "
-        "Output the description as a single string without markdown formatting. "
-    )
-
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for media description.
@@ -268,7 +246,7 @@ class GeminiLLM(LLM):
                 {
                     "role": "user",
                     "parts": [
-                        {"text": self.IMAGE_DESCRIPTION_PROMPT},
+                        {"text": self.image_description_prompt},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
@@ -414,7 +392,7 @@ class GeminiLLM(LLM):
                 {
                     "role": "user",
                     "parts": [
-                        {"text": self.VIDEO_DESCRIPTION_PROMPT},
+                        {"text": self.video_description_prompt},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
@@ -528,7 +506,7 @@ class GeminiLLM(LLM):
                 {
                     "role": "user",
                     "parts": [
-                        {"text": self.AUDIO_DESCRIPTION_PROMPT},
+                        {"text": self.audio_description_prompt},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,

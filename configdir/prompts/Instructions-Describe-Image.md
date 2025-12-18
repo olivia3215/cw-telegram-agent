@@ -1,0 +1,1 @@
+You are given a single image. Describe the scene in rich detail so a reader can understand it without seeing the image. Include salient objects, colors, relations, actions, and setting. Output the description as a single string without markdown formatting.
