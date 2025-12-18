@@ -370,57 +370,93 @@
     </div>
 
     <nav class="tab-bar">
-        <button class="tab-button active" data-tab="media">Media Editor</button>
+        <button class="tab-button active" data-tab="global">Global</button>
         <button class="tab-button" data-tab="agents">Agents</button>
         <button class="tab-button" data-tab="conversations">Conversations</button>
     </nav>
 
     <div id="tab-panels">
-        <!-- Media Editor Tab -->
-        <section class="tab-panel active" data-tab-panel="media">
-            <div class="controls">
-                <div class="directory-selector">
-                    <label for="directory-select">Select Media Directory:</label><br>
-                    <select id="directory-select">
-                        <option value="">Choose a directory...</option>
-                    </select>
-                </div>
+        <!-- Global Tab -->
+        <section class="tab-panel active" data-tab-panel="global">
+            <nav class="tab-bar" style="margin-bottom: 16px;">
+                <button class="tab-button active" data-subtab="media">Media Editor</button>
+                <button class="tab-button" data-subtab="documents-global">Documents</button>
+            </nav>
+            <div id="global-container" class="main-container">
+                <!-- Media Editor Subtab -->
+                <div class="subtab-panel active" data-subtab-panel="media">
+                    <div class="controls">
+                        <div class="directory-selector">
+                            <label for="directory-select">Select Media Directory:</label><br>
+                            <select id="directory-select">
+                                <option value="">Choose a directory...</option>
+                            </select>
+                        </div>
 
-                <div class="import-section">
-                    <h3>Import Sticker Set</h3>
-                    <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
-                    <button onclick="importStickerSet()">Import Set</button>
-                    <div id="import-status"></div>
-                </div>
-            </div>
-
-            <div class="main-container">
-                <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
-                        <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                        <select id="page-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
-                            <option value="">Go to page…</option>
-                        </select>
-                        <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                        <div class="import-section">
+                            <h3>Import Sticker Set</h3>
+                            <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
+                            <button onclick="importStickerSet()">Import Set</button>
+                            <div id="import-status"></div>
+                        </div>
                     </div>
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
-                        <select id="sticker-set-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 220px;">
-                            <option value="">Jump to…</option>
-                        </select>
+
+                    <div class="main-container">
+                        <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                                <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                                <select id="page-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                                    <option value="">Go to page…</option>
+                                </select>
+                                <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                            </div>
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                                <select id="sticker-set-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 220px;">
+                                    <option value="">Jump to…</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="media-container">
+                            <div class="loading">Select a directory to view media files</div>
+                        </div>
+
+                        <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                                <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                                <select id="page-select-bottom" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                                    <option value="">Go to page…</option>
+                                </select>
+                                <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-
-                <div id="media-container">
-                    <div class="loading">Select a directory to view media files</div>
-                </div>
-
-                <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
-                        <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                        <select id="page-select-bottom" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
-                            <option value="">Go to page…</option>
-                        </select>
-                        <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                
+                <!-- Documents Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="documents-global">
+                    <div class="controls">
+                        <div class="directory-selector">
+                            <label for="global-docs-config-select">Select Config Directory:</label><br>
+                            <select id="global-docs-config-select">
+                                <option value="">Choose a config directory...</option>
+                            </select>
+                        </div>
+                        <div class="directory-selector" style="margin-top: 12px;">
+                            <label for="global-docs-select">Select Document:</label><br>
+                            <select id="global-docs-select">
+                                <option value="">Choose a document...</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button onclick="createGlobalDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button>
+                            <button onclick="deleteGlobalDoc()" id="delete-global-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button>
+                        </div>
+                    </div>
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="global-docs-editor-container">
+                            <div class="loading">Select a config directory and document to edit</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -432,6 +468,7 @@
                 <button class="tab-button active" data-subtab="parameters">Parameters</button>
                 <button class="tab-button" data-subtab="memories">Memories</button>
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
+                <button class="tab-button" data-subtab="documents-agent">Documents</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector">
@@ -455,6 +492,25 @@
                 <div class="subtab-panel" data-subtab-panel="intentions">
                     <div id="intentions-container">
                         <div class="loading">Select an agent to view intentions</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="documents-agent">
+                    <div class="controls">
+                        <div class="directory-selector">
+                            <label for="agent-docs-select">Select Document:</label><br>
+                            <select id="agent-docs-select">
+                                <option value="">Choose a document...</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button onclick="createAgentDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button>
+                            <button onclick="deleteAgentDoc()" id="delete-agent-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button>
+                        </div>
+                    </div>
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="agent-docs-editor-container">
+                            <div class="loading">Select an agent and document to edit</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1901,8 +1957,9 @@
                 if (agentName) {
                     loadConversationPartners(agentName, 'conversations');
                 }
-            } else if (tabName === 'media') {
-                // Media editor doesn't need agent loading
+            } else if (tabName === 'global') {
+                // Global tab - show first subtab
+                switchSubtab('media');
             }
         }
         
@@ -1912,11 +1969,14 @@
             mainTabBar.addEventListener('click', handleMainTabClick);
         }
 
-        // Subtab switching logic (for Agents and Conversations tabs)
+        // Subtab switching logic (for Global, Agents and Conversations tabs)
         function switchSubtab(subtabName) {
-            // Get the active main tab - check both agents and conversations tabs
+            // Get the active main tab - check global, agents and conversations tabs
             // First try to find an active tab panel
-            let activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="agents"]');
+            let activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="global"]');
+            if (!activeMainTab) {
+                activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="agents"]');
+            }
             if (!activeMainTab) {
                 activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="conversations"]');
             }
@@ -1986,7 +2046,13 @@
                         loadMemories(agentName);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
+                    } else if (subtabName === 'documents-agent') {
+                        loadAgentDocs(agentName);
                     }
+                }
+            } else if (mainTabName === 'global') {
+                if (subtabName === 'documents-global') {
+                    loadGlobalDocsConfigDirectories();
                 }
             } else if (mainTabName === 'conversations') {
                 // Reload conversation partners dropdown to update asterisks for new subtab
@@ -2216,6 +2282,8 @@
                         loadMemories(agentName);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
+                    } else if (subtabName === 'documents-agent') {
+                        loadAgentDocs(agentName);
                     }
                 }
             }
@@ -4136,6 +4204,957 @@
 
         // Initialize on page load
         loadAgents();
+        
+        // ===== Docs Management Functions =====
+        
+        // Global docs state
+        let globalDocsConfigDir = '';
+        let globalDocsCurrentFilename = '';
+        let globalDocsSaveTimeout = null;
+        let globalDocsFilenameTimeout = null;
+        let globalDocsContent = '';
+        
+        // Agent docs state
+        let agentDocsCurrentAgent = '';
+        let agentDocsCurrentFilename = '';
+        let agentDocsSaveTimeout = null;
+        let agentDocsFilenameTimeout = null;
+        let agentDocsContent = '';
+        
+        // Load config directories for global docs
+        async function loadGlobalDocsConfigDirectories() {
+            try {
+                const response = await fetch('/admin/api/config-directories');
+                const data = await response.json();
+                
+                const select = document.getElementById('global-docs-config-select');
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Choose a config directory...</option>';
+                data.directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir.path;
+                    option.textContent = dir.display_path;
+                    select.appendChild(option);
+                });
+                
+                select.onchange = function() {
+                    globalDocsConfigDir = this.value;
+                    if (globalDocsConfigDir) {
+                        loadGlobalDocsList();
+                    } else {
+                        document.getElementById('global-docs-select').innerHTML = '<option value="">Choose a document...</option>';
+                        document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a config directory and document to edit</div>';
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading config directories:', error);
+            }
+        }
+        
+        // Load list of docs for global docs
+        async function loadGlobalDocsList() {
+            if (!globalDocsConfigDir) return;
+            
+            try {
+                const response = await fetch(`/admin/api/docs?config_dir=${encodeURIComponent(globalDocsConfigDir)}`);
+                const data = await response.json();
+                
+                const select = document.getElementById('global-docs-select');
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Choose a document...</option>';
+                data.docs.forEach(doc => {
+                    const option = document.createElement('option');
+                    option.value = doc.filename;
+                    option.textContent = doc.filename;
+                    select.appendChild(option);
+                });
+                
+                select.onchange = function() {
+                    if (this.value) {
+                        loadGlobalDoc(this.value);
+                    } else {
+                        document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                        document.getElementById('delete-global-doc-btn').style.display = 'none';
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading docs list:', error);
+            }
+        }
+        
+        // Load a specific global doc
+        async function loadGlobalDoc(filename) {
+            if (!globalDocsConfigDir || !filename) return;
+            
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(globalDocsConfigDir)}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load doc');
+                }
+                
+                const data = await response.json();
+                globalDocsCurrentFilename = filename;
+                globalDocsContent = data.content || '';
+                
+                renderGlobalDocEditor(data.content || '', filename, globalDocsConfigDir);
+                document.getElementById('delete-global-doc-btn').style.display = 'inline-block';
+            } catch (error) {
+                console.error('Error loading doc:', error);
+                document.getElementById('global-docs-editor-container').innerHTML = '<div class="error">Error loading document</div>';
+            }
+        }
+        
+        // Render global doc editor
+        function renderGlobalDocEditor(content, filename, configDir) {
+            const container = document.getElementById('global-docs-editor-container');
+            container.innerHTML = `
+                <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
+                        <input type="text" id="global-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                        <div id="global-docs-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
+                        <select id="global-docs-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                            <option value="">Move to...</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
+                        <textarea id="global-docs-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                        <div id="global-docs-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                </div>
+            `;
+            
+            // Setup handlers
+            // Capture all state at creation time to avoid race conditions
+            const filenameInput = document.getElementById('global-docs-filename');
+            filenameInput.oninput = debounceGlobalDocsFilename(configDir, filename);
+            
+            // Setup content change handler with auto-save
+            const contentTextarea = document.getElementById('global-docs-content');
+            contentTextarea.oninput = debounceGlobalDocsSave(configDir, filename);
+            
+            // Setup move destination change handler
+            const moveSelect = document.getElementById('global-docs-move-destination');
+            moveSelect.onchange = function() {
+                if (this.value) {
+                    moveGlobalDoc();
+                }
+            };
+            
+            // Load all destinations for move dropdown
+            loadAllDestinationsForMove('global-docs-move-destination', globalDocsConfigDir, null);
+        }
+        
+        // Debounced save for global docs
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalDocsSave(configDir, filename) {
+            return function() {
+                if (globalDocsSaveTimeout) {
+                    clearTimeout(globalDocsSaveTimeout);
+                }
+                
+                const statusEl = document.getElementById('global-docs-save-status');
+                if (statusEl) statusEl.textContent = 'Typing...';
+                
+                globalDocsSaveTimeout = setTimeout(async () => {
+                    // Verify we're still editing the same document (user may have switched)
+                    if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                        // User switched documents, don't save
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    const contentTextarea = document.getElementById('global-docs-content');
+                    if (!contentTextarea) return;
+                    
+                    const newContent = contentTextarea.value;
+                    if (newContent === globalDocsContent) {
+                        if (statusEl) statusEl.textContent = 'Saved';
+                        return;
+                    }
+                    
+                    if (statusEl) statusEl.textContent = 'Saving...';
+                    
+                    try {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: newContent })
+                        });
+                        
+                        if (response.ok) {
+                            globalDocsContent = newContent;
+                            if (statusEl) statusEl.textContent = 'Saved';
+                        } else {
+                            throw new Error('Save failed');
+                        }
+                    } catch (error) {
+                        console.error('Error saving doc:', error);
+                        if (statusEl) statusEl.textContent = 'Error saving';
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Debounced filename change for global docs
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalDocsFilename(configDir, filename) {
+            return function() {
+                if (globalDocsFilenameTimeout) {
+                    clearTimeout(globalDocsFilenameTimeout);
+                }
+                
+                const filenameInput = document.getElementById('global-docs-filename');
+                if (!filenameInput) return;
+                
+                const newFilename = filenameInput.value.trim();
+                const statusEl = document.getElementById('global-docs-filename-status');
+                
+                // Verify we're still editing the same document (user may have switched)
+                if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                    // User switched documents, don't rename
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename || newFilename === filename) {
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename.endsWith('.md')) {
+                    if (statusEl) statusEl.textContent = 'Filename must end with .md';
+                    return;
+                }
+                
+                if (statusEl) statusEl.textContent = 'Renaming...';
+                
+                globalDocsFilenameTimeout = setTimeout(async () => {
+                    // Double-check we're still editing the same document before renaming
+                    if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                        // User switched documents, don't rename
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    try {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_filename: newFilename })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const newFilename = data.filename;
+                            globalDocsCurrentFilename = newFilename;
+                            
+                            // Update handlers with new filename to allow further saves/renames
+                            const contentTextarea = document.getElementById('global-docs-content');
+                            if (contentTextarea) {
+                                contentTextarea.oninput = debounceGlobalDocsSave(configDir, newFilename);
+                            }
+                            const filenameInput = document.getElementById('global-docs-filename');
+                            if (filenameInput) {
+                                filenameInput.oninput = debounceGlobalDocsFilename(configDir, newFilename);
+                            }
+
+                            // Refresh the document list dropdown
+                            loadGlobalDocsList().then(() => {
+                                document.getElementById('global-docs-select').value = newFilename;
+                            });
+                            if (statusEl) statusEl.textContent = 'Renamed';
+                            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+                        } else {
+                            throw new Error('Rename failed');
+                        }
+                    } catch (error) {
+                        console.error('Error renaming doc:', error);
+                        if (statusEl) statusEl.textContent = 'Error renaming';
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Create new global doc
+        async function createGlobalDoc() {
+            if (!globalDocsConfigDir) {
+                alert('Please select a config directory first');
+                return;
+            }
+
+            // Find a unique filename
+            let filename = 'Untitled.md';
+            let counter = 1;
+            try {
+                // Load existing docs to check for conflicts
+                const response = await fetch(`/admin/api/docs?config_dir=${encodeURIComponent(globalDocsConfigDir)}`);
+                const data = await response.json();
+                const existingFilenames = new Set(data.docs.map(doc => doc.filename));
+                
+                while (existingFilenames.has(filename)) {
+                    filename = `Untitled-${counter}.md`;
+                    counter++;
+                }
+            } catch (error) {
+                console.error('Error checking existing docs:', error);
+                // Continue with Untitled.md, will fail if it exists
+            }
+
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: '' })
+                });
+
+                if (response.ok) {
+                    loadGlobalDocsList().then(() => {
+                        document.getElementById('global-docs-select').value = filename;
+                    });
+                    loadGlobalDoc(filename);
+                } else {
+                    throw new Error('Create failed');
+                }
+            } catch (error) {
+                console.error('Error creating doc:', error);
+                alert('Error creating document');
+            }
+        }
+        
+        // Delete global doc
+        async function deleteGlobalDoc() {
+            if (!globalDocsCurrentFilename || !confirm(`Delete ${globalDocsCurrentFilename}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(globalDocsCurrentFilename)}?config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    loadGlobalDocsList();
+                    document.getElementById('global-docs-select').value = '';
+                    document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                    document.getElementById('delete-global-doc-btn').style.display = 'none';
+                    globalDocsCurrentFilename = '';
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (error) {
+                console.error('Error deleting doc:', error);
+                alert('Error deleting document');
+            }
+        }
+        
+        // Move global doc
+        async function moveGlobalDoc() {
+            if (!globalDocsCurrentFilename) return;
+
+            const destinationValue = document.getElementById('global-docs-move-destination').value;
+            if (!destinationValue) {
+                return;
+            }
+
+            // Parse destination value: "global|config_dir" or "agent|config_dir|agent_config_name"
+            let toConfigDir, toAgentConfigName;
+            if (destinationValue.startsWith('global|')) {
+                toConfigDir = destinationValue.substring(7); // Remove "global|" prefix
+                toAgentConfigName = null;
+            } else if (destinationValue.startsWith('agent|')) {
+                const parts = destinationValue.substring(6).split('|'); // Remove "agent|" prefix
+                toConfigDir = parts[0] || '';
+                toAgentConfigName = parts[1] || '';
+            } else {
+                return;
+            }
+
+            // Check if it's the current location
+            if (!toAgentConfigName && toConfigDir === globalDocsConfigDir) {
+                return; // Already at this location
+            }
+
+            if (!toConfigDir) {
+                alert('Invalid destination');
+                return;
+            }
+
+            if (destinationValue.startsWith('agent|') && !toAgentConfigName) {
+                alert('Invalid agent destination');
+                return;
+            }
+
+            if (!confirm(`Move ${globalDocsCurrentFilename} to ${destinationValue.startsWith('agent|') ? 'agent docs' : 'global docs'}?`)) {
+                // Reset dropdown to current location
+                loadAllDestinationsForMove('global-docs-move-destination', globalDocsConfigDir, null);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(globalDocsCurrentFilename)}/move?from_config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to_config_dir: toConfigDir,
+                        to_agent_config_name: toAgentConfigName
+                    })
+                });
+
+                if (response.ok) {
+                    loadGlobalDocsList();
+                    document.getElementById('global-docs-select').value = '';
+                    document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                    document.getElementById('delete-global-doc-btn').style.display = 'none';
+                    globalDocsCurrentFilename = '';
+                    alert('Document moved successfully');
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Move failed');
+                }
+            } catch (error) {
+                console.error('Error moving doc:', error);
+                alert(`Error moving document: ${error.message}`);
+                // Reset dropdown to current location
+                loadAllDestinationsForMove('global-docs-move-destination', globalDocsConfigDir, null);
+            }
+        }
+        
+        // Load agent docs list
+        async function loadAgentDocs(agentConfigName) {
+            if (!agentConfigName) {
+                document.getElementById('agent-docs-select').innerHTML = '<option value="">Choose a document...</option>';
+                document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select an agent and document to edit</div>';
+                return;
+            }
+            
+            agentDocsCurrentAgent = agentConfigName;
+            
+            try {
+                // Get agent to find its config directory
+                const agentsResponse = await fetch('/admin/api/agents');
+                const agentsData = await agentsResponse.json();
+                const agent = agentsData.agents.find(a => a.config_name === agentConfigName);
+                
+                if (!agent) {
+                    throw new Error('Agent not found');
+                }
+                
+                // Get config directory from agent (should be stored in agent object)
+                // For now, we'll need to search through config directories
+                // Actually, the agent should have config_directory property
+                // Get config directory from agent or use first available
+                let configDir = agent.config_directory;
+                if (!configDir) {
+                    const configDirsResponse = await fetch('/admin/api/config-directories');
+                    const configDirsData = await configDirsResponse.json();
+                    configDir = configDirsData.directories[0]?.path || '';
+                }
+                
+                const response = await fetch(`/admin/api/docs?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`);
+                const data = await response.json();
+                
+                const select = document.getElementById('agent-docs-select');
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Choose a document...</option>';
+                data.docs.forEach(doc => {
+                    const option = document.createElement('option');
+                    option.value = doc.filename;
+                    option.textContent = doc.filename;
+                    select.appendChild(option);
+                });
+                
+                select.onchange = function() {
+                    if (this.value) {
+                        loadAgentDoc(this.value, configDir);
+                    } else {
+                        document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                        document.getElementById('delete-agent-doc-btn').style.display = 'none';
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading agent docs list:', error);
+            }
+        }
+        
+        // Load a specific agent doc
+        async function loadAgentDoc(filename, configDir) {
+            if (!agentDocsCurrentAgent || !filename) return;
+            
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load doc');
+                }
+                
+                const data = await response.json();
+                agentDocsCurrentFilename = filename;
+                agentDocsContent = data.content || '';
+                
+                renderAgentDocEditor(data.content || '', filename, configDir);
+                document.getElementById('delete-agent-doc-btn').style.display = 'inline-block';
+            } catch (error) {
+                console.error('Error loading agent doc:', error);
+                document.getElementById('agent-docs-editor-container').innerHTML = '<div class="error">Error loading document</div>';
+            }
+        }
+        
+        // Render agent doc editor (similar to global but with agent context)
+        function renderAgentDocEditor(content, filename, configDir) {
+            const container = document.getElementById('agent-docs-editor-container');
+            container.innerHTML = `
+                <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
+                        <input type="text" id="agent-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                        <div id="agent-docs-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
+                        <select id="agent-docs-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                            <option value="">Move to...</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
+                        <textarea id="agent-docs-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                        <div id="agent-docs-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                </div>
+            `;
+            
+            // Setup handlers (similar to global docs)
+            // Capture all state at creation time to avoid race conditions
+            const filenameInput = document.getElementById('agent-docs-filename');
+            filenameInput.oninput = debounceAgentDocsFilename(configDir, agentDocsCurrentAgent, filename);
+
+            const contentTextarea = document.getElementById('agent-docs-content');
+            contentTextarea.oninput = debounceAgentDocsSave(configDir, agentDocsCurrentAgent, filename);
+
+            // Setup move destination change handler
+            const moveSelect = document.getElementById('agent-docs-move-destination');
+            moveSelect.onchange = function() {
+                if (this.value) {
+                    moveAgentDoc(configDir);
+                }
+            };
+
+            // Load all destinations for move dropdown
+            loadAllDestinationsForMove('agent-docs-move-destination', configDir, agentDocsCurrentAgent);
+        }
+        
+        // Debounced save for agent docs
+        // Captures configDir, agentConfigName, and filename to avoid race conditions
+        function debounceAgentDocsSave(configDir, agentConfigName, filename) {
+            return function() {
+                if (agentDocsSaveTimeout) {
+                    clearTimeout(agentDocsSaveTimeout);
+                }
+                
+                const statusEl = document.getElementById('agent-docs-save-status');
+                if (statusEl) statusEl.textContent = 'Typing...';
+                
+                agentDocsSaveTimeout = setTimeout(async () => {
+                    // Verify we're still editing the same document (user may have switched)
+                    if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                        // User switched agents/documents, don't save
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    const contentTextarea = document.getElementById('agent-docs-content');
+                    if (!contentTextarea) return;
+                    
+                    const newContent = contentTextarea.value;
+                    if (newContent === agentDocsContent) {
+                        if (statusEl) statusEl.textContent = 'Saved';
+                        return;
+                    }
+                    
+                    if (statusEl) statusEl.textContent = 'Saving...';
+                    
+                    try {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: newContent })
+                        });
+                        
+                        if (response.ok) {
+                            agentDocsContent = newContent;
+                            if (statusEl) statusEl.textContent = 'Saved';
+                        } else {
+                            throw new Error('Save failed');
+                        }
+                    } catch (error) {
+                        console.error('Error saving agent doc:', error);
+                        if (statusEl) statusEl.textContent = 'Error saving';
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Debounced filename change for agent docs
+        // Captures configDir, agentConfigName, and filename to avoid race conditions
+        function debounceAgentDocsFilename(configDir, agentConfigName, filename) {
+            return function() {
+                if (agentDocsFilenameTimeout) {
+                    clearTimeout(agentDocsFilenameTimeout);
+                }
+                
+                const filenameInput = document.getElementById('agent-docs-filename');
+                if (!filenameInput) return;
+                
+                const newFilename = filenameInput.value.trim();
+                const statusEl = document.getElementById('agent-docs-filename-status');
+                
+                // Verify we're still editing the same document (user may have switched)
+                if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                    // User switched agents/documents, don't rename
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename || newFilename === filename) {
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename.endsWith('.md')) {
+                    if (statusEl) statusEl.textContent = 'Filename must end with .md';
+                    return;
+                }
+                
+                if (statusEl) statusEl.textContent = 'Renaming...';
+                
+                agentDocsFilenameTimeout = setTimeout(async () => {
+                    // Double-check we're still editing the same document before renaming
+                    if (agentDocsCurrentAgent !== agentConfigName || agentDocsCurrentFilename !== filename) {
+                        // User switched agents/documents, don't rename
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    try {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_filename: newFilename })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const newFilename = data.filename;
+                            agentDocsCurrentFilename = newFilename;
+                            
+                            // Update handlers with new filename to allow further saves/renames
+                            const contentTextarea = document.getElementById('agent-docs-content');
+                            if (contentTextarea) {
+                                contentTextarea.oninput = debounceAgentDocsSave(configDir, agentConfigName, newFilename);
+                            }
+                            const filenameInput = document.getElementById('agent-docs-filename');
+                            if (filenameInput) {
+                                filenameInput.oninput = debounceAgentDocsFilename(configDir, agentConfigName, newFilename);
+                            }
+
+                            // Refresh the document list dropdown
+                            loadAgentDocs(agentConfigName).then(() => {
+                                document.getElementById('agent-docs-select').value = newFilename;
+                            });
+                            if (statusEl) statusEl.textContent = 'Renamed';
+                            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+                        } else {
+                            throw new Error('Rename failed');
+                        }
+                    } catch (error) {
+                        console.error('Error renaming agent doc:', error);
+                        if (statusEl) statusEl.textContent = 'Error renaming';
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Create new agent doc
+        async function createAgentDoc() {
+            const agentSelect = document.getElementById('agents-agent-select');
+            const agentConfigName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+
+            if (!agentConfigName) {
+                alert('Please select an agent first');
+                return;
+            }
+
+            // Find a unique filename
+            let filename = 'Untitled.md';
+            let counter = 1;
+            try {
+                const agentsResponse = await fetch('/admin/api/agents');
+                const agentsData = await agentsResponse.json();
+                const agent = agentsData.agents.find(a => a.config_name === agentConfigName);
+                
+                // Get config directory from agent or use first available
+                let configDir = agent?.config_directory;
+                if (!configDir) {
+                    const configDirsResponse = await fetch('/admin/api/config-directories');
+                    const configDirsData = await configDirsResponse.json();
+                    configDir = configDirsData.directories[0]?.path || '';
+                }
+
+                // Load existing docs to check for conflicts
+                const docsResponse = await fetch(`/admin/api/docs?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`);
+                const docsData = await docsResponse.json();
+                const existingFilenames = new Set(docsData.docs.map(doc => doc.filename));
+                
+                while (existingFilenames.has(filename)) {
+                    filename = `Untitled-${counter}.md`;
+                    counter++;
+                }
+
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentConfigName)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: '' })
+                });
+
+                if (response.ok) {
+                    loadAgentDocs(agentConfigName).then(() => {
+                        document.getElementById('agent-docs-select').value = filename;
+                    });
+                    loadAgentDoc(filename, configDir);
+                } else {
+                    throw new Error('Create failed');
+                }
+            } catch (error) {
+                console.error('Error creating agent doc:', error);
+                alert('Error creating document');
+            }
+        }
+        
+        // Delete agent doc
+        async function deleteAgentDoc() {
+            if (!agentDocsCurrentFilename || !agentDocsCurrentAgent) return;
+            
+            if (!confirm(`Delete ${agentDocsCurrentFilename}?`)) {
+                return;
+            }
+            
+            try {
+                const agentsResponse = await fetch('/admin/api/agents');
+                const agentsData = await agentsResponse.json();
+                const agent = agentsData.agents.find(a => a.config_name === agentDocsCurrentAgent);
+                
+                // Get config directory from agent or use first available
+                let configDir = agent?.config_directory;
+                if (!configDir) {
+                    const configDirsResponse = await fetch('/admin/api/config-directories');
+                    const configDirsData = await configDirsResponse.json();
+                    configDir = configDirsData.directories[0]?.path || '';
+                }
+                
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(agentDocsCurrentFilename)}?config_dir=${encodeURIComponent(configDir)}&agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    loadAgentDocs(agentDocsCurrentAgent);
+                    document.getElementById('agent-docs-select').value = '';
+                    document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                    document.getElementById('delete-agent-doc-btn').style.display = 'none';
+                    agentDocsCurrentFilename = '';
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (error) {
+                console.error('Error deleting agent doc:', error);
+                alert('Error deleting document');
+            }
+        }
+        
+        // Move agent doc
+        async function moveAgentDoc(fromConfigDir) {
+            if (!agentDocsCurrentFilename || !agentDocsCurrentAgent) return;
+
+            const destinationValue = document.getElementById('agent-docs-move-destination').value;
+            if (!destinationValue) {
+                return;
+            }
+
+            // Parse destination value: "global|config_dir" or "agent|config_dir|agent_config_name"
+            let toConfigDir, toAgentConfigName;
+            if (destinationValue.startsWith('global|')) {
+                toConfigDir = destinationValue.substring(7); // Remove "global|" prefix
+                toAgentConfigName = null;
+            } else if (destinationValue.startsWith('agent|')) {
+                const parts = destinationValue.substring(6).split('|'); // Remove "agent|" prefix
+                toConfigDir = parts[0] || '';
+                toAgentConfigName = parts[1] || '';
+            } else {
+                return;
+            }
+
+            // Check if it's the current location
+            if (toAgentConfigName === agentDocsCurrentAgent && 
+                (toConfigDir === fromConfigDir || (!toConfigDir && !fromConfigDir))) {
+                return; // Already at this location
+            }
+
+            if (!toConfigDir) {
+                alert('Invalid destination');
+                return;
+            }
+
+            if (destinationValue.startsWith('agent|') && !toAgentConfigName) {
+                alert('Invalid agent destination');
+                return;
+            }
+
+            if (!confirm(`Move ${agentDocsCurrentFilename} to ${destinationValue.startsWith('agent|') ? 'agent docs' : 'global docs'}?`)) {
+                // Reset dropdown to current location
+                loadAllDestinationsForMove('agent-docs-move-destination', fromConfigDir, agentDocsCurrentAgent);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/api/docs/${encodeURIComponent(agentDocsCurrentFilename)}/move?from_config_dir=${encodeURIComponent(fromConfigDir)}&from_agent_config_name=${encodeURIComponent(agentDocsCurrentAgent)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to_config_dir: toConfigDir,
+                        to_agent_config_name: toAgentConfigName
+                    })
+                });
+
+                if (response.ok) {
+                    loadAgentDocs(agentDocsCurrentAgent);
+                    document.getElementById('agent-docs-select').value = '';
+                    document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                    document.getElementById('delete-agent-doc-btn').style.display = 'none';
+                    agentDocsCurrentFilename = '';
+                    alert('Document moved successfully');
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Move failed');
+                }
+            } catch (error) {
+                console.error('Error moving agent doc:', error);
+                alert(`Error moving document: ${error.message}`);
+                // Reset dropdown to current location
+                loadAllDestinationsForMove('agent-docs-move-destination', fromConfigDir, agentDocsCurrentAgent);
+            }
+        }
+        
+        // Helper functions
+        async function loadAllDestinationsForMove(selectId, currentConfigDir, currentAgentConfigName) {
+            try {
+                // Load config directories and agents in parallel
+                const [configDirsResponse, agentsResponse] = await Promise.all([
+                    fetch('/admin/api/config-directories'),
+                    fetch('/admin/api/agents-for-docs')
+                ]);
+                
+                const configDirsData = await configDirsResponse.json();
+                const agentsData = await agentsResponse.json();
+                
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Move to...</option>';
+                
+                // Add global config directories
+                configDirsData.directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = `global|${dir.path}`;
+                    option.textContent = `Global: ${dir.display_path}`;
+                    // Mark current location if it's a global doc
+                    if (currentConfigDir === dir.path && !currentAgentConfigName) {
+                        option.selected = true;
+                        option.disabled = true;
+                        option.textContent += ' (current)';
+                    }
+                    select.appendChild(option);
+                });
+                
+                // Add agents
+                agentsData.agents.forEach(agent => {
+                    const option = document.createElement('option');
+                    const agentConfigDir = agent.config_directory || '';
+                    option.value = `agent|${agentConfigDir}|${agent.config_name}`;
+                    const displayName = agentConfigDir ? 
+                        `Agent: ${agent.name} (${agentConfigDir})` : 
+                        `Agent: ${agent.name}`;
+                    option.textContent = displayName;
+                    // Mark current location if it's this agent's doc
+                    const currentConfigDirNormalized = currentConfigDir || '';
+                    const agentConfigDirNormalized = agentConfigDir || '';
+                    if (currentAgentConfigName === agent.config_name && 
+                        currentConfigDirNormalized === agentConfigDirNormalized) {
+                        option.selected = true;
+                        option.disabled = true;
+                        option.textContent += ' (current)';
+                    }
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading destinations:', error);
+            }
+        }
+        
+        async function loadConfigDirectoriesForMove(selectId) {
+            try {
+                const response = await fetch('/admin/api/config-directories');
+                const data = await response.json();
+                
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Select config directory...</option>';
+                data.directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir.path;
+                    option.textContent = dir.display_path;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading config directories:', error);
+            }
+        }
+        
+        async function loadAgentsForMove(selectId) {
+            try {
+                const response = await fetch('/admin/api/agents-for-docs');
+                const data = await response.json();
+                
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Select agent...</option>';
+                data.agents.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.config_name;
+                    option.textContent = agent.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading agents:', error);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
         
         // Ensure subtab bars are visible for active tab panels on page load
         document.addEventListener('DOMContentLoaded', function() {

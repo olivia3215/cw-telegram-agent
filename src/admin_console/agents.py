@@ -74,7 +74,8 @@ def api_agents():
                 "name": agent.name,
                 "config_name": agent.config_name,
                 "phone": agent.phone,
-                "agent_id": agent.agent_id if agent.agent_id else None
+                "agent_id": agent.agent_id if agent.agent_id else None,
+                "config_directory": agent.config_directory if agent.config_directory else None
             }
             for agent in agents
         ]
