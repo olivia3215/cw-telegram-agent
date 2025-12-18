@@ -41,7 +41,7 @@ Set these environment variables (example uses a local `./state` dir):
 
 ```bash
 export CINDY_AGENT_STATE_DIR="$(pwd)/state"
-export CINDY_AGENT_CONFIG_PATH="$(pwd)/configdir:$(pwd)/samples"
+export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/configdir"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
 export GROK_API_KEY="your_api_key_here"  # Optional, only needed if using Grok LLM
 export TELEGRAM_API_ID="your_api_id_here"
@@ -50,7 +50,7 @@ export TELEGRAM_API_HASH="your_api_hash_here"
 
 For multiple configuration directories, separate them with colons:
 ```bash
-export CINDY_AGENT_CONFIG_PATH="$(pwd)/configdir:$(pwd)/samples:$(pwd)/custom-configs"
+export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/configdir:$(pwd)/custom-configs"
 ```
 
 **Note:** All Python commands in this guide require `PYTHONPATH=src` to be set, as the source code is organized in a `src/` directory. You can either set this for each command or add it to your shell environment.
