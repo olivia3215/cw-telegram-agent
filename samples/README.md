@@ -10,19 +10,26 @@ samples/
 │   ├── Heidi.md     # Example agent with multiple role prompts
 │   ├── Mary.md      # Example agent with single role prompt
 │   └── ...
-├── prompts/          # Global role prompts
+├── prompts/          # Agent-specific role prompts
 │   ├── Chatbot.md   # Basic chatbot behavior
-│   ├── Student.md   # Student personality traits
+│   ├── Person.md    # Human-like small talk
 │   ├── Roleplay.md  # Roleplay scenarios
 │   └── ...
 └── media/           # Curated media descriptions
     ├── README.md    # Media description documentation
     └── ...
+
+configdir/
+└── prompts/          # Shared system prompts (required)
+    ├── Instructions.md
+    ├── Task-Memory.md
+    ├── Task-Retrieve.md
+    └── ...
 ```
 
 ## Role Prompts
 
-Role prompts define the core personality and behavior patterns for your agents. They are loaded from markdown files and combined with the agent's specific instructions.
+Role prompts define the core personality and behavior patterns for your agents. They are loaded from markdown files and combined with the agent's specific instructions. Shared system prompts that provide core capabilities are stored in `configdir/prompts`, while personality-specific prompts are stored in `samples/prompts`.
 
 ### Single Role Prompt
 
@@ -42,12 +49,12 @@ You can combine multiple role prompts to create more complex personalities:
 ```markdown
 # Role Prompt
 Chatbot
-Student
+Person
 ```
 
 This loads and combines prompts from:
 1. `samples/prompts/Chatbot.md` (global prompt)
-2. `samples/prompts/Student.md` (global prompt)
+2. `samples/prompts/Person.md` (global prompt)
 
 The prompts are combined in the order listed, with each prompt separated by double newlines.
 
@@ -57,17 +64,17 @@ You can mix and match any prompts that exist in your configuration directories. 
 
 #### Core personalities
 
-Include at least one of these or supply your own equivalent persona prompt to anchor the agent’s voice and tone:
+Include at least one of these or supply your own equivalent persona prompt to anchor the agent’s voice and tone (typically found in `samples/prompts`):
 
 - `Chatbot` – concise, personality-driven conversation style
 - `Roleplay` – cooperative storytelling with immersive narration rules
 - `Adventure` – Dungeon Master narration with explicit choice points
+- `Person` – encourages everyday, human-like small talk and life details
 
 #### Optional capabilities
 
-Layer these on top of a core prompt when you want to unlock extra behavior:
+Layer these on top of a core prompt when you want to unlock extra behavior (typically found in `configdir/prompts`):
 
-- `Person` – encourages everyday, human-like small talk and life details
 - `Task-Memory` – teaches the agent how and when to record long-term memories
 - `Task-Retrieve` – allows web retrieval tasks for fresh, external information and local file retrieval
 - `Task-XSend` – enables cross-channel intents to the agent's future self
@@ -81,15 +88,17 @@ All role prompts are loaded from the global `prompts/` directory within each con
 1. **First configuration directory**: `{config_dir}/prompts/{PromptName}.md`
 2. **Additional configuration directories**: If multiple config directories are specified (separated by colons), the system searches each in order
 
+**Note:** For the agent to function correctly, you must include `configdir` in your `CINDY_AGENT_CONFIG_PATH` so it can find the required shared prompts like `Instructions.md`.
+
 ### System Prompt Structure
 
 The final system prompt sent to the LLM combines prompts in this order:
 
 1. **Specific instructions** - Context-specific instructions for the current turn (e.g., "New Conversation", "Target Message", "Cross-channel Trigger")
 2. **Intentions section** - Channel Plan (if any) and Intentions (if any)
-3. **Instructions prompt** (`Instructions.md`) - Shared across all LLMs
+3. **Instructions prompt** (`Instructions.md`) - Shared across all LLMs (loaded from `configdir/prompts`)
 4. **Agent instructions** - The specific behavior instructions for this agent
-5. **Role prompts** - All role prompts in the order specified in the agent configuration
+5. **Role prompts** - All role prompts in the order specified in the agent configuration (loaded from `samples/prompts` or other config directories)
 
 Example with multiple role prompts:
 ```
@@ -159,9 +168,9 @@ I'm Heidi. I was born August 18, 2010. I'm a high-school student...
 This combines:
 - Global `Chatbot` prompt (from `samples/prompts/Chatbot.md`)
 - Global `Person` prompt (from `samples/prompts/Person.md`)
-- Global `Task-Memory` prompt (from `samples/prompts/Task-Memory.md`)
-- Global `Task-Retrieve` prompt (from `samples/prompts/Task-Retrieve.md`)
-- Global `Task-XSend` prompt (from `samples/prompts/Task-XSend.md`)
+- Global `Task-Memory` prompt (from `configdir/prompts/Task-Memory.md`)
+- Global `Task-Retrieve` prompt (from `configdir/prompts/Task-Retrieve.md`)
+- Global `Task-XSend` prompt (from `configdir/prompts/Task-XSend.md`)
 
 #### Mary Agent (Single Role Prompt)
 

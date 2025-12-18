@@ -179,7 +179,9 @@ Emits:
 
 ### Shared Prompt System
 
-All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which contains task format instructions and response guidelines. This ensures consistent behavior across LLM providers.
+All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which contains task format instructions and response guidelines. This ensures consistent behavior across LLM providers. These shared prompts (including `Task-*.md`) are located in `configdir/prompts` and must be included on the configuration path. Agent-specific role prompts are located in `samples/prompts`.
+
+At startup, the agent performs a check to ensure `Instructions.md` is available in one of the configuration directories. If not found, the agent will report the error and exit.
 
 ### Adding/changing models
 
