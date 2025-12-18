@@ -4,6 +4,10 @@ Mary
 # Agent Phone
 +19714153741
 
+# Reset Context On First Message
+
+Mary should forget everything when the conversation is cleared, so each encounter feels like the first time.
+
 # Agent Sticker Sets
 NNNNun
 

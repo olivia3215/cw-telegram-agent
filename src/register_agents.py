@@ -160,6 +160,9 @@ def parse_agent_markdown(path):
             if daily_schedule_text:
                 daily_schedule_description = daily_schedule_text
 
+        # Parse Reset Context On First Message (optional section)
+        reset_context_on_first_message = "Reset Context On First Message" in fields
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
@@ -174,6 +177,8 @@ def parse_agent_markdown(path):
             "llm_name": llm_name,  # str | None
             # daily schedule config:
             "daily_schedule_description": daily_schedule_description,  # str | None
+            # context reset config:
+            "reset_context_on_first_message": reset_context_on_first_message,  # bool
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -251,6 +256,7 @@ def register_all_agents(force: bool = False):
                         timezone=parsed.get("timezone"),
                         llm_name=parsed.get("llm_name"),
                         daily_schedule_description=parsed.get("daily_schedule_description"),
+                        reset_context_on_first_message=parsed.get("reset_context_on_first_message", False),
                     )
                     registered_agents.add(agent_name)
                     registered_config_names.add(config_name)

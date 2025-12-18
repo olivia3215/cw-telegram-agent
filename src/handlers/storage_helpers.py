@@ -218,3 +218,44 @@ async def process_property_entry_task(
     except Exception as exc:
         logger.exception(f"[{agent.name}] Failed to process {entry_type_name} task: {exc}")
         raise
+
+
+def clear_plans_and_summaries(agent, channel_id: int):
+    """
+    Clear all plans and summaries for a specific channel.
+    
+    Args:
+        agent: The agent instance
+        channel_id: The conversation ID
+    """
+    from config import STATE_DIRECTORY
+    from pathlib import Path
+    
+    memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+    
+    if not memory_file.exists():
+        return
+    
+    logger.info(
+        f"[{agent.name}] Clearing summaries and plans for channel [{channel_id}]"
+    )
+    
+    # Clear summaries
+    def clear_summaries(entries, payload):
+        return [], payload
+    
+    mutate_property_entries(
+        memory_file, "summary", default_id_prefix="summary", mutator=clear_summaries
+    )
+    
+    # Clear plans
+    def clear_plans(entries, payload):
+        return [], payload
+    
+    mutate_property_entries(
+        memory_file, "plan", default_id_prefix="plan", mutator=clear_plans
+    )
+    
+    logger.info(
+        f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}]"
+    )

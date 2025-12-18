@@ -35,6 +35,7 @@ class AgentRegistry:
         config_name=None,
         timezone=None,
         daily_schedule_description=None,
+        reset_context_on_first_message=False,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -87,6 +88,7 @@ class AgentRegistry:
             config_name=config_name,
             timezone=timezone,
             daily_schedule_description=daily_schedule_description,
+            reset_context_on_first_message=reset_context_on_first_message,
         )
         
         # Store by config_name (the key used for state directories and lookups)

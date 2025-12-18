@@ -73,6 +73,53 @@ def _build_current_activity_section(agent, now) -> str:
         return ""
 
 
+def is_conversation_start(agent, messages, highest_summarized_id: int | None) -> bool:
+    """
+    Determine if this is the start of a conversation.
+    
+    It's a start ONLY if:
+    1. Visible history is short (< 5 messages)
+    2. None of the visible messages are from the agent
+    3. None of the visible messages are already summarized (id <= highest_summarized_id)
+    
+    Args:
+        agent: The agent instance
+        messages: List of Telegram messages (full visible history)
+        highest_summarized_id: Highest message ID summarized, or None
+        
+    Returns:
+        True if this is the start of a conversation
+    """
+    # If any message is already summarized, it's not a start
+    if highest_summarized_id is not None:
+        for m in messages:
+            msg_id = getattr(m, "id", None)
+            if msg_id is not None and int(msg_id) <= highest_summarized_id:
+                return False
+
+    # Check if this looks like a new conversation based on visible history
+    if len(messages) >= 5:
+        return False
+
+    agent_id = agent.agent_id
+    # Check if any message is from the agent
+    if agent_id is not None:
+        for m in messages:
+            # Check if message is from the agent
+            if getattr(m, "out", False):
+                # Message was sent by us
+                return False
+            # Also check from_id for compatibility
+            if (
+                getattr(m, "from_id", None)
+                and getattr(m.from_id, "user_id", None) == agent_id
+            ):
+                return False
+    
+    # It's a start if history is short and there are no agent messages or summarized messages
+    return True
+
+
 async def build_specific_instructions(
     agent,
     channel_id: int,
@@ -88,7 +135,7 @@ async def build_specific_instructions(
     Args:
         agent: The agent instance
         channel_id: The conversation ID
-        messages: List of Telegram messages (unsummarized only)
+        messages: List of Telegram messages (full visible history)
         target_msg: Optional target message to respond to
         xsend_intent: Optional intent from a cross-channel send
         reaction_msg: Optional reaction message
@@ -100,35 +147,7 @@ async def build_specific_instructions(
     channel_name = await get_dialog_name(agent, channel_id)
     
     # Check if this is conversation start
-    # It's a start ONLY if:
-    # 1. No summaries exist (highest_summarized_id is None)
-    # 2. There are few messages (< 5) in the current unsummarized set
-    # 3. None of the messages are from the agent
-    is_conversation_start = False
-    # Check explicitly for None (not just falsy, since 0 could be a valid message ID)
-    if highest_summarized_id is None:
-        # No summaries exist, so check if this looks like a new conversation
-        if len(messages) < 5:
-            agent_id = agent.agent_id
-            # Check if any message is from the agent
-            has_agent_message = False
-            if agent_id is not None:
-                for m in messages:
-                    # Check if message is from the agent
-                    if getattr(m, "out", False):
-                        # Message was sent by us
-                        has_agent_message = True
-                        break
-                    # Also check from_id for compatibility
-                    if (
-                        getattr(m, "from_id", None)
-                        and getattr(m.from_id, "user_id", None) == agent_id
-                    ):
-                        has_agent_message = True
-                        break
-            
-            # It's a start if there are no agent messages
-            is_conversation_start = not has_agent_message
+    is_start = is_conversation_start(agent, messages, highest_summarized_id)
 
     instructions = (
         "\n# Instruction\n\n"
@@ -149,7 +168,7 @@ async def build_specific_instructions(
         )
         any_instruction = True
 
-    if is_conversation_start and not any_instruction:
+    if is_start and not any_instruction:
         instructions += (
             "## New Conversation\n\n"
             "This is the start of a new conversation.\n"

@@ -59,6 +59,8 @@ class Agent(
         timezone=None,
         # Daily schedule configuration
         daily_schedule_description=None,
+        # Context reset configuration
+        reset_context_on_first_message=False,
     ):
         self.name = name
         self.phone = phone
@@ -72,6 +74,9 @@ class Agent(
         # Store raw timezone value (will be normalized via property on first access)
         self._timezone_raw = timezone
         self._timezone_normalized = None
+
+        # Context reset behavior
+        self.reset_context_on_first_message = reset_context_on_first_message
 
         # Multi-set config (lists)
         self.sticker_set_names = list(
