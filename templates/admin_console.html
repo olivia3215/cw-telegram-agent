@@ -182,9 +182,6 @@
         .subtab-panel.active {
             display: block;
         }
-        option.expensive {
-            color: #800000 !important;
-        }
         .placeholder-card {
             background: white;
             border-radius: 8px;
@@ -2778,10 +2775,7 @@
                             <h3>Agent LLM</h3>
                             <select id="agent-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentLLM('${agentName}', this.value)">
                                 ${availableLLMs.map(llm => {
-                                    const isExpensive = Boolean(llm.expensive);
-                                    const classAttr = isExpensive ? 'class="expensive"' : '';
-                                    const styleAttr = isExpensive ? 'style="color: #800000 !important;"' : '';
-                                    return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''} ${classAttr} ${styleAttr}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                    return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
                                 }).join('')}
                             </select>
                             
@@ -3162,11 +3156,8 @@
                             <p>Current: ${conversationLLM || agentDefaultLLM + ' (agent default)'}</p>
                             <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${agentName}', '${userId}', this.value)">
                                 ${availableLLMs.map(llm => {
-                                    const isExpensive = Boolean(llm.expensive);
-                                    const classAttr = isExpensive ? 'class="expensive"' : '';
-                                    const styleAttr = isExpensive ? 'style="color: #800000 !important;"' : '';
                                     const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                    return `<option value="${llm.value}" ${isSelected ? 'selected' : ''} ${classAttr} ${styleAttr}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                    return `<option value="${llm.value}" ${isSelected ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
                                 }).join('')}
                             </select>
                         </div>
