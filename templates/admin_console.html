@@ -4298,7 +4298,7 @@
                 globalDocsCurrentFilename = filename;
                 globalDocsContent = data.content || '';
                 
-                renderGlobalDocEditor(data.content || '', filename);
+                renderGlobalDocEditor(data.content || '', filename, globalDocsConfigDir);
                 document.getElementById('delete-global-doc-btn').style.display = 'inline-block';
             } catch (error) {
                 console.error('Error loading doc:', error);
@@ -4307,7 +4307,7 @@
         }
         
         // Render global doc editor
-        function renderGlobalDocEditor(content, filename) {
+        function renderGlobalDocEditor(content, filename, configDir) {
             const container = document.getElementById('global-docs-editor-container');
             container.innerHTML = `
                 <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -4330,13 +4330,14 @@
                 </div>
             `;
             
-            // Setup filename change handler
+            // Setup handlers
+            // Capture all state at creation time to avoid race conditions
             const filenameInput = document.getElementById('global-docs-filename');
-            filenameInput.oninput = debounceGlobalDocsFilename();
+            filenameInput.oninput = debounceGlobalDocsFilename(configDir, filename);
             
             // Setup content change handler with auto-save
             const contentTextarea = document.getElementById('global-docs-content');
-            contentTextarea.oninput = debounceGlobalDocsSave();
+            contentTextarea.oninput = debounceGlobalDocsSave(configDir, filename);
             
             // Setup move destination change handler
             const moveSelect = document.getElementById('global-docs-move-destination');
@@ -4351,7 +4352,8 @@
         }
         
         // Debounced save for global docs
-        function debounceGlobalDocsSave() {
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalDocsSave(configDir, filename) {
             return function() {
                 if (globalDocsSaveTimeout) {
                     clearTimeout(globalDocsSaveTimeout);
@@ -4361,6 +4363,13 @@
                 if (statusEl) statusEl.textContent = 'Typing...';
                 
                 globalDocsSaveTimeout = setTimeout(async () => {
+                    // Verify we're still editing the same document (user may have switched)
+                    if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                        // User switched documents, don't save
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
                     const contentTextarea = document.getElementById('global-docs-content');
                     if (!contentTextarea) return;
                     
@@ -4373,7 +4382,8 @@
                     if (statusEl) statusEl.textContent = 'Saving...';
                     
                     try {
-                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(globalDocsCurrentFilename)}?config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ content: newContent })
@@ -4394,7 +4404,8 @@
         }
         
         // Debounced filename change for global docs
-        function debounceGlobalDocsFilename() {
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalDocsFilename(configDir, filename) {
             return function() {
                 if (globalDocsFilenameTimeout) {
                     clearTimeout(globalDocsFilenameTimeout);
@@ -4406,7 +4417,14 @@
                 const newFilename = filenameInput.value.trim();
                 const statusEl = document.getElementById('global-docs-filename-status');
                 
-                if (!newFilename || newFilename === globalDocsCurrentFilename) {
+                // Verify we're still editing the same document (user may have switched)
+                if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                    // User switched documents, don't rename
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename || newFilename === filename) {
                     if (statusEl) statusEl.textContent = '';
                     return;
                 }
@@ -4419,8 +4437,16 @@
                 if (statusEl) statusEl.textContent = 'Renaming...';
                 
                 globalDocsFilenameTimeout = setTimeout(async () => {
+                    // Double-check we're still editing the same document before renaming
+                    if (globalDocsConfigDir !== configDir || globalDocsCurrentFilename !== filename) {
+                        // User switched documents, don't rename
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
                     try {
-                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(globalDocsCurrentFilename)}/rename?config_dir=${encodeURIComponent(globalDocsConfigDir)}`, {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/docs/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ new_filename: newFilename })
