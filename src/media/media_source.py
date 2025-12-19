@@ -754,7 +754,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
-                    duration=duration,
+                    **metadata,
                 )
 
         # Only check if we have a document to download
@@ -788,7 +788,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
-                    mime_type=mime_type,
+                    **metadata,
                 )
 
             # Format is supported - let other sources handle it
