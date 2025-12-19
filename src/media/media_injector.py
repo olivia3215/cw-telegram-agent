@@ -217,6 +217,7 @@ async def inject_media_descriptions(
                         kind=(
                             it.kind.value if hasattr(it.kind, "value") else str(it.kind)
                         ),
+                        mime_type=it.mime,
                         sticker_set_name=sticker_set_name,
                         sticker_name=sticker_name,
                         sender_id=sender_id,

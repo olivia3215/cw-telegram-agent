@@ -344,7 +344,7 @@ class DirectoryMediaSource(MediaSource):
                     record.get("kind") == "sticker"
                     and record.get("description") is None
                     and not has_failure_reason
-                    and status in (None, MediaStatus.GENERATED.value)
+                    and status in (None, MediaStatus.GENERATED.value, MediaStatus.BUDGET_EXHAUSTED.value, MediaStatus.TEMPORARY_FAILURE.value)
                 ):
 
                     # Create fallback description for stickers
@@ -361,7 +361,10 @@ class DirectoryMediaSource(MediaSource):
 
                     # Update the record with fallback description
                     record["description"] = description
-                    record["status"] = MediaStatus.GENERATED.value
+                    # Only promote to GENERATED if it wasn't a temporary failure
+                    # (we want to retry BUDGET_EXHAUSTED stickers when budget returns)
+                    if not MediaStatus.is_temporary_failure(status):
+                        record["status"] = MediaStatus.GENERATED.value
                     record["ts"] = clock.now(UTC).isoformat()
 
                     # Update the cache with the new description
@@ -607,25 +610,31 @@ class BudgetExhaustedMediaSource(MediaSource):
         """
         Check budget and return None or fallback.
 
-        If budget is available: consumes budget and returns None
+        If budget is available: returns None (allowing AI description)
         If budget is exhausted: returns a simple fallback record
         """
 
         if has_description_budget():
-            # Budget available - consume it and return None
-            # to let AIGeneratingMediaSource handle the request
-            consume_description_budget()
+            # Budget available - return None to let AIGeneratingMediaSource handle it
             return None
         else:
             # Budget exhausted - return fallback record
+            # For stickers, we can provide a fallback description immediately
+            description = None
+            if kind == "sticker":
+                mime_type = metadata.get("mime_type")
+                is_animated = mime_type and is_tgs_mime_type(mime_type)
+                description = fallback_sticker_description(sticker_name, animated=is_animated)
+
             return {
                 "unique_id": unique_id,
                 "kind": kind,
                 "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
-                "description": None,
+                "description": description,
                 "status": MediaStatus.BUDGET_EXHAUSTED.value,
                 "ts": clock.now(UTC).isoformat(),
+                **metadata,
             }
 
 
@@ -641,12 +650,20 @@ def make_error_record(
 ) -> dict[str, Any]:
     """Helper to create an error record."""
     status_value = status.value if isinstance(status, MediaStatus) else status
+    
+    # Provide fallback description for stickers
+    description = None
+    if kind == "sticker":
+        mime_type = extra.get("mime_type")
+        is_animated = mime_type and is_tgs_mime_type(mime_type)
+        description = fallback_sticker_description(sticker_name, animated=is_animated)
+        
     record = {
         "unique_id": unique_id,
         "kind": kind,
         "sticker_set_name": sticker_set_name,
         "sticker_name": sticker_name,
-        "description": None,
+        "description": description,
         "status": status_value,
         "failure_reason": failure_reason,
         "ts": clock.now(UTC).isoformat(),
@@ -686,13 +703,24 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         # Normalize MIME type metadata before applying other checks
         meta_mime = metadata.get("mime_type")
+        if not meta_mime and doc is not None:
+            # Fallback to doc.mime_type if metadata is missing it
+            meta_mime = getattr(doc, "mime_type", None)
+            if meta_mime:
+                metadata["mime_type"] = meta_mime
+
         if meta_mime:
             normalized_meta_mime = normalize_mime_type(meta_mime)
             if normalized_meta_mime and normalized_meta_mime != meta_mime:
                 metadata["mime_type"] = normalized_meta_mime
+                meta_mime = normalized_meta_mime
 
         # Special handling for AnimatedEmojies - use sticker name as description
-        if sticker_set_name == "AnimatedEmojies" and sticker_name:
+        # This keeps behavior fast for standard emojis and avoids AI cost/latency
+        if (
+            sticker_set_name in ("AnimatedEmojies", "AnimatedEmoji")
+            and sticker_name
+        ):
             description = fallback_sticker_description(sticker_name, animated=True)
             logger.info(
                 f"AnimatedEmojies sticker {unique_id}: using '{description}' as description"
@@ -728,29 +756,6 @@ class UnsupportedFormatMediaSource(MediaSource):
                     sticker_name=sticker_name,
                     duration=duration,
                 )
-
-        # Special handling for TGS animated stickers - provide fallback description
-        if kind == "sticker" and doc is not None:
-            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
-            if mime_type and is_tgs_mime_type(mime_type):
-                # Create a fallback description for TGS files
-                description = fallback_sticker_description(sticker_name)
-
-                logger.info(
-                    f"TGS animated sticker {unique_id}: using fallback description '{description}'"
-                )
-                record = {
-                    "unique_id": unique_id,
-                    "kind": kind,
-                    "sticker_set_name": sticker_set_name,
-                    "sticker_name": sticker_name,
-                    "description": description,
-                    "status": MediaStatus.GENERATED.value,
-                    "ts": clock.now(UTC).isoformat(),
-                    "mime_type": mime_type,
-                    **metadata,
-                }
-                return record
 
         # Only check if we have a document to download
         if doc is None:
@@ -979,6 +984,9 @@ class AIGeneratingMediaSource(MediaSource):
         # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
+
+            # Consume budget before LLM call
+            consume_description_budget()
 
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
@@ -1217,11 +1225,18 @@ class AIChainMediaSource(MediaSource):
             unique_id, agent, doc, **metadata
         )
 
-        # 2. If we have a cached record that's NOT temporary failure, return it
-        if cached_record and not MediaStatus.is_temporary_failure(
-            cached_record.get("status")
-        ):
-            return cached_record
+        # 2. If we have a cached record, decide whether to return it or retry
+        if cached_record:
+            status = cached_record.get("status")
+            # If successful or permanent failure, always return cached record
+            if not MediaStatus.is_temporary_failure(status):
+                return cached_record
+
+            # If it's a temporary failure, we only retry if we have a document
+            # to attempt a new description generation. Without a document
+            # (e.g. during lookup-only formatting phase), we return what we have.
+            if doc is None:
+                return cached_record
 
         # 3. Chain through sources
         record = None

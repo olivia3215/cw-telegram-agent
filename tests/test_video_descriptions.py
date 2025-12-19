@@ -456,13 +456,8 @@ async def test_unsupported_format_source_accepts_short_animated_sticker():
         sticker_name="😊",
     )
 
-    # Should return fallback description for TGS files with emoji unicode name
-    assert result is not None
-    assert result["status"] == MediaStatus.GENERATED.value
-    assert (
-        result["description"]
-        == "an animated sticker: 😊 (smiling face with smiling eyes)"
-    )
+    # Should return None (meaning it's supported and should proceed to next source)
+    assert result is None
 
 
 # --- Tests for AIGeneratingMediaSource video handling ---
@@ -484,8 +479,10 @@ async def test_ai_generating_source_calls_describe_video():
     # Mock document
     doc = MagicMock()
 
-    # Mock download_media_bytes
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    # Mock download_media_bytes and budget
+    with patch("media.media_source.download_media_bytes") as mock_download, \
+         patch("media.media_source.has_description_budget", return_value=True), \
+         patch("media.media_source.consume_description_budget"):
         mock_download.return_value = b"fake_video_bytes_12345"
 
         # Mock detect_mime_type_from_bytes
@@ -529,7 +526,9 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.media_source.download_media_bytes") as mock_download, \
+         patch("media.media_source.has_description_budget", return_value=True), \
+         patch("media.media_source.consume_description_budget"):
         mock_download.return_value = b"fake_tgs_bytes"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
@@ -589,7 +588,9 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.media_source.download_media_bytes") as mock_download, \
+         patch("media.media_source.has_description_budget", return_value=True), \
+         patch("media.media_source.consume_description_budget"):
         mock_download.return_value = b"fake_image_bytes"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
@@ -631,7 +632,9 @@ async def test_ai_generating_source_handles_video_too_long_error():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.media_source.download_media_bytes") as mock_download, \
+         patch("media.media_source.has_description_budget", return_value=True), \
+         patch("media.media_source.consume_description_budget"):
         mock_download.return_value = b"fake_long_video"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
