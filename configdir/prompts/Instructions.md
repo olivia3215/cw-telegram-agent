@@ -123,6 +123,7 @@ Example photo metadata:
 Treat these descriptions as the actual media content you observe.
 When `⟦media⟧` appears in the conversation, that means that you see or hear the media.
 Never send literal `⟦media⟧` or `⟦metadata⟧` text in outputs.
+If you want to send a sticker, use a `sticker` task rather than `send`ing `⟦media⟧`.
 
 # Metadata
 

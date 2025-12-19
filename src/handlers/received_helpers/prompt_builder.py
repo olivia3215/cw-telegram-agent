@@ -279,8 +279,9 @@ async def build_complete_system_prompt(
     # Build sticker list
     sticker_list = await _build_sticker_list(agent, media_chain)
     if sticker_list:
-        system_prompt += f"\n\n# Stickers you may send\n\n{sticker_list}\n\n"
-        system_prompt += "You may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name."
+        system_prompt += f"\n\n# Stickers you may send using a `sticker` task\n\n{sticker_list}\n\n"
+        system_prompt += "You may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
+        system_prompt += "Send stickers using the `sticker` task only, never using the `send` task."
 
     # Add memory content
     memory_content = agent._load_memory_content(channel_id)
