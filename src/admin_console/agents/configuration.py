@@ -378,12 +378,6 @@ def register_configuration_routes(agents_bp: Blueprint):
 def register_new_agent_routes(agents_bp: Blueprint):
     """Register routes for creating new agents."""
     
-    @agents_bp.route("/api/config-directories", methods=["GET"])
-    def api_get_config_directories():
-        """Get list of configuration directories."""
-        from config import CONFIG_DIRECTORIES
-        return jsonify({"directories": CONFIG_DIRECTORIES})
-
     @agents_bp.route("/api/agents/new", methods=["POST"])
     def api_create_agent():
         """Create a new agent in the specified config directory."""
