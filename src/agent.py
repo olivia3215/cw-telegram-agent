@@ -61,6 +61,8 @@ class Agent(
         daily_schedule_description=None,
         # Context reset configuration
         reset_context_on_first_message=False,
+        # Disabled status
+        is_disabled=False,
     ):
         self.name = name
         self.phone = phone
@@ -70,6 +72,8 @@ class Agent(
         # config_name is the config file name (without .md extension) used for state directories
         # If not provided, default to name for backward compatibility
         self.config_name = config_name if config_name is not None else name
+
+        self.is_disabled = is_disabled
 
         # Store raw timezone value (will be normalized via property on first access)
         self._timezone_raw = timezone

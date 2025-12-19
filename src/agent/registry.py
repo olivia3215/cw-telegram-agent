@@ -36,6 +36,7 @@ class AgentRegistry:
         timezone=None,
         daily_schedule_description=None,
         reset_context_on_first_message=False,
+        is_disabled=False,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -89,6 +90,7 @@ class AgentRegistry:
             timezone=timezone,
             daily_schedule_description=daily_schedule_description,
             reset_context_on_first_message=reset_context_on_first_message,
+            is_disabled=is_disabled,
         )
         
         # Store by config_name (the key used for state directories and lookups)
@@ -105,8 +107,10 @@ class AgentRegistry:
                 return agent
         return None
 
-    def all_agents(self):
-        return self._registry.values()
+    def all_agents(self, include_disabled: bool = False):
+        if include_disabled:
+            return self._registry.values()
+        return [agent for agent in self._registry.values() if not agent.is_disabled]
 
 
 _agent_registry = AgentRegistry()

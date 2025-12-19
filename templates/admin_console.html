@@ -2194,7 +2194,216 @@
         }
 
         // Load agents list
-        async function loadAgents() {
+        async function createNewAgent(configDir) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config_directory: configDir })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = data.config_name;
+                    // Trigger change to load the new agent's config
+                    document.getElementById('agents-agent-select').dispatchEvent(new Event('change'));
+                } else {
+                    alert('Error creating agent: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error creating agent:', error);
+                alert('Error creating agent');
+            }
+        }
+
+        async function toggleAgentDisabled(agentName, isDisabled) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/disabled`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_disabled: isDisabled })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    if (!isDisabled) {
+                        // If enabling, trigger login check
+                        handleAgentLogin(agentName);
+                    } else {
+                        // Refresh configuration to update UI
+                        loadAgentConfiguration(agentName);
+                        // Also refresh agent list to show/hide (disabled)
+                        loadAgents().then(() => {
+                            document.getElementById('agents-agent-select').value = agentName;
+                        });
+                    }
+                } else {
+                    alert('Error updating agent status: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error toggling agent status:', error);
+                alert('Error toggling agent status');
+            }
+        }
+
+        async function handleAgentLogin(agentName) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent is authenticated and enabled.');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.status === 'needs_code') {
+                    const code = prompt('Enter the Telegram verification code for this agent:');
+                    if (code) {
+                        submitAgentLoginCode(agentName, code);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.status === 'needs_password') {
+                    const password = prompt('Enter the 2FA password for this agent:');
+                    if (password) {
+                        submitAgentLoginPassword(agentName, password);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.error) {
+                    alert('Login error: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                }
+            } catch (error) {
+                console.error('Error during agent login:', error);
+                alert('Error during agent login');
+            }
+        }
+
+        async function submitAgentLoginCode(agentName, code) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent successfully authenticated!');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.status === 'needs_password') {
+                    const password = prompt('Enter the 2FA password for this agent:');
+                    if (password) {
+                        submitAgentLoginPassword(agentName, password);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                    handleAgentLogin(agentName); // Let them try again
+                }
+            } catch (error) {
+                console.error('Error submitting code:', error);
+                alert('Error submitting code');
+            }
+        }
+
+        async function submitAgentLoginPassword(agentName, password) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent successfully authenticated!');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                    handleAgentLogin(agentName); // Let them try again
+                }
+            } catch (error) {
+                console.error('Error submitting password:', error);
+                alert('Error submitting password');
+            }
+        }
+
+        async function cancelAgentLogin(agentName) {
+            await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/cancel`, {
+                method: 'POST'
+            });
+            loadAgentConfiguration(agentName);
+            loadAgents().then(() => {
+                document.getElementById('agents-agent-select').value = agentName;
+            });
+        }
+
+        async function renameAgentConfig(agentName) {
+            const newName = prompt('Enter new config name (without .md):');
+            if (!newName || newName === agentName) return;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/rename`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_config_name: newName })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    const newConfigName = data.new_config_name;
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = newConfigName;
+                    document.getElementById('agents-agent-select').dispatchEvent(new Event('change'));
+                } else {
+                    alert('Error renaming agent: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error renaming agent:', error);
+                alert('Error renaming agent');
+            }
+        }
+
+        async function deleteAgent(agentName, displayName) {
+            const confirmation = prompt(`To delete agent "${displayName}", type DELETE ${displayName}:`);
+            if (confirmation !== `DELETE ${displayName}`) {
+                if (confirmation !== null) alert('Incorrect confirmation string.');
+                return;
+            }
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirmation: confirmation })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('Agent deleted successfully.');
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = '';
+                    document.getElementById('parameters-container').innerHTML = '<div class="loading">Select an agent to configure</div>';
+                } else {
+                    alert('Error deleting agent: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting agent:', error);
+                alert('Error deleting agent');
+            }
+        }
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents`);
                 const data = await response.json();
@@ -2218,11 +2427,38 @@
                 }
                 
                 // Populate all agent selects
-                ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
+                ['agents-agent-select', 'conversations-agent-select'].forEach(async selectId => {
                     const select = document.getElementById(selectId);
                     if (select) {
                         const currentValue = select.value;
                         select.innerHTML = '<option value="">Choose an agent...</option>';
+                        
+                        // Add "New Agent" entries for each config directory (only in agents tab)
+                        if (selectId === 'agents-agent-select') {
+                            try {
+                                const configDirsResponse = await fetchWithAuth(`${API_BASE}/config-directories`);
+                                const configDirsData = await configDirsResponse.json();
+                                if (configDirsData.directories) {
+                                    configDirsData.directories.forEach(dir => {
+                                        const option = document.createElement('option');
+                                        option.value = `NEW_AGENT|${dir}`;
+                                        option.textContent = `+ New Agent in ${dir}`;
+                                        option.style.fontWeight = 'bold';
+                                        option.style.color = '#28a745';
+                                        select.appendChild(option);
+                                    });
+                                    if (configDirsData.directories.length > 0) {
+                                        const divider = document.createElement('option');
+                                        divider.disabled = true;
+                                        divider.textContent = '────────────────────';
+                                        select.appendChild(divider);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error loading config directories:', e);
+                            }
+                        }
+
                         agents.forEach(agent => {
                             const option = document.createElement('option');
                             option.value = agent.config_name;
@@ -2230,6 +2466,13 @@
                             let displayName = agent.agent_id 
                                 ? `${agent.name} (${agent.agent_id})` 
                                 : agent.name;
+                            
+                            if (agent.is_disabled) {
+                                displayName += ' (disabled)';
+                                option.style.color = '#666';
+                                option.style.fontStyle = 'italic';
+                            }
+
                             // Add asterisk if agent has content for current subtab (only in agents tab)
                             if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.config_name]) {
                                 displayName += ' *';
@@ -2254,7 +2497,16 @@
 
         // Set up agent select change handlers with synchronization
         document.getElementById('agents-agent-select')?.addEventListener('change', (e) => {
-            const agentName = stripAsterisk(e.target.value);
+            const rawValue = e.target.value;
+            if (rawValue.startsWith('NEW_AGENT|')) {
+                const configDir = rawValue.split('|')[1];
+                createNewAgent(configDir);
+                // Reset select until creation is complete
+                e.target.value = '';
+                return;
+            }
+
+            const agentName = stripAsterisk(rawValue);
             
             // Synchronize with conversations agent select
             const conversationsSelect = document.getElementById('conversations-agent-select');
@@ -2769,9 +3021,33 @@
                     const prompt = data.prompt || '';
                     const currentTimezone = data.timezone || '';
                     const availableTimezones = data.available_timezones || [];
+                    const isDisabled = data.is_disabled || false;
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #eee;">
+                                <div>
+                                    <h3 style="margin: 0;">Agent Status</h3>
+                                    <div style="margin-top: 8px;">
+                                        <button onclick="toggleAgentDisabled('${agentName}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                            ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
+                                        </button>
+                                        ${isDisabled ? `
+                                            <button onclick="renameAgentConfig('${agentName}')" style="margin-left: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                                Rename Config
+                                            </button>
+                                            <button onclick="deleteAgent('${agentName}', '${data.name || agentName}')" style="margin-left: 8px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                                Delete Agent
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 12px; color: #666;">Config Name: <strong>${agentName}</strong></div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
+                                </div>
+                            </div>
+
                             <h3>Agent LLM</h3>
                             <select id="agent-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentLLM('${agentName}', this.value)">
                                 ${availableLLMs.map(llm => {
