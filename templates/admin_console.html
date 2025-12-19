@@ -182,6 +182,108 @@
         .subtab-panel.active {
             display: block;
         }
+        
+        /* Agent Parameters styling */
+        .agent-param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .agent-status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eee;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .agent-status-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .agent-status-info {
+            text-align: right;
+            min-width: 150px;
+        }
+        @media (max-width: 600px) {
+            .agent-status-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .agent-status-info {
+                text-align: left;
+                width: 100%;
+                border-top: 1px solid #f0f0f0;
+                padding-top: 8px;
+            }
+            .agent-param-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+        .agent-param-section {
+            margin-bottom: 24px;
+        }
+        .agent-param-section h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: #2c3e50;
+        }
+        .role-prompt-tag {
+            display: flex;
+            align-items: center;
+            background: #f0f2f5;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 14px;
+        }
+        .role-prompt-tag button {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0 4px;
+            margin-left: 8px;
+        }
+        .agent-param-textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .agent-param-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .agent-param-checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .agent-param-checkbox-label input {
+            margin-right: 8px;
+        }
+        .role-prompts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
         .placeholder-card {
             background: white;
             border-radius: 8px;
@@ -234,6 +336,31 @@
             padding: 0;
             margin-bottom: 16px;
             width: 100%;
+        }
+        @media (max-width: 600px) {
+            .directory-selector select {
+                min-width: 0;
+                width: 100%;
+            }
+            .import-section input {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 8px;
+            }
+            .import-section button {
+                width: 100%;
+            }
+            .auth-card {
+                padding: 20px;
+                max-width: 90%;
+            }
+            .header h1 {
+                font-size: 20px;
+            }
+            .tab-button {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
         }
         .media-item {
             display: flex;
@@ -3025,56 +3152,141 @@
                     const availableTimezones = data.available_timezones || [];
                     const isDisabled = data.is_disabled || false;
                     
+                    // New fields
+                    const phone = data.phone || '';
+                    const rolePromptNames = data.role_prompt_names || [];
+                    const availableRolePrompts = data.available_role_prompts || [];
+                    const stickerSetNames = data.sticker_set_names || [];
+                    const explicitStickers = data.explicit_stickers || [];
+                    const dailyScheduleDescription = data.daily_schedule_description;
+                    const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
+                    
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #eee;">
+                            <div class="agent-status-header">
                                 <div>
                                     <h3 style="margin: 0;">Agent Status</h3>
-                                    <div style="margin-top: 8px;">
+                                    <div class="agent-status-actions">
                                         <button onclick="toggleAgentDisabled('${agentName}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
-                                            <button onclick="renameAgentConfig('${agentName}')" style="margin-left: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <button onclick="renameAgentConfig('${agentName}')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Rename Config
                                             </button>
-                                            <button onclick="deleteAgent('${agentName}', '${data.name || agentName}')" style="margin-left: 8px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <button onclick="deleteAgent('${agentName}', '${data.name || agentName}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Delete Agent
                                             </button>
                                         ` : ''}
                                     </div>
                                 </div>
-                                <div style="text-align: right;">
+                                <div class="agent-status-info">
                                     <div style="font-size: 12px; color: #666;">Config Name: <strong>${agentName}</strong></div>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
                                 </div>
                             </div>
 
-                            <h3>Agent LLM</h3>
-                            <select id="agent-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentLLM('${agentName}', this.value)">
-                                ${availableLLMs.map(llm => {
-                                    return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
-                                }).join('')}
-                            </select>
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent Phone</h3>
+                                    <input id="agent-phone-input" type="text" class="agent-param-input" value="${phone}" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentPhone('${agentName}', this.value)">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Agent LLM</h3>
+                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${agentName}', this.value)">
+                                        ${availableLLMs.map(llm => {
+                                            return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                        }).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <h3>Role Prompts</h3>
+                                <div id="role-prompts-list" class="role-prompts-container">
+                                    ${rolePromptNames.length > 0 ? rolePromptNames.map(name => `
+                                        <div class="role-prompt-tag">
+                                            <span>${name}</span>
+                                            ${isDisabled ? `<button onclick="removeRolePrompt('${agentName}', '${name}')">&times;</button>` : ''}
+                                        </div>
+                                    `).join('') : '<div style="color: #666; font-style: italic; font-size: 14px;">No role prompts selected</div>'}
+                                </div>
+                                <select id="available-role-prompts-select" ${!isDisabled ? 'disabled' : ''} 
+                                    onchange="if(this.value) addRolePrompt('${agentName}', this.value); this.value='';" 
+                                    class="agent-param-input" style="min-width: 200px; width: auto;">
+                                    <option value="">Add role prompt...</option>
+                                    ${availableRolePrompts.filter(p => !rolePromptNames.includes(p)).map(p => `<option value="${p}">${p}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Sticker Sets</h3>
+                                    <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentStickers('${agentName}')" 
+                                        class="agent-param-textarea" style="min-height: 80px;"
+                                        placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
+                                    >${stickerSetNames.join('\n')}</textarea>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Explicit Stickers</h3>
+                                    <textarea id="agent-explicit-stickers-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentStickers('${agentName}')" 
+                                        class="agent-param-textarea" style="min-height: 80px;"
+                                        placeholder="SET :: STICKER per line, e.g.\nWendyDancer :: Wink\nCindyAI :: Hello"
+                                    >${explicitStickers.join('\n')}</textarea>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                                    <h3 style="margin: 0;">Daily Schedule</h3>
+                                    <label class="agent-param-checkbox-label">
+                                        <input type="checkbox" id="daily-schedule-enabled" ${dailyScheduleDescription !== null ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                            onchange="updateAgentDailySchedule('${agentName}')">
+                                        Enabled
+                                    </label>
+                                </div>
+                                <textarea id="daily-schedule-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                    onchange="updateAgentDailySchedule('${agentName}')" 
+                                    class="agent-param-textarea" style="min-height: 60px; ${dailyScheduleDescription === null ? 'background: #f8f9fa; color: #999;' : ''}"
+                                    placeholder="Freeform English description of the daily schedule..."
+                                >${dailyScheduleDescription || ''}</textarea>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent Timezone</h3>
+                                    <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${agentName}', this.value)">
+                                        <option value="">Server Default</option>
+                                        ${availableTimezones.map(tz => {
+                                            const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                                            const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                            return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
+                                        }).join('')}
+                                    </select>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Context Reset</h3>
+                                    <label class="agent-param-checkbox-label" style="margin-top: 8px;">
+                                        <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                            onchange="updateAgentResetContext('${agentName}', this.checked)">
+                                        Reset Context On First Message
+                                    </label>
+                                </div>
+                            </div>
                             
-                            <h3>Agent Timezone</h3>
-                            <select id="agent-timezone-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentTimezone('${agentName}', this.value)">
-                                <option value="">Server Default</option>
-                                ${availableTimezones.map(tz => {
-                                    // Escape HTML entities for safety
-                                    const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                                    const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                                    return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
-                                }).join('')}
-                            </select>
-                            
-                            <h3>Agent Prompt</h3>
-                            <textarea 
-                                id="agent-prompt-textarea" 
-                                style="width: 100%; min-height: 300px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleAgentPromptAutoSave('${agentName}')"
-                            >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-                            <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                            <div class="agent-param-section">
+                                <h3>Agent Instructions</h3>
+                                <textarea 
+                                    id="agent-prompt-textarea" 
+                                    class="agent-param-textarea" style="min-height: 300px;"
+                                    oninput="scheduleAgentPromptAutoSave('${agentName}')"
+                                >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                            </div>
                         </div>
                     `;
                 })
@@ -3084,6 +3296,120 @@
                     }
                     container.innerHTML = `<div class="error">Error loading configuration: ${error}</div>`;
                 });
+        }
+
+        function updateAgentPhone(agentName, phone) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/phone`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating phone: ' + data.error);
+                else alert('Phone number updated successfully');
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating phone: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function addRolePrompt(agentName, roleName) {
+            // Get current prompts and add new one
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
+                .then(r => r.json())
+                .then(data => {
+                    const prompts = data.role_prompt_names || [];
+                    if (!prompts.includes(roleName)) {
+                        prompts.push(roleName);
+                        saveRolePrompts(agentName, prompts);
+                    }
+                });
+        }
+
+        function removeRolePrompt(agentName, roleName) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
+                .then(r => r.json())
+                .then(data => {
+                    const prompts = (data.role_prompt_names || []).filter(p => p !== roleName);
+                    saveRolePrompts(agentName, prompts);
+                });
+        }
+
+        function saveRolePrompts(agentName, prompts) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/role-prompts`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role_prompt_names: prompts })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating role prompts: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating role prompts: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentStickers(agentName) {
+            const sets = document.getElementById('agent-sticker-sets-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
+            const explicit = document.getElementById('agent-explicit-stickers-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/stickers`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sticker_set_names: sets, explicit_stickers: explicit })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating stickers: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating stickers: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentDailySchedule(agentName) {
+            const enabled = document.getElementById('daily-schedule-enabled').checked;
+            const description = document.getElementById('daily-schedule-textarea').value.trim();
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/daily-schedule`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled, description: description })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating daily schedule: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating daily schedule: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentResetContext(agentName, enabled) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/reset-context`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reset_context_on_first_message: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating reset context: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating reset context: ' + error);
+                loadAgentConfiguration(agentName);
+            });
         }
 
         function updateAgentLLM(agentName, llmName) {

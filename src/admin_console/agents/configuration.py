@@ -8,8 +8,40 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_available_timezones, get_default_llm
+from prompt_loader import get_available_system_prompts
 
 logger = logging.getLogger(__name__)
+
+
+def _write_agent_markdown(agent, fields):
+    """Reconstruct and write the agent's markdown file."""
+    if not agent.config_directory:
+        raise ValueError("Agent has no config directory")
+    
+    agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+    if not agent_file.exists():
+        raise FileNotFoundError("Agent configuration file not found")
+
+    lines = []
+    for field_name, field_value in fields.items():
+        lines.append(f"# {field_name}")
+        
+        # Handle list or tuple values
+        if isinstance(field_value, (list, tuple)):
+            for item in field_value:
+                if isinstance(item, (list, tuple)):
+                    # Handle SET :: STICKER format
+                    lines.append(" :: ".join(str(x).strip() for x in item))
+                else:
+                    lines.append(str(item).strip())
+        else:
+            val = str(field_value).strip()
+            if val:
+                lines.append(val)
+        
+        lines.append("")
+
+    agent_file.write_text("\n".join(lines), encoding="utf-8")
 
 
 def register_configuration_routes(agents_bp: Blueprint):
@@ -18,7 +50,7 @@ def register_configuration_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/configuration", methods=["GET"])
     def api_get_agent_configuration(agent_config_name: str):
-        """Get agent configuration (LLM and prompt)."""
+        """Get agent configuration."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -37,19 +69,29 @@ def register_configuration_routes(agents_bp: Blueprint):
                     llm["is_default"] = False
 
             # Get current timezone (IANA timezone string or None)
-            # Only return a timezone if explicitly configured; otherwise return None
-            # so the frontend shows "Server Default" selected
             current_timezone = agent._timezone_raw if agent._timezone_raw else None
-            
             available_timezones = get_available_timezones()
+            
+            # Get available role prompts
+            available_role_prompts = get_available_system_prompts()
+
+            # For explicit stickers, we want a list of "SET :: STICKER" strings
+            formatted_explicit_stickers = [f"{s} :: {n}" for s, n in agent.explicit_stickers]
 
             return jsonify({
                 "name": agent.name,
+                "phone": agent.phone,
                 "llm": current_llm,
                 "available_llms": available_llms,
                 "prompt": agent.instructions,
                 "timezone": current_timezone,
                 "available_timezones": available_timezones,
+                "role_prompt_names": agent.role_prompt_names,
+                "available_role_prompts": available_role_prompts,
+                "sticker_set_names": agent.sticker_set_names,
+                "explicit_stickers": formatted_explicit_stickers,
+                "daily_schedule_description": agent.daily_schedule_description if hasattr(agent, 'daily_schedule_description') else None,
+                "reset_context_on_first_message": agent.reset_context_on_first_message,
                 "is_disabled": agent.is_disabled,
             })
         except Exception as e:
@@ -83,23 +125,14 @@ def register_configuration_routes(agents_bp: Blueprint):
             # Update LLM field (remove if set to default)
             default_llm = get_default_llm()
             if llm_name == default_llm or not llm_name:
-                # Remove LLM field to use default
                 if "LLM" in fields:
                     del fields["LLM"]
             else:
                 fields["LLM"] = llm_name
 
-            # Reconstruct markdown file
-            lines = []
-            for field_name, field_value in fields.items():
-                lines.append(f"# {field_name}")
-                lines.append(str(field_value).strip())
-                lines.append("")
+            _write_agent_markdown(agent, fields)
 
-            agent_file.write_text("\n".join(lines), encoding="utf-8")
-
-            # Update agent's LLM in place (don't disconnect client or re-register)
-            # LLM changes don't require reconnection to Telegram
+            # Update agent's LLM in place
             from llm.factory import create_llm_from_name
             agent._llm_name = llm_name if llm_name else None
             agent._llm = create_llm_from_name(agent._llm_name)
@@ -136,17 +169,9 @@ def register_configuration_routes(agents_bp: Blueprint):
             # Update Agent Instructions field
             fields["Agent Instructions"] = prompt
 
-            # Reconstruct markdown file
-            lines = []
-            for field_name, field_value in fields.items():
-                lines.append(f"# {field_name}")
-                lines.append(str(field_value).strip())
-                lines.append("")
+            _write_agent_markdown(agent, fields)
 
-            agent_file.write_text("\n".join(lines), encoding="utf-8")
-
-            # Update agent's instructions in place (don't disconnect client or re-register)
-            # Instruction changes don't require reconnection to Telegram
+            # Update agent's instructions in place
             agent.instructions = prompt
 
             return jsonify({"success": True})
@@ -178,9 +203,8 @@ def register_configuration_routes(agents_bp: Blueprint):
             from register_agents import extract_fields_from_markdown
             fields = extract_fields_from_markdown(content)
 
-            # Update Agent Timezone field (remove if empty)
-            if not timezone:
-                # Remove timezone field to use server default
+            # Update Timezone field
+            if not timezone or timezone == "None":
                 if "Agent Timezone" in fields:
                     del fields["Agent Timezone"]
             else:
@@ -192,23 +216,177 @@ def register_configuration_routes(agents_bp: Blueprint):
                 except Exception as e:
                     return jsonify({"error": f"Invalid timezone: {e}"}), 400
 
-            # Reconstruct markdown file
-            lines = []
-            for field_name, field_value in fields.items():
-                lines.append(f"# {field_name}")
-                lines.append(str(field_value).strip())
-                lines.append("")
+            _write_agent_markdown(agent, fields)
 
-            agent_file.write_text("\n".join(lines), encoding="utf-8")
-
-            # Update agent's timezone in place (don't disconnect client or re-register)
-            # Timezone changes don't require reconnection to Telegram
-            agent._timezone_raw = timezone if timezone else None
-            agent._timezone_normalized = None  # Reset cached normalized timezone to force recalculation
+            # Update agent's timezone in place
+            agent._timezone_raw = timezone if timezone and timezone != "None" else None
+            agent._timezone_normalized = None
 
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating timezone for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/phone", methods=["PUT"])
+    def api_update_agent_phone(agent_config_name: str):
+        """Update agent phone number (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update phone number"}), 400
+
+            data = request.json
+            phone = data.get("phone", "").strip()
+            if not phone:
+                return jsonify({"error": "Phone number cannot be empty"}), 400
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            fields["Agent Phone"] = phone
+            _write_agent_markdown(agent, fields)
+
+            agent.phone = phone
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating phone for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/role-prompts", methods=["PUT"])
+    def api_update_agent_role_prompts(agent_config_name: str):
+        """Update agent role prompts (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update role prompts"}), 400
+
+            data = request.json
+            role_prompt_names = data.get("role_prompt_names", [])
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            fields["Role Prompt"] = "\n".join(role_prompt_names)
+            _write_agent_markdown(agent, fields)
+
+            agent.role_prompt_names = role_prompt_names
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating role prompts for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/stickers", methods=["PUT"])
+    def api_update_agent_stickers(agent_config_name: str):
+        """Update agent sticker sets and explicit stickers (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update stickers"}), 400
+
+            data = request.json
+            sticker_set_names = data.get("sticker_set_names", [])
+            explicit_stickers_raw = data.get("explicit_stickers", [])
+
+            from register_agents import extract_fields_from_markdown, _parse_explicit_stickers
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            
+            if sticker_set_names:
+                fields["Agent Sticker Sets"] = "\n".join(sticker_set_names)
+            elif "Agent Sticker Sets" in fields:
+                del fields["Agent Sticker Sets"]
+
+            if explicit_stickers_raw:
+                fields["Agent Stickers"] = "\n".join(explicit_stickers_raw)
+            elif "Agent Stickers" in fields:
+                del fields["Agent Stickers"]
+
+            _write_agent_markdown(agent, fields)
+
+            agent.sticker_set_names = sticker_set_names
+            agent.explicit_stickers = _parse_explicit_stickers(explicit_stickers_raw)
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating stickers for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/daily-schedule", methods=["PUT"])
+    def api_update_agent_daily_schedule(agent_config_name: str):
+        """Update agent daily schedule (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update daily schedule"}), 400
+
+            data = request.json
+            enabled = data.get("enabled", False)
+            description = data.get("description", "").strip()
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            
+            if enabled:
+                fields["Daily Schedule"] = description
+            else:
+                if "Daily Schedule" in fields:
+                    del fields["Daily Schedule"]
+
+            _write_agent_markdown(agent, fields)
+
+            agent.daily_schedule_description = description if enabled else None
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating daily schedule for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/reset-context", methods=["PUT"])
+    def api_update_agent_reset_context(agent_config_name: str):
+        """Update agent reset context on first message (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update reset context"}), 400
+
+            data = request.json
+            reset_context = data.get("reset_context_on_first_message", False)
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            
+            if reset_context:
+                fields["Reset Context On First Message"] = ""
+            else:
+                if "Reset Context On First Message" in fields:
+                    del fields["Reset Context On First Message"]
+
+            _write_agent_markdown(agent, fields)
+
+            agent.reset_context_on_first_message = reset_context
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating reset context for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/disabled", methods=["PUT"])
@@ -242,23 +420,11 @@ def register_configuration_routes(agents_bp: Blueprint):
                 if "Disabled" in fields:
                     del fields["Disabled"]
 
-            # Reconstruct markdown file
-            lines = []
-            for field_name, field_value in fields.items():
-                lines.append(f"# {field_name}")
-                if str(field_value).strip():
-                    lines.append(str(field_value).strip())
-                lines.append("")
-
-            agent_file.write_text("\n".join(lines), encoding="utf-8")
+            _write_agent_markdown(agent, fields)
 
             # Update agent's disabled status in place
             agent.is_disabled = is_disabled
 
-            # If enabling, and the agent loop is running, we might need to start it.
-            # For now, we'll just return success and let the user restart if needed,
-            # unless we implement dynamic loading.
-            
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating disabled status for {agent_config_name}: {e}")

@@ -44,12 +44,24 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
 
     channel_name = await get_channel_name(agent, channel_id)
 
+    # Convert channel_id to integer and resolve entity
+    try:
+        channel_id_int = int(channel_id)
+    except (ValueError, TypeError):
+        channel_id_int = channel_id
+
+    # Get the entity first to ensure it's resolved (important for channels)
+    entity = await agent.get_cached_entity(channel_id_int)
+    if not entity:
+        # Fallback to channel_id_int if entity resolution fails
+        entity = channel_id_int
+
     logger.info(
         f"[{agent.name}] REACT: to=[{channel_name}] message_id={message_id} emoji={emoji}"
     )
 
     request = SendReactionRequest(
-        peer=channel_id,
+        peer=entity,
         msg_id=message_id,
         reaction=[ReactionEmoji(emoticon=emoji)],
     )
