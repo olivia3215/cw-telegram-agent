@@ -108,6 +108,24 @@ class LLM(ABC):
 
     prompt_name: str = "Default"
 
+    @property
+    def image_description_prompt(self) -> str:
+        """Return the prompt for image description."""
+        from prompt_loader import load_system_prompt
+        return load_system_prompt("Instructions-Describe-Image")
+
+    @property
+    def video_description_prompt(self) -> str:
+        """Return the prompt for video description."""
+        from prompt_loader import load_system_prompt
+        return load_system_prompt("Instructions-Describe-Video")
+
+    @property
+    def audio_description_prompt(self) -> str:
+        """Return the prompt for audio description."""
+        from prompt_loader import load_system_prompt
+        return load_system_prompt("Instructions-Describe-Audio")
+
     @abstractmethod
     async def query_structured(
         self,
