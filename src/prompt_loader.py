@@ -35,3 +35,16 @@ def load_system_prompt(prompt_name: str):
     raise RuntimeError(
         f"Prompt file '{prompt_name}.md' not found in any of the following directories: {searched_dirs}"
     )
+
+
+def get_available_system_prompts():
+    """
+    Returns a list of all available system prompt names.
+    """
+    prompts = set()
+    for config_dir in CONFIG_DIRECTORIES:
+        prompts_dir = Path(config_dir) / "prompts"
+        if prompts_dir.exists() and prompts_dir.is_dir():
+            for f in prompts_dir.glob("*.md"):
+                prompts.add(f.stem)
+    return sorted(list(prompts))

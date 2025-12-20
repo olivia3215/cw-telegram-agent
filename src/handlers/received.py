@@ -402,6 +402,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     assert agent_id
     agent = get_agent_for_id(agent_id)
 
+    if not agent:
+        raise RuntimeError(f"Could not resolve agent for ID {agent_id}")
+
+    if agent.is_disabled:
+        logger.info(f"[{agent.name}] Ignoring received task for disabled agent")
+        return
+
     # Skip processing if the agent is looking at its own scratchpad channel.
     if str(channel_id) == str(getattr(agent, "agent_id", None)):
         logger.info(

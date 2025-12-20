@@ -20,6 +20,9 @@ async def test_handle_react_sends_reaction(monkeypatch):
     )
     client = AsyncMock()
     mock_agent._client = client
+    
+    # Mock get_cached_entity to return the ID itself for testing
+    mock_agent.get_cached_entity = AsyncMock(side_effect=lambda x: x)
 
     monkeypatch.setattr("handlers.react.get_agent_for_id", lambda _: mock_agent)
     monkeypatch.setattr(

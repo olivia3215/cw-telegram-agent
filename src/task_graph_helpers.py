@@ -126,6 +126,16 @@ async def insert_received_task_for_conversation(
         work_queue = WorkQueue.get_instance()
     
     agent = get_agent_for_id(recipient_id)
+    if not agent:
+        raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
+    if not agent.client:
+        raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+
+    if agent.is_disabled:
+        logger.info(
+            f"[{agent.name}] Skipping received task creation for disabled agent"
+        )
+        return
     preserved_tasks = []
     # Find the existing graph for this conversation
     # Convert to ints for comparison (graph_for_conversation expects ints)
@@ -181,6 +191,10 @@ async def insert_received_task_for_conversation(
         preserved_online_wait_task = None
         preserved_responsiveness_delay_task = None
         if old_graph:
+            # Remove the old graph completely BEFORE we modify its tasks
+            # This ensures work_queue.remove (which uses equality check) works.
+            work_queue.remove(old_graph)
+
             # Find the old received task to check for responsiveness delay task ID
             old_received_task = None
             for old_task in old_graph.tasks:
@@ -227,24 +241,24 @@ async def insert_received_task_for_conversation(
                 # other tasks might depend on them.
                 preserved_tasks.append(old_task)
 
-            # Remove the old graph completely
-            work_queue.remove(old_graph)
             # if preserved_tasks:
             #     logger.info(f"Preserving {len(preserved_tasks)} callout tasks from old graph.")
 
         def conversation_matcher(ctx):
             return (
-                ctx.get("channel_id") == channel_id and ctx.get("agent_id") == recipient_id
+                ctx.get("channel_id") == channel_id_int and ctx.get("agent_id") == agent_id_int
             )
 
         work_queue.remove_all(conversation_matcher)
 
         agent = get_agent_for_id(recipient_id)
         if not agent:
-            raise RuntimeError(f"Agent ID {recipient_id} not found")
-        client = agent.client
-        if not client:
+            raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
+        if not agent.client:
             raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+
+        recipient_name = agent.name
+        channel_name = await get_channel_name(agent, channel_id)
 
         # build params
         task_params = {}
@@ -263,17 +277,14 @@ async def insert_received_task_for_conversation(
         if clear_reactions:
             task_params["clear_reactions"] = True
 
-        assert recipient_id
-        recipient_name = await get_channel_name(agent, recipient_id)
-        channel_name = await get_channel_name(agent, channel_id)
-
         graph_id = f"recv-{uuid.uuid4().hex[:8]}"
 
         # Build new graph context, copying fetched_resources from old graph if present
         new_context = {
-            "agent_id": recipient_id,
-            "channel_id": channel_id,
+            "agent_id": agent_id_int,
+            "channel_id": channel_id_int,
             "agent_name": recipient_name,
+            "agent_config_name": agent.config_name,
             "channel_name": channel_name,
         }
 
@@ -283,7 +294,7 @@ async def insert_received_task_for_conversation(
             is_group_chat = bool(is_group_or_channel(dialog))
         except Exception:
             # Fallback heuristic: negative ids normally correspond to group/channel chats.
-            is_group_chat = channel_id is not None and channel_id < 0
+            is_group_chat = channel_id_int is not None and channel_id_int < 0
 
         new_context["is_group_chat"] = is_group_chat
 

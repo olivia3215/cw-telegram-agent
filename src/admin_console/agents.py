@@ -63,19 +63,24 @@ conversation_llm_module.register_conversation_llm_routes(agents_bp)
 conversation_module = _load_submodule("conversation")
 conversation_module.register_conversation_routes(agents_bp)
 
+# Load and register login routes
+login_module = _load_submodule("login")
+login_module.register_login_routes(agents_bp)
+
 @agents_bp.route("/api/agents", methods=["GET"])
 def api_agents():
     """Get list of all agents."""
     try:
         register_all_agents()
-        agents = list(get_all_agents())
+        agents = list(get_all_agents(include_disabled=True))
         agent_list = [
             {
                 "name": agent.name,
                 "config_name": agent.config_name,
                 "phone": agent.phone,
                 "agent_id": agent.agent_id if agent.agent_id else None,
-                "config_directory": agent.config_directory if agent.config_directory else None
+                "config_directory": agent.config_directory if agent.config_directory else None,
+                "is_disabled": agent.is_disabled
             }
             for agent in agents
         ]

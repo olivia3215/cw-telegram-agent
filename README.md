@@ -199,7 +199,7 @@ In addition the following prompts give agents additional capabilities
 
 Notes:
 
-* **Required fields:** `Agent Name`, `Agent Phone`, `Role Prompt`, `Agent Instructions`.
+* **Required fields:** `Agent Name`, `Agent Phone`, `Agent Instructions`.
 * **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Agent Stickers`.
   You may omit these entirely.
   

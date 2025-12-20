@@ -22,6 +22,7 @@ def mock_agent():
     agent.is_blocked = AsyncMock(return_value=False)
     # Mock dialog_cache to return None (no cache) so tests use iter_dialogs()
     agent.dialog_cache = None
+    agent.is_disabled = False
     return agent
 
 

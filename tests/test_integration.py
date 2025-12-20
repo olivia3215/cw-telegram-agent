@@ -48,6 +48,7 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
         system_prompt_name="TestPrompt",
         llm=MagicMock(history_size=10),
         client=mock_client,
+        is_disabled=False,
     )
 
     # Patch get_agent_for_id to return our mock
@@ -108,6 +109,7 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
         system_prompt_name="TestPrompt",
         llm=MagicMock(history_size=10),
         client=mock_client,
+        is_disabled=False,
     )
 
     # Patch get_agent_for_id to return our mock
@@ -179,6 +181,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
         system_prompt_name="TestPrompt",
         llm=MagicMock(history_size=10),
         client=mock_client,
+        is_disabled=False,
     )
 
     # Patch get_agent_for_id to return our mock

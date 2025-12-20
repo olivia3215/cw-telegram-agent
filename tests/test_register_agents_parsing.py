@@ -159,3 +159,42 @@ Roleplay
     persona_pos = instructions.index("## Character Persona")
     first_msg_pos = instructions.index("## First Message")
     assert scenario_pos < persona_pos < first_msg_pos
+
+
+def test_parse_agent_markdown_with_disabled_flag(tmp_path: Path):
+    """Test that the Disabled flag is correctly parsed."""
+    md = """# Agent Name
+Disabled Agent
+
+# Agent Phone
++1234567890
+
+# Agent Instructions
+Instructions here.
+
+# Role Prompt
+Person
+
+# Disabled
+"""
+    path = _write(tmp_path, "disabled.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["is_disabled"] is True
+
+    md_enabled = """# Agent Name
+Enabled Agent
+
+# Agent Phone
++1234567890
+
+# Agent Instructions
+Instructions here.
+
+# Role Prompt
+Person
+"""
+    path_enabled = _write(tmp_path, "enabled.md", md_enabled)
+    parsed_enabled = parse_agent_markdown(path_enabled)
+    assert parsed_enabled is not None
+    assert parsed_enabled["is_disabled"] is False

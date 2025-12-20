@@ -71,14 +71,27 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         )
         file = await _resolve_sticker_doc_in_set(client, set_short, sticker_name)
 
+    # Convert channel_id to integer and resolve entity
+    try:
+        channel_id_int = int(channel_id)
+    except (ValueError, TypeError):
+        channel_id_int = channel_id
+
+    # Get the entity first to ensure it's resolved (important for channels)
+    entity = await agent.get_cached_entity(channel_id_int)
+    if not entity:
+        # Fallback to channel_id_int if entity resolution fails, 
+        # though send_file will likely fail too in that case.
+        entity = channel_id_int
+
     try:
         if file:
             await client.send_file(
-                channel_id, file=file, file_type="sticker", reply_to=in_reply_to
+                entity, file=file, file_type="sticker", reply_to=in_reply_to
             )
         else:
             # Unknown: keep current behavior (plain text echo); diagnostics are in logs.
-            await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
+            await client.send_message(entity, sticker_name, reply_to=in_reply_to)
     except PremiumAccountRequiredError:
         # Premium stickers require a premium account to send
         # Send the sticker name as text instead (which shows as animated emoji)
@@ -86,7 +99,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
             f"[{agent.name}] Premium account required for sticker {sticker_name!r}, sending as text"
         )
         try:
-            await client.send_message(channel_id, sticker_name, reply_to=in_reply_to)
+            await client.send_message(entity, sticker_name, reply_to=in_reply_to)
         except Exception as e:
             logger.exception(
                 f"[{agent.name}] Failed to send fallback text message: {e}"

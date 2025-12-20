@@ -270,6 +270,11 @@ class WorkQueue:
                         from agent import get_agent_for_id
                         from schedule import get_responsiveness
                         agent = get_agent_for_id(agent_id)
+                        if agent and agent.is_disabled:
+                            # Skip graphs for disabled agents
+                            # They will eventually be cleaned up by run_one_tick when selected,
+                            # but skipping them here prevents them from clogging the round-robin.
+                            continue
                         if agent and agent.daily_schedule_description:
                             schedule = agent._load_schedule()
                             responsiveness = get_responsiveness(schedule, now)
@@ -420,6 +425,25 @@ class WorkQueue:
                 ):
                     return graph
             return None
+
+    def clear_tasks_for_agent(self, agent_id: int | None = None, agent_config_name: str | None = None, agent_display_name: str | None = None):
+        """Remove all task graphs belonging to a specific agent."""
+        with self._lock:
+            new_graphs = []
+            for g in self._task_graphs:
+                match = False
+                if agent_id is not None and g.context.get("agent_id") == agent_id:
+                    match = True
+                if agent_config_name is not None and g.context.get("agent_config_name") == agent_config_name:
+                    match = True
+                if agent_display_name is not None and g.context.get("agent_name") == agent_display_name:
+                    match = True
+                
+                if not match:
+                    new_graphs.append(g)
+            
+            self._task_graphs = new_graphs
+            self.save()
 
 
 # Singleton instance (outside dataclass)

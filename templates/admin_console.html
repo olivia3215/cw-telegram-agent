@@ -182,6 +182,108 @@
         .subtab-panel.active {
             display: block;
         }
+        
+        /* Agent Parameters styling */
+        .agent-param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .agent-status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #eee;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .agent-status-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .agent-status-info {
+            text-align: right;
+            min-width: 150px;
+        }
+        @media (max-width: 600px) {
+            .agent-status-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .agent-status-info {
+                text-align: left;
+                width: 100%;
+                border-top: 1px solid #f0f0f0;
+                padding-top: 8px;
+            }
+            .agent-param-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+        }
+        .agent-param-section {
+            margin-bottom: 24px;
+        }
+        .agent-param-section h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 16px;
+            color: #2c3e50;
+        }
+        .role-prompt-tag {
+            display: flex;
+            align-items: center;
+            background: #f0f2f5;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 14px;
+        }
+        .role-prompt-tag button {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0 4px;
+            margin-left: 8px;
+        }
+        .agent-param-textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .agent-param-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .agent-param-checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .agent-param-checkbox-label input {
+            margin-right: 8px;
+        }
+        .role-prompts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
         .placeholder-card {
             background: white;
             border-radius: 8px;
@@ -234,6 +336,31 @@
             padding: 0;
             margin-bottom: 16px;
             width: 100%;
+        }
+        @media (max-width: 600px) {
+            .directory-selector select {
+                min-width: 0;
+                width: 100%;
+            }
+            .import-section input {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 8px;
+            }
+            .import-section button {
+                width: 100%;
+            }
+            .auth-card {
+                padding: 20px;
+                max-width: 90%;
+            }
+            .header h1 {
+                font-size: 20px;
+            }
+            .tab-button {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
         }
         .media-item {
             display: flex;
@@ -887,11 +1014,11 @@
             fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        document.getElementById('media-container').innerHTML =
-                            `<div class="error">Error: ${data.error}</div>`;
-                        return;
-                    }
+                        if (data.error) {
+                            document.getElementById('media-container').innerHTML =
+                                `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                            return;
+                        }
 
                     // Flatten the grouped media into a single array
                     allMediaFiles = [];
@@ -967,7 +1094,7 @@
                         return;
                     }
                     document.getElementById('media-container').innerHTML =
-                        `<div class="error">Error loading media files: ${error}</div>`;
+                        `<div class="error">Error loading media files: ${escapeHtml(String(error))}</div>`;
                 });
         }
 
@@ -1377,16 +1504,16 @@
             // Format sticker name with emoji description
             const stickerName = media.sticker_name || media.unique_id;
             const displayName = (media.sticker_name && media.emoji_description)
-                ? `${media.sticker_name} (${media.emoji_description})`
-                : stickerName;
+                ? `${escapeHtml(media.sticker_name)} (${escapeHtml(media.emoji_description)})`
+                : escapeHtml(stickerName);
             
             // Add document ID to title if it's not already shown
             const titleWithId = (displayName !== media.unique_id && media.unique_id)
-                ? `${displayName} [${media.unique_id}]`
+                ? `${displayName} [${escapeHtml(media.unique_id)}]`
                 : displayName;
             
             // Determine type display - show "custom emoji" for emoji sets
-            let typeDisplay = media.kind;
+            let typeDisplay = escapeHtml(media.kind);
             if ((media.kind === 'sticker' || media.kind === 'animated_sticker') && media.is_emoji_set) {
                 typeDisplay = media.kind === 'animated_sticker' ? 'custom emoji (animated)' : 'custom emoji';
             }
@@ -1399,19 +1526,19 @@
                     <div class="media-info">
                         <h3 style="margin-top: 10px; margin-bottom: 10px;">${titleWithId}</h3>
                         <p><strong>Type:</strong> ${typeDisplay}</p>
-                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_display || media.sticker_set_name}</p>` : ''}
-                        <p><strong>Status:</strong> ${media.status}</p>
-                        ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
+                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${escapeHtml(media.sticker_set_display || media.sticker_set_name)}</p>` : ''}
+                        <p><strong>Status:</strong> ${escapeHtml(media.status)}</p>
+                        ${media.failure_reason ? `<p class="error">${escapeHtml(media.failure_reason)}</p>` : ''}
 
                         <div class="description-edit">
-                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${media.description || ''}</textarea>
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${escJsAttr(media.unique_id)}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${escapeHtml(media.description || '')}</textarea>
                             <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
                                 <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
-                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
-                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${media.unique_id}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
+                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${escJsAttr(media.unique_id)}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
+                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${escJsAttr(media.unique_id)}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
                                     <option value="">Move to...</option>
                                 </select>
-                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
+                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${escJsAttr(media.unique_id)}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -1941,12 +2068,10 @@
             
             // Load data when switching to main tabs
             if (tabName === 'agents') {
-                loadAgents();
-                // Show first subtab
+                // Show first subtab (which will call loadAgents)
                 switchSubtab('parameters');
             } else if (tabName === 'conversations') {
-                loadAgents();
-                // Show first subtab
+                // Show first subtab (which will call loadAgents)
                 switchSubtab('curated-memories-conv');
                 // If an agent is already selected, load conversation partners
                 const conversationsAgentSelect = document.getElementById('conversations-agent-select');
@@ -2194,6 +2319,223 @@
         }
 
         // Load agents list
+        async function createNewAgent(configDir) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config_directory: configDir })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = data.config_name;
+                    // Trigger change to load the new agent's config
+                    document.getElementById('agents-agent-select').dispatchEvent(new Event('change'));
+                } else {
+                    alert('Error creating agent: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error creating agent:', error);
+                alert('Error creating agent');
+            }
+        }
+
+        async function toggleAgentDisabled(agentName, isDisabled) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/disabled`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_disabled: isDisabled })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    if (!isDisabled) {
+                        // If enabling, trigger login check
+                        handleAgentLogin(agentName);
+                    } else {
+                        // Refresh configuration to update UI
+                        loadAgentConfiguration(agentName);
+                        // Also refresh agent list to show/hide (disabled)
+                        loadAgents().then(() => {
+                            document.getElementById('agents-agent-select').value = agentName;
+                        });
+                    }
+                } else {
+                    alert('Error updating agent status: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error toggling agent status:', error);
+                alert('Error toggling agent status');
+            }
+        }
+
+        async function handleAgentLogin(agentName) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent is authenticated and enabled.');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.status === 'needs_code') {
+                    const code = prompt('Enter the Telegram verification code for this agent:');
+                    if (code) {
+                        submitAgentLoginCode(agentName, code);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.status === 'needs_password') {
+                    const password = prompt('Enter the 2FA password for this agent:');
+                    if (password) {
+                        submitAgentLoginPassword(agentName, password);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.error) {
+                    alert('Login error: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                }
+            } catch (error) {
+                console.error('Error during agent login:', error);
+                alert('Error during agent login');
+            }
+        }
+
+        async function submitAgentLoginCode(agentName, code) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent successfully authenticated!');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.status === 'needs_password') {
+                    const password = prompt('Enter the 2FA password for this agent:');
+                    if (password) {
+                        submitAgentLoginPassword(agentName, password);
+                    } else {
+                        cancelAgentLogin(agentName);
+                    }
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                    handleAgentLogin(agentName); // Let them try again
+                }
+            } catch (error) {
+                console.error('Error submitting code:', error);
+                alert('Error submitting code');
+            }
+        }
+
+        async function submitAgentLoginPassword(agentName, password) {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                const data = await response.json();
+                
+                if (data.status === 'authenticated') {
+                    alert('Agent successfully authenticated!');
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                    handleAgentLogin(agentName); // Let them try again
+                }
+            } catch (error) {
+                console.error('Error submitting password:', error);
+                alert('Error submitting password');
+            }
+        }
+
+        async function cancelAgentLogin(agentName) {
+            await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/login/cancel`, {
+                method: 'POST'
+            });
+            loadAgentConfiguration(agentName);
+            loadAgents().then(() => {
+                document.getElementById('agents-agent-select').value = agentName;
+            });
+        }
+
+        async function renameAgentConfig(agentName, newName) {
+            if (!newName) {
+                newName = prompt('Enter new config name (without .md):', agentName);
+            }
+            if (!newName || newName === agentName) {
+                loadAgentConfiguration(agentName); // Refresh to revert input
+                return;
+            }
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/rename`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_config_name: newName })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    const newConfigName = data.new_config_name;
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = newConfigName;
+                    loadAgentConfiguration(newConfigName);
+                } else {
+                    alert('Error renaming agent: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                }
+            } catch (error) {
+                console.error('Error renaming agent:', error);
+                alert('Error renaming agent');
+                loadAgentConfiguration(agentName);
+            }
+        }
+
+        async function deleteAgent(agentName, displayName) {
+            const confirmation = prompt(`To delete agent "${displayName}", type DELETE ${displayName}:`);
+            if (confirmation !== `DELETE ${displayName}`) {
+                if (confirmation !== null) alert('Incorrect confirmation string.');
+                return;
+            }
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirmation: confirmation })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('Agent deleted successfully.');
+                    await loadAgents();
+                    document.getElementById('agents-agent-select').value = '';
+                    document.getElementById('parameters-container').innerHTML = '<div class="loading">Select an agent to configure</div>';
+                } else {
+                    alert('Error deleting agent: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error deleting agent:', error);
+                alert('Error deleting agent');
+            }
+        }
         async function loadAgents() {
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents`);
@@ -2217,12 +2559,42 @@
                     }));
                 }
                 
+                // Fetch config directories once for the "New Agent" options
+                let configDirs = [];
+                try {
+                    const configDirsResponse = await fetchWithAuth(`${API_BASE}/config-directories`);
+                    const configDirsData = await configDirsResponse.json();
+                    configDirs = configDirsData.directories || [];
+                } catch (e) {
+                    console.error('Error loading config directories:', e);
+                }
+
                 // Populate all agent selects
                 ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
                     const select = document.getElementById(selectId);
                     if (select) {
                         const currentValue = select.value;
                         select.innerHTML = '<option value="">Choose an agent...</option>';
+                        
+                        // Add "New Agent" entries for each config directory (only in agents tab)
+                        if (selectId === 'agents-agent-select' && configDirs.length > 0) {
+                            configDirs.forEach(dir => {
+                                const option = document.createElement('option');
+                                // Use dir.path if dir is an object, otherwise use dir itself
+                                const path = (typeof dir === 'object') ? dir.path : dir;
+                                const display = (typeof dir === 'object') ? dir.display_path : dir;
+                                option.value = `NEW_AGENT|${path}`;
+                                option.textContent = `+ New Agent in ${display}`;
+                                option.style.fontWeight = 'bold';
+                                option.style.color = '#28a745';
+                                select.appendChild(option);
+                            });
+                            const divider = document.createElement('option');
+                            divider.disabled = true;
+                            divider.textContent = '────────────────────';
+                            select.appendChild(divider);
+                        }
+
                         agents.forEach(agent => {
                             const option = document.createElement('option');
                             option.value = agent.config_name;
@@ -2230,6 +2602,13 @@
                             let displayName = agent.agent_id 
                                 ? `${agent.name} (${agent.agent_id})` 
                                 : agent.name;
+                            
+                            if (agent.is_disabled) {
+                                displayName += ' (disabled)';
+                                option.style.color = '#666';
+                                option.style.fontStyle = 'italic';
+                            }
+
                             // Add asterisk if agent has content for current subtab (only in agents tab)
                             if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.config_name]) {
                                 displayName += ' *';
@@ -2254,7 +2633,16 @@
 
         // Set up agent select change handlers with synchronization
         document.getElementById('agents-agent-select')?.addEventListener('change', (e) => {
-            const agentName = stripAsterisk(e.target.value);
+            const rawValue = e.target.value;
+            if (rawValue.startsWith('NEW_AGENT|')) {
+                const configDir = rawValue.split('|')[1];
+                createNewAgent(configDir);
+                // Reset select until creation is complete
+                e.target.value = '';
+                return;
+            }
+
+            const agentName = stripAsterisk(rawValue);
             
             // Synchronize with conversations agent select
             const conversationsSelect = document.getElementById('conversations-agent-select');
@@ -2344,7 +2732,7 @@
                     }
                     
                     const memories = data.memories || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewMemory(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewMemory(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
                     
                     if (memories.length === 0) {
                         html += '<div class="placeholder-card">No memories found.</div>';
@@ -2369,16 +2757,16 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${memory.created || 'N/A'}${metadataHtml}
+                                    <strong>ID:</strong> ${escapeHtml(memory.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(memory.created || 'N/A')}${metadataHtml}
                                 </div>
-                                <button onclick="deleteMemory('${agentName}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteMemory('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="memory-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleMemoryAutoSave('${agentName}', '${memory.id}')"
-                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                oninput="scheduleMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')"
+                            >${escapeHtml(memory.content || '')}</textarea>
                             <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `;
@@ -2608,7 +2996,7 @@
                     }
                     
                     const intentions = data.intentions || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewIntention(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Intention</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewIntention(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Intention</button></div>';
                     
                     if (intentions.length === 0) {
                         html += '<div class="placeholder-card">No intentions found.</div>';
@@ -2620,16 +3008,16 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${intention.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${intention.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(intention.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(intention.created || 'N/A')}
                                 </div>
-                                <button onclick="deleteIntention('${agentName}', '${intention.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteIntention('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="intention-${intention.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleIntentionAutoSave('${agentName}', '${intention.id}')"
-                            >${(intention.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                oninput="scheduleIntentionAutoSave('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')"
+                            >${escapeHtml(intention.content || '')}</textarea>
                             <div id="intention-status-${intention.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -2769,34 +3157,157 @@
                     const prompt = data.prompt || '';
                     const currentTimezone = data.timezone || '';
                     const availableTimezones = data.available_timezones || [];
+                    const isDisabled = data.is_disabled || false;
+                    
+                    // New fields
+                    const phone = data.phone || '';
+                    const rolePromptNames = data.role_prompt_names || [];
+                    const availableRolePrompts = data.available_role_prompts || [];
+                    const stickerSetNames = data.sticker_set_names || [];
+                    const explicitStickers = data.explicit_stickers || [];
+                    const dailyScheduleDescription = data.daily_schedule_description;
+                    const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <h3>Agent LLM</h3>
-                            <select id="agent-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentLLM('${agentName}', this.value)">
-                                ${availableLLMs.map(llm => {
-                                    return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
-                                }).join('')}
-                            </select>
+                            <div class="agent-status-header">
+                                <div>
+                                    <h3 style="margin: 0;">Agent Status</h3>
+                                    <div class="agent-status-actions">
+                                        <button onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                            ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
+                                        </button>
+                                        ${isDisabled ? `
+                                            <button onclick="deleteAgent('${escJsAttr(agentName)}', '${escJsAttr(data.name || agentName)}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                                Delete Agent
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                <div class="agent-status-info">
+                                    <div style="font-size: 12px; color: #666;">
+                                        Config Name (filename):
+                                        ${isDisabled ? 
+                                            `<input type="text" value="${escapeHtml(agentName)}" 
+                                                style="font-size: 12px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; width: 150px;"
+                                                onchange="renameAgentConfig('${escJsAttr(agentName)}', this.value)">` : 
+                                            `<strong>${escapeHtml(agentName)}</strong>`
+                                        }
+                                    </div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent Name (display)</h3>
+                                    <input id="agent-name-input" type="text" class="agent-param-input" value="${escapeHtml(data.name || '')}" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentName('${escJsAttr(agentName)}', this.value)">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Display name used in the console</div>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Agent Phone</h3>
+                                    <input id="agent-phone-input" type="text" class="agent-param-input" value="${phone}" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentPhone('${escJsAttr(agentName)}', this.value)">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
+                                </div>
+                            </div>
                             
-                            <h3>Agent Timezone</h3>
-                            <select id="agent-timezone-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateAgentTimezone('${agentName}', this.value)">
-                                <option value="">Server Default</option>
-                                ${availableTimezones.map(tz => {
-                                    // Escape HTML entities for safety
-                                    const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                                    const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                                    return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
-                                }).join('')}
-                            </select>
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent LLM</h3>
+                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
+                                        ${availableLLMs.map(llm => {
+                                            return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                        }).join('')}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <h3>Role Prompts</h3>
+                                <div id="role-prompts-list" class="role-prompts-container">
+                                    ${rolePromptNames.length > 0 ? rolePromptNames.map(name => `
+                                        <div class="role-prompt-tag">
+                                            <span>${escapeHtml(name)}</span>
+                                            ${isDisabled ? `<button onclick="removeRolePrompt('${escJsAttr(agentName)}', '${escJsAttr(name)}')">&times;</button>` : ''}
+                                        </div>
+                                    `).join('') : '<div style="color: #666; font-style: italic; font-size: 14px;">No role prompts selected</div>'}
+                                </div>
+                                <select id="available-role-prompts-select" ${!isDisabled ? 'disabled' : ''} 
+                                    onchange="if(this.value) addRolePrompt('${escJsAttr(agentName)}', this.value); this.value='';" 
+                                    class="agent-param-input" style="min-width: 200px; width: auto;">
+                                    <option value="">Add role prompt...</option>
+                                    ${availableRolePrompts.filter(p => !rolePromptNames.includes(p)).map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Sticker Sets</h3>
+                                    <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
+                                        class="agent-param-textarea" style="min-height: 80px;"
+                                        placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
+                                    >${escapeHtml(stickerSetNames.join('\n'))}</textarea>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Explicit Stickers</h3>
+                                    <textarea id="agent-explicit-stickers-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
+                                        class="agent-param-textarea" style="min-height: 80px;"
+                                        placeholder="SET :: STICKER per line, e.g.\nWendyDancer :: Wink\nCindyAI :: Hello"
+                                    >${escapeHtml(explicitStickers.join('\n'))}</textarea>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                                    <h3 style="margin: 0;">Daily Schedule</h3>
+                                    <label class="agent-param-checkbox-label">
+                                        <input type="checkbox" id="daily-schedule-enabled" ${dailyScheduleDescription !== null ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                            onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')">
+                                        Enabled
+                                    </label>
+                                </div>
+                                <textarea id="daily-schedule-textarea" ${!isDisabled ? 'disabled' : ''} 
+                                    onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')" 
+                                    class="agent-param-textarea" style="min-height: 60px; ${dailyScheduleDescription === null ? 'background: #f8f9fa; color: #999;' : ''}"
+                                    placeholder="Freeform English description of the daily schedule..."
+                                >${escapeHtml(dailyScheduleDescription || '')}</textarea>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent Timezone</h3>
+                                    <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${escJsAttr(agentName)}', this.value)">
+                                        <option value="">Server Default</option>
+                                        ${availableTimezones.map(tz => {
+                                            const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                                            const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                            return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
+                                        }).join('')}
+                                    </select>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Context Reset</h3>
+                                    <label class="agent-param-checkbox-label" style="margin-top: 8px;">
+                                        <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                            onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
+                                        Reset Context On First Message
+                                    </label>
+                                </div>
+                            </div>
                             
-                            <h3>Agent Prompt</h3>
-                            <textarea 
-                                id="agent-prompt-textarea" 
-                                style="width: 100%; min-height: 300px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleAgentPromptAutoSave('${agentName}')"
-                            >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-                            <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                            <div class="agent-param-section">
+                                <h3>Agent Instructions</h3>
+                                <textarea 
+                                    id="agent-prompt-textarea" 
+                                    class="agent-param-textarea" style="min-height: 300px;"
+                                    oninput="scheduleAgentPromptAutoSave('${escJsAttr(agentName)}')"
+                                >${escapeHtml(prompt)}</textarea>
+                                <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                            </div>
                         </div>
                     `;
                 })
@@ -2806,6 +3317,143 @@
                     }
                     container.innerHTML = `<div class="error">Error loading configuration: ${error}</div>`;
                 });
+        }
+
+        function updateAgentPhone(agentName, phone) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/phone`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating phone: ' + data.error);
+                else alert('Phone number updated successfully');
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating phone: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentName(agentName, name) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/name`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating name: ' + data.error);
+                else {
+                    alert('Agent name updated successfully');
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                    loadAgentConfiguration(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating name: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function addRolePrompt(agentName, roleName) {
+            // Get current prompts and add new one
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
+                .then(r => r.json())
+                .then(data => {
+                    const prompts = data.role_prompt_names || [];
+                    if (!prompts.includes(roleName)) {
+                        prompts.push(roleName);
+                        saveRolePrompts(agentName, prompts);
+                    }
+                });
+        }
+
+        function removeRolePrompt(agentName, roleName) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
+                .then(r => r.json())
+                .then(data => {
+                    const prompts = (data.role_prompt_names || []).filter(p => p !== roleName);
+                    saveRolePrompts(agentName, prompts);
+                });
+        }
+
+        function saveRolePrompts(agentName, prompts) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/role-prompts`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role_prompt_names: prompts })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating role prompts: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating role prompts: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentStickers(agentName) {
+            const sets = document.getElementById('agent-sticker-sets-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
+            const explicit = document.getElementById('agent-explicit-stickers-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/stickers`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sticker_set_names: sets, explicit_stickers: explicit })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating stickers: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating stickers: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentDailySchedule(agentName) {
+            const enabled = document.getElementById('daily-schedule-enabled').checked;
+            const description = document.getElementById('daily-schedule-textarea').value.trim();
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/daily-schedule`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled, description: description })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating daily schedule: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating daily schedule: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentResetContext(agentName, enabled) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/reset-context`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reset_context_on_first_message: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating reset context: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating reset context: ' + error);
+                loadAgentConfiguration(agentName);
+            });
         }
 
         function updateAgentLLM(agentName, llmName) {
@@ -3058,7 +3706,7 @@
                     }
                     
                     const memories = data.memories || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
                     
                     if (memories.length === 0) {
                         html += '<div class="placeholder-card">No curated memories found for this user.</div>';
@@ -3070,16 +3718,16 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${memory.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(memory.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(memory.created || 'N/A')}
                                 </div>
-                                <button onclick="deleteCuratedMemory('${agentName}', '${userId}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteCuratedMemory('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="curated-memory-params-${userId}-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleCuratedMemoryAutoSave('${agentName}', '${userId}', '${memory.id}')"
-                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                oninput="scheduleCuratedMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')"
+                            >${escapeHtml(memory.content || '')}</textarea>
                             <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -3153,11 +3801,11 @@
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <h3>Conversation LLM</h3>
-                            <p>Current: ${conversationLLM || agentDefaultLLM + ' (agent default)'}</p>
-                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${agentName}', '${userId}', this.value)">
+                            <p>Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
+                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this.value)">
                                 ${availableLLMs.map(llm => {
                                     const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                    return `<option value="${llm.value}" ${isSelected ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                    return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                 }).join('')}
                             </select>
                         </div>
@@ -3221,7 +3869,7 @@
                     }
                     
                     const plans = data.plans || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewPlan(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Plan</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewPlan(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Plan</button></div>';
                     
                     if (plans.length === 0) {
                         html += '<div class="placeholder-card">No plans found for this conversation.</div>';
@@ -3233,16 +3881,16 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${plan.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${plan.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(plan.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(plan.created || 'N/A')}
                                 </div>
-                                <button onclick="deletePlan('${agentName}', '${userId}', '${plan.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deletePlan('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="plan-${userId}-${plan.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="schedulePlanAutoSave('${agentName}', '${userId}', '${plan.id}')"
-                            >${(plan.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                oninput="schedulePlanAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')"
+                            >${escapeHtml(plan.content || '')}</textarea>
                             <div id="plan-status-${userId}-${plan.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -3559,40 +4207,40 @@
                     <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                             <div>
-                                <strong>ID:</strong> ${summary.id || 'N/A'}<br>
-                                <strong>Created:</strong> ${summary.created || 'N/A'}
+                                <strong>ID:</strong> ${escapeHtml(summary.id || 'N/A')}<br>
+                                <strong>Created:</strong> ${escapeHtml(summary.created || 'N/A')}
                             </div>
-                            <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            <button onclick="deleteSummary('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                         </div>
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Message IDs:</span>
-                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${escapeHtml(String(summary.min_message_id || ''))}" 
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">-</span>
-                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${escapeHtml(String(summary.max_message_id || ''))}" 
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
                         </div>
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
-                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${escapeHtml(summary.first_message_date || '')}" 
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">to</span>
-                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${escapeHtml(summary.last_message_date || '')}" 
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
                         </div>
                         <textarea 
                             id="summary-${userId}-${summary.id}" 
                             style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                            oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
-                        >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
+                        >${escapeHtml(summary.content || '')}</textarea>
                         <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                     </div>
                 `).join('');
@@ -3608,7 +4256,7 @@
                     // All messages summarized - show placeholder and delete button
                     html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
                     html += '<div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; margin-bottom: 12px;">';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += '</div>';
                 } else {
                     // Has unsummarized messages - show header with all controls
@@ -3616,10 +4264,10 @@
                     html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
                     html += '<div style="display: flex; align-items: center; gap: 16px;">';
                     html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
-                    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
+                    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
                     html += 'Display Translation</label>';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
-                    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                     html += '</div>';
                     html += '</div>';
                 }
@@ -3703,7 +4351,7 @@
                     // Build metadata line with sender name and ID
                     let senderDisplay = '';
                     if (msg.sender_name && msg.sender_id) {
-                        senderDisplay = `<strong>${(msg.sender_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong> (${msg.sender_id})`;
+                        senderDisplay = `<strong>${escapeHtml(msg.sender_name || '')}</strong> (${escapeHtml(String(msg.sender_id))})`;
                     } else if (msg.sender_id) {
                         senderDisplay = `<strong>${msg.sender_id}</strong>`;
                     } else {
@@ -5185,6 +5833,13 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function escJsAttr(str) {
+            if (!str) return '';
+            return str.replace(/\\/g, '\\\\')
+                      .replace(/'/g, "\\'")
+                      .replace(/"/g, '&quot;');
         }
         
         // Ensure subtab bars are visible for active tab panels on page load
