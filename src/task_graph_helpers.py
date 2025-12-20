@@ -126,7 +126,12 @@ async def insert_received_task_for_conversation(
         work_queue = WorkQueue.get_instance()
     
     agent = get_agent_for_id(recipient_id)
-    if agent and agent.is_disabled:
+    if not agent:
+        raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
+    if not agent.client:
+        raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+
+    if agent.is_disabled:
         logger.info(
             f"[{agent.name}] Skipping received task creation for disabled agent"
         )
@@ -247,8 +252,12 @@ async def insert_received_task_for_conversation(
         work_queue.remove_all(conversation_matcher)
 
         agent = get_agent_for_id(recipient_id)
-        # Use recipient_id if agent not found (for tests)
-        recipient_name = getattr(agent, "name", str(recipient_id))
+        if not agent:
+            raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
+        if not agent.client:
+            raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+
+        recipient_name = agent.name
         channel_name = await get_channel_name(agent, channel_id)
 
         # build params
