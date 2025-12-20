@@ -1531,14 +1531,14 @@
                         ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
 
                         <div class="description-edit">
-                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${media.unique_id}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${media.description || ''}</textarea>
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${escJsAttr(media.unique_id)}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${media.description || ''}</textarea>
                             <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
                                 <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
-                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
-                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${media.unique_id}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
+                                <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${escJsAttr(media.unique_id)}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
+                                <select id="move-dir-${media.unique_id}" onchange="moveMedia('${escJsAttr(media.unique_id)}')" style="padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; background: white;">
                                     <option value="">Move to...</option>
                                 </select>
-                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${media.unique_id}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
+                                <button id="delete-btn-${media.unique_id}" onclick="deleteMedia('${escJsAttr(media.unique_id)}')" style="padding: 4px 8px; font-size: 11px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -2725,7 +2725,7 @@
                     }
                     
                     const memories = data.memories || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewMemory(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewMemory(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
                     
                     if (memories.length === 0) {
                         html += '<div class="placeholder-card">No memories found.</div>';
@@ -2753,12 +2753,12 @@
                                     <strong>ID:</strong> ${memory.id || 'N/A'}<br>
                                     <strong>Created:</strong> ${memory.created || 'N/A'}${metadataHtml}
                                 </div>
-                                <button onclick="deleteMemory('${agentName}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteMemory('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="memory-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleMemoryAutoSave('${agentName}', '${memory.id}')"
+                                oninput="scheduleMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')"
                             >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                             <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
@@ -2989,7 +2989,7 @@
                     }
                     
                     const intentions = data.intentions || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewIntention(\'' + agentName + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Intention</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewIntention(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Intention</button></div>';
                     
                     if (intentions.length === 0) {
                         html += '<div class="placeholder-card">No intentions found.</div>';
@@ -3004,12 +3004,12 @@
                                     <strong>ID:</strong> ${intention.id || 'N/A'}<br>
                                     <strong>Created:</strong> ${intention.created || 'N/A'}
                                 </div>
-                                <button onclick="deleteIntention('${agentName}', '${intention.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteIntention('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="intention-${intention.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleIntentionAutoSave('${agentName}', '${intention.id}')"
+                                oninput="scheduleIntentionAutoSave('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')"
                             >${(intention.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                             <div id="intention-status-${intention.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
@@ -3167,14 +3167,14 @@
                                 <div>
                                     <h3 style="margin: 0;">Agent Status</h3>
                                     <div class="agent-status-actions">
-                                        <button onclick="toggleAgentDisabled('${agentName}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                        <button onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
-                                            <button onclick="renameAgentConfig('${agentName}')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <button onclick="renameAgentConfig('${escJsAttr(agentName)}')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Rename Config
                                             </button>
-                                            <button onclick="deleteAgent('${agentName}', '${data.name || agentName}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <button onclick="deleteAgent('${escJsAttr(agentName)}', '${escJsAttr(data.name || agentName)}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Delete Agent
                                             </button>
                                         ` : ''}
@@ -3190,12 +3190,12 @@
                                 <div class="agent-param-section">
                                     <h3>Agent Phone</h3>
                                     <input id="agent-phone-input" type="text" class="agent-param-input" value="${phone}" ${!isDisabled ? 'disabled' : ''} 
-                                        onchange="updateAgentPhone('${agentName}', this.value)">
+                                        onchange="updateAgentPhone('${escJsAttr(agentName)}', this.value)">
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
                                 </div>
                                 <div class="agent-param-section">
                                     <h3>Agent LLM</h3>
-                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${agentName}', this.value)">
+                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
                                         ${availableLLMs.map(llm => {
                                             return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
                                         }).join('')}
@@ -3209,12 +3209,12 @@
                                     ${rolePromptNames.length > 0 ? rolePromptNames.map(name => `
                                         <div class="role-prompt-tag">
                                             <span>${name}</span>
-                                            ${isDisabled ? `<button onclick="removeRolePrompt('${agentName}', '${name}')">&times;</button>` : ''}
+                                            ${isDisabled ? `<button onclick="removeRolePrompt('${escJsAttr(agentName)}', '${escJsAttr(name)}')">&times;</button>` : ''}
                                         </div>
                                     `).join('') : '<div style="color: #666; font-style: italic; font-size: 14px;">No role prompts selected</div>'}
                                 </div>
                                 <select id="available-role-prompts-select" ${!isDisabled ? 'disabled' : ''} 
-                                    onchange="if(this.value) addRolePrompt('${agentName}', this.value); this.value='';" 
+                                    onchange="if(this.value) addRolePrompt('${escJsAttr(agentName)}', this.value); this.value='';" 
                                     class="agent-param-input" style="min-width: 200px; width: auto;">
                                     <option value="">Add role prompt...</option>
                                     ${availableRolePrompts.filter(p => !rolePromptNames.includes(p)).map(p => `<option value="${p}">${p}</option>`).join('')}
@@ -3225,7 +3225,7 @@
                                 <div class="agent-param-section">
                                     <h3>Sticker Sets</h3>
                                     <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
-                                        onchange="updateAgentStickers('${agentName}')" 
+                                        onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
                                         class="agent-param-textarea" style="min-height: 80px;"
                                         placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
                                     >${stickerSetNames.join('\n')}</textarea>
@@ -3233,7 +3233,7 @@
                                 <div class="agent-param-section">
                                     <h3>Explicit Stickers</h3>
                                     <textarea id="agent-explicit-stickers-textarea" ${!isDisabled ? 'disabled' : ''} 
-                                        onchange="updateAgentStickers('${agentName}')" 
+                                        onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
                                         class="agent-param-textarea" style="min-height: 80px;"
                                         placeholder="SET :: STICKER per line, e.g.\nWendyDancer :: Wink\nCindyAI :: Hello"
                                     >${explicitStickers.join('\n')}</textarea>
@@ -3245,12 +3245,12 @@
                                     <h3 style="margin: 0;">Daily Schedule</h3>
                                     <label class="agent-param-checkbox-label">
                                         <input type="checkbox" id="daily-schedule-enabled" ${dailyScheduleDescription !== null ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
-                                            onchange="updateAgentDailySchedule('${agentName}')">
+                                            onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')">
                                         Enabled
                                     </label>
                                 </div>
                                 <textarea id="daily-schedule-textarea" ${!isDisabled ? 'disabled' : ''} 
-                                    onchange="updateAgentDailySchedule('${agentName}')" 
+                                    onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')" 
                                     class="agent-param-textarea" style="min-height: 60px; ${dailyScheduleDescription === null ? 'background: #f8f9fa; color: #999;' : ''}"
                                     placeholder="Freeform English description of the daily schedule..."
                                 >${dailyScheduleDescription || ''}</textarea>
@@ -3259,7 +3259,7 @@
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
                                     <h3>Agent Timezone</h3>
-                                    <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${agentName}', this.value)">
+                                    <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${escJsAttr(agentName)}', this.value)">
                                         <option value="">Server Default</option>
                                         ${availableTimezones.map(tz => {
                                             const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -3272,7 +3272,7 @@
                                     <h3>Context Reset</h3>
                                     <label class="agent-param-checkbox-label" style="margin-top: 8px;">
                                         <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
-                                            onchange="updateAgentResetContext('${agentName}', this.checked)">
+                                            onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
                                         Reset Context On First Message
                                     </label>
                                 </div>
@@ -3283,7 +3283,7 @@
                                 <textarea 
                                     id="agent-prompt-textarea" 
                                     class="agent-param-textarea" style="min-height: 300px;"
-                                    oninput="scheduleAgentPromptAutoSave('${agentName}')"
+                                    oninput="scheduleAgentPromptAutoSave('${escJsAttr(agentName)}')"
                                 >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                                 <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                             </div>
@@ -3662,7 +3662,7 @@
                     }
                     
                     const memories = data.memories || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
                     
                     if (memories.length === 0) {
                         html += '<div class="placeholder-card">No curated memories found for this user.</div>';
@@ -3677,12 +3677,12 @@
                                     <strong>ID:</strong> ${memory.id || 'N/A'}<br>
                                     <strong>Created:</strong> ${memory.created || 'N/A'}
                                 </div>
-                                <button onclick="deleteCuratedMemory('${agentName}', '${userId}', '${memory.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteCuratedMemory('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="curated-memory-params-${userId}-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleCuratedMemoryAutoSave('${agentName}', '${userId}', '${memory.id}')"
+                                oninput="scheduleCuratedMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')"
                             >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                             <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
@@ -3758,7 +3758,7 @@
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <h3>Conversation LLM</h3>
                             <p>Current: ${conversationLLM || agentDefaultLLM + ' (agent default)'}</p>
-                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${agentName}', '${userId}', this.value)">
+                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this.value)">
                                 ${availableLLMs.map(llm => {
                                     const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
                                     return `<option value="${llm.value}" ${isSelected ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
@@ -3825,7 +3825,7 @@
                     }
                     
                     const plans = data.plans || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewPlan(\'' + agentName + '\', \'' + userId + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Plan</button></div>';
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewPlan(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Plan</button></div>';
                     
                     if (plans.length === 0) {
                         html += '<div class="placeholder-card">No plans found for this conversation.</div>';
@@ -3840,12 +3840,12 @@
                                     <strong>ID:</strong> ${plan.id || 'N/A'}<br>
                                     <strong>Created:</strong> ${plan.created || 'N/A'}
                                 </div>
-                                <button onclick="deletePlan('${agentName}', '${userId}', '${plan.id}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deletePlan('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
                                 id="plan-${userId}-${plan.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="schedulePlanAutoSave('${agentName}', '${userId}', '${plan.id}')"
+                                oninput="schedulePlanAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')"
                             >${(plan.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                             <div id="plan-status-${userId}-${plan.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
@@ -4166,17 +4166,17 @@
                                 <strong>ID:</strong> ${summary.id || 'N/A'}<br>
                                 <strong>Created:</strong> ${summary.created || 'N/A'}
                             </div>
-                            <button onclick="deleteSummary('${agentName}', '${userId}', '${summary.id}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                            <button onclick="deleteSummary('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                         </div>
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Message IDs:</span>
                                 <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">-</span>
                                 <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
                         </div>
@@ -4184,18 +4184,18 @@
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
                                 <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">to</span>
                                 <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date || ''}" 
-                                    oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                                    oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
                         </div>
                         <textarea 
                             id="summary-${userId}-${summary.id}" 
                             style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                            oninput="scheduleSummaryAutoSave('${agentName}', '${userId}', '${summary.id}')"
+                            oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                         >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                         <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                     </div>
@@ -4212,7 +4212,7 @@
                     // All messages summarized - show placeholder and delete button
                     html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
                     html += '<div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; margin-bottom: 12px;">';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += '</div>';
                 } else {
                     // Has unsummarized messages - show header with all controls
@@ -4220,10 +4220,10 @@
                     html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
                     html += '<div style="display: flex; align-items: center; gap: 16px;">';
                     html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
-                    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${agentName}', '${userId}')" style="margin-right: 8px;">`;
+                    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
                     html += 'Display Translation</label>';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
-                    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${agentName}', '${userId}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
+                    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                     html += '</div>';
                     html += '</div>';
                 }
@@ -5789,6 +5789,13 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function escJsAttr(str) {
+            if (!str) return '';
+            return str.replace(/\\/g, '\\\\')
+                      .replace(/'/g, "\\'")
+                      .replace(/"/g, '&quot;');
         }
         
         // Ensure subtab bars are visible for active tab panels on page load
