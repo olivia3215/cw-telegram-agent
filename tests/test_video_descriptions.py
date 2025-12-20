@@ -479,10 +479,8 @@ async def test_ai_generating_source_calls_describe_video():
     # Mock document
     doc = MagicMock()
 
-    # Mock download_media_bytes and budget
-    with patch("media.media_source.download_media_bytes") as mock_download, \
-         patch("media.media_source.has_description_budget", return_value=True), \
-         patch("media.media_source.consume_description_budget"):
+    # Mock download_media_bytes
+    with patch("media.media_source.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_video_bytes_12345"
 
         # Mock detect_mime_type_from_bytes
@@ -526,9 +524,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download, \
-         patch("media.media_source.has_description_budget", return_value=True), \
-         patch("media.media_source.consume_description_budget"):
+    with patch("media.media_source.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
@@ -588,9 +584,7 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download, \
-         patch("media.media_source.has_description_budget", return_value=True), \
-         patch("media.media_source.consume_description_budget"):
+    with patch("media.media_source.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_image_bytes"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
@@ -632,9 +626,7 @@ async def test_ai_generating_source_handles_video_too_long_error():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download, \
-         patch("media.media_source.has_description_budget", return_value=True), \
-         patch("media.media_source.consume_description_budget"):
+    with patch("media.media_source.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_long_video"
 
         with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:

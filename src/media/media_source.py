@@ -30,8 +30,7 @@ from llm.media_helper import get_media_llm
 from telegram_download import download_media_bytes
 
 from .media_budget import (
-    consume_description_budget,
-    has_description_budget,
+    try_consume_description_budget,
 )
 from .mime_utils import (
     detect_mime_type_from_bytes,
@@ -610,12 +609,12 @@ class BudgetExhaustedMediaSource(MediaSource):
         """
         Check budget and return None or fallback.
 
-        If budget is available: returns None (allowing AI description)
+        If budget is available: consumes budget and returns None
         If budget is exhausted: returns a simple fallback record
         """
 
-        if has_description_budget():
-            # Budget available - return None to let AIGeneratingMediaSource handle it
+        if try_consume_description_budget():
+            # Budget available and consumed - return None to let AIGeneratingMediaSource handle it
             return None
         else:
             # Budget exhausted - return fallback record
@@ -984,9 +983,6 @@ class AIGeneratingMediaSource(MediaSource):
         # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
-
-            # Consume budget before LLM call
-            consume_description_budget()
 
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
