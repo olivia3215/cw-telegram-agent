@@ -4731,6 +4731,9 @@
 
         // Helper function to update a single message with translation
         function updateMessageTranslation(messageId, translatedText) {
+            // Don't update if translation is disabled
+            if (!showTranslation) return;
+            
             const messageEl = document.getElementById(`message-${messageId}`);
             if (!messageEl) return;
             
@@ -4754,17 +4757,22 @@
             }
         }
         
-        // Track active EventSource to close it if needed
-        let translationEventSource = null;
+        // Track active translation stream for cancellation
+        let translationAbortController = null;
+        let translationStreamReader = null;
         
         function toggleTranslation(agentName, userId) {
             const checkbox = document.getElementById('translation-toggle');
             showTranslation = checkbox.checked;
             
-            // Close any existing EventSource connection
-            if (translationEventSource) {
-                translationEventSource.close();
-                translationEventSource = null;
+            // Cancel any active translation stream
+            if (translationAbortController) {
+                translationAbortController.abort();
+                translationAbortController = null;
+            }
+            if (translationStreamReader) {
+                translationStreamReader.cancel();
+                translationStreamReader = null;
             }
             
             if (showTranslation) {
@@ -4826,6 +4834,18 @@
         }
         
         function startTranslationStream(agentName, userId, checkbox) {
+            // Cancel any existing stream first
+            if (translationAbortController) {
+                translationAbortController.abort();
+            }
+            if (translationStreamReader) {
+                translationStreamReader.cancel();
+            }
+            
+            // Create new AbortController for this stream
+            translationAbortController = new AbortController();
+            const abortSignal = translationAbortController.signal;
+            
             // Build the URL for SSE endpoint
             const url = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/translate`;
             
@@ -4838,7 +4858,8 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: requestBody
+                body: requestBody,
+                signal: abortSignal
             })
             .then(response => {
                 if (!response.ok) {
@@ -4855,14 +4876,23 @@
                 if (contentType && contentType.includes('text/event-stream')) {
                     // Handle SSE stream
                     const reader = response.body.getReader();
+                    translationStreamReader = reader; // Store reader for cancellation
                     const decoder = new TextDecoder();
                     let buffer = '';
                     
                     function readStream() {
+                        // Check if translation was disabled before continuing
+                        if (!showTranslation || abortSignal.aborted) {
+                            reader.cancel();
+                            translationStreamReader = null;
+                            translationAbortController = null;
+                            return;
+                        }
+                        
                         reader.read().then(({ done, value }) => {
                             if (done) {
                                 // Stream completed - process any remaining buffer
-                                if (buffer.trim()) {
+                                if (buffer.trim() && showTranslation && !abortSignal.aborted) {
                                     const events = buffer.split('\n\n');
                                     for (const event of events) {
                                         if (event.trim()) {
@@ -4880,6 +4910,16 @@
                                         }
                                     }
                                 }
+                                translationStreamReader = null;
+                                translationAbortController = null;
+                                return;
+                            }
+                            
+                            // Check again if translation was disabled
+                            if (!showTranslation || abortSignal.aborted) {
+                                reader.cancel();
+                                translationStreamReader = null;
+                                translationAbortController = null;
                                 return;
                             }
                             
@@ -4890,7 +4930,7 @@
                             buffer = events.pop() || '';
                             
                             for (const event of events) {
-                                if (event.trim()) {
+                                if (event.trim() && showTranslation && !abortSignal.aborted) {
                                     // Parse SSE event (format: "data: {...}")
                                     const lines = event.split('\n');
                                     for (const line of lines) {
@@ -4908,9 +4948,13 @@
                             
                             readStream();
                         }).catch(error => {
+                            // Clean up on error
+                            translationStreamReader = null;
+                            translationAbortController = null;
+                            
                             console.error('Error reading stream:', error);
                             if (error && error.message !== 'unauthorized') {
-                                // Only show alert for unexpected errors
+                                // Only show alert for unexpected errors (not cancellation)
                                 if (!error.message.includes('aborted') && !error.message.includes('canceled')) {
                                     alert('Error receiving translations: ' + error);
                                     checkbox.checked = false;
@@ -4949,12 +4993,16 @@
                 }
             })
             .catch(error => {
+                // Clean up on error
+                translationStreamReader = null;
+                translationAbortController = null;
+                
                 if (error && error.message === 'unauthorized') {
                     return;
                 }
                 console.error('Translation stream error:', error);
-                // Show alert for fetch errors (not stream read errors)
-                if (error.message && !error.message.includes('aborted') && !error.message.includes('canceled')) {
+                // Show alert for fetch errors (not stream read errors or aborts)
+                if (error.name !== 'AbortError' && error.message && !error.message.includes('aborted') && !error.message.includes('canceled')) {
                     alert('Error translating messages: ' + error.message);
                     checkbox.checked = false;
                     showTranslation = false;
@@ -4963,6 +5011,9 @@
         }
         
         function handleTranslationEvent(data, checkbox) {
+            // Don't process events if translation is disabled
+            if (!showTranslation) return;
+            
             if (data.type === 'cached') {
                 // Initial cached translations
                 Object.assign(conversationTranslations, data.translations || {});
@@ -4978,8 +5029,12 @@
             } else if (data.type === 'complete') {
                 // Translation complete
                 console.log('Translation stream completed');
+                translationStreamReader = null;
+                translationAbortController = null;
             } else if (data.type === 'error') {
                 // Error occurred
+                translationStreamReader = null;
+                translationAbortController = null;
                 alert('Error translating messages: ' + (data.error || 'Unknown error'));
                 checkbox.checked = false;
                 showTranslation = false;
