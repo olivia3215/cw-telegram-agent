@@ -1618,16 +1618,16 @@
                     console.log('Lottie animation initialized successfully');
 
                     // Handle animation errors
-                    animation.addEventListener('error', (error) => {
-                        console.error('Lottie animation error:', error);
-                        container.innerHTML = `
-                            <div style="text-align: center; color: #dc3545;">
-                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
-                                <div style="font-size: 11px;">Animation Error</div>
-                                <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
-                            </div>
-                        `;
-                    });
+                            animation.addEventListener('error', (error) => {
+                                console.error('Lottie animation error:', error);
+                                container.innerHTML = `
+                                    <div style="text-align: center; color: #dc3545;">
+                                        <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                                        <div style="font-size: 11px;">Animation Error</div>
+                                        <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
+                                    </div>
+                                `;
+                            });
 
                     // Handle successful loading
                     animation.addEventListener('DOMLoaded', () => {
@@ -1643,7 +1643,7 @@
                         <div style="text-align: center; color: #dc3545;">
                             <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
                             <div style="font-size: 11px;">Load Failed</div>
-                            <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
                             <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
                         </div>
                     `;
@@ -1823,7 +1823,7 @@
                     const statusElements = mediaItem.querySelectorAll('p');
                     for (const p of statusElements) {
                         if (p.textContent.includes('Status:')) {
-                            p.innerHTML = `<strong>Status:</strong> ${data.status || 'ok'}`;
+                            p.innerHTML = `<strong>Status:</strong> ${escapeHtml(data.status || 'ok')}`;
                             break;
                         }
                     }
@@ -1994,7 +1994,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    statusDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    statusDiv.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                 } else {
                     statusDiv.innerHTML = '<div style="color: #28a745;">Import completed!</div>';
                     // Reload media files
@@ -2006,7 +2006,7 @@
                     statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
                     return;
                 }
-                statusDiv.innerHTML = `<div class="error">Error: ${error}</div>`;
+                statusDiv.innerHTML = `<div class="error">Error: ${escapeHtml(error)}</div>`;
             });
         }
 
@@ -2727,7 +2727,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -2777,7 +2777,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading memories: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading memories: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -2991,7 +2991,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -3027,7 +3027,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading intentions: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading intentions: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -3148,7 +3148,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -3207,7 +3207,7 @@
                                 </div>
                                 <div class="agent-param-section">
                                     <h3>Agent Phone</h3>
-                                    <input id="agent-phone-input" type="text" class="agent-param-input" value="${phone}" ${!isDisabled ? 'disabled' : ''} 
+                                    <input id="agent-phone-input" type="text" class="agent-param-input" value="${escapeHtml(phone)}" ${!isDisabled ? 'disabled' : ''} 
                                         onchange="updateAgentPhone('${escJsAttr(agentName)}', this.value)">
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
                                 </div>
@@ -3218,7 +3218,7 @@
                                     <h3>Agent LLM</h3>
                                     <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
                                         ${availableLLMs.map(llm => {
-                                            return `<option value="${llm.value}" ${llm.value === currentLLM ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                            return `<option value="${escapeHtml(llm.value)}" ${llm.value === currentLLM ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                         }).join('')}
                                     </select>
                                 </div>
@@ -3283,9 +3283,7 @@
                                     <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${escJsAttr(agentName)}', this.value)">
                                         <option value="">Server Default</option>
                                         ${availableTimezones.map(tz => {
-                                            const escapedValue = tz.value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                                            const escapedLabel = tz.label.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                                            return `<option value="${escapedValue}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapedLabel}</option>`;
+                                            return `<option value="${escapeHtml(tz.value)}" ${tz.value === currentTimezone ? 'selected' : ''}>${escapeHtml(tz.label)}</option>`;
                                         }).join('')}
                                     </select>
                                 </div>
@@ -3315,7 +3313,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading configuration: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading configuration: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -3701,7 +3699,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -3737,7 +3735,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading curated memories: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading curated memories: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -3790,7 +3788,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -3815,7 +3813,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading conversation LLM: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading conversation LLM: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -3864,7 +3862,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -3900,7 +3898,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading plans: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading plans: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -4143,7 +4141,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
-                        container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
                     }
                     
@@ -4161,7 +4159,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading conversation: ${error}</div>`;
+                    container.innerHTML = `<div class="error">Error loading conversation: ${escapeHtml(error)}</div>`;
                 });
         }
 
@@ -4576,16 +4574,16 @@
                     console.log('Lottie animation initialized successfully for conversation TGS');
 
                     // Handle animation errors
-                    animation.addEventListener('error', (error) => {
-                        console.error('Lottie animation error:', error);
-                        container.innerHTML = `
-                            <div style="text-align: center; color: #dc3545;">
-                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
-                                <div style="font-size: 11px;">Animation Error</div>
-                                <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
-                            </div>
-                        `;
-                    });
+                            animation.addEventListener('error', (error) => {
+                                console.error('Lottie animation error:', error);
+                                container.innerHTML = `
+                                    <div style="text-align: center; color: #dc3545;">
+                                        <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
+                                        <div style="font-size: 11px;">Animation Error</div>
+                                        <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
+                                    </div>
+                                `;
+                            });
 
                     // Handle successful loading
                     animation.addEventListener('DOMLoaded', () => {
@@ -4601,7 +4599,7 @@
                         <div style="text-align: center; color: #dc3545;">
                             <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
                             <div style="font-size: 11px;">Load Failed</div>
-                            <div style="font-size: 10px; margin-top: 5px;">${error.message || 'Unknown error'}</div>
+                            <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
                             <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
                         </div>
                     `;
@@ -4867,7 +4865,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${data.error}</div>`;
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${escapeHtml(data.error)}</div>`;
                 } else {
                     statusDiv.innerHTML = '<div style="color: #28a745;">XSend task created successfully!</div>';
                     intentTextarea.value = '';
@@ -4877,7 +4875,7 @@
                 if (error && error.message === 'unauthorized') {
                     return;
                 }
-                statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${error}</div>`;
+                statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${escapeHtml(error)}</div>`;
             });
         }
 
