@@ -83,6 +83,7 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
         def __init__(self):
             self.client = object()
             self.name = "Stub"
+            self.config_name = "Stub"
             self.agent_id = 100
             self.is_disabled = False
         async def get_cached_entity(self, _):

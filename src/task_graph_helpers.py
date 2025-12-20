@@ -284,6 +284,7 @@ async def insert_received_task_for_conversation(
             "agent_id": agent_id_int,
             "channel_id": channel_id_int,
             "agent_name": recipient_name,
+            "agent_config_name": agent.config_name,
             "channel_name": channel_name,
         }
 
