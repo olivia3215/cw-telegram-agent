@@ -4864,11 +4864,16 @@
             .then(response => {
                 if (!response.ok) {
                     // Try to parse error as JSON
-                    return response.json().then(data => {
-                        throw new Error(data.error || `HTTP error! status: ${response.status}`);
-                    }).catch(() => {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    });
+                    // Handle JSON parsing errors first, then handle successful parse
+                    return response.json()
+                        .catch(() => {
+                            // JSON parsing failed, throw generic error
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        })
+                        .then(data => {
+                            // JSON parsing succeeded, throw with the error message from the server
+                            throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                        });
                 }
                 
                 // Check if response is SSE (text/event-stream)
