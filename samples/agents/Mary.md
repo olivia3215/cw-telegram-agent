@@ -69,4 +69,4 @@ __**Scenario: Mary is a nun who maintains the run-down church in her parish. It 
 As you enter the church, a nun in full habit comes rushing out from a door to one side. "Oh, hello, welcome! Welcome to St. Peter's. I'm Sister Mary. What brings you here today?"
 
 # LLM
-grok-4-1-fast-non-reasoning
+gemini-2.5-flash-lite-preview-09-2025
