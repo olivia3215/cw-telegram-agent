@@ -4368,8 +4368,14 @@
                         reactionsHtml = `<div style="font-size: 11px; color: #888; margin-top: 4px; font-style: italic;">Reactions: ${msg.reactions}</div>`;
                     }
                     
+                    // Determine background color: grey if translation is requested but not available, otherwise normal
+                    let bgColor = msg.is_from_agent ? '#e3f2fd' : 'white';
+                    if (showTranslation && msg.text && !conversationTranslations[msg.id]) {
+                        bgColor = '#e0e0e0'; // Grey background for messages awaiting translation
+                    }
+                    
                     return `
-                        <div style="background: ${msg.is_from_agent ? '#e3f2fd' : 'white'}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
+                        <div id="message-${msg.id}" data-message-id="${msg.id}" style="background: ${bgColor}; padding: 12px; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 4px solid ${msg.is_from_agent ? '#2196f3' : '#4caf50'};">
                             <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
                                 ${metadataLine}
                             </div>
@@ -4723,77 +4729,255 @@
             });
         }
 
+        // Helper function to update a single message with translation
+        function updateMessageTranslation(messageId, translatedText) {
+            const messageEl = document.getElementById(`message-${messageId}`);
+            if (!messageEl) return;
+            
+            // Update the translation in our dictionary
+            conversationTranslations[messageId] = translatedText;
+            
+            // Find all content divs with text (there might be multiple if message has parts)
+            const contentDivs = messageEl.querySelectorAll('div[style*="white-space: pre-wrap"]');
+            if (contentDivs.length > 0) {
+                // Update the first text div (or all if there are multiple text parts)
+                // For messages with parts, we typically only want to update the first text part
+                // For simple messages, there's only one div
+                contentDivs[0].innerHTML = translatedText;
+            }
+            
+            // Update background color from grey to normal
+            const msg = conversationMessages.find(m => String(m.id) === String(messageId));
+            if (msg) {
+                const bgColor = msg.is_from_agent ? '#e3f2fd' : 'white';
+                messageEl.style.background = bgColor;
+            }
+        }
+        
+        // Track active EventSource to close it if needed
+        let translationEventSource = null;
+        
         function toggleTranslation(agentName, userId) {
             const checkbox = document.getElementById('translation-toggle');
             showTranslation = checkbox.checked;
             
-            if (showTranslation && Object.keys(conversationTranslations).length === 0) {
-                // Load translations
-                const container = document.getElementById('conversation-container');
-                const loadingMsg = document.createElement('div');
-                loadingMsg.className = 'loading';
-                loadingMsg.textContent = 'Translating messages...';
-                container.appendChild(loadingMsg);
-                
-                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/translate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ messages: conversationMessages })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        alert('Error translating messages: ' + data.error);
-                        checkbox.checked = false;
-                        showTranslation = false;
-                        return;
-                    }
-                    conversationTranslations = data.translations || {};
-                    // Re-render conversation with translations
-                    const summaries = [];
-                    const container = document.getElementById('conversation-container');
-                    const summariesSection = container.querySelector('div[style*="margin-bottom: 24px"]');
-                    if (summariesSection) {
-                        // Extract summaries from existing HTML if needed
-                        // For now, just re-fetch
-                        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
-                            .then(response => response.json())
-                            .then(data => {
-                                if (!data.error) {
-                                    // Update stored timezone if provided
-                                    if (data.agent_timezone) {
-                                        conversationAgentTimezone = data.agent_timezone;
-                                    }
-                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+            // Close any existing EventSource connection
+            if (translationEventSource) {
+                translationEventSource.close();
+                translationEventSource = null;
+            }
+            
+            if (showTranslation) {
+                // If we already have some translations, just re-render
+                if (Object.keys(conversationTranslations).length > 0) {
+                    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.error) {
+                                if (data.agent_timezone) {
+                                    conversationAgentTimezone = data.agent_timezone;
                                 }
-                            });
-                    } else {
-                        renderConversation(agentName, userId, [], conversationMessages, conversationAgentTimezone);
-                    }
-                })
-                .catch(error => {
-                    if (error && error.message === 'unauthorized') {
-                        return;
-                    }
-                    alert('Error translating messages: ' + error);
-                    checkbox.checked = false;
-                    showTranslation = false;
-                });
-            } else {
-                // Just re-render with current translation state
+                                renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                            }
+                        });
+                    return;
+                }
+                
+                // First, re-render to show grey backgrounds for messages without translations
                 fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
                     .then(response => response.json())
                     .then(data => {
                         if (!data.error) {
-                            // Update stored timezone if provided
+                            if (data.agent_timezone) {
+                                conversationAgentTimezone = data.agent_timezone;
+                            }
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                            
+                            // Now start streaming translations via SSE
+                            startTranslationStream(agentName, userId, checkbox);
+                        }
+                    })
+                    .catch(error => {
+                        if (error && error.message === 'unauthorized') {
+                            return;
+                        }
+                        alert('Error loading conversation: ' + error);
+                        checkbox.checked = false;
+                        showTranslation = false;
+                    });
+            } else {
+                // Just re-render with current translation state (translations hidden)
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (!data.error) {
                             if (data.agent_timezone) {
                                 conversationAgentTimezone = data.agent_timezone;
                             }
                             renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
                         }
                     });
+            }
+        }
+        
+        function startTranslationStream(agentName, userId, checkbox) {
+            // Build the URL for SSE endpoint
+            const url = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/translate`;
+            
+            // Create POST request body
+            const requestBody = JSON.stringify({ messages: conversationMessages });
+            
+            // Use fetch with ReadableStream to handle SSE (EventSource doesn't support POST)
+            fetchWithAuth(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: requestBody
+            })
+            .then(response => {
+                if (!response.ok) {
+                    // Try to parse error as JSON
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                    }).catch(() => {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    });
+                }
+                
+                // Check if response is SSE (text/event-stream)
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('text/event-stream')) {
+                    // Handle SSE stream
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    
+                    function readStream() {
+                        reader.read().then(({ done, value }) => {
+                            if (done) {
+                                // Stream completed - process any remaining buffer
+                                if (buffer.trim()) {
+                                    const events = buffer.split('\n\n');
+                                    for (const event of events) {
+                                        if (event.trim()) {
+                                            const lines = event.split('\n');
+                                            for (const line of lines) {
+                                                if (line.startsWith('data: ')) {
+                                                    try {
+                                                        const data = JSON.parse(line.slice(6));
+                                                        handleTranslationEvent(data, checkbox);
+                                                    } catch (e) {
+                                                        console.error('Error parsing SSE data:', e, line);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                return;
+                            }
+                            
+                            buffer += decoder.decode(value, { stream: true });
+                            // SSE events are separated by double newlines
+                            const events = buffer.split('\n\n');
+                            // Keep the last incomplete event in buffer
+                            buffer = events.pop() || '';
+                            
+                            for (const event of events) {
+                                if (event.trim()) {
+                                    // Parse SSE event (format: "data: {...}")
+                                    const lines = event.split('\n');
+                                    for (const line of lines) {
+                                        if (line.startsWith('data: ')) {
+                                            try {
+                                                const data = JSON.parse(line.slice(6));
+                                                handleTranslationEvent(data, checkbox);
+                                            } catch (e) {
+                                                console.error('Error parsing SSE data:', e, line);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            readStream();
+                        }).catch(error => {
+                            console.error('Error reading stream:', error);
+                            if (error && error.message !== 'unauthorized') {
+                                // Only show alert for unexpected errors
+                                if (!error.message.includes('aborted') && !error.message.includes('canceled')) {
+                                    alert('Error receiving translations: ' + error);
+                                    checkbox.checked = false;
+                                    showTranslation = false;
+                                }
+                            }
+                        });
+                    }
+                    
+                    readStream();
+                } else {
+                    // Fallback: try to parse as JSON (for backward compatibility)
+                    return response.json();
+                }
+            })
+            .then(data => {
+                // Only reached if response was JSON (not SSE)
+                if (data && data.error) {
+                    alert('Error translating messages: ' + data.error);
+                    checkbox.checked = false;
+                    showTranslation = false;
+                } else if (data && data.translations) {
+                    // Handle non-streaming response (backward compatibility)
+                    Object.assign(conversationTranslations, data.translations);
+                    // Re-render to show translations
+                    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.error) {
+                                if (data.agent_timezone) {
+                                    conversationAgentTimezone = data.agent_timezone;
+                                }
+                                renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                            }
+                        });
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                console.error('Translation stream error:', error);
+                // Show alert for fetch errors (not stream read errors)
+                if (error.message && !error.message.includes('aborted') && !error.message.includes('canceled')) {
+                    alert('Error translating messages: ' + error.message);
+                    checkbox.checked = false;
+                    showTranslation = false;
+                }
+            });
+        }
+        
+        function handleTranslationEvent(data, checkbox) {
+            if (data.type === 'cached') {
+                // Initial cached translations
+                Object.assign(conversationTranslations, data.translations || {});
+                // Update all cached translations in the UI
+                for (const [messageId, translatedText] of Object.entries(data.translations || {})) {
+                    updateMessageTranslation(messageId, translatedText);
+                }
+            } else if (data.type === 'translation') {
+                // New translations from a batch
+                for (const [messageId, translatedText] of Object.entries(data.translations || {})) {
+                    updateMessageTranslation(messageId, translatedText);
+                }
+            } else if (data.type === 'complete') {
+                // Translation complete
+                console.log('Translation stream completed');
+            } else if (data.type === 'error') {
+                // Error occurred
+                alert('Error translating messages: ' + (data.error || 'Unknown error'));
+                checkbox.checked = false;
+                showTranslation = false;
             }
         }
 
