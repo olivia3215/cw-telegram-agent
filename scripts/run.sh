@@ -9,7 +9,9 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Service-specific configuration
 MAIN_SCRIPT="$PROJECT_ROOT/src/run.py"
-PID_FILE="$PROJECT_ROOT/tmp/run.pid"
+# Get state directory from environment variable, defaulting to "state"
+STATE_DIR="${CINDY_AGENT_STATE_DIR:-state}"
+PID_FILE="$PROJECT_ROOT/$STATE_DIR/run.pid"
 LOG_BASE_NAME="run"
 SERVICE_NAME="Agent Server"
 

@@ -11,7 +11,7 @@ set -e
 # Note: SCRIPT_DIR should be set by the calling script before sourcing this library
 # PROJECT_ROOT should be set by the calling script before sourcing this library
 VENV_PATH="$PROJECT_ROOT/venv"
-LOG_DIR="$PROJECT_ROOT/tmp"
+LOG_DIR="$PROJECT_ROOT/logs"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 # Colors for output
@@ -205,6 +205,7 @@ start_server_core() {
     fi
 
     disown $server_pid  # Detach the server process from the parent shell
+    mkdir -p "$(dirname "$PID_FILE")"  # Ensure PID file directory exists
     echo $server_pid > "$PID_FILE"
 
     # Wait a moment for the server to start
