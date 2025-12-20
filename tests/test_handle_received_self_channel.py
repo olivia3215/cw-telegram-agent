@@ -10,6 +10,7 @@ class DummyAgent:
     def __init__(self, agent_id: int):
         self.name = "Agent"
         self.agent_id = agent_id
+        self.is_disabled = False
 
     @property
     def client(self):

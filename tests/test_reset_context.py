@@ -57,7 +57,8 @@ async def test_handle_received_resets_context():
     agent.reset_context_on_first_message = True
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
-    
+    agent.is_disabled = False
+
     # Mock get_agent_for_id
     with patch("handlers.received.get_agent_for_id", return_value=agent), \
          patch("handlers.received.get_channel_llm"), \
@@ -106,7 +107,8 @@ async def test_handle_received_false_positive_prevention():
     agent.reset_context_on_first_message = True
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
-    
+    agent.is_disabled = False
+
     # Mock get_agent_for_id
     with patch("handlers.received.get_agent_for_id", return_value=agent), \
          patch("handlers.received.get_channel_llm"), \
@@ -140,7 +142,8 @@ async def test_handle_received_no_reset_if_disabled():
     agent.reset_context_on_first_message = False
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
-    
+    agent.is_disabled = False
+
     # Mock get_agent_for_id
     with patch("handlers.received.get_agent_for_id", return_value=agent), \
          patch("handlers.received.get_channel_llm"), \

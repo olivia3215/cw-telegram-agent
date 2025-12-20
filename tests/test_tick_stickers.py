@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -39,6 +40,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
         sticker_set_names=["WendyDancer"],  # multi-set config
         stickers={},  # empty configured stickers
         client=FakeClient(),
+        get_cached_entity=AsyncMock(side_effect=lambda x: x),
     )
 
     # Make get_agent_for_id return our fake agent

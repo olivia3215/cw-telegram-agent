@@ -1,0 +1,1 @@
+You are given an audio file. Describe what you hear in rich detail so a reader can understand the audio content without hearing it. Include a complete speech transcription, music, sounds, and any other audio elements. Estimate the speaker's age, gender, and accent if they are human. Output the description as a single string without markdown formatting.

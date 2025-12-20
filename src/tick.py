@@ -170,13 +170,21 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
 
     agent_id = graph.context.get("agent_id")
     agent = None
-    agent_name = "unknown-agent"
+    agent_name = f"agent:{agent_id}" if agent_id else "unknown-agent"
     if agent_id:
         try:
             agent = get_agent_for_id(agent_id)
-            agent_name = getattr(agent, "name", f"agent:{agent_id}")
+            if agent:
+                agent_name = agent.name
+                if agent.is_disabled:
+                    logger.info(
+                        f"[{agent_name}] Agent is disabled, cancelling task graph {graph.id}"
+                    )
+                    work_queue.remove(graph)
+                    return
         except Exception as e:
-            logger.exception(f"run_one_tick: could not resolve agent {agent_id}: {e}")
+            logger.exception(f"run_one_tick: error resolving agent {agent_id}: {e}")
+            return
 
     logger.info(f"[{agent_name}] Running task {task.id} of type {task.type}")
 

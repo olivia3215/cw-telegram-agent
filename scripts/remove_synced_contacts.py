@@ -107,7 +107,7 @@ async def async_main(args: argparse.Namespace) -> int:
         # Find the specified agent
         register_all_agents()
         agent = None
-        for a in all_agents():
+        for a in all_agents(include_disabled=True):
             if a.name == args.agent:
                 agent = a
                 break
@@ -121,7 +121,7 @@ async def async_main(args: argparse.Namespace) -> int:
     
     # Default: process all agents
     register_all_agents()
-    agents = list(all_agents())
+    agents = list(all_agents(include_disabled=True))
     
     if not agents:
         logger.error("No agents found. Please register agents first.")

@@ -25,7 +25,7 @@ async def main():
     
     register_all_agents()
     agent = None
-    for a in all_agents():
+    for a in all_agents(include_disabled=True):
         if a.name == agent_name:
             agent = a
             break

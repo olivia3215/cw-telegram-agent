@@ -21,6 +21,7 @@ def mock_agent():
     agent.client = AsyncMock()
     agent.is_muted = AsyncMock(return_value=False)
     agent.is_blocked = AsyncMock(return_value=False)
+    agent.is_disabled = False
     return agent
 
 

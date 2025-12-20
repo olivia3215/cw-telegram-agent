@@ -1,0 +1,1 @@
+You are given a short video. Describe what happens in the video in rich detail so a reader can understand it without seeing the video. Include salient objects, colors, actions, movement, and what the video shows. Output the description as a single string without markdown formatting.

@@ -64,12 +64,6 @@ class GrokLLM(LLM):
         self.client = AsyncOpenAI(api_key=self.api_key, base_url="https://api.x.ai/v1")
         self.history_size = 100
 
-    IMAGE_DESCRIPTION_PROMPT = (
-        "You are given a single image. Describe the scene in rich detail so a reader "
-        "can understand it without seeing the image. Include salient objects, colors, "
-        "relations, actions, and setting. Output only the description."
-    )
-
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
         """
         Check if a MIME type is supported by the LLM for media description.
@@ -164,7 +158,7 @@ class GrokLLM(LLM):
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": self.IMAGE_DESCRIPTION_PROMPT},
+                            {"type": "text", "text": self.image_description_prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": image_url},
