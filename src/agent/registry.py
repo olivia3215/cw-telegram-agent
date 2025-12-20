@@ -102,7 +102,7 @@ class AgentRegistry:
         return self._registry.get(config_name)
 
     def get_by_agent_id(self, agent_id):
-        for agent in self.all_agents():
+        for agent in self.all_agents(include_disabled=True):
             if agent.agent_id == agent_id:
                 return agent
         return None

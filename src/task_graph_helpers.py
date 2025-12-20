@@ -126,6 +126,11 @@ async def insert_received_task_for_conversation(
         work_queue = WorkQueue.get_instance()
     
     agent = get_agent_for_id(recipient_id)
+    if agent and agent.is_disabled:
+        logger.info(
+            f"[{agent.name}] Skipping received task creation for disabled agent"
+        )
+        return
     preserved_tasks = []
     # Find the existing graph for this conversation
     # Convert to ints for comparison (graph_for_conversation expects ints)

@@ -270,6 +270,11 @@ class WorkQueue:
                         from agent import get_agent_for_id
                         from schedule import get_responsiveness
                         agent = get_agent_for_id(agent_id)
+                        if agent and agent.is_disabled:
+                            # Skip graphs for disabled agents
+                            # They will eventually be cleaned up by run_one_tick when selected,
+                            # but skipping them here prevents them from clogging the round-robin.
+                            continue
                         if agent and agent.daily_schedule_description:
                             schedule = agent._load_schedule()
                             responsiveness = get_responsiveness(schedule, now)

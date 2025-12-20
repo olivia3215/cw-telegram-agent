@@ -241,7 +241,11 @@ async def handle_incoming_message(agent: Agent, event):
 
 
 async def scan_unread_messages(agent: Agent):
+    if agent.is_disabled:
+        return
     client = agent.client
+    if not client:
+        return
     agent_id = agent.agent_id
     
     async for dialog in client.iter_dialogs():
