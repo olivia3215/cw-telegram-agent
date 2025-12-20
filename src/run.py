@@ -35,7 +35,7 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
-from telegram_util import get_channel_name, get_telegram_client, is_dm
+from telegram_util import can_agent_send_to_channel, get_channel_name, get_telegram_client, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES
@@ -74,62 +74,6 @@ def is_telepathic_message(message) -> bool:
     text = getattr(message, "text", None) or ""
     text_stripped = text.strip()
     return text_stripped.startswith(TELEPATHIC_PREFIXES)
-
-
-async def can_agent_send_to_channel(agent: Agent, channel_id: int) -> bool:
-    """
-    Check if the agent can send messages to a channel.
-    
-    This checks the current permissions dynamically, as permissions can change.
-    In Telegram clients, this corresponds to whether a text box for writing
-    messages is available.
-    
-    For groups/channels: checks if the agent has permission to send messages.
-    For direct messages: checks if the agent is blocked by the other user.
-    
-    Args:
-        agent: The agent instance
-        channel_id: The channel/chat ID to check
-        
-    Returns:
-        True if the agent can send messages, False otherwise
-    """
-    client = agent.client
-    if not client:
-        return False
-    
-    try:
-        # Get the agent's own user entity
-        me = await client.get_me()
-        if not me:
-            return False
-        
-        # Get the channel entity
-        entity = await agent.get_cached_entity(channel_id)
-        if not entity:
-            return False
-        
-        # Check permissions using Telethon's get_permissions
-        # This works for both DMs (where it can detect if we're blocked) and groups/channels
-        permissions = await client.get_permissions(entity, me)
-        if not permissions:
-            # If we can't get permissions, default to allowing (to avoid blocking legitimate messages)
-            return True
-        
-        # Check if we can send messages
-        # For DMs, this will be False if we're blocked
-        # For groups/channels, this reflects the channel permissions
-        # Handle None case explicitly - default to True to match documented fallback behavior
-        if permissions.send_messages is None:
-            return True
-        return permissions.send_messages
-    except Exception as e:
-        # If we can't determine permissions, assume we can send
-        # (better to err on the side of processing messages)
-        logger.debug(
-            f"[{agent.name}] Error checking send permissions for channel {channel_id}: {e}"
-        )
-        return True  # Default to allowing, to avoid blocking legitimate messages
 
 
 async def get_agent_message_with_reactions(agent: Agent, dialog):
