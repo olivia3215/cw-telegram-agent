@@ -1014,11 +1014,11 @@
             fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        document.getElementById('media-container').innerHTML =
-                            `<div class="error">Error: ${data.error}</div>`;
-                        return;
-                    }
+                        if (data.error) {
+                            document.getElementById('media-container').innerHTML =
+                                `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                            return;
+                        }
 
                     // Flatten the grouped media into a single array
                     allMediaFiles = [];
@@ -1094,7 +1094,7 @@
                         return;
                     }
                     document.getElementById('media-container').innerHTML =
-                        `<div class="error">Error loading media files: ${error}</div>`;
+                        `<div class="error">Error loading media files: ${escapeHtml(String(error))}</div>`;
                 });
         }
 
@@ -1504,16 +1504,16 @@
             // Format sticker name with emoji description
             const stickerName = media.sticker_name || media.unique_id;
             const displayName = (media.sticker_name && media.emoji_description)
-                ? `${media.sticker_name} (${media.emoji_description})`
-                : stickerName;
+                ? `${escapeHtml(media.sticker_name)} (${escapeHtml(media.emoji_description)})`
+                : escapeHtml(stickerName);
             
             // Add document ID to title if it's not already shown
             const titleWithId = (displayName !== media.unique_id && media.unique_id)
-                ? `${displayName} [${media.unique_id}]`
+                ? `${displayName} [${escapeHtml(media.unique_id)}]`
                 : displayName;
             
             // Determine type display - show "custom emoji" for emoji sets
-            let typeDisplay = media.kind;
+            let typeDisplay = escapeHtml(media.kind);
             if ((media.kind === 'sticker' || media.kind === 'animated_sticker') && media.is_emoji_set) {
                 typeDisplay = media.kind === 'animated_sticker' ? 'custom emoji (animated)' : 'custom emoji';
             }
@@ -1526,12 +1526,12 @@
                     <div class="media-info">
                         <h3 style="margin-top: 10px; margin-bottom: 10px;">${titleWithId}</h3>
                         <p><strong>Type:</strong> ${typeDisplay}</p>
-                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${media.sticker_set_display || media.sticker_set_name}</p>` : ''}
-                        <p><strong>Status:</strong> ${media.status}</p>
-                        ${media.failure_reason ? `<p class="error">${media.failure_reason}</p>` : ''}
+                        ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${escapeHtml(media.sticker_set_display || media.sticker_set_name)}</p>` : ''}
+                        <p><strong>Status:</strong> ${escapeHtml(media.status)}</p>
+                        ${media.failure_reason ? `<p class="error">${escapeHtml(media.failure_reason)}</p>` : ''}
 
                         <div class="description-edit">
-                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${escJsAttr(media.unique_id)}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${media.description || ''}</textarea>
+                            <textarea id="desc-${media.unique_id}" placeholder="Enter description..." oninput="scheduleAutoSave('${escJsAttr(media.unique_id)}')" style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; box-sizing: border-box;">${escapeHtml(media.description || '')}</textarea>
                             <div style="display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap;">
                                 <span id="save-status-${media.unique_id}" style="font-size: 12px; color: #28a745;">Saved</span>
                                 <button id="refresh-ai-btn-${media.unique_id}" onclick="refreshFromAI('${escJsAttr(media.unique_id)}')" style="padding: 4px 8px; font-size: 11px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">Refresh from AI</button>
@@ -2750,8 +2750,8 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${memory.created || 'N/A'}${metadataHtml}
+                                    <strong>ID:</strong> ${escapeHtml(memory.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(memory.created || 'N/A')}${metadataHtml}
                                 </div>
                                 <button onclick="deleteMemory('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
@@ -2759,7 +2759,7 @@
                                 id="memory-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
                                 oninput="scheduleMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(memory.id)}')"
-                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            >${escapeHtml(memory.content || '')}</textarea>
                             <div id="memory-status-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `;
@@ -3001,8 +3001,8 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${intention.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${intention.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(intention.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(intention.created || 'N/A')}
                                 </div>
                                 <button onclick="deleteIntention('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
@@ -3010,7 +3010,7 @@
                                 id="intention-${intention.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
                                 oninput="scheduleIntentionAutoSave('${escJsAttr(agentName)}', '${escJsAttr(intention.id)}')"
-                            >${(intention.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            >${escapeHtml(intention.content || '')}</textarea>
                             <div id="intention-status-${intention.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -3181,7 +3181,7 @@
                                     </div>
                                 </div>
                                 <div class="agent-status-info">
-                                    <div style="font-size: 12px; color: #666;">Config Name: <strong>${agentName}</strong></div>
+                                    <div style="font-size: 12px; color: #666;">Config Name: <strong>${escapeHtml(agentName)}</strong></div>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
                                 </div>
                             </div>
@@ -3208,7 +3208,7 @@
                                 <div id="role-prompts-list" class="role-prompts-container">
                                     ${rolePromptNames.length > 0 ? rolePromptNames.map(name => `
                                         <div class="role-prompt-tag">
-                                            <span>${name}</span>
+                                            <span>${escapeHtml(name)}</span>
                                             ${isDisabled ? `<button onclick="removeRolePrompt('${escJsAttr(agentName)}', '${escJsAttr(name)}')">&times;</button>` : ''}
                                         </div>
                                     `).join('') : '<div style="color: #666; font-style: italic; font-size: 14px;">No role prompts selected</div>'}
@@ -3217,7 +3217,7 @@
                                     onchange="if(this.value) addRolePrompt('${escJsAttr(agentName)}', this.value); this.value='';" 
                                     class="agent-param-input" style="min-width: 200px; width: auto;">
                                     <option value="">Add role prompt...</option>
-                                    ${availableRolePrompts.filter(p => !rolePromptNames.includes(p)).map(p => `<option value="${p}">${p}</option>`).join('')}
+                                    ${availableRolePrompts.filter(p => !rolePromptNames.includes(p)).map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}
                                 </select>
                             </div>
 
@@ -3228,7 +3228,7 @@
                                         onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
                                         class="agent-param-textarea" style="min-height: 80px;"
                                         placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
-                                    >${stickerSetNames.join('\n')}</textarea>
+                                    >${escapeHtml(stickerSetNames.join('\n'))}</textarea>
                                 </div>
                                 <div class="agent-param-section">
                                     <h3>Explicit Stickers</h3>
@@ -3236,7 +3236,7 @@
                                         onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
                                         class="agent-param-textarea" style="min-height: 80px;"
                                         placeholder="SET :: STICKER per line, e.g.\nWendyDancer :: Wink\nCindyAI :: Hello"
-                                    >${explicitStickers.join('\n')}</textarea>
+                                    >${escapeHtml(explicitStickers.join('\n'))}</textarea>
                                 </div>
                             </div>
 
@@ -3253,7 +3253,7 @@
                                     onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')" 
                                     class="agent-param-textarea" style="min-height: 60px; ${dailyScheduleDescription === null ? 'background: #f8f9fa; color: #999;' : ''}"
                                     placeholder="Freeform English description of the daily schedule..."
-                                >${dailyScheduleDescription || ''}</textarea>
+                                >${escapeHtml(dailyScheduleDescription || '')}</textarea>
                             </div>
 
                             <div class="agent-param-grid">
@@ -3284,7 +3284,7 @@
                                     id="agent-prompt-textarea" 
                                     class="agent-param-textarea" style="min-height: 300px;"
                                     oninput="scheduleAgentPromptAutoSave('${escJsAttr(agentName)}')"
-                                >${prompt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                >${escapeHtml(prompt)}</textarea>
                                 <div id="agent-prompt-status" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                             </div>
                         </div>
@@ -3674,8 +3674,8 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${memory.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${memory.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(memory.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(memory.created || 'N/A')}
                                 </div>
                                 <button onclick="deleteCuratedMemory('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
@@ -3683,7 +3683,7 @@
                                 id="curated-memory-params-${userId}-${memory.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
                                 oninput="scheduleCuratedMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')"
-                            >${(memory.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            >${escapeHtml(memory.content || '')}</textarea>
                             <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -3757,11 +3757,11 @@
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <h3>Conversation LLM</h3>
-                            <p>Current: ${conversationLLM || agentDefaultLLM + ' (agent default)'}</p>
+                            <p>Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
                             <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this.value)">
                                 ${availableLLMs.map(llm => {
                                     const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                    return `<option value="${llm.value}" ${isSelected ? 'selected' : ''}>${llm.label}${llm.is_default ? ' *' : ''}</option>`;
+                                    return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                 }).join('')}
                             </select>
                         </div>
@@ -3837,8 +3837,8 @@
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${plan.id || 'N/A'}<br>
-                                    <strong>Created:</strong> ${plan.created || 'N/A'}
+                                    <strong>ID:</strong> ${escapeHtml(plan.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(plan.created || 'N/A')}
                                 </div>
                                 <button onclick="deletePlan('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
@@ -3846,7 +3846,7 @@
                                 id="plan-${userId}-${plan.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
                                 oninput="schedulePlanAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(plan.id)}')"
-                            >${(plan.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                            >${escapeHtml(plan.content || '')}</textarea>
                             <div id="plan-status-${userId}-${plan.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
@@ -4163,19 +4163,19 @@
                     <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                             <div>
-                                <strong>ID:</strong> ${summary.id || 'N/A'}<br>
-                                <strong>Created:</strong> ${summary.created || 'N/A'}
+                                <strong>ID:</strong> ${escapeHtml(summary.id || 'N/A')}<br>
+                                <strong>Created:</strong> ${escapeHtml(summary.created || 'N/A')}
                             </div>
                             <button onclick="deleteSummary('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}', true)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                         </div>
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Message IDs:</span>
-                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${summary.min_message_id || ''}" 
+                                <input type="number" id="summary-min-${userId}-${summary.id}" value="${escapeHtml(String(summary.min_message_id || ''))}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">-</span>
-                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${summary.max_message_id || ''}" 
+                                <input type="number" id="summary-max-${userId}-${summary.id}" value="${escapeHtml(String(summary.max_message_id || ''))}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
@@ -4183,11 +4183,11 @@
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
-                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date || ''}" 
+                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${escapeHtml(summary.first_message_date || '')}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">to</span>
-                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date || ''}" 
+                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${escapeHtml(summary.last_message_date || '')}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>
@@ -4196,7 +4196,7 @@
                             id="summary-${userId}-${summary.id}" 
                             style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
                             oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
-                        >${(summary.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                        >${escapeHtml(summary.content || '')}</textarea>
                         <div id="summary-status-${userId}-${summary.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                     </div>
                 `).join('');
@@ -4307,7 +4307,7 @@
                     // Build metadata line with sender name and ID
                     let senderDisplay = '';
                     if (msg.sender_name && msg.sender_id) {
-                        senderDisplay = `<strong>${(msg.sender_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong> (${msg.sender_id})`;
+                        senderDisplay = `<strong>${escapeHtml(msg.sender_name || '')}</strong> (${escapeHtml(String(msg.sender_id))})`;
                     } else if (msg.sender_id) {
                         senderDisplay = `<strong>${msg.sender_id}</strong>`;
                     } else {
