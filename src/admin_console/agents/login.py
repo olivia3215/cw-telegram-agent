@@ -66,10 +66,11 @@ def register_login_routes(agents_bp: Blueprint):
             async def check_auth():
                 # We need a temporary client to check auth if not already running
                 client = get_telegram_client(agent.config_name, agent.phone)
-                await client.connect()
-                is_auth = await client.is_user_authorized()
-                await client.disconnect()
-                return is_auth
+                try:
+                    await client.connect()
+                    return await client.is_user_authorized()
+                finally:
+                    await client.disconnect()
 
             # Check if we already have a pending login for this agent
             if agent_config_name in _pending_logins:
@@ -82,9 +83,13 @@ def register_login_routes(agents_bp: Blueprint):
             # Start new login flow
             async def start_login():
                 client = get_telegram_client(agent.config_name, agent.phone)
-                await client.connect()
-                sent_code = await client.send_code_request(agent.phone)
-                return client, sent_code.phone_code_hash
+                try:
+                    await client.connect()
+                    sent_code = await client.send_code_request(agent.phone)
+                    return client, sent_code.phone_code_hash
+                except Exception:
+                    await client.disconnect()
+                    raise
 
             client, phone_code_hash = _run_in_login_loop(start_login())
             _pending_logins[agent_config_name] = {
