@@ -155,6 +155,8 @@ def register_configuration_routes(agents_bp: Blueprint):
 
             data = request.json
             prompt = data.get("prompt", "").strip()
+            if not prompt:
+                return jsonify({"error": "Agent instructions cannot be empty"}), 400
 
             # Find agent's markdown file
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"

@@ -19,7 +19,6 @@ REQUIRED_FIELDS = [
     "Agent Name",
     "Agent Phone",
     "Agent Instructions",
-    "Role Prompt",
 ]
 
 
@@ -141,7 +140,7 @@ def parse_agent_markdown(path):
         explicit_stickers = _parse_explicit_stickers(explicit_lines)
 
         # Parse role prompts - split by newlines and filter out empty lines
-        role_prompt_text = str(fields["Role Prompt"]).strip()
+        role_prompt_text = str(fields.get("Role Prompt", "")).strip()
         role_prompt_names = [
             line.strip() for line in role_prompt_text.split("\n") if line.strip()
         ]
