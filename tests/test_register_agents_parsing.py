@@ -5,7 +5,7 @@
 
 from pathlib import Path
 
-from register_agents import parse_agent_markdown
+from register_agents import extract_fields_from_markdown, parse_agent_markdown
 
 
 def _write(tmp_path: Path, name: str, text: str) -> Path:
@@ -198,3 +198,56 @@ Person
     parsed_enabled = parse_agent_markdown(path_enabled)
     assert parsed_enabled is not None
     assert parsed_enabled["is_disabled"] is False
+
+
+def test_write_agent_markdown_has_empty_line_after_headers(tmp_path: Path):
+    """Test that markdown written by _write_agent_markdown has empty lines after headers."""
+    # Import the function using importlib to avoid package structure issues
+    import importlib.util
+    import sys
+    
+    config_path = Path(__file__).parent.parent / "src" / "admin_console" / "agents" / "configuration.py"
+    spec = importlib.util.spec_from_file_location("configuration", config_path)
+    config_module = importlib.util.module_from_spec(spec)
+    sys.modules["configuration"] = config_module
+    spec.loader.exec_module(config_module)
+    _write_agent_markdown = config_module._write_agent_markdown
+    
+    # Create agents directory
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir(parents=True)
+    
+    # Create a test agent file
+    agent_file = agents_dir / "test_agent.md"
+    agent_file.write_text("# Agent Name\nTestAgent\n\n# Agent Phone\n+1234567890\n", encoding="utf-8")
+    
+    # Create a mock agent object
+    class MockAgent:
+        def __init__(self):
+            self.config_directory = str(tmp_path)
+            self.config_name = "test_agent"
+    
+    agent = MockAgent()
+    
+    # Test with various field types
+    fields = {
+        "Agent Name": "TestAgent",
+        "Agent Phone": "+1234567890",
+        "Agent Instructions": "You are a test agent.",
+        "Role Prompt": "Chatbot\nPerson",
+        "Disabled": "",  # Empty field
+    }
+    
+    # Write the markdown
+    _write_agent_markdown(agent, fields)
+    
+    # Read the written file
+    content = agent_file.read_text(encoding="utf-8")
+    lines = content.split("\n")
+    
+    # Verify that each header is followed by an empty line
+    # Find all header lines (lines starting with "# ")
+    for i, line in enumerate(lines):
+        if line.startswith("# ") and i + 1 < len(lines):
+            # The next line should be empty
+            assert lines[i + 1] == "", f"Header '{line}' at line {i+1} should be followed by an empty line, but got '{lines[i + 1]}'"

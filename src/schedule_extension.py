@@ -178,8 +178,7 @@ def _build_schedule_system_prompt(
     
     # Build specific instructions with time range
     specific_instructions = (
-        "# Instruction\n "
-        "\n"
+        "# Instruction\n\n"
         f"You are extending your daily schedule. Please create schedule entries starting from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
         f"The schedule should extend until {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')} (midnight of the day after next).\n"
         f"Make sure activities don't overlap. Activities should cover from {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} until at least {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
