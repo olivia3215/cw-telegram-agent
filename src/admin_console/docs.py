@@ -474,7 +474,7 @@ def api_agents_for_docs():
         from register_agents import register_all_agents, all_agents as get_all_agents
         
         register_all_agents()
-        agents = list(get_all_agents())
+        agents = list(get_all_agents(include_disabled=True))
         
         agent_list = [
             {

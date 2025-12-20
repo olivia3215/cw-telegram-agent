@@ -79,7 +79,7 @@ async def login_puppet_master() -> int:
 
 async def login_agents() -> int:
     register_all_agents()
-    for agent in all_agents():
+    for agent in all_agents(include_disabled=True):
         await login_agent(agent)
     return 0
 

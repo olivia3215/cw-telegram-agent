@@ -203,7 +203,7 @@ def register_all_agents(force: bool = False):
         # Both must be unique to prevent data corruption from shared state directories
         registered_agents = set()
         registered_config_names = set()
-        for agent in all_agents():
+        for agent in all_agents(include_disabled=True):
             registered_agents.add(agent.name)
             registered_config_names.add(agent.config_name)
 

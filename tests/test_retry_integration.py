@@ -145,6 +145,7 @@ async def test_prohibited_content_triggers_task_graph_retry(monkeypatch):
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
+        is_disabled=False,
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
@@ -246,6 +247,7 @@ async def test_retrieval_preserves_fetched_resources_on_retry(monkeypatch):
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
+        is_disabled=False,
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"
@@ -382,6 +384,7 @@ async def test_retrieval_resources_available_on_retry(monkeypatch):
         llm=mock_llm,
         client=mock_client,
         timezone=MagicMock(),
+        is_disabled=False,
     )
     # Set name as a string attribute, not a MagicMock
     mock_agent.name = "TestAgent"

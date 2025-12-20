@@ -25,6 +25,7 @@ async def test_preserve_wait_task_and_resources_on_replan(monkeypatch):
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
     mock_agent.client = MagicMock()
+    mock_agent.is_disabled = False
 
     # Use monkeypatch to mock the functions
     monkeypatch.setattr(
@@ -130,6 +131,7 @@ async def test_no_resources_preserved_when_none_exist(monkeypatch):
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
     mock_agent.client = MagicMock()
+    mock_agent.is_disabled = False
 
     # Use monkeypatch to mock the functions
     monkeypatch.setattr(
