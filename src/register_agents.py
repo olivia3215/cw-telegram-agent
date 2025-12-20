@@ -196,6 +196,10 @@ def register_all_agents(force: bool = False):
             logger.debug("register_all_agents: agents already loaded; skipping")
             return
 
+        if force:
+            from agent.registry import _agent_registry
+            _agent_registry.clear()
+
         config_path = CONFIG_DIRECTORIES
 
         # Track registered agent names and config names to avoid duplicates

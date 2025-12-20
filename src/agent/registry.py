@@ -112,6 +112,10 @@ class AgentRegistry:
             return self._registry.values()
         return [agent for agent in self._registry.values() if not agent.is_disabled]
 
+    def clear(self):
+        """Clear all registered agents."""
+        self._registry.clear()
+
 
 _agent_registry = AgentRegistry()
 

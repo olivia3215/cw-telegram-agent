@@ -2477,9 +2477,14 @@
             });
         }
 
-        async function renameAgentConfig(agentName) {
-            const newName = prompt('Enter new config name (without .md):');
-            if (!newName || newName === agentName) return;
+        async function renameAgentConfig(agentName, newName) {
+            if (!newName) {
+                newName = prompt('Enter new config name (without .md):', agentName);
+            }
+            if (!newName || newName === agentName) {
+                loadAgentConfiguration(agentName); // Refresh to revert input
+                return;
+            }
 
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/rename`, {
@@ -2492,13 +2497,15 @@
                     const newConfigName = data.new_config_name;
                     await loadAgents();
                     document.getElementById('agents-agent-select').value = newConfigName;
-                    document.getElementById('agents-agent-select').dispatchEvent(new Event('change'));
+                    loadAgentConfiguration(newConfigName);
                 } else {
                     alert('Error renaming agent: ' + data.error);
+                    loadAgentConfiguration(agentName);
                 }
             } catch (error) {
                 console.error('Error renaming agent:', error);
                 alert('Error renaming agent');
+                loadAgentConfiguration(agentName);
             }
         }
 
@@ -3171,9 +3178,6 @@
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
-                                            <button onclick="renameAgentConfig('${escJsAttr(agentName)}')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                                Rename Config
-                                            </button>
                                             <button onclick="deleteAgent('${escJsAttr(agentName)}', '${escJsAttr(data.name || agentName)}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Delete Agent
                                             </button>
@@ -3181,18 +3185,35 @@
                                     </div>
                                 </div>
                                 <div class="agent-status-info">
-                                    <div style="font-size: 12px; color: #666;">Config Name: <strong>${escapeHtml(agentName)}</strong></div>
+                                    <div style="font-size: 12px; color: #666;">
+                                        Config Name (filename):
+                                        ${isDisabled ? 
+                                            `<input type="text" value="${escapeHtml(agentName)}" 
+                                                style="font-size: 12px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; width: 150px;"
+                                                onchange="renameAgentConfig('${escJsAttr(agentName)}', this.value)">` : 
+                                            `<strong>${escapeHtml(agentName)}</strong>`
+                                        }
+                                    </div>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
                                 </div>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
+                                    <h3>Agent Name (display)</h3>
+                                    <input id="agent-name-input" type="text" class="agent-param-input" value="${escapeHtml(data.name || '')}" ${!isDisabled ? 'disabled' : ''} 
+                                        onchange="updateAgentName('${escJsAttr(agentName)}', this.value)">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Display name used in the console</div>
+                                </div>
+                                <div class="agent-param-section">
                                     <h3>Agent Phone</h3>
                                     <input id="agent-phone-input" type="text" class="agent-param-input" value="${phone}" ${!isDisabled ? 'disabled' : ''} 
                                         onchange="updateAgentPhone('${escJsAttr(agentName)}', this.value)">
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
                                 </div>
+                            </div>
+                            
+                            <div class="agent-param-grid">
                                 <div class="agent-param-section">
                                     <h3>Agent LLM</h3>
                                     <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
@@ -3312,6 +3333,29 @@
             })
             .catch(error => {
                 if (error && error.message !== 'unauthorized') alert('Error updating phone: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentName(agentName, name) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/name`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating name: ' + data.error);
+                else {
+                    alert('Agent name updated successfully');
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                    loadAgentConfiguration(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating name: ' + error);
                 loadAgentConfiguration(agentName);
             });
         }

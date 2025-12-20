@@ -258,6 +258,35 @@ def register_configuration_routes(agents_bp: Blueprint):
             logger.error(f"Error updating phone for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/name", methods=["PUT"])
+    def api_update_agent_name(agent_config_name: str):
+        """Update agent display name (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update name"}), 400
+
+            data = request.json
+            name = data.get("name", "").strip()
+            if not name:
+                return jsonify({"error": "Agent name cannot be empty"}), 400
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            fields["Agent Name"] = name
+            _write_agent_markdown(agent, fields)
+
+            agent.name = name
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating name for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/role-prompts", methods=["PUT"])
     def api_update_agent_role_prompts(agent_config_name: str):
         """Update agent role prompts (only allowed if disabled)."""
