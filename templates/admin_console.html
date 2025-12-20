@@ -4768,8 +4768,13 @@
             }
             
             if (showTranslation) {
-                // If we already have some translations, just re-render
-                if (Object.keys(conversationTranslations).length > 0) {
+                // Check if all messages with text have translations
+                const messagesWithText = conversationMessages.filter(msg => msg.text);
+                const allHaveTranslations = messagesWithText.length > 0 && 
+                    messagesWithText.every(msg => conversationTranslations[msg.id]);
+                
+                // If all messages with text already have translations, just re-render
+                if (allHaveTranslations) {
                     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
                         .then(response => response.json())
                         .then(data => {
