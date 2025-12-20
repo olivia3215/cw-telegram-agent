@@ -1167,8 +1167,25 @@ class AIGeneratingMediaSource(MediaSource):
 
         llm_ms = (time.perf_counter() - t1) * 1000
 
-        # Determine status
-        status = MediaStatus.GENERATED if desc else MediaStatus.PERMANENT_FAILURE
+        # If LLM returned empty or invalid description, use make_error_record
+        # to ensure stickers get fallback descriptions (consistent with exception paths)
+        if not desc:
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
+            return make_error_record(
+                unique_id,
+                MediaStatus.PERMANENT_FAILURE,
+                "LLM returned empty or invalid description",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
 
         # Return record for AIChainMediaSource to handle caching
         record = {
@@ -1176,24 +1193,17 @@ class AIGeneratingMediaSource(MediaSource):
             "kind": kind,
             "sticker_set_name": sticker_set_name,
             "sticker_name": sticker_name,
-            "description": desc if desc else None,
-            "failure_reason": (
-                "LLM returned empty or invalid description" if not desc else None
-            ),
-            "status": status.value,
+            "description": desc,
+            "failure_reason": None,
+            "status": MediaStatus.GENERATED.value,
             "ts": clock.now(UTC).isoformat(),
             **metadata,
         }
 
         total_ms = (time.perf_counter() - t0) * 1000
-        if status == MediaStatus.GENERATED:
-            logger.debug(
-                f"AIGeneratingMediaSource: SUCCESS {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
-            )
-        else:
-            logger.debug(
-                f"AIGeneratingMediaSource: NOT_UNDERSTOOD {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
-            )
+        logger.debug(
+            f"AIGeneratingMediaSource: SUCCESS {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
+        )
 
         # Clean up temporary TGS and video files if conversion succeeded
         if is_converted_tgs:
