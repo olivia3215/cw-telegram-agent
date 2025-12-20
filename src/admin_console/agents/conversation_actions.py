@@ -316,25 +316,52 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         return []
                 
                 # Translate all batches
+                # Process each batch individually and continue even if some batches fail
+                # This ensures successful translations are saved to cache even if later batches fail
                 all_new_translations: list[dict[str, str]] = []
-                try:
-                    for batch in batches:
+                batch_errors: list[str] = []
+                
+                for batch_idx, batch in enumerate(batches):
+                    try:
                         batch_translations = agent.execute(_translate_batch(batch), timeout=60.0)
                         all_new_translations.extend(batch_translations)
-                except RuntimeError as e:
-                    error_msg = str(e).lower()
-                    if "not authenticated" in error_msg or "not running" in error_msg:
-                        logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
-                        return jsonify({"error": "Agent client loop is not available"}), 503
-                    else:
-                        logger.error(f"Error translating conversation: {e}")
-                        return jsonify({"error": str(e)}), 500
-                except TimeoutError:
-                    logger.warning(f"Timeout translating conversation for agent {agent_config_name}, user {user_id}")
-                    return jsonify({"error": "Timeout translating conversation"}), 504
-                except Exception as e:
-                    logger.error(f"Error translating conversation: {e}")
-                    return jsonify({"error": str(e)}), 500
+                    except RuntimeError as e:
+                        error_msg = str(e).lower()
+                        if "not authenticated" in error_msg or "not running" in error_msg:
+                            # Critical error - agent is not available, return immediately
+                            logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
+                            # Still save any translations we've collected so far
+                            if all_new_translations:
+                                now_iso = datetime.now().isoformat()
+                                for translation in all_new_translations:
+                                    message_id = translation.get("message_id")
+                                    translated_text = translation.get("translated_text", "")
+                                    if message_id and translated_text:
+                                        original_text = message_id_to_text.get(message_id)
+                                        if original_text:
+                                            cache[original_text] = {
+                                                "translated_text": translated_text,
+                                                "timestamp": now_iso
+                                            }
+                                            for msg_id in text_to_message_ids.get(original_text, []):
+                                                translation_dict[msg_id] = markdown_to_html(translated_text)
+                                _save_translation_cache(cache)
+                            return jsonify({"error": "Agent client loop is not available"}), 503
+                        else:
+                            # Non-critical runtime error - log and continue with other batches
+                            error_msg_str = f"Batch {batch_idx + 1}/{len(batches)} failed: {e}"
+                            logger.error(error_msg_str)
+                            batch_errors.append(error_msg_str)
+                    except TimeoutError:
+                        # Timeout for this batch - log and continue with other batches
+                        error_msg_str = f"Batch {batch_idx + 1}/{len(batches)} timed out"
+                        logger.warning(error_msg_str)
+                        batch_errors.append(error_msg_str)
+                    except Exception as e:
+                        # Other errors for this batch - log and continue with other batches
+                        error_msg_str = f"Batch {batch_idx + 1}/{len(batches)} error: {e}"
+                        logger.error(error_msg_str)
+                        batch_errors.append(error_msg_str)
                 
                 # Update cache with new translations (with current timestamp)
                 now_iso = datetime.now().isoformat()
@@ -358,6 +385,14 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                 
                 # Save updated cache to disk
                 _save_translation_cache(cache)
+                
+                # Log warning if some batches failed (but we still saved successful translations)
+                if batch_errors:
+                    logger.warning(
+                        f"Some translation batches failed for {agent_config_name}/{user_id}, "
+                        f"but {len(all_new_translations)} successful translations were saved to cache. "
+                        f"Errors: {', '.join(batch_errors)}"
+                    )
             
             return jsonify({"translations": translation_dict})
         except Exception as e:
