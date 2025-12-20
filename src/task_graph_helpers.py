@@ -284,7 +284,7 @@ async def insert_received_task_for_conversation(
             is_group_chat = bool(is_group_or_channel(dialog))
         except Exception:
             # Fallback heuristic: negative ids normally correspond to group/channel chats.
-            is_group_chat = channel_id is not None and channel_id < 0
+            is_group_chat = channel_id_int is not None and channel_id_int < 0
 
         new_context["is_group_chat"] = is_group_chat
 
