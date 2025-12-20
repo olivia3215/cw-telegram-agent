@@ -90,6 +90,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     title = getattr(ss, "title", None)
 
                     sticker_set_name = short_name or ss_name or title
+                    sticker_set_title = title or short_name or ss_name
                     mime = normalize_mime_type(
                         getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
                     )
@@ -99,6 +100,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                             unique_id=str(uid),
                             mime=mime,
                             sticker_set_name=sticker_set_name,
+                            sticker_set_title=sticker_set_title,
                             sticker_name=name,
                             file_ref=doc,
                         )
@@ -112,6 +114,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
         if not uid:
             return
         sticker_set_name = getattr(st, "set_name", None)
+        sticker_set_title = None
         if not sticker_set_name:
             set_obj = getattr(st, "set", None)
             if set_obj is not None:
@@ -119,6 +122,11 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                     getattr(set_obj, "name", None)
                     or getattr(set_obj, "short_name", None)
                     or getattr(set_obj, "title", None)
+                )
+                sticker_set_title = (
+                    getattr(set_obj, "title", None)
+                    or getattr(set_obj, "name", None)
+                    or getattr(set_obj, "short_name", None)
                 )
         name = (
             getattr(st, "emoji", None)
@@ -134,6 +142,7 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
                 unique_id=str(uid),
                 mime=mime,
                 sticker_set_name=sticker_set_name,
+                sticker_set_title=sticker_set_title,
                 sticker_name=name,
                 file_ref=st,
             )

@@ -32,6 +32,7 @@ from telegram_download import download_media_bytes
 from .media_budget import (
     try_consume_description_budget,
 )
+from .media_scratch import get_scratch_file
 from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
@@ -926,16 +927,11 @@ class AIGeneratingMediaSource(MediaSource):
         is_converted_tgs = False
         if is_tgs_mime_type(final_mime_type):
             try:
-                import tempfile
-
                 from media.tgs_converter import convert_tgs_to_video
 
-                # Save TGS data to temporary file
-                with tempfile.NamedTemporaryFile(
-                    suffix=".tgs", delete=False
-                ) as tgs_file:
-                    tgs_path = Path(tgs_file.name)
-                    tgs_file.write(data)
+                # Save TGS data to scratch file
+                tgs_path = get_scratch_file(f"{unique_id}.tgs")
+                tgs_path.write_bytes(data)
 
                 # Convert TGS to video
                 # Use 4 fps for efficiency - AI samples key frames anyway
@@ -949,8 +945,7 @@ class AIGeneratingMediaSource(MediaSource):
                 )
 
                 # Read the video data
-                with open(video_file_path, "rb") as f:
-                    data = f.read()
+                data = video_file_path.read_bytes()
 
                 # Update MIME type to video/mp4
                 detected_mime_type = normalize_mime_type("video/mp4")
@@ -965,7 +960,7 @@ class AIGeneratingMediaSource(MediaSource):
             except Exception as e:
                 logger.error(f"TGS to video conversion failed for {unique_id}: {e}")
                 # Clean up temporary files
-                if tgs_path and tgs_path.exists():
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
                     tgs_path.unlink()
                 if video_file_path and video_file_path.exists():
                     video_file_path.unlink()

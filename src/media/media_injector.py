@@ -27,21 +27,19 @@ logger = logging.getLogger(__name__)
 
 
 # ---------- sticker helpers ----------
-async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
+async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | None]:
     """
-    Resolve a sticker set short name from the MediaItem.file_ref (Telethon doc).
-    - If the attribute already has short_name/name/title, return it.
-    - Else call messages.GetStickerSet with hash=0 (forces fetch), passing the existing
-      stickerset object when possible; fall back to constructing InputStickerSetID.
+    Resolve sticker set metadata (short_name and title) from the MediaItem.file_ref (Telethon doc).
+    Returns a tuple of (short_name, title).
     """
 
     doc = getattr(it, "file_ref", None)
     if not doc:
-        return None
+        return None, None
 
     attrs = getattr(doc, "attributes", None)
     if not isinstance(attrs, (list, tuple)):
-        return None
+        return None, None
 
     ss = None
     for _i, a in enumerate(attrs):
@@ -50,16 +48,15 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
             break
 
     if ss is None:
-        return None
+        return None, None
 
-    # Check for direct name fields
+    # Check for direct name fields in the attribute's stickerset reference
     short_name = getattr(ss, "short_name", None)
-    name = getattr(ss, "name", None)
     title = getattr(ss, "title", None)
 
-    direct = short_name or name or title
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
+    # If we have both, we can return early
+    if short_name and title:
+        return short_name, title
 
     try:
         try:
@@ -80,25 +77,20 @@ async def _maybe_get_sticker_set_short_name(agent, it) -> str | None:
                     )
                 )
             else:
-                return None
+                return short_name, title
 
         st = getattr(result, "set", None)
         if not st:
-            return None
+            return short_name, title
 
         api_short_name = getattr(st, "short_name", None)
-        api_name = getattr(st, "name", None)
         api_title = getattr(st, "title", None)
 
-        resolved = api_short_name or api_name or api_title
-        if isinstance(resolved, str) and resolved.strip():
-            return resolved.strip()
-        else:
-            return None
+        return api_short_name or short_name, api_title or title
 
     except Exception as e:
-        logger.exception(f"Failed to get sticker set short name: {e}")
-        return None
+        logger.exception(f"Failed to get sticker set metadata: {e}")
+        return short_name, title
 
 
 # ---------- provenance helpers ----------
@@ -187,9 +179,10 @@ async def inject_media_descriptions(
                 try:
                     # Get sticker metadata if applicable (for both regular and animated stickers)
                     sticker_set_name = None
+                    sticker_set_title = None
                     sticker_name = None
                     if it.is_sticker():
-                        sticker_set_name = await _maybe_get_sticker_set_short_name(
+                        sticker_set_name, sticker_set_title = await _maybe_get_sticker_set_metadata(
                             agent, it
                         )
                         sticker_name = getattr(it, "sticker_name", None)
@@ -219,6 +212,7 @@ async def inject_media_descriptions(
                         ),
                         mime_type=it.mime,
                         sticker_set_name=sticker_set_name,
+                        sticker_set_title=sticker_set_title,
                         sticker_name=sticker_name,
                         sender_id=sender_id,
                         sender_name=sender_name,
@@ -289,7 +283,7 @@ async def format_message_for_prompt(
                 media_item=it,
                 agent=agent,
                 media_chain=media_chain,
-                resolve_sticker_set_name=_maybe_get_sticker_set_short_name,
+                resolve_sticker_metadata=_maybe_get_sticker_set_metadata,
             )
             parts.append(
                 {
