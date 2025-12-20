@@ -115,18 +115,20 @@ def _maybe_add_sticker(msg: Any, out: list[MediaItem]) -> None:
             return
         sticker_set_name = getattr(st, "set_name", None)
         sticker_set_title = None
-        if not sticker_set_name:
-            set_obj = getattr(st, "set", None)
-            if set_obj is not None:
+        set_obj = getattr(st, "set", None)
+        if set_obj is not None:
+            # Always try to extract title from set_obj if available
+            sticker_set_title = (
+                getattr(set_obj, "title", None)
+                or getattr(set_obj, "name", None)
+                or getattr(set_obj, "short_name", None)
+            )
+            # Only extract name from set_obj if not already found from st.set_name
+            if not sticker_set_name:
                 sticker_set_name = (
                     getattr(set_obj, "name", None)
                     or getattr(set_obj, "short_name", None)
                     or getattr(set_obj, "title", None)
-                )
-                sticker_set_title = (
-                    getattr(set_obj, "title", None)
-                    or getattr(set_obj, "name", None)
-                    or getattr(set_obj, "short_name", None)
                 )
         name = (
             getattr(st, "emoji", None)

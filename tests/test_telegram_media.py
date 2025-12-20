@@ -71,6 +71,30 @@ def test_detect_sticker_botapi():
     assert m.file_ref is st
 
 
+def test_detect_sticker_botapi_with_set_title():
+    # Bot API-style: msg.sticker with set_name AND set.title available
+    # This tests the fix where sticker_set_title should be extracted even when set_name exists
+    set_obj = Obj(title="Hot Cherry Stickers", name="HotCherry", short_name="HotCherry")
+    st = Obj(
+        file_unique_id="st_u3",
+        set_name="HotCherry",  # set_name exists directly
+        set=set_obj,  # set object with title is also available
+        emoji="😊",
+        mime_type="image/webp",
+    )
+    msg = make_msg(sticker=st)
+    parts = iter_media_parts(msg)
+    assert len(parts) == 1
+    m = parts[0]
+    assert m.kind == "sticker"
+    assert m.unique_id == "st_u3"
+    assert m.sticker_set_name == "HotCherry"  # From st.set_name
+    assert m.sticker_set_title == "Hot Cherry Stickers"  # From st.set.title (should not be None)
+    assert m.sticker_name == "😊"
+    assert m.mime == "image/webp"
+    assert m.file_ref is st
+
+
 def test_detect_audio_botapi():
     # Bot API-style: msg.audio with MIME type and duration
     audio = Obj(file_unique_id="aud_u1", mime_type="audio/mpeg", duration=215)
