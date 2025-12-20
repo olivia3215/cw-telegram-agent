@@ -644,3 +644,187 @@ async def test_ai_generating_source_handles_video_too_long_error():
                 # Should return UNSUPPORTED status (permanent failure)
                 assert result["status"] == MediaStatus.UNSUPPORTED.value
                 assert "too long" in result["failure_reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_tgs_cleanup_on_llm_timeout(tmp_path):
+    """Test that temporary TGS files are cleaned up when LLM calls timeout."""
+    from pathlib import Path
+    from media.media_scratch import get_scratch_file
+    
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
+    
+    # Create mock agent
+    agent = MagicMock()
+    client = MagicMock()
+    llm = MagicMock()
+    llm.describe_video = AsyncMock(side_effect=httpx.TimeoutException("Request timeout"))
+    agent.client = client
+    agent.llm = llm
+    
+    # Mock document
+    doc = MagicMock()
+    
+    # Create actual temporary files to verify cleanup
+    # The actual code will create tgs_path via get_scratch_file, then convert_tgs_to_video
+    # will create video_path based on tgs_path.with_suffix(".mp4")
+    tgs_path = get_scratch_file("test_tgs_timeout.tgs")
+    video_path = tgs_path.with_suffix(".mp4")
+    tgs_path.write_bytes(b"fake_tgs_data")
+    video_path.write_bytes(b"fake_video_data")
+    
+    with patch("media.media_source.download_media_bytes") as mock_download:
+        mock_download.return_value = b"fake_tgs_bytes"
+        
+        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+            mock_detect.return_value = "application/gzip"
+            
+            # Mock the TGS converter to return our test video path
+            with patch("media.tgs_converter.convert_tgs_to_video") as mock_converter:
+                mock_converter.return_value = video_path
+                
+                # Mock get_scratch_file to return our test TGS path
+                with patch("media.media_source.get_scratch_file") as mock_scratch:
+                    mock_scratch.return_value = tgs_path
+                    
+                    # Mock get_media_llm to return our mock LLM
+                    with patch("media.media_source.get_media_llm", return_value=llm):
+                        result = await source.get(
+                            unique_id="test_tgs_timeout",
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            duration=4,
+                        )
+                        
+                        # Verify LLM was called
+                        llm.describe_video.assert_called_once()
+                        
+                        # Verify error record is returned
+                        assert result["status"] == MediaStatus.TEMPORARY_FAILURE.value
+                        assert "timeout" in result["failure_reason"].lower()
+                        
+                        # Verify temporary files are cleaned up
+                        assert not video_path.exists(), "Video file should be cleaned up"
+                        assert not tgs_path.exists(), "TGS file should be cleaned up"
+
+
+@pytest.mark.asyncio
+async def test_tgs_cleanup_on_llm_runtime_error(tmp_path):
+    """Test that temporary TGS files are cleaned up when LLM calls raise RuntimeError."""
+    from pathlib import Path
+    from media.media_scratch import get_scratch_file
+    
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
+    
+    # Create mock agent
+    agent = MagicMock()
+    client = MagicMock()
+    llm = MagicMock()
+    llm.describe_video = AsyncMock(side_effect=RuntimeError("API error 500"))
+    agent.client = client
+    agent.llm = llm
+    
+    # Mock document
+    doc = MagicMock()
+    
+    # Create actual temporary files to verify cleanup
+    tgs_path = get_scratch_file("test_tgs_runtime.tgs")
+    video_path = tgs_path.with_suffix(".mp4")
+    tgs_path.write_bytes(b"fake_tgs_data")
+    video_path.write_bytes(b"fake_video_data")
+    
+    with patch("media.media_source.download_media_bytes") as mock_download:
+        mock_download.return_value = b"fake_tgs_bytes"
+        
+        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+            mock_detect.return_value = "application/gzip"
+            
+            # Mock the TGS converter to return our test video path
+            with patch("media.tgs_converter.convert_tgs_to_video") as mock_converter:
+                mock_converter.return_value = video_path
+                
+                # Mock get_scratch_file to return our test TGS path
+                with patch("media.media_source.get_scratch_file") as mock_scratch:
+                    mock_scratch.return_value = tgs_path
+                    
+                    # Mock get_media_llm to return our mock LLM
+                    with patch("media.media_source.get_media_llm", return_value=llm):
+                        result = await source.get(
+                            unique_id="test_tgs_runtime",
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            duration=4,
+                        )
+                        
+                        # Verify LLM was called
+                        llm.describe_video.assert_called_once()
+                        
+                        # Verify error record is returned
+                        assert result["status"] == MediaStatus.TEMPORARY_FAILURE.value
+                        assert "api error" in result["failure_reason"].lower()
+                        
+                        # Verify temporary files are cleaned up
+                        assert not video_path.exists(), "Video file should be cleaned up"
+                        assert not tgs_path.exists(), "TGS file should be cleaned up"
+
+
+@pytest.mark.asyncio
+async def test_tgs_cleanup_on_llm_value_error(tmp_path):
+    """Test that temporary TGS files are cleaned up when LLM calls raise ValueError."""
+    from pathlib import Path
+    from media.media_scratch import get_scratch_file
+    
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
+    
+    # Create mock agent
+    agent = MagicMock()
+    client = MagicMock()
+    llm = MagicMock()
+    llm.describe_video = AsyncMock(side_effect=ValueError("Unsupported format"))
+    agent.client = client
+    agent.llm = llm
+    
+    # Mock document
+    doc = MagicMock()
+    
+    # Create actual temporary files to verify cleanup
+    tgs_path = get_scratch_file("test_tgs_value.tgs")
+    video_path = tgs_path.with_suffix(".mp4")
+    tgs_path.write_bytes(b"fake_tgs_data")
+    video_path.write_bytes(b"fake_video_data")
+    
+    with patch("media.media_source.download_media_bytes") as mock_download:
+        mock_download.return_value = b"fake_tgs_bytes"
+        
+        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+            mock_detect.return_value = "application/gzip"
+            
+            # Mock the TGS converter to return our test video path
+            with patch("media.tgs_converter.convert_tgs_to_video") as mock_converter:
+                mock_converter.return_value = video_path
+                
+                # Mock get_scratch_file to return our test TGS path
+                with patch("media.media_source.get_scratch_file") as mock_scratch:
+                    mock_scratch.return_value = tgs_path
+                    
+                    # Mock get_media_llm to return our mock LLM
+                    with patch("media.media_source.get_media_llm", return_value=llm):
+                        result = await source.get(
+                            unique_id="test_tgs_value",
+                            agent=agent,
+                            doc=doc,
+                            kind="sticker",
+                            duration=4,
+                        )
+                        
+                        # Verify LLM was called
+                        llm.describe_video.assert_called_once()
+                        
+                        # Verify error record is returned
+                        assert result["status"] == MediaStatus.UNSUPPORTED.value
+                        
+                        # Verify temporary files are cleaned up
+                        assert not video_path.exists(), "Video file should be cleaned up"
+                        assert not tgs_path.exists(), "TGS file should be cleaned up"

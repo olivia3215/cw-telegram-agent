@@ -1055,6 +1055,13 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: timeout after {_DESCRIBE_TIMEOUT_SECS}s for {unique_id}"
             )
 
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
             # Transient failure - return error record for AIChainMediaSource to handle
             return make_error_record(
                 unique_id,
@@ -1072,6 +1079,13 @@ class AIGeneratingMediaSource(MediaSource):
             logger.info(
                 f"AIGeneratingMediaSource: format check failed for {unique_id}: {e}"
             )
+
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
 
             # Permanent failure - return error record for AIChainMediaSource to handle
             return make_error_record(
@@ -1092,6 +1106,13 @@ class AIGeneratingMediaSource(MediaSource):
                 f"(MIME type: {final_mime_type}, detected: {detected_mime_type}, "
                 f"file size: {file_size_mb:.2f}MB, kind: {kind})"
             )
+            
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
             
             # Check if this is a format/argument error (400) - treat as permanent failure
             error_str = str(e)
@@ -1125,6 +1146,13 @@ class AIGeneratingMediaSource(MediaSource):
             logger.exception(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
             )
+
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
 
             # Permanent failure - return error record for AIChainMediaSource to handle
             return make_error_record(
@@ -1167,11 +1195,12 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: NOT_UNDERSTOOD {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
             )
 
-        # Clean up temporary TGS and video files
-        if video_file_path and video_file_path.exists():
-            video_file_path.unlink()
-        if "tgs_path" in locals() and tgs_path and tgs_path.exists():
-            tgs_path.unlink()
+        # Clean up temporary TGS and video files if conversion succeeded
+        if is_converted_tgs:
+            if video_file_path and video_file_path.exists():
+                video_file_path.unlink()
+            if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                tgs_path.unlink()
 
         return record
 
