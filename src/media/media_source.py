@@ -349,7 +349,11 @@ class DirectoryMediaSource(MediaSource):
 
                     # Create fallback description for stickers
                     sticker_name = record.get("sticker_name") or sticker_name
-                    is_animated = mime_type and is_tgs_mime_type(mime_type)
+                    # Check original_mime_type first (for TGS files converted to video/mp4)
+                    original_mime_type = record.get("original_mime_type")
+                    is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+                        mime_type and is_tgs_mime_type(mime_type)
+                    )
                     description = fallback_sticker_description(
                         sticker_name, animated=is_animated
                     )
@@ -623,7 +627,11 @@ class BudgetExhaustedMediaSource(MediaSource):
             description = None
             if kind == "sticker":
                 mime_type = metadata.get("mime_type")
-                is_animated = mime_type and is_tgs_mime_type(mime_type)
+                # Check original_mime_type first (for TGS files converted to video/mp4)
+                original_mime_type = metadata.get("original_mime_type")
+                is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+                    mime_type and is_tgs_mime_type(mime_type)
+                )
                 description = fallback_sticker_description(sticker_name, animated=is_animated)
 
             return {
@@ -655,7 +663,12 @@ def make_error_record(
     description = None
     if kind == "sticker":
         mime_type = extra.get("mime_type")
-        is_animated = mime_type and is_tgs_mime_type(mime_type)
+        # Check original_mime_type first (for TGS files converted to video/mp4)
+        # If original_mime_type is TGS, it was animated
+        original_mime_type = extra.get("original_mime_type")
+        is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+            mime_type and is_tgs_mime_type(mime_type)
+        )
         description = fallback_sticker_description(sticker_name, animated=is_animated)
         
     record = {
@@ -946,6 +959,9 @@ class AIGeneratingMediaSource(MediaSource):
 
                 # Read the video data
                 data = video_file_path.read_bytes()
+
+                # Preserve original TGS mime_type before updating (needed for fallback descriptions)
+                metadata["original_mime_type"] = final_mime_type
 
                 # Update MIME type to video/mp4
                 detected_mime_type = normalize_mime_type("video/mp4")
