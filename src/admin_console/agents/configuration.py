@@ -25,6 +25,7 @@ def _write_agent_markdown(agent, fields):
     lines = []
     for field_name, field_value in fields.items():
         lines.append(f"# {field_name}")
+        lines.append("")  # Empty line after header (markdown guideline)
         
         # Handle list or tuple values
         if isinstance(field_value, (list, tuple)):
@@ -607,7 +608,7 @@ def register_new_agent_routes(agents_bp: Blueprint):
                 content = default_agent_template.read_text(encoding="utf-8")
             else:
                 # Fallback content if DefaultAgent.md doesn't exist
-                content = "# Agent Name\nUntitled Agent\n\n# Agent Phone\n+1234567890\n\n# Agent Instructions\nYou are a helpful assistant.\n\n# Role Prompt\nPerson\n\n# Disabled\n"
+                content = "# Agent Name\n\nUntitled Agent\n\n# Agent Phone\n\n+1234567890\n\n# Agent Instructions\n\nYou are a helpful assistant.\n\n# Role Prompt\n\nPerson\n\n# Disabled\n\n"
             
             new_file.write_text(content, encoding="utf-8")
 
