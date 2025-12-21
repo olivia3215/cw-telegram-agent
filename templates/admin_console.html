@@ -4161,6 +4161,11 @@
                     if (checkbox) {
                         checkbox.checked = showTranslation;
                     }
+                    
+                    // If translations were enabled, trigger the translation stream to fetch them
+                    if (showTranslation) {
+                        startTranslationStream(agentName, userId, checkbox);
+                    }
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
