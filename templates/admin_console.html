@@ -5961,6 +5961,47 @@
             };
         }
         
+        // Immediately save any pending content changes (used before rename/move operations)
+        // Returns a promise that resolves when the save is complete (or immediately if no save needed)
+        async function savePendingGlobalPromptsContent(configDir, filename) {
+            const contentTextarea = document.getElementById('global-prompts-content');
+            if (!contentTextarea) {
+                return; // No textarea, nothing to save
+            }
+            
+            const newContent = contentTextarea.value;
+            if (newContent === globalPromptsContent) {
+                return; // No changes, nothing to save
+            }
+            
+            // Verify we're still editing the same prompt (user may have switched)
+            if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                return; // User switched prompts, don't save
+            }
+            
+            const statusEl = document.getElementById('global-prompts-save-status');
+            if (statusEl) statusEl.textContent = 'Saving...';
+            
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: newContent })
+                });
+                
+                if (response.ok) {
+                    globalPromptsContent = newContent;
+                    if (statusEl) statusEl.textContent = 'Saved';
+                } else {
+                    throw new Error('Save failed');
+                }
+            } catch (error) {
+                console.error('Error saving prompt:', error);
+                if (statusEl) statusEl.textContent = 'Error saving';
+                throw error; // Re-throw so caller knows save failed
+            }
+        }
+        
         // Debounced filename change for global prompts
         // Captures configDir and filename to avoid race conditions
         function debounceGlobalPromptsFilename(configDir, filename) {
@@ -6021,6 +6062,9 @@
                     }
                     
                     try {
+                        // Save any pending content changes before renaming (with old filename)
+                        await savePendingGlobalPromptsContent(configDir, filename);
+                        
                         // Use captured values instead of reading from globals
                         const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}`, {
                             method: 'POST',
@@ -6057,6 +6101,9 @@
                             // Update handlers with new filename to allow further saves/renames
                             const contentTextarea = document.getElementById('global-prompts-content');
                             if (contentTextarea) {
+                                // Update globalPromptsContent to match current textarea value
+                                // (in case user continued typing during the rename operation)
+                                globalPromptsContent = contentTextarea.value;
                                 contentTextarea.oninput = debounceGlobalPromptsSave(configDir, newFilename);
                             }
                             const filenameInput = document.getElementById('global-prompts-filename');
@@ -6185,6 +6232,15 @@
                 // Reset dropdown to current location
                 loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
                 return;
+            }
+
+            // Save any pending content changes before moving
+            try {
+                await savePendingGlobalPromptsContent(globalPromptsConfigDir, globalPromptsCurrentFilename);
+            } catch (error) {
+                // If save fails, still allow move (but user may lose unsaved changes)
+                console.error('Failed to save content before move:', error);
+                alert('Warning: Failed to save content before move. Your recent edits may be lost.');
             }
 
             // Clear any pending save timeout to prevent saving after move
