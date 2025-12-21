@@ -5859,6 +5859,8 @@
             } catch (error) {
                 console.error('Error loading prompt:', error);
                 document.getElementById('global-prompts-editor-container').innerHTML = '<div class="error">Error loading role prompt</div>';
+                globalPromptsCurrentFilename = '';
+                document.getElementById('delete-global-prompt-btn').style.display = 'none';
             }
         }
         
