@@ -6004,6 +6004,12 @@
                     return;
                 }
                 
+                // Ensure at least one non-space character exists (prevent filenames with only spaces)
+                if (!/[a-zA-Z0-9_\-]/.test(nameWithoutExt)) {
+                    if (statusEl) statusEl.textContent = 'Filename must contain at least one non-space character';
+                    return;
+                }
+                
                 if (statusEl) statusEl.textContent = 'Renaming...';
                 
                 globalPromptsFilenameTimeout = setTimeout(async () => {

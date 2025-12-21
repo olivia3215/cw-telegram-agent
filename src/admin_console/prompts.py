@@ -105,6 +105,7 @@ def validate_prompt_filename(filename: str) -> bool:
     Valid filenames must:
     - End with .md
     - Contain only alphanumerics, underscores, dashes, and spaces
+    - Contain at least one non-space character
     - Be at most 50 characters (before .md extension)
     - Have no path traversal characters
     
@@ -132,6 +133,10 @@ def validate_prompt_filename(filename: str) -> bool:
     
     # Check that it only contains allowed characters: alphanumerics, underscores, dashes, spaces
     if not re.match(r"^[a-zA-Z0-9_\- ]+$", name_without_ext):
+        return False
+    
+    # Ensure at least one non-space character exists (prevent filenames with only spaces)
+    if not re.search(r"[a-zA-Z0-9_\-]", name_without_ext):
         return False
     
     # Basic validation: no null bytes
