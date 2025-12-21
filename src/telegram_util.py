@@ -95,12 +95,14 @@ async def is_user_blocking_agent(agent: "Agent", user_id: int) -> bool:
             return False
         
         # Check if this is a User entity (for DMs)
-        from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
+        from telethon.tl.types import User, UserProfilePhotoEmpty  # pyright: ignore[reportMissingImports]
         if not isinstance(entity, User):
             return False
         
         # Check profile photo - should be empty if blocked
-        has_photo = hasattr(entity, 'photo') and entity.photo is not None
+        # Telethon returns UserProfilePhotoEmpty (not None) when user has no photo
+        photo = getattr(entity, 'photo', None)
+        has_photo = photo is not None and not isinstance(photo, UserProfilePhotoEmpty)
         if has_photo:
             return False
         
