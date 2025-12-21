@@ -16,7 +16,7 @@ from handlers.received_helpers.message_processing import format_message_reaction
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
-from telegram_util import get_channel_name
+from telegram_util import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
 
 # Import markdown_to_html - use importlib to avoid relative import issues when loaded via importlib
 import importlib.util
@@ -623,6 +623,27 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         # This allows us to download emojis later without needing to fetch them again
         emoji_document_cache: dict[int, Any] = {}
         
+        async def _check_blocked_status() -> bool:
+            """Check if the conversation is blocked (agent cannot send messages to this channel)."""
+            try:
+                # Check if the agent blocked the user (using blocklist with ttl_seconds=0 to force fresh check)
+                # This is the most reliable check - the blocklist API directly tells us if the agent blocked the user
+                agent_blocked_user = False
+                api_cache = agent.api_cache
+                if api_cache:
+                    agent_blocked_user = await api_cache.is_blocked(channel_id, ttl_seconds=0)
+                
+                # Check if the user blocked the agent using profile indicators
+                user_blocked_agent = await is_user_blocking_agent(agent, channel_id)
+                
+                # Conversation is blocked if either party has blocked the other
+                is_blocked = agent_blocked_user or user_blocked_agent
+                return is_blocked
+            except Exception as e:
+                logger.warning(f"Error checking blocked status for {agent_config_name}/{channel_id}: {e}", exc_info=True)
+                # On error, default to not blocked (to avoid false positives)
+                return False
+        
         async def _get_messages():
             try:
                 # Use client.get_entity() directly since we're already in the client's event loop
@@ -1088,16 +1109,19 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 logger.error(f"Error fetching messages for {agent_config_name}/{channel_id}: {e}", exc_info=True)
                 return []
 
-        # Use agent.execute() to run the coroutine on the agent's event loop
+        # Use agent.execute() to run the coroutines on the agent's event loop
         try:
             messages = agent.execute(_get_messages(), timeout=30.0)
+            # Check blocked status
+            is_blocked = agent.execute(_check_blocked_status(), timeout=10.0)
             # Get agent timezone identifier (IANA format for JavaScript compatibility)
             agent_tz_id = agent.get_timezone_identifier()
             
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
-                "agent_timezone": agent_tz_id
+                "agent_timezone": agent_tz_id,
+                "is_blocked": is_blocked
             })
         except RuntimeError as e:
             error_msg = str(e).lower()

@@ -4148,12 +4148,13 @@
                     const summaries = data.summaries || [];
                     const messages = data.messages || [];
                     const agentTimezone = data.agent_timezone;
+                    const isBlocked = data.is_blocked || false;
                     conversationMessages = messages;
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
                     showTranslation = false;
                     
-                    renderConversation(agentName, userId, summaries, messages, agentTimezone);
+                    renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -4163,9 +4164,17 @@
                 });
         }
 
-        function renderConversation(agentName, userId, summaries, messages, agentTimezone) {
+        function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false) {
             const container = document.getElementById('conversation-container');
             let html = '';
+            
+            // Display blocked status banner at the top if conversation is blocked
+            if (isBlocked) {
+                html += '<div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">';
+                html += '<span style="font-size: 18px;">⚠️</span>';
+                html += '<div><strong>This conversation is blocked.</strong> The agent cannot send messages to this conversation.</div>';
+                html += '</div>';
+            }
             
             // Helper function to convert UTC timestamp to agent timezone for display
             // Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
@@ -4790,7 +4799,8 @@
                                 if (data.agent_timezone) {
                                     conversationAgentTimezone = data.agent_timezone;
                                 }
-                                renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                                const isBlocked = data.is_blocked || false;
+                                renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone, isBlocked);
                             }
                         });
                     return;
@@ -4804,7 +4814,8 @@
                             if (data.agent_timezone) {
                                 conversationAgentTimezone = data.agent_timezone;
                             }
-                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                            const isBlocked = data.is_blocked || false;
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone, isBlocked);
                             
                             // Now start streaming translations via SSE
                             startTranslationStream(agentName, userId, checkbox);
@@ -4827,7 +4838,8 @@
                             if (data.agent_timezone) {
                                 conversationAgentTimezone = data.agent_timezone;
                             }
-                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone);
+                            const isBlocked = data.is_blocked || false;
+                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone, isBlocked);
                         }
                     });
             }
