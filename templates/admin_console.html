@@ -5844,8 +5844,11 @@
         async function loadGlobalPrompt(filename) {
             if (!globalPromptsConfigDir || !filename) return;
             
+            // Capture configDir at the start to avoid race conditions if dropdown changes during fetch
+            const configDir = globalPromptsConfigDir;
+            
             try {
-                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`);
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`);
                 if (!response.ok) {
                     throw new Error('Failed to load prompt');
                 }
@@ -5854,7 +5857,7 @@
                 globalPromptsCurrentFilename = filename;
                 globalPromptsContent = data.content || '';
                 
-                renderGlobalPromptEditor(data.content || '', filename, globalPromptsConfigDir);
+                renderGlobalPromptEditor(data.content || '', filename, configDir);
                 document.getElementById('delete-global-prompt-btn').style.display = 'inline-block';
             } catch (error) {
                 console.error('Error loading prompt:', error);
