@@ -14,7 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
-from config import STATE_DIRECTORY
+from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
 from media.media_sources import iter_directory_media_sources
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
@@ -115,42 +115,95 @@ def get_default_llm() -> str:
 
 
 def get_available_llms() -> list[dict[str, Any]]:
-    """Get list of available LLM options with metadata."""
-    llms = [
+    """Get list of available LLM options with metadata.
+    
+    Filters models based on API key availability:
+    - Gemini models only shown if GOOGLE_GEMINI_API_KEY is set
+    - Grok models only shown if GROK_API_KEY is set
+    - OpenAI models only shown if OPENAI_API_KEY is set
+    """
+    all_llms = [
+        # Gemini models
         {
             "value": "gemini-3-pro-preview",
             "label": "gemini-3-pro-preview ($2.00 / $12.00)",
+            "provider": "gemini",
         },
         {
             "value": "gemini-2.5-pro",
             "label": "gemini-2.5-pro ($1.25 / $10.00)",
+            "provider": "gemini",
         },
         {
             "value": "gemini-3-flash-preview",
             "label": "gemini-3-flash-preview ($0.50 / $3.00)",
+            "provider": "gemini",
         },
         {
             "value": "gemini-2.5-flash-lite-preview-09-2025",
             "label": "gemini-2.5-flash-lite-preview-09-2025 ($0.10 / $0.40)",
+            "provider": "gemini",
         },
         {
             "value": "gemini-2.0-flash",
             "label": "gemini-2.0-flash ($0.10 / $0.40)",
+            "provider": "gemini",
         },
         {
             "value": "gemini-2.0-flash-lite",
             "label": "gemini-2.0-flash-lite ($0.07 / $0.30)",
+            "provider": "gemini",
         },
+        # Grok models
         {
             "value": "grok-4-1-fast-non-reasoning",
             "label": "grok-4-1-fast-non-reasoning ($0.20 / $0.50)",
+            "provider": "grok",
         },
         {
             "value": "grok-4-0709",
             "label": "grok-4-0709 ($3.00 / $15.00)",
+            "provider": "grok",
+        },
+        # OpenAI models
+        {
+            "value": "gpt-5.2",
+            "label": "gpt-5.2 ($1.75 / $14.00)",
+            "provider": "openai",
+        },
+        {
+            "value": "gpt-5.1",
+            "label": "gpt-5.1 ($1.50 / $10.00)",
+            "provider": "openai",
+        },
+        {
+            "value": "gpt-5-mini",
+            "label": "gpt-5-mini ($0.25 / $2.00)",
+            "provider": "openai",
+        },
+        {
+            "value": "gpt-5-nano",
+            "label": "gpt-5-nano ($0.05 / $0.40)",
+            "provider": "openai",
         },
     ]
-    return llms
+    
+    # Filter models based on API key availability
+    filtered_llms = []
+    for llm in all_llms:
+        provider = llm.get("provider", "")
+        if provider == "gemini" and GOOGLE_GEMINI_API_KEY:
+            filtered_llms.append(llm)
+        elif provider == "grok" and GROK_API_KEY:
+            filtered_llms.append(llm)
+        elif provider == "openai" and OPENAI_API_KEY:
+            filtered_llms.append(llm)
+    
+    # Remove provider key from output (not needed by frontend)
+    for llm in filtered_llms:
+        llm.pop("provider", None)
+    
+    return filtered_llms
 
 
 def get_work_queue() -> Any:

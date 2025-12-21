@@ -40,6 +40,7 @@ from telegram_util import can_agent_send_to_channel, get_channel_name, get_teleg
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES
+from config import GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
 
 # Configure logging level from environment variable, default to INFO
 log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
@@ -600,6 +601,34 @@ async def main():
     init_media_scratch()
     register_all_agents()
     
+    # Validate API keys for agents' LLM models
+    agents_list = list(all_agents())
+    missing_keys = []
+    for agent in agents_list:
+        llm_name = agent._llm_name
+        if not llm_name or not llm_name.strip():
+            # Default to Gemini, so check for Gemini key
+            if not GOOGLE_GEMINI_API_KEY:
+                missing_keys.append(f"Agent '{agent.name}' uses default Gemini model but GOOGLE_GEMINI_API_KEY is not set")
+        else:
+            llm_name_lower = llm_name.strip().lower()
+            if llm_name_lower.startswith("gemini"):
+                if not GOOGLE_GEMINI_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses Gemini model '{llm_name}' but GOOGLE_GEMINI_API_KEY is not set")
+            elif llm_name_lower.startswith("grok"):
+                if not GROK_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses Grok model '{llm_name}' but GROK_API_KEY is not set")
+            elif llm_name_lower.startswith("gpt") or llm_name_lower.startswith("openai"):
+                if not OPENAI_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses OpenAI model '{llm_name}' but OPENAI_API_KEY is not set")
+    
+    if missing_keys:
+        logger.error("Startup validation failed: Missing required API keys for agent LLM models:")
+        for error in missing_keys:
+            logger.error(f"  - {error}")
+        logger.error("Please set the required API keys and restart the server.")
+        return
+    
     # Check that Instructions.md can be found in one of the configuration directories
     try:
         load_system_prompt("Instructions")
@@ -608,8 +637,6 @@ async def main():
         logger.error("The 'Instructions.md' prompt must be available in one of the configuration directories.")
         logger.error("Make sure your CINDY_AGENT_CONFIG_PATH includes the directory containing 'prompts/Instructions.md'.")
         return
-
-    agents_list = list(all_agents())
 
     admin_server = None
     puppet_master_manager = get_puppet_master_manager()

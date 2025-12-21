@@ -16,6 +16,7 @@ from .base import LLM, ChatMsg, MsgMediaPart, MsgPart, MsgTextPart
 # Import LLM implementations
 from .gemini import GeminiLLM
 from .grok import GrokLLM
+from .openai import OpenAILLM
 
 # Import utility functions
 # (prompt_builder functions moved to LLM implementations as private methods)
@@ -31,4 +32,5 @@ __all__ = [
     # LLM implementations
     "GeminiLLM",
     "GrokLLM",
+    "OpenAILLM",
 ]

@@ -42,6 +42,7 @@ def _get_optional_str(env_name: str) -> str | None:
 # API credentials
 GOOGLE_GEMINI_API_KEY: str | None = os.environ.get("GOOGLE_GEMINI_API_KEY")
 GROK_API_KEY: str | None = os.environ.get("GROK_API_KEY")
+OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY")
 TELEGRAM_API_ID: str | None = os.environ.get("TELEGRAM_API_ID")
 TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
 
