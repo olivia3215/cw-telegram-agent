@@ -6128,6 +6128,12 @@
                 return;
             }
             
+            // Clear any pending save timeout to prevent saving after deletion
+            if (globalPromptsSaveTimeout) {
+                clearTimeout(globalPromptsSaveTimeout);
+                globalPromptsSaveTimeout = null;
+            }
+            
             try {
                 const response = await fetch(`/admin/api/prompts/${encodeURIComponent(globalPromptsCurrentFilename)}?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`, {
                     method: 'DELETE'
@@ -6173,6 +6179,12 @@
                 // Reset dropdown to current location
                 loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
                 return;
+            }
+
+            // Clear any pending save timeout to prevent saving after move
+            if (globalPromptsSaveTimeout) {
+                clearTimeout(globalPromptsSaveTimeout);
+                globalPromptsSaveTimeout = null;
             }
 
             try {
