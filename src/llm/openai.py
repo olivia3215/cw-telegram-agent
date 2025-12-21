@@ -320,8 +320,20 @@ class OpenAILLM(LLM):
                 if content.strip():
                     messages.append({"role": role, "content": content})
 
-        # Ensure last message is from user (OpenAI requirement)
-        if messages and messages[-1]["role"] == "assistant":
+        # Ensure at least one user message exists (OpenAI requirement)
+        # Check if there are any user messages in the list
+        has_user_message = any(msg.get("role") == "user" for msg in messages)
+        
+        if not has_user_message:
+            # Empty history or no user messages - add a user turn requesting action
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "⟦special⟧ Please respond to the instructions provided.",
+                }
+            )
+        elif messages and messages[-1]["role"] == "assistant":
+            # Last message was from assistant - add a continuation prompt
             messages.append(
                 {
                     "role": "user",
