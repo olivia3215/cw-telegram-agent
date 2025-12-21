@@ -30,9 +30,9 @@ from llm.media_helper import get_media_llm
 from telegram_download import download_media_bytes
 
 from .media_budget import (
-    consume_description_budget,
-    has_description_budget,
+    try_consume_description_budget,
 )
+from .media_scratch import get_scratch_file
 from .mime_utils import (
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
@@ -344,12 +344,16 @@ class DirectoryMediaSource(MediaSource):
                     record.get("kind") == "sticker"
                     and record.get("description") is None
                     and not has_failure_reason
-                    and status in (None, MediaStatus.GENERATED.value)
+                    and status in (None, MediaStatus.GENERATED.value, MediaStatus.BUDGET_EXHAUSTED.value, MediaStatus.TEMPORARY_FAILURE.value)
                 ):
 
                     # Create fallback description for stickers
                     sticker_name = record.get("sticker_name") or sticker_name
-                    is_animated = mime_type and is_tgs_mime_type(mime_type)
+                    # Check original_mime_type first (for TGS files converted to video/mp4)
+                    original_mime_type = record.get("original_mime_type")
+                    is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+                        mime_type and is_tgs_mime_type(mime_type)
+                    )
                     description = fallback_sticker_description(
                         sticker_name, animated=is_animated
                     )
@@ -361,7 +365,10 @@ class DirectoryMediaSource(MediaSource):
 
                     # Update the record with fallback description
                     record["description"] = description
-                    record["status"] = MediaStatus.GENERATED.value
+                    # Only promote to GENERATED if it wasn't a temporary failure
+                    # (we want to retry BUDGET_EXHAUSTED stickers when budget returns)
+                    if not MediaStatus.is_temporary_failure(status):
+                        record["status"] = MediaStatus.GENERATED.value
                     record["ts"] = clock.now(UTC).isoformat()
 
                     # Update the cache with the new description
@@ -611,21 +618,31 @@ class BudgetExhaustedMediaSource(MediaSource):
         If budget is exhausted: returns a simple fallback record
         """
 
-        if has_description_budget():
-            # Budget available - consume it and return None
-            # to let AIGeneratingMediaSource handle the request
-            consume_description_budget()
+        if try_consume_description_budget():
+            # Budget available and consumed - return None to let AIGeneratingMediaSource handle it
             return None
         else:
             # Budget exhausted - return fallback record
+            # For stickers, we can provide a fallback description immediately
+            description = None
+            if kind == "sticker":
+                mime_type = metadata.get("mime_type")
+                # Check original_mime_type first (for TGS files converted to video/mp4)
+                original_mime_type = metadata.get("original_mime_type")
+                is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+                    mime_type and is_tgs_mime_type(mime_type)
+                )
+                description = fallback_sticker_description(sticker_name, animated=is_animated)
+
             return {
                 "unique_id": unique_id,
                 "kind": kind,
                 "sticker_set_name": sticker_set_name,
                 "sticker_name": sticker_name,
-                "description": None,
+                "description": description,
                 "status": MediaStatus.BUDGET_EXHAUSTED.value,
                 "ts": clock.now(UTC).isoformat(),
+                **metadata,
             }
 
 
@@ -641,12 +658,25 @@ def make_error_record(
 ) -> dict[str, Any]:
     """Helper to create an error record."""
     status_value = status.value if isinstance(status, MediaStatus) else status
+    
+    # Provide fallback description for stickers
+    description = None
+    if kind == "sticker":
+        mime_type = extra.get("mime_type")
+        # Check original_mime_type first (for TGS files converted to video/mp4)
+        # If original_mime_type is TGS, it was animated
+        original_mime_type = extra.get("original_mime_type")
+        is_animated = (original_mime_type and is_tgs_mime_type(original_mime_type)) or (
+            mime_type and is_tgs_mime_type(mime_type)
+        )
+        description = fallback_sticker_description(sticker_name, animated=is_animated)
+        
     record = {
         "unique_id": unique_id,
         "kind": kind,
         "sticker_set_name": sticker_set_name,
         "sticker_name": sticker_name,
-        "description": None,
+        "description": description,
         "status": status_value,
         "failure_reason": failure_reason,
         "ts": clock.now(UTC).isoformat(),
@@ -686,13 +716,24 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         # Normalize MIME type metadata before applying other checks
         meta_mime = metadata.get("mime_type")
+        if not meta_mime and doc is not None:
+            # Fallback to doc.mime_type if metadata is missing it
+            meta_mime = getattr(doc, "mime_type", None)
+            if meta_mime:
+                metadata["mime_type"] = meta_mime
+
         if meta_mime:
             normalized_meta_mime = normalize_mime_type(meta_mime)
             if normalized_meta_mime and normalized_meta_mime != meta_mime:
                 metadata["mime_type"] = normalized_meta_mime
+                meta_mime = normalized_meta_mime
 
         # Special handling for AnimatedEmojies - use sticker name as description
-        if sticker_set_name == "AnimatedEmojies" and sticker_name:
+        # This keeps behavior fast for standard emojis and avoids AI cost/latency
+        if (
+            sticker_set_name in ("AnimatedEmojies", "AnimatedEmoji")
+            and sticker_name
+        ):
             description = fallback_sticker_description(sticker_name, animated=True)
             logger.info(
                 f"AnimatedEmojies sticker {unique_id}: using '{description}' as description"
@@ -726,31 +767,8 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
-                    duration=duration,
-                )
-
-        # Special handling for TGS animated stickers - provide fallback description
-        if kind == "sticker" and doc is not None:
-            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
-            if mime_type and is_tgs_mime_type(mime_type):
-                # Create a fallback description for TGS files
-                description = fallback_sticker_description(sticker_name)
-
-                logger.info(
-                    f"TGS animated sticker {unique_id}: using fallback description '{description}'"
-                )
-                record = {
-                    "unique_id": unique_id,
-                    "kind": kind,
-                    "sticker_set_name": sticker_set_name,
-                    "sticker_name": sticker_name,
-                    "description": description,
-                    "status": MediaStatus.GENERATED.value,
-                    "ts": clock.now(UTC).isoformat(),
-                    "mime_type": mime_type,
                     **metadata,
-                }
-                return record
+                )
 
         # Only check if we have a document to download
         if doc is None:
@@ -783,7 +801,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
-                    mime_type=mime_type,
+                    **metadata,
                 )
 
             # Format is supported - let other sources handle it
@@ -922,16 +940,11 @@ class AIGeneratingMediaSource(MediaSource):
         is_converted_tgs = False
         if is_tgs_mime_type(final_mime_type):
             try:
-                import tempfile
-
                 from media.tgs_converter import convert_tgs_to_video
 
-                # Save TGS data to temporary file
-                with tempfile.NamedTemporaryFile(
-                    suffix=".tgs", delete=False
-                ) as tgs_file:
-                    tgs_path = Path(tgs_file.name)
-                    tgs_file.write(data)
+                # Save TGS data to scratch file
+                tgs_path = get_scratch_file(f"{unique_id}.tgs")
+                tgs_path.write_bytes(data)
 
                 # Convert TGS to video
                 # Use 4 fps for efficiency - AI samples key frames anyway
@@ -945,8 +958,10 @@ class AIGeneratingMediaSource(MediaSource):
                 )
 
                 # Read the video data
-                with open(video_file_path, "rb") as f:
-                    data = f.read()
+                data = video_file_path.read_bytes()
+
+                # Preserve original TGS mime_type before updating (needed for fallback descriptions)
+                metadata["original_mime_type"] = final_mime_type
 
                 # Update MIME type to video/mp4
                 detected_mime_type = normalize_mime_type("video/mp4")
@@ -961,7 +976,7 @@ class AIGeneratingMediaSource(MediaSource):
             except Exception as e:
                 logger.error(f"TGS to video conversion failed for {unique_id}: {e}")
                 # Clean up temporary files
-                if tgs_path and tgs_path.exists():
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
                     tgs_path.unlink()
                 if video_file_path and video_file_path.exists():
                     video_file_path.unlink()
@@ -1040,6 +1055,13 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: timeout after {_DESCRIBE_TIMEOUT_SECS}s for {unique_id}"
             )
 
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
             # Transient failure - return error record for AIChainMediaSource to handle
             return make_error_record(
                 unique_id,
@@ -1057,6 +1079,13 @@ class AIGeneratingMediaSource(MediaSource):
             logger.info(
                 f"AIGeneratingMediaSource: format check failed for {unique_id}: {e}"
             )
+
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
 
             # Permanent failure - return error record for AIChainMediaSource to handle
             return make_error_record(
@@ -1077,6 +1106,13 @@ class AIGeneratingMediaSource(MediaSource):
                 f"(MIME type: {final_mime_type}, detected: {detected_mime_type}, "
                 f"file size: {file_size_mb:.2f}MB, kind: {kind})"
             )
+            
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
             
             # Check if this is a format/argument error (400) - treat as permanent failure
             error_str = str(e)
@@ -1111,6 +1147,13 @@ class AIGeneratingMediaSource(MediaSource):
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
             )
 
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
             # Permanent failure - return error record for AIChainMediaSource to handle
             return make_error_record(
                 unique_id,
@@ -1124,8 +1167,25 @@ class AIGeneratingMediaSource(MediaSource):
 
         llm_ms = (time.perf_counter() - t1) * 1000
 
-        # Determine status
-        status = MediaStatus.GENERATED if desc else MediaStatus.PERMANENT_FAILURE
+        # If LLM returned empty or invalid description, use make_error_record
+        # to ensure stickers get fallback descriptions (consistent with exception paths)
+        if not desc:
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
+            return make_error_record(
+                unique_id,
+                MediaStatus.PERMANENT_FAILURE,
+                "LLM returned empty or invalid description",
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                **metadata,
+            )
 
         # Return record for AIChainMediaSource to handle caching
         record = {
@@ -1133,30 +1193,24 @@ class AIGeneratingMediaSource(MediaSource):
             "kind": kind,
             "sticker_set_name": sticker_set_name,
             "sticker_name": sticker_name,
-            "description": desc if desc else None,
-            "failure_reason": (
-                "LLM returned empty or invalid description" if not desc else None
-            ),
-            "status": status.value,
+            "description": desc,
+            "failure_reason": None,
+            "status": MediaStatus.GENERATED.value,
             "ts": clock.now(UTC).isoformat(),
             **metadata,
         }
 
         total_ms = (time.perf_counter() - t0) * 1000
-        if status == MediaStatus.GENERATED:
-            logger.debug(
-                f"AIGeneratingMediaSource: SUCCESS {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
-            )
-        else:
-            logger.debug(
-                f"AIGeneratingMediaSource: NOT_UNDERSTOOD {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
-            )
+        logger.debug(
+            f"AIGeneratingMediaSource: SUCCESS {unique_id} bytes={len(data)} dl={dl_ms:.0f}ms llm={llm_ms:.0f}ms total={total_ms:.0f}ms"
+        )
 
-        # Clean up temporary TGS and video files
-        if video_file_path and video_file_path.exists():
-            video_file_path.unlink()
-        if "tgs_path" in locals() and tgs_path and tgs_path.exists():
-            tgs_path.unlink()
+        # Clean up temporary TGS and video files if conversion succeeded
+        if is_converted_tgs:
+            if video_file_path and video_file_path.exists():
+                video_file_path.unlink()
+            if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                tgs_path.unlink()
 
         return record
 
@@ -1217,11 +1271,18 @@ class AIChainMediaSource(MediaSource):
             unique_id, agent, doc, **metadata
         )
 
-        # 2. If we have a cached record that's NOT temporary failure, return it
-        if cached_record and not MediaStatus.is_temporary_failure(
-            cached_record.get("status")
-        ):
-            return cached_record
+        # 2. If we have a cached record, decide whether to return it or retry
+        if cached_record:
+            status = cached_record.get("status")
+            # If successful or permanent failure, always return cached record
+            if not MediaStatus.is_temporary_failure(status):
+                return cached_record
+
+            # If it's a temporary failure, we only retry if we have a document
+            # to attempt a new description generation. Without a document
+            # (e.g. during lookup-only formatting phase), we return what we have.
+            if doc is None:
+                return cached_record
 
         # 3. Chain through sources
         record = None

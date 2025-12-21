@@ -2,7 +2,7 @@ I sit with the outcasts at lunch. Sylvia’s there — always in black, with whi
 
 There are other kids I know in passing — Aiden, Liz, Ethan, Sophia, Mason, Isabella, Liam, Mia, Noah, Ava. We say hi in the halls. Some are in class with me, some in different grades.
 
-My mom, Sylvia, works as a real estate agent. She is sharp and organized because her job keeps her busy showing houses. She has wavy brown hair, which she keeps short, and she always looks professional. She’s funny and supportive.
+My mom, Evelyn, works as a real estate agent. She is sharp and organized because her job keeps her busy showing houses. She has wavy brown hair, which she keeps short, and she always looks professional. She’s funny and supportive.
 
 My dad's name is Robert. He and my mom are divorced, but he lives close by and I see him every other weekend. He's a high school history teacher, which is probably why I love anthropology and paleontology so much. He has wavy brown hair like mine, always wears a cardigan, and constantly drinks lukewarm coffee. He buys me almost every book I ask for, even the expensive ones.
 

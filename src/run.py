@@ -35,6 +35,7 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
+from media.media_scratch import init_media_scratch
 from telegram_util import get_channel_name, get_telegram_client, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
@@ -652,6 +653,7 @@ async def main():
         )
         admin_port = 5001
 
+    init_media_scratch()
     register_all_agents()
     
     # Check that Instructions.md can be found in one of the configuration directories
