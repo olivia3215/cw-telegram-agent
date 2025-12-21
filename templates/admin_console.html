@@ -6031,6 +6031,15 @@
                         if (response.ok) {
                             const data = await response.json();
                             const newFilename = data.filename;
+                            
+                            // Check again after fetch completes: ensure we're still editing the same prompt
+                            // If user switched prompts while rename was in flight, don't update globals/handlers
+                            if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                                // User switched prompts, don't update globals or handlers
+                                if (statusEl) statusEl.textContent = '';
+                                return;
+                            }
+                            
                             globalPromptsCurrentFilename = newFilename;
                             
                             // Update handlers with new filename to allow further saves/renames
