@@ -4151,9 +4151,16 @@
                     conversationMessages = messages;
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
-                    showTranslation = false;
+                    // Preserve showTranslation state instead of resetting it
+                    // showTranslation state is preserved
                     
                     renderConversation(agentName, userId, summaries, messages, agentTimezone);
+                    
+                    // Restore checkbox state after rendering if it was checked
+                    const checkbox = document.getElementById('translation-toggle');
+                    if (checkbox) {
+                        checkbox.checked = showTranslation;
+                    }
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -4385,6 +4392,11 @@
                     `;
                 }).join('');
             }
+            
+            // Add refresh button at the bottom
+            html += '<div style="margin-top: 16px; padding: 12px; text-align: center; border-top: 1px solid #ddd;">';
+            html += `<button onclick="loadConversation()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Conversation</button>`;
+            html += '</div>';
             
             container.innerHTML = html;
             
