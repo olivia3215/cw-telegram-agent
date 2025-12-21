@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from media.media_format import (
-    _extract_sticker_set_name,
+    _extract_sticker_set_metadata,
     _format_sticker_sentence_internal,
     format_media_description,
     format_media_sentence,
@@ -51,7 +51,7 @@ def test_format_media_description_trims_whitespace():
 
 def test_format_sticker_sentence_internal_with_desc():
     out = _format_sticker_sentence_internal(
-        "😊", "HotCherry", "Kermit gives a thumbs up"
+        "😊", "HotCherry", "HotCherry", "Kermit gives a thumbs up"
     )
     assert (
         out
@@ -61,7 +61,7 @@ def test_format_sticker_sentence_internal_with_desc():
 
 @pytest.mark.parametrize("desc", ["", "   "])
 def test_format_sticker_sentence_internal_without_desc(desc):
-    out = _format_sticker_sentence_internal("👋", "WendyDancer", desc)
+    out = _format_sticker_sentence_internal("👋", "WendyDancer", "WendyDancer", desc)
     assert (
         out
         == "⟦media⟧ ‹the sticker `👋` from the sticker set `WendyDancer` that is not understood›"
@@ -72,7 +72,7 @@ def test_format_sticker_sentence_internal_without_desc(desc):
     "desc", ["not understood", "sticker not understood (format tgs)"]
 )
 def test_format_sticker_sentence_internal_with_not_understood_text(desc):
-    out = _format_sticker_sentence_internal("👋", "WendyDancer", desc)
+    out = _format_sticker_sentence_internal("👋", "WendyDancer", "WendyDancer", desc)
     assert (
         out
         == f"⟦media⟧ ‹the sticker `👋` from the sticker set `WendyDancer` that appears as {desc}›"
@@ -136,16 +136,17 @@ async def test_format_sticker_sentence_with_existing_attributes():
     media_item.unique_id = "test_123"
     media_item.sticker_name = "😊"
     media_item.sticker_set_name = "HotCherry"
+    media_item.sticker_set_title = "HotCherry"  # Same as name, so it formats as just the name
 
     # Mock dependencies
     agent = MagicMock()
     media_chain = AsyncMock()
     media_chain.get.return_value = {"description": "Kermit gives a thumbs up"}
-    resolve_sticker_set_name = AsyncMock()
+    resolve_sticker_metadata = AsyncMock()
 
     # Call the function
     result = await format_sticker_sentence(
-        media_item, agent, media_chain, resolve_sticker_set_name
+        media_item, agent, media_chain, resolve_sticker_metadata
     )
 
     # Verify result
@@ -155,8 +156,8 @@ async def test_format_sticker_sentence_with_existing_attributes():
     # Verify media_chain.get was called
     media_chain.get.assert_called_once_with("test_123", agent=agent)
 
-    # Verify resolve_sticker_set_name was NOT called (since we already have the name)
-    resolve_sticker_set_name.assert_not_called()
+    # Verify resolve_sticker_metadata was NOT called (since we already have the name)
+    resolve_sticker_metadata.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -172,12 +173,12 @@ async def test_format_sticker_sentence_resolves_missing_set_name():
     agent = MagicMock()
     media_chain = AsyncMock()
     media_chain.get.return_value = {"description": "Waving hello"}
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.return_value = "WendyDancer"
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.return_value = ("WendyDancer", "WendyDancer")
 
     # Call the function
     result = await format_sticker_sentence(
-        media_item, agent, media_chain, resolve_sticker_set_name
+        media_item, agent, media_chain, resolve_sticker_metadata
     )
 
     # Verify result
@@ -186,7 +187,7 @@ async def test_format_sticker_sentence_resolves_missing_set_name():
 
     # Verify both functions were called
     media_chain.get.assert_called_once_with("test_456", agent=agent)
-    resolve_sticker_set_name.assert_called_once_with(agent, media_item)
+    resolve_sticker_metadata.assert_called_once_with(agent, media_item)
 
 
 @pytest.mark.asyncio
@@ -197,17 +198,18 @@ async def test_format_sticker_sentence_fallback_behavior():
     media_item.unique_id = "test_789"
     media_item.sticker_name = None
     media_item.sticker_set_name = None
+    media_item.sticker_set_title = None
 
     # Mock dependencies
     agent = MagicMock()
     media_chain = AsyncMock()
     media_chain.get.return_value = None  # No cached description
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.return_value = None  # Resolution fails
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.return_value = (None, None)  # Resolution fails
 
     # Call the function
     result = await format_sticker_sentence(
-        media_item, agent, media_chain, resolve_sticker_set_name
+        media_item, agent, media_chain, resolve_sticker_metadata
     )
 
     # Verify result with fallbacks
@@ -223,17 +225,18 @@ async def test_format_sticker_sentence_handles_exceptions():
     media_item.unique_id = "test_error"
     media_item.sticker_name = "🔥"
     media_item.sticker_set_name = None
+    media_item.sticker_set_title = None
 
     # Mock dependencies that raise exceptions
     agent = MagicMock()
     media_chain = AsyncMock()
     media_chain.get.side_effect = Exception("Cache error")
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.side_effect = Exception("API error")
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.side_effect = Exception("API error")
 
     # Call the function
     result = await format_sticker_sentence(
-        media_item, agent, media_chain, resolve_sticker_set_name
+        media_item, agent, media_chain, resolve_sticker_metadata
     )
 
     # Verify result with fallbacks (should still work despite exceptions)
@@ -241,78 +244,86 @@ async def test_format_sticker_sentence_handles_exceptions():
     assert result == expected
 
 
-# Tests for the comprehensive _extract_sticker_set_name function
+# Tests for the comprehensive _extract_sticker_set_metadata function
 @pytest.mark.asyncio
-async def test_extract_sticker_set_name_from_media_item():
-    """Test extraction when MediaItem already has sticker set name."""
+async def test_extract_sticker_set_metadata_from_media_item():
+    """Test extraction when MediaItem already has sticker set name and title."""
     media_item = MagicMock()
     media_item.unique_id = "test_123"
     media_item.sticker_set_name = "HotCherry"
+    media_item.sticker_set_title = "HotCherry"
 
     agent = MagicMock()
-    resolve_sticker_set_name = AsyncMock()
+    resolve_sticker_metadata = AsyncMock()
 
-    result = await _extract_sticker_set_name(
-        media_item, agent, resolve_sticker_set_name
+    name, title = await _extract_sticker_set_metadata(
+        media_item, agent, resolve_sticker_metadata
     )
 
-    assert result == "HotCherry"
-    # Should not call API since we already have the name
-    resolve_sticker_set_name.assert_not_called()
+    assert name == "HotCherry"
+    assert title == "HotCherry"
+    # Should not call API since we already have the name and title
+    resolve_sticker_metadata.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_extract_sticker_set_name_via_api():
+async def test_extract_sticker_set_metadata_via_api():
     """Test extraction via API when MediaItem doesn't have set name."""
     media_item = MagicMock()
     media_item.unique_id = "test_456"
     media_item.sticker_set_name = None
+    media_item.sticker_set_title = None
 
     agent = MagicMock()
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.return_value = "WendyDancer"
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.return_value = ("WendyDancer", "Wendy Dancer")
 
-    result = await _extract_sticker_set_name(
-        media_item, agent, resolve_sticker_set_name
+    name, title = await _extract_sticker_set_metadata(
+        media_item, agent, resolve_sticker_metadata
     )
 
-    assert result == "WendyDancer"
-    resolve_sticker_set_name.assert_called_once_with(agent, media_item)
+    assert name == "WendyDancer"
+    assert title == "Wendy Dancer"
+    resolve_sticker_metadata.assert_called_once_with(agent, media_item)
 
 
 @pytest.mark.asyncio
-async def test_extract_sticker_set_name_final_fallback():
+async def test_extract_sticker_set_metadata_final_fallback():
     """Test final fallback to (unknown) when API fails."""
     media_item = MagicMock()
     media_item.unique_id = "test_error"
     media_item.sticker_set_name = None
+    media_item.sticker_set_title = None
 
     agent = MagicMock()
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.return_value = None
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.return_value = (None, None)
 
-    result = await _extract_sticker_set_name(
-        media_item, agent, resolve_sticker_set_name
+    name, title = await _extract_sticker_set_metadata(
+        media_item, agent, resolve_sticker_metadata
     )
 
-    assert result == "(unknown)"
-    resolve_sticker_set_name.assert_called_once_with(agent, media_item)
+    assert name == "(unknown)"
+    assert title == "(unknown)"
+    resolve_sticker_metadata.assert_called_once_with(agent, media_item)
 
 
 @pytest.mark.asyncio
-async def test_extract_sticker_set_name_api_exception():
+async def test_extract_sticker_set_metadata_api_exception():
     """Test handling of API exceptions."""
     media_item = MagicMock()
     media_item.unique_id = "test_exception"
     media_item.sticker_set_name = None
+    media_item.sticker_set_title = None
 
     agent = MagicMock()
-    resolve_sticker_set_name = AsyncMock()
-    resolve_sticker_set_name.side_effect = Exception("API error")
+    resolve_sticker_metadata = AsyncMock()
+    resolve_sticker_metadata.side_effect = Exception("API error")
 
-    result = await _extract_sticker_set_name(
-        media_item, agent, resolve_sticker_set_name
+    name, title = await _extract_sticker_set_metadata(
+        media_item, agent, resolve_sticker_metadata
     )
 
-    assert result == "(unknown)"
-    resolve_sticker_set_name.assert_called_once_with(agent, media_item)
+    assert name == "(unknown)"
+    assert title == "(unknown)"
+    resolve_sticker_metadata.assert_called_once_with(agent, media_item)

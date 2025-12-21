@@ -48,6 +48,7 @@ class MediaItem:
     unique_id: str  # REQUIRED stable ID (e.g., Telegram file_unique_id)
     mime: str | None = None
     sticker_set_name: str | None = None
+    sticker_set_title: str | None = None
     sticker_name: str | None = None
     file_ref: Any | None = None  # opaque handle for future download code
     sticker_set_id: int | None = None

@@ -417,6 +417,8 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 # Add sticker-specific metadata
                                 if media_item.sticker_set_name:
                                     record["sticker_set_name"] = media_item.sticker_set_name
+                                if hasattr(media_item, "sticker_set_title") and media_item.sticker_set_title:
+                                    record["sticker_set_title"] = media_item.sticker_set_title
                                 if media_item.sticker_name:
                                     record["sticker_name"] = media_item.sticker_name
                                 if media_item.sticker_set_id:

@@ -9,6 +9,7 @@ import os
 
 # State directory path
 STATE_DIRECTORY: str = os.environ.get("CINDY_AGENT_STATE_DIR", "state")
+MEDIA_SCRATCH_DIRECTORY: str = os.path.join(STATE_DIRECTORY, "media_scratch")
 
 
 # Configuration directories (supports multiple via colon-separated paths)
