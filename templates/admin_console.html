@@ -6048,6 +6048,12 @@
                                 globalPromptsSaveTimeout = null;
                             }
                             
+                            // Clear any pending filename timeout to prevent stale rename operations
+                            if (globalPromptsFilenameTimeout) {
+                                clearTimeout(globalPromptsFilenameTimeout);
+                                globalPromptsFilenameTimeout = null;
+                            }
+                            
                             // Update handlers with new filename to allow further saves/renames
                             const contentTextarea = document.getElementById('global-prompts-content');
                             if (contentTextarea) {
