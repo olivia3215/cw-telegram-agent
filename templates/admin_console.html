@@ -4761,27 +4761,23 @@
                     }
                     conversationTranslations = data.translations || {};
                     // Re-render conversation with translations
-                    const summaries = [];
                     const container = document.getElementById('conversation-container');
                     const summariesSection = container.querySelector('div[style*="margin-bottom: 24px"]');
-                    if (summariesSection) {
-                        // Extract summaries from existing HTML if needed
-                        // For now, just re-fetch
-                        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
-                            .then(response => response.json())
-                            .then(data => {
-                                if (!data.error) {
-                                    // Update stored timezone if provided
-                                    if (data.agent_timezone) {
-                                        conversationAgentTimezone = data.agent_timezone;
-                                    }
-                                    const isBlocked = data.is_blocked || false;
-                                    renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone, isBlocked);
+                    // Fetch blocked status and summaries before rendering
+                    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.error) {
+                                // Update stored timezone if provided
+                                if (data.agent_timezone) {
+                                    conversationAgentTimezone = data.agent_timezone;
                                 }
-                            });
-                    } else {
-                        renderConversation(agentName, userId, [], conversationMessages, conversationAgentTimezone, false);
-                    }
+                                const isBlocked = data.is_blocked || false;
+                                // Use summaries from API if summaries section exists, otherwise use empty array
+                                const summaries = summariesSection ? (data.summaries || []) : [];
+                                renderConversation(agentName, userId, summaries, conversationMessages, conversationAgentTimezone, isBlocked);
+                            }
+                        });
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
