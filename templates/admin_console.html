@@ -6042,6 +6042,12 @@
                             
                             globalPromptsCurrentFilename = newFilename;
                             
+                            // Clear any pending save timeout to prevent saving with old filename
+                            if (globalPromptsSaveTimeout) {
+                                clearTimeout(globalPromptsSaveTimeout);
+                                globalPromptsSaveTimeout = null;
+                            }
+                            
                             // Update handlers with new filename to allow further saves/renames
                             const contentTextarea = document.getElementById('global-prompts-content');
                             if (contentTextarea) {
