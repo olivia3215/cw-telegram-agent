@@ -11,6 +11,7 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context  # pyright: ignore[reportMissingImports]
 
@@ -21,15 +22,6 @@ from handlers.received_helpers.summarization import trigger_summarization_direct
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telepathic import TELEPATHIC_PREFIXES
-
-# Import helper functions from conversation module - use importlib to avoid relative import issues when loaded via importlib
-import importlib.util
-from pathlib import Path
-_conversation_path = Path(__file__).parent / "conversation.py"
-_conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
-_conversation_mod = importlib.util.module_from_spec(_conversation_spec)
-_conversation_spec.loader.exec_module(_conversation_mod)
-markdown_to_html = _conversation_mod.markdown_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +233,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                 })
 
                     # Build result dict from cache for messages we have cached
+                    # Translations are already HTML-formatted, so pass them through as-is
                     cached_translations: dict[str, str] = {}
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
@@ -248,7 +241,8 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         if msg_text and msg_text in cache:
                             translated_text = cache[msg_text].get("translated_text", "")
                             if translated_text:
-                                cached_translations[msg_id] = markdown_to_html(translated_text)
+                                # Translations are already HTML-formatted (from cache or LLM)
+                                cached_translations[msg_id] = translated_text
 
                     # Send cached translations immediately as first event
                     if cached_translations:
@@ -380,9 +374,10 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         original_text = message_id_to_text.get(message_id)
                                         
                                         if original_text:
+                                            # Translations are already HTML-formatted (from LLM)
                                             # Update batch_translation_dict for all message_ids with this text
                                             for msg_id in text_to_message_ids.get(original_text, []):
-                                                batch_translation_dict[msg_id] = markdown_to_html(translated_text)
+                                                batch_translation_dict[msg_id] = translated_text
                                 
                                 # Stream this batch's translations to client
                                 if batch_translation_dict:
