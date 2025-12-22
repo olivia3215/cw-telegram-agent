@@ -297,6 +297,29 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         "text": text_with_placeholders
                                     })
                                 
+                                # Helper function to restore HTML tags in translations
+                                def _restore_html_tags_in_translations(translations: list[dict[str, str]]) -> list[dict[str, str]]:
+                                    """Restore HTML tags from placeholders in a list of translations."""
+                                    restored_translations = []
+                                    for translation in translations:
+                                        message_id = translation.get("message_id")
+                                        translated_text_with_placeholders = translation.get("translated_text", "")
+                                        
+                                        if message_id and message_id in batch_tag_maps:
+                                            # Restore HTML tags
+                                            tag_map = batch_tag_maps[message_id]
+                                            restored_text = restore_html_tags_from_placeholders(
+                                                translated_text_with_placeholders, tag_map
+                                            )
+                                            restored_translations.append({
+                                                "message_id": message_id,
+                                                "translated_text": restored_text  # Final HTML with tags restored
+                                            })
+                                        else:
+                                            # No tag map (shouldn't happen, but handle gracefully)
+                                            restored_translations.append(translation)
+                                    return restored_translations
+                                
                                 # Build translation prompt with messages (now with placeholders instead of HTML)
                                 import json as json_module
                                 messages_json = json_module.dumps(batch_with_placeholders, ensure_ascii=False, indent=2)
@@ -342,26 +365,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         translations = result.get("translations", [])
                                         if isinstance(translations, list):
                                             # Restore HTML tags from placeholders for each translation
-                                            restored_translations = []
-                                            for translation in translations:
-                                                message_id = translation.get("message_id")
-                                                translated_text_with_placeholders = translation.get("translated_text", "")
-                                                
-                                                if message_id and message_id in batch_tag_maps:
-                                                    # Restore HTML tags
-                                                    tag_map = batch_tag_maps[message_id]
-                                                    restored_text = restore_html_tags_from_placeholders(
-                                                        translated_text_with_placeholders, tag_map
-                                                    )
-                                                    restored_translations.append({
-                                                        "message_id": message_id,
-                                                        "translated_text": restored_text  # Final HTML with tags restored
-                                                    })
-                                                else:
-                                                    # No tag map (shouldn't happen, but handle gracefully)
-                                                    restored_translations.append(translation)
-                                            
-                                            return restored_translations
+                                            return _restore_html_tags_in_translations(translations)
                                         else:
                                             logger.warning(f"Translations is not a list: {type(translations)}")
                                             return []
@@ -381,14 +385,16 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                             if matches:
                                                 partial_translations = [{"message_id": mid, "translated_text": text} for mid, text in matches]
                                                 logger.info(f"Extracted {len(partial_translations)} partial translations from truncated response")
-                                                return partial_translations
+                                                return _restore_html_tags_in_translations(partial_translations)
                                         
                                         # Try to extract JSON from markdown code blocks if present
                                         json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
                                         if json_match:
                                             try:
                                                 result = json_lib.loads(json_match.group(1))
-                                                return result.get("translations", [])
+                                                translations = result.get("translations", [])
+                                                if isinstance(translations, list):
+                                                    return _restore_html_tags_in_translations(translations)
                                             except json_lib.JSONDecodeError:
                                                 pass
                                         # Try to find JSON object in the text (more lenient)
@@ -396,7 +402,9 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         if json_match:
                                             try:
                                                 result = json_lib.loads(json_match.group(0))
-                                                return result.get("translations", [])
+                                                translations = result.get("translations", [])
+                                                if isinstance(translations, list):
+                                                    return _restore_html_tags_in_translations(translations)
                                             except json_lib.JSONDecodeError:
                                                 pass
                                         
