@@ -9,5 +9,11 @@
   "_on_disk": true,
   "media_file": "773947703670341889.tgs",
   "is_emoji_set": false,
-  "sticker_set_title": "Duck"
+  "sticker_set_title": "Duck",
+  "mime_type": "application/x-tgsticker",
+  "sender_id": 7359509635,
+  "sender_name": "Heidi",
+  "channel_id": 7132169062,
+  "channel_name": "🌴Ivan🇺🇸",
+  "media_ts": "2025-12-22T15:48:45+00:00"
 }
