@@ -28,7 +28,8 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
       - If name is exactly "grok", uses GROK_MODEL env variable if set, otherwise defaults to "grok-4-fast-non-reasoning"
       - Otherwise uses the specified model name
     - Names starting with "gpt" or "openai" route through OpenAILLM
-      - Uses the specified model name directly
+      - If name is exactly "gpt" or "openai", defaults to "gpt-5-mini"
+      - Otherwise uses the specified model name directly
     - If llm_name is None or empty, defaults to GeminiLLM with hardcoded model "gemini-3-flash-preview"
 
     Args:
@@ -103,8 +104,12 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
             raise ValueError(
                 "Missing OpenAI API key. Set OPENAI_API_KEY to use OpenAI models."
             )
-        # Use the specified model name directly
-        model = llm_name
+        # Use default model if just "gpt" or "openai", otherwise use specified model name
+        if llm_name == "gpt" or llm_name == "openai":
+            # Default to gpt-5-mini when just "gpt" or "openai" is specified (per documentation)
+            model = "gpt-5-mini"
+        else:
+            model = llm_name
         return OpenAILLM(model=model, api_key=OPENAI_API_KEY)
 
     else:
