@@ -4817,11 +4817,18 @@
         // Track active translation stream for cancellation
         let translationAbortController = null;
         let translationStreamReader = null;
+        let translationStreamTimeout = null;
         
         function toggleTranslation(agentName, userId) {
             const checkbox = document.getElementById('translation-toggle');
             if (!checkbox) return; // Checkbox not rendered (no unsummarized messages)
             showTranslation = checkbox.checked;
+            
+            // Cancel any pending timeout
+            if (translationStreamTimeout) {
+                clearTimeout(translationStreamTimeout);
+                translationStreamTimeout = null;
+            }
             
             // Cancel any active translation stream
             if (translationAbortController) {
@@ -4869,7 +4876,8 @@
                 // Start streaming translations via SSE
                 // Use setTimeout to break the connection between touch event and DOM updates
                 // This prevents mobile browsers from interpreting the updates as image clicks
-                setTimeout(() => {
+                translationStreamTimeout = setTimeout(() => {
+                    translationStreamTimeout = null;
                     startTranslationStream(agentName, userId, checkbox);
                 }, 100);
             } else {
@@ -4889,6 +4897,11 @@
         }
         
         function startTranslationStream(agentName, userId, checkbox) {
+            // Early return if translation was disabled before this function was called
+            if (!showTranslation) {
+                return;
+            }
+            
             // Cancel any existing stream first
             if (translationAbortController) {
                 translationAbortController.abort();
