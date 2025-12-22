@@ -4855,31 +4855,23 @@
                     return;
                 }
                 
-                // First, re-render to show grey backgrounds for messages without translations
-                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (!data.error) {
-                            if (data.agent_timezone) {
-                                conversationAgentTimezone = data.agent_timezone;
-                            }
-                            const isBlocked = data.is_blocked || false;
-                            renderConversation(agentName, userId, data.summaries || [], conversationMessages, conversationAgentTimezone, isBlocked);
-                            
-                            // Now start streaming translations via SSE
-                            startTranslationStream(agentName, userId, checkbox);
+                // Update background colors to grey for messages without translations
+                // Do this without full re-render to avoid triggering image full-screen on mobile
+                conversationMessages.forEach(msg => {
+                    if (msg.text && !conversationTranslations[msg.id]) {
+                        const messageEl = document.getElementById(`message-${msg.id}`);
+                        if (messageEl) {
+                            messageEl.style.background = '#f5f5f5';
                         }
-                    })
-                    .catch(error => {
-                        if (error && error.message === 'unauthorized') {
-                            return;
-                        }
-                        alert('Error loading conversation: ' + error);
-                        if (checkbox) {
-                            checkbox.checked = false;
-                        }
-                        showTranslation = false;
-                    });
+                    }
+                });
+                
+                // Start streaming translations via SSE
+                // Use setTimeout to break the connection between touch event and DOM updates
+                // This prevents mobile browsers from interpreting the updates as image clicks
+                setTimeout(() => {
+                    startTranslationStream(agentName, userId, checkbox);
+                }, 100);
             } else {
                 // Just re-render with current translation state (translations hidden)
                 fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
@@ -5116,6 +5108,7 @@
                 showTranslation = false;
             }
         }
+
 
         // Set up conversation partner select change handlers
         document.getElementById('curated-memories-params-partner-select')?.addEventListener('change', (e) => {
