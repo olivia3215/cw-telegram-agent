@@ -4182,9 +4182,22 @@
                     conversationMessages = messages;
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
-                    showTranslation = false;
+                    // Preserve showTranslation state instead of resetting it
+                    // showTranslation state is preserved
                     
                     renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked);
+                    
+                    // Restore checkbox state after rendering if it was checked
+                    const checkbox = document.getElementById('translation-toggle');
+                    if (checkbox) {
+                        checkbox.checked = showTranslation;
+                    }
+                    
+                    // If translations were enabled, trigger the translation stream to fetch them
+                    // Only start if checkbox exists (i.e., there are unsummarized messages)
+                    if (showTranslation && checkbox) {
+                        startTranslationStream(agentName, userId, checkbox);
+                    }
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -4424,6 +4437,11 @@
                     `;
                 }).join('');
             }
+            
+            // Add refresh button at the bottom
+            html += '<div style="margin-top: 16px; padding: 12px; text-align: center; border-top: 1px solid #ddd;">';
+            html += `<button onclick="loadConversation()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Conversation</button>`;
+            html += '</div>';
             
             container.innerHTML = html;
             
@@ -4802,6 +4820,7 @@
         
         function toggleTranslation(agentName, userId) {
             const checkbox = document.getElementById('translation-toggle');
+            if (!checkbox) return; // Checkbox not rendered (no unsummarized messages)
             showTranslation = checkbox.checked;
             
             // Cancel any active translation stream
@@ -4856,7 +4875,9 @@
                             return;
                         }
                         alert('Error loading conversation: ' + error);
-                        checkbox.checked = false;
+                        if (checkbox) {
+                            checkbox.checked = false;
+                        }
                         showTranslation = false;
                     });
             } else {
@@ -5004,7 +5025,9 @@
                                 // Only show alert for unexpected errors (not cancellation)
                                 if (!error.message.includes('aborted') && !error.message.includes('canceled')) {
                                     alert('Error receiving translations: ' + error);
-                                    checkbox.checked = false;
+                                    if (checkbox) {
+                                        checkbox.checked = false;
+                                    }
                                     showTranslation = false;
                                 }
                             }
@@ -5021,7 +5044,9 @@
                 // Only reached if response was JSON (not SSE)
                 if (data && data.error) {
                     alert('Error translating messages: ' + data.error);
-                    checkbox.checked = false;
+                    if (checkbox) {
+                        checkbox.checked = false;
+                    }
                     showTranslation = false;
                 } else if (data && data.translations) {
                     // Handle non-streaming response (backward compatibility)
@@ -5051,7 +5076,9 @@
                 // Show alert for fetch errors (not stream read errors or aborts)
                 if (error.name !== 'AbortError' && error.message && !error.message.includes('aborted') && !error.message.includes('canceled')) {
                     alert('Error translating messages: ' + error.message);
-                    checkbox.checked = false;
+                    if (checkbox) {
+                        checkbox.checked = false;
+                    }
                     showTranslation = false;
                 }
             });
@@ -5083,7 +5110,9 @@
                 translationStreamReader = null;
                 translationAbortController = null;
                 alert('Error translating messages: ' + (data.error || 'Unknown error'));
-                checkbox.checked = false;
+                if (checkbox) {
+                    checkbox.checked = false;
+                }
                 showTranslation = false;
             }
         }
