@@ -1091,7 +1091,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     
                     messages.append({
                         "id": str(message.id),
-                        "text": text,
+                        "text": text,  # HTML-formatted text (XSS-protected via markdown_to_html)
                         "parts": parts,  # Include formatted parts (text + media)
                         "sender_id": str(sender_id) if sender_id else None,
                         "sender_name": sender_name,

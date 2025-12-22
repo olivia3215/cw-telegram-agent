@@ -5,6 +5,7 @@
 import asyncio
 import copy
 import fcntl
+import html
 import json as json_lib
 import logging
 import os
@@ -22,6 +23,16 @@ from handlers.received_helpers.summarization import trigger_summarization_direct
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telepathic import TELEPATHIC_PREFIXES
+
+# Import markdown_to_html and placeholder functions from conversation module - use importlib to avoid relative import issues when loaded via importlib
+import importlib.util
+_conversation_path = Path(__file__).parent / "conversation.py"
+_conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
+_conversation_mod = importlib.util.module_from_spec(_conversation_spec)
+_conversation_spec.loader.exec_module(_conversation_mod)
+markdown_to_html = _conversation_mod.markdown_to_html
+replace_html_tags_with_placeholders = _conversation_mod.replace_html_tags_with_placeholders
+restore_html_tags_from_placeholders = _conversation_mod.restore_html_tags_from_placeholders
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +224,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                     
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
+                        # Use HTML text (already XSS-protected from markdown_to_html)
                         msg_text = msg.get("text", "")
                         if not msg_text:
                             continue
@@ -229,19 +241,19 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                             if not any(m["text"] == msg_text for m in messages_to_translate):
                                 messages_to_translate.append({
                                     "message_id": msg_id,  # Use first message_id for this text
-                                    "text": msg_text
+                                    "text": msg_text  # HTML text (already XSS-protected)
                                 })
 
                     # Build result dict from cache for messages we have cached
-                    # Translations are already HTML-formatted, so pass them through as-is
+                    # Translations in cache are stored as final HTML (tags already restored)
                     cached_translations: dict[str, str] = {}
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
-                        msg_text = msg.get("text", "")
+                        msg_text = msg.get("text", "")  # HTML text (already XSS-protected)
                         if msg_text and msg_text in cache:
                             translated_text = cache[msg_text].get("translated_text", "")
                             if translated_text:
-                                # Translations are already HTML-formatted (from cache or LLM)
+                                # Translation is already final HTML (tags restored)
                                 cached_translations[msg_id] = translated_text
 
                     # Send cached translations immediately as first event
@@ -264,10 +276,30 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         async def _translate_batch(batch: list[dict[str, str]]) -> list[dict[str, str]]:
                             """Translate a batch of messages."""
                             try:
-                                # Build translation prompt with messages as structured JSON
-                                # This avoids issues with unescaped quotes/newlines in message text
+                                # Replace HTML tags with placeholders before sending to LLM
+                                # This prevents XSS and simplifies translation
+                                batch_with_placeholders = []
+                                batch_tag_maps = {}  # Store tag maps for each message
+                                
+                                for msg in batch:
+                                    message_id = msg["message_id"]
+                                    html_text = msg["text"]
+                                    
+                                    # Replace HTML tags with placeholders
+                                    text_with_placeholders, tag_map = replace_html_tags_with_placeholders(html_text)
+                                    
+                                    # Store tag map for later restoration
+                                    batch_tag_maps[message_id] = tag_map
+                                    
+                                    # Add message with placeholders to batch
+                                    batch_with_placeholders.append({
+                                        "message_id": message_id,
+                                        "text": text_with_placeholders
+                                    })
+                                
+                                # Build translation prompt with messages (now with placeholders instead of HTML)
                                 import json as json_module
-                                messages_json = json_module.dumps(batch, ensure_ascii=False, indent=2)
+                                messages_json = json_module.dumps(batch_with_placeholders, ensure_ascii=False, indent=2)
                                 
                                 translation_prompt = (
                                     "Translate the conversation messages into English.\n"
@@ -281,9 +313,12 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                     "  ]\n"
                                     "}\n"
                                     "\n"
-                                    "Translate all messages provided, maintaining the order and message IDs. Ensure all JSON is properly formatted."
+                                    "Translate all messages provided, maintaining the order and message IDs. "
+                                    "The messages contain placeholder tags like <HTMLTAG1>, <HTMLTAG2>, etc. "
+                                    "Do NOT modify these placeholders - preserve them exactly as they appear. "
+                                    "Translate only the text content between placeholders. Ensure all JSON is properly formatted."
                                     "\n"
-                                    "Input messages (as JSON):\n"
+                                    "Input messages (as JSON, with placeholder tags):\n"
                                     f"{messages_json}\n"
                                 )
                                 
@@ -306,7 +341,27 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         result = json_lib.loads(result_text)
                                         translations = result.get("translations", [])
                                         if isinstance(translations, list):
-                                            return translations
+                                            # Restore HTML tags from placeholders for each translation
+                                            restored_translations = []
+                                            for translation in translations:
+                                                message_id = translation.get("message_id")
+                                                translated_text_with_placeholders = translation.get("translated_text", "")
+                                                
+                                                if message_id and message_id in batch_tag_maps:
+                                                    # Restore HTML tags
+                                                    tag_map = batch_tag_maps[message_id]
+                                                    restored_text = restore_html_tags_from_placeholders(
+                                                        translated_text_with_placeholders, tag_map
+                                                    )
+                                                    restored_translations.append({
+                                                        "message_id": message_id,
+                                                        "translated_text": restored_text  # Final HTML with tags restored
+                                                    })
+                                                else:
+                                                    # No tag map (shouldn't happen, but handle gracefully)
+                                                    restored_translations.append(translation)
+                                            
+                                            return restored_translations
                                         else:
                                             logger.warning(f"Translations is not a list: {type(translations)}")
                                             return []
@@ -374,7 +429,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         original_text = message_id_to_text.get(message_id)
                                         
                                         if original_text:
-                                            # Translations are already HTML-formatted (from LLM)
+                                            # Translated text already has HTML tags restored
                                             # Update batch_translation_dict for all message_ids with this text
                                             for msg_id in text_to_message_ids.get(original_text, []):
                                                 batch_translation_dict[msg_id] = translated_text
@@ -401,6 +456,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                                 if message_id and translated_text:
                                                     original_text = message_id_to_text.get(message_id)
                                                     if original_text:
+                                                        # Store final translated HTML (tags already restored)
                                                         cache[original_text] = {
                                                             "translated_text": translated_text,
                                                             "timestamp": now_iso
@@ -437,6 +493,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                     if message_id and translated_text:
                                         original_text = message_id_to_text.get(message_id)
                                         if original_text:
+                                            # Store final translated HTML (tags already restored)
                                             cache[original_text] = {
                                                 "translated_text": translated_text,
                                                 "timestamp": now_iso
