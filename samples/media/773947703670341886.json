@@ -14,5 +14,6 @@
   "sender_name": "Heidi",
   "channel_id": 6754281260,
   "channel_name": "Wendy",
-  "media_ts": "2025-12-18T00:23:49+00:00"
+  "media_ts": "2025-12-18T00:23:49+00:00",
+  "mime_type": "application/x-tgsticker"
 }
