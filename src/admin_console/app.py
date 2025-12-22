@@ -19,6 +19,7 @@ from config import ADMIN_CONSOLE_SECRET_KEY
 from admin_console.auth import OTPChallengeManager, auth_bp, require_admin_verification
 from admin_console.media import media_bp
 from admin_console.docs import docs_bp
+from admin_console.prompts import prompts_bp
 from admin_console.agents import agents_bp
 from admin_console.routes import routes_bp, scan_media_directories, set_available_directories
 
@@ -46,6 +47,7 @@ def create_admin_app() -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/admin")
     app.register_blueprint(media_bp, url_prefix="/admin")
     app.register_blueprint(docs_bp, url_prefix="/admin")
+    app.register_blueprint(prompts_bp, url_prefix="/admin")
     app.register_blueprint(agents_bp, url_prefix="/admin")
     app.register_blueprint(routes_bp, url_prefix="/admin")
     

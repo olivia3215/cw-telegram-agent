@@ -505,6 +505,7 @@
             <nav class="tab-bar" style="margin-bottom: 16px;">
                 <button class="tab-button active" data-subtab="media">Media Editor</button>
                 <button class="tab-button" data-subtab="documents-global">Documents</button>
+                <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
             </nav>
             <div id="global-container" class="main-container">
                 <!-- Media Editor Subtab -->
@@ -580,6 +581,33 @@
                     <div class="main-container" style="margin-top: 16px;">
                         <div id="global-docs-editor-container">
                             <div class="loading">Select a config directory and document to edit</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Role Prompts Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="role-prompts">
+                    <div class="controls">
+                        <div class="directory-selector">
+                            <label for="global-prompts-config-select">Select Config Directory:</label><br>
+                            <select id="global-prompts-config-select">
+                                <option value="">Choose a config directory...</option>
+                            </select>
+                        </div>
+                        <div class="directory-selector" style="margin-top: 12px;">
+                            <label for="global-prompts-select">Select Role Prompt:</label><br>
+                            <select id="global-prompts-select">
+                                <option value="">Choose a role prompt...</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button onclick="createGlobalPrompt()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Role Prompt</button>
+                            <button onclick="deleteGlobalPrompt()" id="delete-global-prompt-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Role Prompt</button>
+                        </div>
+                    </div>
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="global-prompts-editor-container">
+                            <div class="loading">Select a config directory and role prompt to edit</div>
                         </div>
                     </div>
                 </div>
@@ -2175,6 +2203,8 @@
             } else if (mainTabName === 'global') {
                 if (subtabName === 'documents-global') {
                     loadGlobalDocsConfigDirectories();
+                } else if (subtabName === 'role-prompts') {
+                    loadGlobalPromptsConfigDirectories();
                 }
             } else if (mainTabName === 'conversations') {
                 // Reload conversation partners dropdown to update asterisks for new subtab
@@ -5178,11 +5208,14 @@
                 
                 select.onchange = function() {
                     globalDocsConfigDir = this.value;
+                    // Clear the currently loaded document when directory changes
+                    globalDocsCurrentFilename = '';
+                    globalDocsContent = '';
+                    document.getElementById('global-docs-select').innerHTML = '<option value="">Choose a document...</option>';
+                    document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a config directory and document to edit</div>';
+                    document.getElementById('delete-global-doc-btn').style.display = 'none';
                     if (globalDocsConfigDir) {
                         loadGlobalDocsList();
-                    } else {
-                        document.getElementById('global-docs-select').innerHTML = '<option value="">Choose a document...</option>';
-                        document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a config directory and document to edit</div>';
                     }
                 };
             } catch (error) {
@@ -5993,6 +6026,555 @@
         }
         
         // Helper functions
+        // ===== Role Prompts Management Functions =====
+        
+        // Global prompts state
+        let globalPromptsConfigDir = '';
+        let globalPromptsCurrentFilename = '';
+        let globalPromptsSaveTimeout = null;
+        let globalPromptsFilenameTimeout = null;
+        let globalPromptsContent = '';
+        
+        // Load config directories for global prompts
+        async function loadGlobalPromptsConfigDirectories() {
+            try {
+                const response = await fetch('/admin/api/config-directories');
+                const data = await response.json();
+                
+                const select = document.getElementById('global-prompts-config-select');
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Choose a config directory...</option>';
+                data.directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir.path;
+                    option.textContent = dir.display_path;
+                    select.appendChild(option);
+                });
+                
+                select.onchange = function() {
+                    globalPromptsConfigDir = this.value;
+                    // Clear the currently loaded prompt when directory changes
+                    globalPromptsCurrentFilename = '';
+                    globalPromptsContent = '';
+                    document.getElementById('global-prompts-select').innerHTML = '<option value="">Choose a role prompt...</option>';
+                    document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a config directory and role prompt to edit</div>';
+                    document.getElementById('delete-global-prompt-btn').style.display = 'none';
+                    if (globalPromptsConfigDir) {
+                        loadGlobalPromptsList();
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading config directories:', error);
+            }
+        }
+        
+        // Load list of prompts for global prompts
+        async function loadGlobalPromptsList() {
+            if (!globalPromptsConfigDir) return;
+            
+            try {
+                const response = await fetch(`/admin/api/prompts?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`);
+                const data = await response.json();
+                
+                const select = document.getElementById('global-prompts-select');
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Choose a role prompt...</option>';
+                data.prompts.forEach(prompt => {
+                    const option = document.createElement('option');
+                    option.value = prompt.filename;
+                    option.textContent = prompt.filename;
+                    select.appendChild(option);
+                });
+                
+                select.onchange = function() {
+                    if (this.value) {
+                        loadGlobalPrompt(this.value);
+                    } else {
+                        document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a role prompt to edit</div>';
+                        document.getElementById('delete-global-prompt-btn').style.display = 'none';
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading prompts list:', error);
+            }
+        }
+        
+        // Load a specific global prompt
+        async function loadGlobalPrompt(filename) {
+            if (!globalPromptsConfigDir || !filename) return;
+            
+            // Capture configDir at the start to avoid race conditions if dropdown changes during fetch
+            const configDir = globalPromptsConfigDir;
+            
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load prompt');
+                }
+                
+                const data = await response.json();
+                globalPromptsCurrentFilename = filename;
+                globalPromptsContent = data.content || '';
+                
+                renderGlobalPromptEditor(data.content || '', filename, configDir);
+                document.getElementById('delete-global-prompt-btn').style.display = 'inline-block';
+            } catch (error) {
+                console.error('Error loading prompt:', error);
+                document.getElementById('global-prompts-editor-container').innerHTML = '<div class="error">Error loading role prompt</div>';
+                globalPromptsCurrentFilename = '';
+                document.getElementById('delete-global-prompt-btn').style.display = 'none';
+            }
+        }
+        
+        // Render global prompt editor
+        function renderGlobalPromptEditor(content, filename, configDir) {
+            const container = document.getElementById('global-prompts-editor-container');
+            container.innerHTML = `
+                <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
+                        <input type="text" id="global-prompts-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                        <div id="global-prompts-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
+                        <select id="global-prompts-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                            <option value="">Move to...</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
+                        <textarea id="global-prompts-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                        <div id="global-prompts-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
+                    </div>
+                </div>
+            `;
+            
+            // Setup handlers
+            // Capture all state at creation time to avoid race conditions
+            const filenameInput = document.getElementById('global-prompts-filename');
+            filenameInput.oninput = debounceGlobalPromptsFilename(configDir, filename);
+            
+            // Setup content change handler with auto-save
+            const contentTextarea = document.getElementById('global-prompts-content');
+            contentTextarea.oninput = debounceGlobalPromptsSave(configDir, filename);
+            
+            // Setup move destination change handler
+            const moveSelect = document.getElementById('global-prompts-move-destination');
+            moveSelect.onchange = function() {
+                if (this.value) {
+                    moveGlobalPrompt();
+                }
+            };
+            
+            // Load all destinations for move dropdown (only config directories, not agents)
+            loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
+        }
+        
+        // Debounced save for global prompts
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalPromptsSave(configDir, filename) {
+            return function() {
+                if (globalPromptsSaveTimeout) {
+                    clearTimeout(globalPromptsSaveTimeout);
+                }
+                
+                const statusEl = document.getElementById('global-prompts-save-status');
+                if (statusEl) statusEl.textContent = 'Typing...';
+                
+                globalPromptsSaveTimeout = setTimeout(async () => {
+                    // Verify we're still editing the same prompt (user may have switched)
+                    if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                        // User switched prompts, don't save
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    const contentTextarea = document.getElementById('global-prompts-content');
+                    if (!contentTextarea) return;
+                    
+                    const newContent = contentTextarea.value;
+                    if (newContent === globalPromptsContent) {
+                        if (statusEl) statusEl.textContent = 'Saved';
+                        return;
+                    }
+                    
+                    if (statusEl) statusEl.textContent = 'Saving...';
+                    
+                    try {
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: newContent })
+                        });
+                        
+                        if (response.ok) {
+                            globalPromptsContent = newContent;
+                            if (statusEl) statusEl.textContent = 'Saved';
+                        } else {
+                            throw new Error('Save failed');
+                        }
+                    } catch (error) {
+                        console.error('Error saving prompt:', error);
+                        if (statusEl) statusEl.textContent = 'Error saving';
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Immediately save any pending content changes (used before rename/move operations)
+        // Returns a promise that resolves when the save is complete (or immediately if no save needed)
+        async function savePendingGlobalPromptsContent(configDir, filename) {
+            const contentTextarea = document.getElementById('global-prompts-content');
+            if (!contentTextarea) {
+                return; // No textarea, nothing to save
+            }
+            
+            const newContent = contentTextarea.value;
+            if (newContent === globalPromptsContent) {
+                return; // No changes, nothing to save
+            }
+            
+            // Verify we're still editing the same prompt (user may have switched)
+            if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                return; // User switched prompts, don't save
+            }
+            
+            const statusEl = document.getElementById('global-prompts-save-status');
+            if (statusEl) statusEl.textContent = 'Saving...';
+            
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(configDir)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: newContent })
+                });
+                
+                if (response.ok) {
+                    globalPromptsContent = newContent;
+                    if (statusEl) statusEl.textContent = 'Saved';
+                } else {
+                    throw new Error('Save failed');
+                }
+            } catch (error) {
+                console.error('Error saving prompt:', error);
+                if (statusEl) statusEl.textContent = 'Error saving';
+                throw error; // Re-throw so caller knows save failed
+            }
+        }
+        
+        // Debounced filename change for global prompts
+        // Captures configDir and filename to avoid race conditions
+        function debounceGlobalPromptsFilename(configDir, filename) {
+            return function() {
+                if (globalPromptsFilenameTimeout) {
+                    clearTimeout(globalPromptsFilenameTimeout);
+                }
+                
+                const filenameInput = document.getElementById('global-prompts-filename');
+                if (!filenameInput) return;
+                
+                const newFilename = filenameInput.value.trim();
+                const statusEl = document.getElementById('global-prompts-filename-status');
+                
+                // Verify we're still editing the same prompt (user may have switched)
+                if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                    // User switched prompts, don't rename
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                if (!newFilename || newFilename === filename) {
+                    if (statusEl) statusEl.textContent = '';
+                    return;
+                }
+                
+                // Validate filename format
+                if (!newFilename.endsWith('.md')) {
+                    if (statusEl) statusEl.textContent = 'Filename must end with .md';
+                    return;
+                }
+                
+                const nameWithoutExt = newFilename.slice(0, -3);
+                if (nameWithoutExt.length > 50) {
+                    if (statusEl) statusEl.textContent = 'Filename (without .md) must be 50 characters or less';
+                    return;
+                }
+                
+                if (!/^[a-zA-Z0-9_\- ]+$/.test(nameWithoutExt)) {
+                    if (statusEl) statusEl.textContent = 'Filename can only contain letters, numbers, underscores, dashes, and spaces';
+                    return;
+                }
+                
+                // Ensure at least one non-space character exists (prevent filenames with only spaces)
+                if (!/[a-zA-Z0-9_\-]/.test(nameWithoutExt)) {
+                    if (statusEl) statusEl.textContent = 'Filename must contain at least one non-space character';
+                    return;
+                }
+                
+                if (statusEl) statusEl.textContent = 'Renaming...';
+                
+                globalPromptsFilenameTimeout = setTimeout(async () => {
+                    // Double-check we're still editing the same prompt before renaming
+                    if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                        // User switched prompts, don't rename
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+                    
+                    try {
+                        // Save any pending content changes before renaming (with old filename)
+                        await savePendingGlobalPromptsContent(configDir, filename);
+                        
+                        // Use captured values instead of reading from globals
+                        const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}/rename?config_dir=${encodeURIComponent(configDir)}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_filename: newFilename })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const newFilename = data.filename;
+                            
+                            // Check again after fetch completes: ensure we're still editing the same prompt
+                            // If user switched prompts while rename was in flight, don't update globals/handlers
+                            if (globalPromptsConfigDir !== configDir || globalPromptsCurrentFilename !== filename) {
+                                // User switched prompts, don't update globals or handlers
+                                if (statusEl) statusEl.textContent = '';
+                                return;
+                            }
+                            
+                            globalPromptsCurrentFilename = newFilename;
+                            
+                            // Clear any pending save timeout to prevent saving with old filename
+                            if (globalPromptsSaveTimeout) {
+                                clearTimeout(globalPromptsSaveTimeout);
+                                globalPromptsSaveTimeout = null;
+                            }
+                            
+                            // Clear any pending filename timeout to prevent stale rename operations
+                            if (globalPromptsFilenameTimeout) {
+                                clearTimeout(globalPromptsFilenameTimeout);
+                                globalPromptsFilenameTimeout = null;
+                            }
+                            
+                            // Update handlers with new filename to allow further saves/renames
+                            const contentTextarea = document.getElementById('global-prompts-content');
+                            if (contentTextarea) {
+                                // Update globalPromptsContent to match current textarea value
+                                // (in case user continued typing during the rename operation)
+                                globalPromptsContent = contentTextarea.value;
+                                contentTextarea.oninput = debounceGlobalPromptsSave(configDir, newFilename);
+                            }
+                            const filenameInput = document.getElementById('global-prompts-filename');
+                            if (filenameInput) {
+                                filenameInput.oninput = debounceGlobalPromptsFilename(configDir, newFilename);
+                            }
+
+                            // Refresh the prompt list dropdown
+                            loadGlobalPromptsList().then(() => {
+                                document.getElementById('global-prompts-select').value = newFilename;
+                            });
+                            if (statusEl) statusEl.textContent = 'Renamed';
+                            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+                        } else {
+                            const errorData = await response.json().catch(() => ({}));
+                            throw new Error(errorData.error || 'Rename failed');
+                        }
+                    } catch (error) {
+                        console.error('Error renaming prompt:', error);
+                        if (statusEl) statusEl.textContent = `Error: ${error.message}`;
+                    }
+                }, 1000);
+            };
+        }
+        
+        // Create new global prompt
+        async function createGlobalPrompt() {
+            if (!globalPromptsConfigDir) {
+                alert('Please select a config directory first');
+                return;
+            }
+
+            // Find a unique filename
+            let filename = 'Untitled.md';
+            let counter = 1;
+            try {
+                // Load existing prompts to check for conflicts
+                const response = await fetch(`/admin/api/prompts?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`);
+                const data = await response.json();
+                const existingFilenames = new Set(data.prompts.map(prompt => prompt.filename));
+                
+                while (existingFilenames.has(filename)) {
+                    filename = `Untitled-${counter}.md`;
+                    counter++;
+                }
+            } catch (error) {
+                console.error('Error checking existing prompts:', error);
+                // Continue with Untitled.md, will fail if it exists
+            }
+
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(filename)}?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: '' })
+                });
+
+                if (response.ok) {
+                    loadGlobalPromptsList().then(() => {
+                        document.getElementById('global-prompts-select').value = filename;
+                    });
+                    loadGlobalPrompt(filename);
+                } else {
+                    throw new Error('Create failed');
+                }
+            } catch (error) {
+                console.error('Error creating prompt:', error);
+                alert('Error creating role prompt');
+            }
+        }
+        
+        // Delete global prompt
+        async function deleteGlobalPrompt() {
+            if (!globalPromptsCurrentFilename || !confirm(`Delete ${globalPromptsCurrentFilename}?`)) {
+                return;
+            }
+            
+            // Clear any pending save timeout to prevent saving after deletion
+            if (globalPromptsSaveTimeout) {
+                clearTimeout(globalPromptsSaveTimeout);
+                globalPromptsSaveTimeout = null;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(globalPromptsCurrentFilename)}?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    loadGlobalPromptsList();
+                    document.getElementById('global-prompts-select').value = '';
+                    document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a role prompt to edit</div>';
+                    document.getElementById('delete-global-prompt-btn').style.display = 'none';
+                    globalPromptsCurrentFilename = '';
+                } else {
+                    throw new Error('Delete failed');
+                }
+            } catch (error) {
+                console.error('Error deleting prompt:', error);
+                alert('Error deleting role prompt');
+            }
+        }
+        
+        // Move global prompt
+        async function moveGlobalPrompt() {
+            if (!globalPromptsCurrentFilename) return;
+
+            const destinationValue = document.getElementById('global-prompts-move-destination').value;
+            if (!destinationValue) {
+                return;
+            }
+
+            const toConfigDir = destinationValue;
+
+            // Check if it's the current location
+            if (toConfigDir === globalPromptsConfigDir) {
+                return; // Already at this location
+            }
+
+            if (!toConfigDir) {
+                alert('Invalid destination');
+                return;
+            }
+
+            if (!confirm(`Move ${globalPromptsCurrentFilename} to ${toConfigDir}?`)) {
+                // Reset dropdown to current location
+                loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
+                return;
+            }
+
+            // Save any pending content changes before moving
+            try {
+                await savePendingGlobalPromptsContent(globalPromptsConfigDir, globalPromptsCurrentFilename);
+            } catch (error) {
+                // If save fails, still allow move (but user may lose unsaved changes)
+                console.error('Failed to save content before move:', error);
+                alert('Warning: Failed to save content before move. Your recent edits may be lost.');
+            }
+
+            // Clear any pending save timeout to prevent saving after move
+            if (globalPromptsSaveTimeout) {
+                clearTimeout(globalPromptsSaveTimeout);
+                globalPromptsSaveTimeout = null;
+            }
+
+            try {
+                const response = await fetch(`/admin/api/prompts/${encodeURIComponent(globalPromptsCurrentFilename)}/move?from_config_dir=${encodeURIComponent(globalPromptsConfigDir)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to_config_dir: toConfigDir
+                    })
+                });
+
+                if (response.ok) {
+                    loadGlobalPromptsList();
+                    document.getElementById('global-prompts-select').value = '';
+                    document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a role prompt to edit</div>';
+                    document.getElementById('delete-global-prompt-btn').style.display = 'none';
+                    globalPromptsCurrentFilename = '';
+                    alert('Role prompt moved successfully');
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    const errorMessage = errorData.error || 'Move failed';
+                    if (errorMessage.includes('already exists')) {
+                        alert(`Cannot move: A role prompt with that name already exists in the destination directory.`);
+                    } else {
+                        alert(`Error moving role prompt: ${errorMessage}`);
+                    }
+                    // Reset dropdown to current location
+                    loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
+                }
+            } catch (error) {
+                console.error('Error moving prompt:', error);
+                alert(`Error moving role prompt: ${error.message}`);
+                // Reset dropdown to current location
+                loadConfigDirectoriesForMovePrompts('global-prompts-move-destination', globalPromptsConfigDir);
+            }
+        }
+        
+        // Load config directories for move (prompts only, simpler than docs)
+        async function loadConfigDirectoriesForMovePrompts(selectId, currentConfigDir) {
+            try {
+                const response = await fetch('/admin/api/config-directories');
+                const data = await response.json();
+                
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                
+                select.innerHTML = '<option value="">Move to...</option>';
+                data.directories.forEach(dir => {
+                    const option = document.createElement('option');
+                    option.value = dir.path;
+                    option.textContent = dir.display_path;
+                    // Mark current location
+                    if (currentConfigDir === dir.path) {
+                        option.selected = true;
+                        option.disabled = true;
+                        option.textContent += ' (current)';
+                    }
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading config directories:', error);
+            }
+        }
+
         async function loadAllDestinationsForMove(selectId, currentConfigDir, currentAgentConfigName) {
             try {
                 // Load config directories and agents in parallel
