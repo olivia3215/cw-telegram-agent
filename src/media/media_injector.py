@@ -14,7 +14,7 @@ from telethon.tl.types import InputStickerSetID
 from llm.base import MsgPart
 from telegram_media import iter_media_parts
 from telegram_util import get_channel_name  # for sender/channel names
-from utils import extract_user_id_from_peer
+from utils.ids import extract_user_id_from_peer
 
 # MediaCache removed - using MediaSource architecture instead
 from .media_format import (
@@ -91,6 +91,162 @@ async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | 
     except Exception as e:
         logger.exception(f"Failed to get sticker set metadata: {e}")
         return short_name, title
+
+
+# ---------- service message helpers ----------
+async def _format_service_message(msg: Any, *, agent) -> str | None:
+    """
+    Format a Telegram service message (user joined, left, etc.) with ⟦special⟧ treatment.
+    
+    Args:
+        msg: Telethon message object
+        agent: Agent instance (required for getting user names)
+        
+    Returns:
+        Formatted service message text with ⟦special⟧ prefix, or None if not a service message
+    """
+    action = getattr(msg, "action", None)
+    if not action:
+        return None
+    
+    # If agent is not available, return a generic service message
+    if not agent:
+        action_type = type(action).__name__
+        return f"⟦special⟧ Service message ({action_type})"
+    
+    action_type = type(action).__name__
+    
+    try:
+        # MessageActionChatAddUser - user(s) joined the group
+        if action_type == "MessageActionChatAddUser":
+            user_ids = getattr(action, "users", [])
+            if not user_ids:
+                return "⟦special⟧ User joined the group"
+            
+            # Get names for all users
+            user_names = []
+            for user_id in user_ids:
+                try:
+                    name = await get_channel_name(agent, user_id)
+                    user_names.append(name)
+                except Exception:
+                    user_names.append(f"User({user_id})")
+            
+            if len(user_names) == 1:
+                return f"⟦special⟧ {user_names[0]} joined the group"
+            else:
+                names_str = ", ".join(user_names[:-1]) + f" and {user_names[-1]}"
+                return f"⟦special⟧ {names_str} joined the group"
+        
+        # MessageActionChatDeleteUser - user left the group
+        elif action_type == "MessageActionChatDeleteUser":
+            user_id = getattr(action, "user_id", None)
+            if user_id:
+                try:
+                    name = await get_channel_name(agent, user_id)
+                    return f"⟦special⟧ {name} left the group"
+                except Exception:
+                    return f"⟦special⟧ User({user_id}) left the group"
+            return "⟦special⟧ User left the group"
+        
+        # MessageActionChatJoinedByLink - user joined via invite link
+        elif action_type == "MessageActionChatJoinedByLink":
+            # Get the user who joined from the message sender
+            sender_id = getattr(getattr(msg, "sender", None), "id", None)
+            if sender_id:
+                try:
+                    name = await get_channel_name(agent, sender_id)
+                    return f"⟦special⟧ {name} joined the group via invite link"
+                except Exception:
+                    return f"⟦special⟧ User({sender_id}) joined the group via invite link"
+            return "⟦special⟧ User joined the group via invite link"
+        
+        # MessageActionChatCreate - group was created
+        elif action_type == "MessageActionChatCreate":
+            title = getattr(action, "title", None)
+            if title:
+                return f"⟦special⟧ Group '{title}' was created"
+            return "⟦special⟧ Group was created"
+        
+        # MessageActionChannelCreate - channel was created
+        elif action_type == "MessageActionChannelCreate":
+            title = getattr(action, "title", None)
+            if title:
+                return f"⟦special⟧ Channel '{title}' was created"
+            return "⟦special⟧ Channel was created"
+        
+        # MessageActionChatEditTitle - group/channel title was changed
+        elif action_type == "MessageActionChatEditTitle":
+            title = getattr(action, "title", None)
+            if title:
+                return f"⟦special⟧ Group title changed to '{title}'"
+            return "⟦special⟧ Group title was changed"
+        
+        # MessageActionChatEditPhoto - group/channel photo was changed
+        elif action_type == "MessageActionChatEditPhoto":
+            return "⟦special⟧ Group photo was changed"
+        
+        # MessageActionChatDeletePhoto - group/channel photo was removed
+        elif action_type == "MessageActionChatDeletePhoto":
+            return "⟦special⟧ Group photo was removed"
+        
+        # MessageActionPinMessage - message was pinned
+        elif action_type == "MessageActionPinMessage":
+            return "⟦special⟧ Message was pinned"
+        
+        # MessageActionHistoryClear - chat history was cleared
+        elif action_type == "MessageActionHistoryClear":
+            return "⟦special⟧ Chat history was cleared"
+        
+        # MessageActionSetMessagesTTL - message auto-delete TTL was set
+        elif action_type == "MessageActionSetMessagesTTL":
+            period = getattr(action, "period", None)
+            if period is not None:
+                # period is in seconds, convert to human-readable format
+                if period == 0:
+                    return "⟦special⟧ Messages auto-delete disabled"
+                elif period < 60:
+                    return f"⟦special⟧ Messages set to auto-delete after {period} second{'s' if period != 1 else ''}"
+                elif period < 3600:
+                    minutes = period // 60
+                    return f"⟦special⟧ Messages set to auto-delete after {minutes} minute{'s' if minutes != 1 else ''}"
+                elif period < 86400:
+                    hours = period // 3600
+                    return f"⟦special⟧ Messages set to auto-delete after {hours} hour{'s' if hours != 1 else ''}"
+                elif period < 2592000:  # 30 days
+                    days = period // 86400
+                    return f"⟦special⟧ Messages set to auto-delete after {days} day{'s' if days != 1 else ''}"
+                else:
+                    months = period // 2592000
+                    return f"⟦special⟧ Messages set to auto-delete after {months} month{'s' if months != 1 else ''}"
+            return "⟦special⟧ Messages auto-delete settings changed"
+        
+        # MessageActionChatMigrateTo - group was upgraded to supergroup
+        elif action_type == "MessageActionChatMigrateTo":
+            channel_id = getattr(action, "channel_id", None)
+            if channel_id:
+                return f"⟦special⟧ Group was upgraded to supergroup (channel {channel_id})"
+            return "⟦special⟧ Group was upgraded to supergroup"
+        
+        # MessageActionChannelMigrateFrom - channel was migrated from a group
+        elif action_type == "MessageActionChannelMigrateFrom":
+            chat_id = getattr(action, "chat_id", None)
+            if chat_id:
+                return f"⟦special⟧ Channel was migrated from group {chat_id}"
+            return "⟦special⟧ Channel was migrated"
+        
+        # Default fallback for other action types
+        else:
+            # Try to get a readable description
+            action_str = str(action_type).replace("MessageAction", "").replace("Chat", " ")
+            # Convert CamelCase to Title Case
+            import re
+            readable = re.sub(r'(?<!^)(?=[A-Z])', ' ', action_str).title()
+            return f"⟦special⟧ {readable}"
+            
+    except Exception as e:
+        logger.exception(f"Error formatting service message: {e}")
+        return f"⟦special⟧ Service message ({action_type})"
 
 
 # ---------- provenance helpers ----------
@@ -264,6 +420,12 @@ async def format_message_for_prompt(
         media_chain = get_default_media_source_chain()
 
     parts = []
+    
+    # Check for service messages first (user joined, left, etc.)
+    service_text = await _format_service_message(msg, agent=agent)
+    if service_text:
+        parts.append({"kind": "text", "text": service_text})
+    
     # include text if present
     if getattr(msg, "text", None):
         text = msg.text.strip()
