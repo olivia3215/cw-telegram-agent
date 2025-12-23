@@ -534,7 +534,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                     logger.info(f"Renamed config directory from {old_agent_config_dir} to {new_agent_config_dir}")
             except Exception as e:
                 logger.error(f"Error renaming directories for {old_config_name}: {e}")
-                # Rollback state directory if it was already renamed
+                # Rollback directories if they were already renamed
                 rollback_errors = []
                 if state_dir_renamed and STATE_DIRECTORY:
                     try:
@@ -546,6 +546,15 @@ def register_configuration_routes(agents_bp: Blueprint):
                     except Exception as rollback_e:
                         rollback_errors.append(f"Failed to rollback state directory: {rollback_e}")
                         logger.error(f"Failed to rollback state directory rename: {rollback_e}")
+                
+                try:
+                    if config_dir_renamed:
+                        if new_agent_config_dir.exists() and new_agent_config_dir.is_dir():
+                            shutil.move(str(new_agent_config_dir), str(old_agent_config_dir))
+                            logger.info(f"Rolled back config directory rename from {new_agent_config_dir} to {old_agent_config_dir}")
+                except Exception as rollback_e:
+                    rollback_errors.append(f"Failed to rollback config directory: {rollback_e}")
+                    logger.error(f"Failed to rollback config directory rename: {rollback_e}")
                 
                 error_msg = f"Failed to rename directories: {e}"
                 if rollback_errors:
