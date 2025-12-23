@@ -573,13 +573,9 @@ async def run_telegram_loop(agent: Agent):
                 
                 await scan_unread_messages(agent)
                 
-                # Only call run_until_disconnected if client is still connected
-                # The client might have been disconnected if the agent was disabled
-                if client.is_connected():
-                    await client.run_until_disconnected()
-                else:
-                    logger.info(f"[{agent.name}] Client is already disconnected, exiting telegram loop")
-                    break
+                # Call run_until_disconnected - if client is disconnected, this will raise an exception
+                # which will be caught by the exception handler below, allowing the loop to reconnect
+                await client.run_until_disconnected()
 
         except Exception as e:
             logger.exception(
