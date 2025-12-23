@@ -62,9 +62,22 @@ def register_login_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
+            # Check if agent already has a connected client - if so, it's already authenticated
+            if agent.client and agent.client.is_connected():
+                return jsonify({"status": "authenticated"})
+
             # If already logged in, return success
             async def check_auth():
                 # We need a temporary client to check auth if not already running
+                # But first check if agent already has a client to avoid "database is locked" errors
+                if agent.client:
+                    try:
+                        if agent.client.is_connected():
+                            return await agent.client.is_user_authorized()
+                    except Exception:
+                        pass
+                
+                # Create a temporary client to check auth
                 client = get_telegram_client(agent.config_name, agent.phone)
                 try:
                     await client.connect()
@@ -77,8 +90,19 @@ def register_login_routes(agents_bp: Blueprint):
                 login_data = _pending_logins[agent_config_name]
                 return jsonify({"status": login_data['status']})
 
-            if _run_in_login_loop(check_auth()):
-                return jsonify({"status": "authenticated"})
+            try:
+                if _run_in_login_loop(check_auth()):
+                    return jsonify({"status": "authenticated"})
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
+                    # Session file is locked - agent is likely already authenticated
+                    # Check if agent has a client (might have been authenticated elsewhere)
+                    if agent.client:
+                        return jsonify({"status": "authenticated"})
+                    # Return a more helpful error message
+                    return jsonify({"error": "Session file is locked. The agent may already be authenticated. Please try refreshing or wait a moment."}), 500
+                raise
 
             # Start new login flow
             async def start_login():

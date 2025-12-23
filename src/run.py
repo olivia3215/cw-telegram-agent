@@ -362,7 +362,25 @@ async def authenticate_agent(agent: Agent):
 
     try:
         # Start the client connection without using async with
-        await client.start()
+        # Handle "database is locked" error gracefully - it usually means the agent
+        # is already authenticated or the session file is in use by another process
+        try:
+            await client.start()
+        except Exception as start_error:
+            error_msg = str(start_error).lower()
+            if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
+                logger.warning(
+                    f"[{agent.name}] Session file is locked when starting client. "
+                    "This usually means the agent is already authenticated or another process is using the session. "
+                    "Attempting to check if already authenticated..."
+                )
+                # Try to check if we can access the client without starting it
+                # If the session is locked but valid, the agent might already be authenticated
+                # In this case, we should return False and let run_telegram_loop handle reconnection
+                agent._client = None
+                return False
+            raise
+        
         # Cache the client's event loop after connection so it can be accessed from other threads
         agent._cache_client_loop()
 
@@ -403,6 +421,18 @@ async def authenticate_agent(agent: Agent):
 
 async def run_telegram_loop(agent: Agent):
     while True:
+        # Check if agent has been disabled - if so, disconnect and exit
+        if agent.is_disabled:
+            logger.info(f"[{agent.name}] Agent is disabled, disconnecting client and exiting telegram loop")
+            if agent._client:
+                try:
+                    await agent._client.disconnect()
+                except Exception:
+                    pass
+                agent._client = None
+                agent._loop = None  # Clear cached loop
+            break
+        
         # Check if agent already has a connected client from initial authentication
         if agent._client and not agent._client.is_connected():
             # Client exists but is disconnected, need to reconnect
@@ -419,6 +449,11 @@ async def run_telegram_loop(agent: Agent):
             if not auth_success:
                 logger.error(f"[{agent.name}] Authentication failed, exiting.")
                 break
+        else:
+            # Client exists - ensure the loop is cached correctly
+            # This is important if the client was authenticated in a temporary loop (e.g., via asyncio.run)
+            # The client's actual loop (from run_telegram_loop) might be different from what was cached
+            agent._cache_client_loop()
 
         client = agent.client
         if not client:
@@ -511,6 +546,11 @@ async def run_telegram_loop(agent: Agent):
 
         try:
             async with client:
+                # Check if agent was disabled while we were setting up
+                if agent.is_disabled:
+                    logger.info(f"[{agent.name}] Agent was disabled, exiting telegram loop")
+                    break
+                
                 # Stagger initial scan to avoid GetContactsRequest flood when multiple agents start
                 # Add a random delay between 0-5 seconds based on agent config name hash
                 agent_hash = int(hashlib.md5(agent.config_name.encode()).hexdigest()[:8], 16)
@@ -518,8 +558,21 @@ async def run_telegram_loop(agent: Agent):
                 if initial_delay > 0:
                     logger.debug(f"[{agent.name}] Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
                     await clock.sleep(initial_delay)
+                
+                # Check again after delay
+                if agent.is_disabled:
+                    logger.info(f"[{agent.name}] Agent was disabled, exiting telegram loop")
+                    break
+                
                 await scan_unread_messages(agent)
-                await client.run_until_disconnected()
+                
+                # Only call run_until_disconnected if client is still connected
+                # The client might have been disconnected if the agent was disabled
+                if client.is_connected():
+                    await client.run_until_disconnected()
+                else:
+                    logger.info(f"[{agent.name}] Client is already disconnected, exiting telegram loop")
+                    break
 
         except Exception as e:
             logger.exception(

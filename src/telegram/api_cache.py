@@ -64,6 +64,16 @@ class TelegramAPICache:
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
 
+        # Check if client is connected before using it
+        # If agent is disabled or client is disconnected, return False
+        if self.agent and self.agent.is_disabled:
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
+        
+        if not self.client.is_connected():
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
+
         try:
             if self.agent:
                 await self.agent.ensure_client_connected()
@@ -106,6 +116,17 @@ class TelegramAPICache:
                 return user_id in self._blocklist_cache
 
             try:
+                # Check if agent is disabled or client is disconnected before trying to use it
+                if self.agent and self.agent.is_disabled:
+                    if self._blocklist_cache is None:
+                        self._blocklist_cache = set()
+                    return user_id in self._blocklist_cache
+                
+                if not self.client.is_connected():
+                    if self._blocklist_cache is None:
+                        self._blocklist_cache = set()
+                    return user_id in self._blocklist_cache
+                
                 if self.agent:
                     await self.agent.ensure_client_connected()
                 result = await self.client(GetBlockedRequest(offset=0, limit=100))
