@@ -461,35 +461,10 @@ def register_configuration_routes(agents_bp: Blueprint):
             # If agent is being disabled, disconnect its client to release the SQLite session lock
             if is_disabled and agent.client:
                 try:
-                    # Try to find the main event loop and schedule disconnection
-                    # First, check if the agent being disabled has its own running loop
-                    # This handles the case where it's the last running agent
-                    from agent import all_agents
+                    from main_loop import get_main_loop
                     
-                    main_loop = None
-                    # First, try to use the agent's own loop (before it's excluded by all_agents())
-                    if agent.client:
-                        try:
-                            client_loop = agent._get_client_loop()
-                            if client_loop and client_loop.is_running():
-                                main_loop = client_loop
-                        except Exception:
-                            pass
-                    
-                    # If agent's own loop not available, look for another agent's loop
-                    # Use include_disabled=True to ensure we can find other agents even if they're disabled
-                    if not main_loop:
-                        for other_agent in all_agents(include_disabled=True):
-                            if other_agent != agent and other_agent.client:
-                                try:
-                                    client_loop = other_agent._get_client_loop()
-                                    if client_loop and client_loop.is_running():
-                                        main_loop = client_loop
-                                        break
-                                except Exception:
-                                    continue
-                    
-                    if main_loop:
+                    main_loop = get_main_loop()
+                    if main_loop and main_loop.is_running():
                         # Schedule disconnection in the main event loop
                         async def disconnect_client():
                             try:
@@ -517,19 +492,20 @@ def register_configuration_routes(agents_bp: Blueprint):
             # to avoid "database is locked" errors from concurrent SQLite access
             if not is_disabled and not agent.client:
                 try:
-                    from agent import all_agents
+                    from main_loop import get_main_loop
                     from run import run_telegram_loop
                     
-                    # Helper function to schedule run_telegram_loop on a given loop
-                    def schedule_telegram_loop(target_loop, context=""):
-                        """Schedule run_telegram_loop for the agent on the target loop."""
+                    main_loop = get_main_loop()
+                    if main_loop and main_loop.is_running():
+                        # Schedule run_telegram_loop on the main loop
+                        # run_telegram_loop will handle authentication internally
                         def schedule_loop():
                             # Double-check agent still doesn't have a client before starting
                             # This avoids "database is locked" errors if client was created elsewhere
                             if not agent.client:
                                 try:
                                     asyncio.create_task(run_telegram_loop(agent))
-                                    logger.info(f"Scheduled run_telegram_loop for {agent_config_name}{context}")
+                                    logger.info(f"Scheduled run_telegram_loop for {agent_config_name}")
                                 except Exception as e:
                                     error_msg = str(e).lower()
                                     if "database is locked" in error_msg or "locked" in error_msg:
@@ -540,60 +516,13 @@ def register_configuration_routes(agents_bp: Blueprint):
                                     else:
                                         logger.error(f"Error starting run_telegram_loop for {agent_config_name}: {e}")
                         
-                        target_loop.call_soon_threadsafe(schedule_loop)
-                    
-                    # Try to find the main event loop
-                    main_loop = None
-                    
-                    # Check if there's already a running event loop (main run loop)
-                    try:
-                        loop = asyncio.get_running_loop()
-                        # We're in an async context - use this loop directly (it's the main loop)
-                        # This fixes the issue where the first agent enabled couldn't find another agent's loop
-                        main_loop = loop
-                        logger.debug(f"Found running event loop for {agent_config_name}")
-                    except RuntimeError:
-                        # No running loop in this thread - try to find the main loop from another agent
-                        # Use include_disabled=True to ensure we can find agents even if they're disabled
-                        for other_agent in all_agents(include_disabled=True):
-                            if other_agent != agent and other_agent.client:
-                                try:
-                                    client_loop = other_agent._get_client_loop()
-                                    if client_loop and client_loop.is_running():
-                                        main_loop = client_loop
-                                        logger.debug(f"Found main loop from agent {other_agent.config_name} for {agent_config_name}")
-                                        break
-                                except Exception:
-                                    continue
-                        
-                        # If we still don't have a loop, try asyncio.get_event_loop() as a fallback
-                        # This might work if the main loop was set as the default
-                        if not main_loop:
-                            try:
-                                default_loop = asyncio.get_event_loop()
-                                if default_loop and default_loop.is_running():
-                                    main_loop = default_loop
-                                    logger.debug(f"Using default event loop for {agent_config_name}")
-                            except (RuntimeError, AttributeError):
-                                pass
-                    
-                    if main_loop:
-                        # Schedule run_telegram_loop on the main loop
-                        # run_telegram_loop will handle authentication internally
-                        schedule_telegram_loop(main_loop, " (using main event loop)")
+                        main_loop.call_soon_threadsafe(schedule_loop)
                     else:
-                        # No main loop found - we're likely in a synchronous context without access to the main loop
-                        # In this case, we should NOT do synchronous authentication because it creates a client
-                        # in a temporary loop that leaves a session lock. Instead, log that the agent needs
-                        # to be started on the next restart or via the login endpoint.
+                        # No main loop available - log that the agent needs to be started on restart
                         logger.info(
-                            f"Agent {agent_config_name} enabled but couldn't find main event loop. "
+                            f"Agent {agent_config_name} enabled but main event loop is not available. "
                             "run_telegram_loop will start on next system restart, or use the login endpoint to authenticate manually."
                         )
-                    
-                    # Removed the old synchronous authentication code path - it was causing session lock issues
-                    # by creating clients in temporary event loops. Now we only schedule run_telegram_loop
-                    # on the main event loop, which handles authentication internally without leaving locks.
                 except Exception as e:
                     error_msg = str(e).lower()
                     if "database is locked" in error_msg or "locked" in error_msg:

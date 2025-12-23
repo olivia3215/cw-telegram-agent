@@ -24,6 +24,7 @@ from agent import (
     all_agents,
 )
 from clock import clock
+from main_loop import set_main_loop
 from exceptions import ShutdownException
 from utils import format_message_content_for_logging
 from register_agents import register_all_agents
@@ -643,6 +644,9 @@ async def authenticate_all_agents(agents_list):
 
 
 async def main():
+    # Set the main event loop reference so it can be accessed from anywhere (e.g., Flask routes)
+    set_main_loop(asyncio.get_running_loop())
+    
     admin_enabled = _env_flag("CINDY_ADMIN_CONSOLE_ENABLED", True)
     agent_loop_enabled = _env_flag("CINDY_AGENT_LOOP_ENABLED", True)
     admin_host = os.getenv("CINDY_ADMIN_CONSOLE_HOST", "0.0.0.0")
