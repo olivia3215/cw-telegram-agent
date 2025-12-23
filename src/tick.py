@@ -36,7 +36,8 @@ def is_graph_complete(graph) -> bool:
 async def trigger_typing_indicators():
     """
     Check for pending wait tasks with typing=True or online=True and trigger typing indicators.
-    For typing=True tasks, only trigger if unblocked. For online=True tasks, trigger when unblocked (ready).
+    For typing=True tasks, only trigger if unblocked. For online=True tasks, trigger while the task is pending
+    (regardless of dependencies or wait time), to show the agent is online during the wait period.
     """
     clock.now(UTC)
     work_queue = WorkQueue.get_instance()
@@ -101,26 +102,25 @@ async def trigger_typing_indicators():
                     except (UserBannedInChannelError, ChatWriteForbiddenError):
                         # It's okay if we can't show ourselves as typing
                         logger.debug(
-                            f"Cannot send typing indicator to channel {channel_id}"
+                            f"[{agent.name}] Cannot send typing indicator to channel {channel_id}"
                         )
                 
                 # For online=True: send cancel action to show online without typing indicator
                 # Only send if no typing indicators are being sent in this graph
-                # Send when task is unblocked (ready) - dependencies are satisfied
+                # Send while task is pending (active wait task) - this shows online status
+                # regardless of whether dependencies are met or wait time has expired
+                # SendMessageCancelAction() shows online status without the typing indicator.
                 if online and not should_send_typing and task.is_unblocked(completed_ids):
                     try:
+                        # Send cancel action to show online without typing indicator
                         await client(
                             SetTypingRequest(
                                 peer=channel_id, action=SendMessageCancelAction()
                             )
                         )
+                    except Exception as e:
                         logger.debug(
-                            f"Sent online status to channel {channel_id} for task {task.id}"
-                        )
-                    except (UserBannedInChannelError, ChatWriteForbiddenError):
-                        # It's okay if we can't show ourselves as online
-                        logger.debug(
-                            f"Cannot send online status to channel {channel_id}"
+                            f"[{agent.name}] Error sending online status for channel {channel_id}: {e}"
                         )
 
         except Exception as e:
