@@ -31,10 +31,10 @@ def register_plan_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
@@ -58,10 +58,10 @@ def register_plan_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             data = request.json
             content = data.get("content", "").strip()
@@ -120,10 +120,10 @@ def register_plan_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             data = request.json or {}
             content = data.get("content", "").strip()

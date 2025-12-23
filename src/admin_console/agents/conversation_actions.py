@@ -33,6 +33,11 @@ markdown_to_html = _conversation_mod.markdown_to_html
 
 logger = logging.getLogger(__name__)
 
+
+# Import the centralized helper function
+from admin_console.helpers import resolve_user_id_to_channel_id as _resolve_user_id_to_channel_id
+
+
 # Translation cache file path
 TRANSLATIONS_CACHE_PATH = Path(STATE_DIRECTORY) / "translations.json"
 # Translation cache lock file path (for file-level locking)
@@ -185,11 +190,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
-
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
 
             # Get messages from request
             data = request.json
@@ -528,6 +528,9 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error creating xsend task for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
+        except Exception as e:
+            logger.error(f"Error creating xsend task for {agent_config_name}/{user_id}: {e}")
+            return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/summarize", methods=["POST"])
     def api_trigger_summarization(agent_config_name: str, user_id: str):
@@ -540,23 +543,21 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             if not agent.agent_id:
                 return jsonify({"error": "Agent not authenticated"}), 400
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
-
             if not agent.client or not agent.client.is_connected():
                 return jsonify({"error": "Agent client not connected"}), 503
 
             # Trigger summarization directly (without going through task graph)
             # This is async, so we need to run it on the agent's event loop
             async def _trigger_summarize():
+                channel_id = await _resolve_user_id_to_channel_id(agent, user_id)
                 await trigger_summarization_directly(agent, channel_id, parse_llm_reply_fn=parse_llm_reply)
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
                 agent.execute(_trigger_summarize(), timeout=60.0)  # Increased timeout for summarization
                 return jsonify({"success": True, "message": "Summarization completed successfully"})
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:
@@ -579,11 +580,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
-
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
 
             # Check if agent's event loop is accessible (needed to determine DM vs group)
             try:
@@ -657,8 +653,11 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                 if not agent_client or not agent_client.is_connected():
                     raise RuntimeError("Agent client not connected")
                 
+                # Resolve user_id (which may be a username) to channel_id
+                resolved_channel_id = await _resolve_user_id_to_channel_id(agent, user_id)
+                
                 # Get entity using agent's client to determine type
-                entity_from_agent = await agent_client.get_entity(channel_id)
+                entity_from_agent = await agent_client.get_entity(resolved_channel_id)
                 
                 # Import is_dm to check if this is a DM
                 from telegram_util import is_dm
@@ -669,6 +668,12 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             # Check if DM or group (runs on agent's event loop, but quickly)
             try:
                 is_direct_message, entity_from_agent = agent.execute(_check_if_dm(), timeout=10.0)
+                # Extract channel_id from entity for later use
+                channel_id = getattr(entity_from_agent, 'id', None)
+                if channel_id is None:
+                    return jsonify({"error": "Could not determine channel ID from entity"}), 500
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:

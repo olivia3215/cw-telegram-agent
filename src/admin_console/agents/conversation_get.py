@@ -568,10 +568,11 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         if not agent.client or not agent.client.is_connected():
             return jsonify({"error": "Agent client not connected"}), 503
 
-        try:
-            channel_id = int(user_id)
-        except ValueError:
-            return jsonify({"error": "Invalid user ID"}), 400
+        # Resolve user_id (which may be a username) to channel_id
+        from admin_console.helpers import resolve_user_id_and_handle_errors
+        channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+        if error_response:
+            return error_response
 
         # Get summaries
         summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"

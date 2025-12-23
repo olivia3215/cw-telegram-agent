@@ -197,6 +197,12 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+            resolved_user_id = str(channel_id)
+
             if not agent.config_directory:
                 return jsonify({"memories": []})
 
@@ -205,7 +211,7 @@ def register_memory_routes(agents_bp: Blueprint):
                 / "agents"
                 / agent.config_name
                 / "memory"
-                / f"{user_id}.json"
+                / f"{resolved_user_id}.json"
             )
 
             if not memory_file.exists():
@@ -245,6 +251,12 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
 
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+            resolved_user_id = str(channel_id)
+
             data = request.json
             content = data.get("content", "").strip()
 
@@ -253,7 +265,7 @@ def register_memory_routes(agents_bp: Blueprint):
                 / "agents"
                 / agent.config_name
                 / "memory"
-                / f"{user_id}.json"
+                / f"{resolved_user_id}.json"
             )
 
             # Load existing data
@@ -307,12 +319,18 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
 
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+            resolved_user_id = str(channel_id)
+
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
                 / agent.config_name
                 / "memory"
-                / f"{user_id}.json"
+                / f"{resolved_user_id}.json"
             )
 
             if not memory_file.exists():
@@ -366,12 +384,18 @@ def register_memory_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+            resolved_user_id = str(channel_id)
+
             memory_file = (
                 Path(agent.config_directory)
                 / "agents"
                 / agent.config_name
                 / "memory"
-                / f"{user_id}.json"
+                / f"{resolved_user_id}.json"
             )
 
             # Load existing data

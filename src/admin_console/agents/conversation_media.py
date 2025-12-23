@@ -269,10 +269,15 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             try:
-                channel_id = int(user_id)
                 msg_id = int(message_id)
             except ValueError:
-                return jsonify({"error": "Invalid user ID or message ID"}), 400
+                return jsonify({"error": "Invalid message ID"}), 400
+            
+            # Resolve user_id (which may be a username) to channel_id
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             # First, check if media is cached in any of the media directories
             # Check config directories first (curated media), then state/media/ (AI cache)
