@@ -3,11 +3,13 @@
 # Agent configuration management routes for the admin console.
 
 import logging
+import shutil
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_available_timezones, get_default_llm
+from config import STATE_DIRECTORY
 from prompt_loader import get_available_system_prompts
 
 logger = logging.getLogger(__name__)
@@ -494,6 +496,41 @@ def register_configuration_routes(agents_bp: Blueprint):
             old_agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
             if not old_agent_file.exists():
                 return jsonify({"error": "Current agent configuration file not found"}), 404
+
+            # Check if target directories already exist
+            old_config_name = agent.config_name
+            
+            # Check state directory
+            if STATE_DIRECTORY:
+                old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                if new_state_dir.exists():
+                    return jsonify({"error": f"State directory '{new_config_name}' already exists"}), 400
+
+            # Check config directory
+            old_agent_config_dir = Path(agent.config_directory) / "agents" / old_config_name
+            new_agent_config_dir = Path(agent.config_directory) / "agents" / new_config_name
+            if new_agent_config_dir.exists():
+                return jsonify({"error": f"Config directory '{new_config_name}' already exists"}), 400
+
+            # Rename directories first (before renaming the config file)
+            # If directory renaming fails, we haven't renamed the file yet, so no rollback needed
+            try:
+                # Rename state directory if it exists
+                if STATE_DIRECTORY:
+                    old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                    new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                    if old_state_dir.exists() and old_state_dir.is_dir():
+                        shutil.move(str(old_state_dir), str(new_state_dir))
+                        logger.info(f"Renamed state directory from {old_state_dir} to {new_state_dir}")
+
+                # Rename config directory if it exists
+                if old_agent_config_dir.exists() and old_agent_config_dir.is_dir():
+                    shutil.move(str(old_agent_config_dir), str(new_agent_config_dir))
+                    logger.info(f"Renamed config directory from {old_agent_config_dir} to {new_agent_config_dir}")
+            except Exception as e:
+                logger.error(f"Error renaming directories for {old_config_name}: {e}")
+                return jsonify({"error": f"Failed to rename directories: {e}"}), 500
 
             # Rename file
             old_agent_file.rename(new_agent_file)
