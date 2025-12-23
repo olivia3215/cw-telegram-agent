@@ -37,6 +37,7 @@ def test_check_auth_leak_on_exception(client):
         mock_agent = MagicMock()
         mock_agent.config_name = "test_agent"
         mock_agent.phone = "+1234567890"
+        mock_agent.client = None  # No existing client - should proceed to check_auth
         mock_get_agent_by_name.return_value = mock_agent
 
         # Setup mock Telegram client
@@ -68,6 +69,7 @@ def test_start_login_leak_on_exception(client):
         mock_agent = MagicMock()
         mock_agent.config_name = "test_agent"
         mock_agent.phone = "+1234567890"
+        mock_agent.client = None  # No existing client - should proceed to check_auth
         mock_get_agent_by_name.return_value = mock_agent
 
         # Setup mock Telegram client
@@ -103,6 +105,7 @@ def test_start_login_success_no_disconnect(client):
         mock_agent = MagicMock()
         mock_agent.config_name = "test_agent"
         mock_agent.phone = "+1234567890"
+        mock_agent.client = None  # No existing client - should proceed to check_auth
         mock_get_agent_by_name.return_value = mock_agent
 
         # Setup mock Telegram client
