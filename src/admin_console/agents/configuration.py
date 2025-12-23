@@ -463,19 +463,26 @@ def register_configuration_routes(agents_bp: Blueprint):
                 try:
                     from main_loop import get_main_loop
                     
+                    # Store reference to client before clearing it synchronously
+                    # This ensures that if the agent is re-enabled immediately, the check
+                    # for agent.client will see None and start run_telegram_loop
+                    client_to_disconnect = agent._client
+                    
+                    # Clear client reference immediately (synchronously) so that
+                    # subsequent enable checks see None and can start run_telegram_loop
+                    agent._client = None
+                    agent._loop = None  # Clear cached loop
+                    
                     main_loop = get_main_loop()
                     if main_loop and main_loop.is_running():
                         # Schedule disconnection in the main event loop
                         async def disconnect_client():
                             try:
-                                if agent._client and agent._client.is_connected():
-                                    await agent._client.disconnect()
+                                if client_to_disconnect and client_to_disconnect.is_connected():
+                                    await client_to_disconnect.disconnect()
                                     logger.info(f"Disconnected client for disabled agent {agent_config_name}")
                             except Exception as e:
                                 logger.warning(f"Error disconnecting client for disabled agent {agent_config_name}: {e}")
-                            finally:
-                                agent._client = None
-                                agent._loop = None  # Clear cached loop
                         
                         main_loop.call_soon_threadsafe(lambda: asyncio.create_task(disconnect_client()))
                         logger.info(f"Scheduled client disconnection for disabled agent {agent_config_name}")
