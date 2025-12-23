@@ -272,10 +272,17 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
         
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
-        RuntimeError: If agent client event loop is not available
+        RuntimeError: If agent client event loop is not available (only for username resolution)
         TimeoutError: If resolution times out
     """
-    # Check if agent's event loop is accessible
+    # Try to parse as integer first - if successful, no need to check event loop
+    try:
+        return int(user_id)
+    except ValueError:
+        # Not a numeric ID - need to resolve as username, which requires Telegram client
+        pass
+    
+    # Check if agent's event loop is accessible (only needed for username resolution)
     try:
         client_loop = agent._get_client_loop()
         if not client_loop or not client_loop.is_running():
