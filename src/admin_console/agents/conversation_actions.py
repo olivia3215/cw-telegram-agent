@@ -528,9 +528,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error creating xsend task for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
-        except Exception as e:
-            logger.error(f"Error creating xsend task for {agent_config_name}/{user_id}: {e}")
-            return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/summarize", methods=["POST"])
     def api_trigger_summarization(agent_config_name: str, user_id: str):
