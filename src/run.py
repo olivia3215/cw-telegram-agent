@@ -374,6 +374,12 @@ async def authenticate_agent(agent: Agent):
                     "This usually means the agent is already authenticated or another process is using the session. "
                     "Attempting to check if already authenticated..."
                 )
+                # Disconnect the client to release any resources/locks it may hold
+                # This is important even if start() failed, as the client may have partially initialized
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
                 # Try to check if we can access the client without starting it
                 # If the session is locked but valid, the agent might already be authenticated
                 # In this case, we should return False and let run_telegram_loop handle reconnection

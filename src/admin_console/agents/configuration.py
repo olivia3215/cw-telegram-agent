@@ -517,129 +517,83 @@ def register_configuration_routes(agents_bp: Blueprint):
             # to avoid "database is locked" errors from concurrent SQLite access
             if not is_disabled and not agent.client:
                 try:
+                    from agent import all_agents
+                    from run import run_telegram_loop
+                    
+                    # Helper function to schedule run_telegram_loop on a given loop
+                    def schedule_telegram_loop(target_loop, context=""):
+                        """Schedule run_telegram_loop for the agent on the target loop."""
+                        def schedule_loop():
+                            # Double-check agent still doesn't have a client before starting
+                            # This avoids "database is locked" errors if client was created elsewhere
+                            if not agent.client:
+                                try:
+                                    asyncio.create_task(run_telegram_loop(agent))
+                                    logger.info(f"Scheduled run_telegram_loop for {agent_config_name}{context}")
+                                except Exception as e:
+                                    error_msg = str(e).lower()
+                                    if "database is locked" in error_msg or "locked" in error_msg:
+                                        logger.warning(
+                                            f"Agent {agent_config_name} session file is locked when starting run_telegram_loop. "
+                                            "This usually means the agent is already authenticated. The agent is enabled and should work normally."
+                                        )
+                                    else:
+                                        logger.error(f"Error starting run_telegram_loop for {agent_config_name}: {e}")
+                        
+                        target_loop.call_soon_threadsafe(schedule_loop)
+                    
+                    # Try to find the main event loop
+                    main_loop = None
+                    
                     # Check if there's already a running event loop (main run loop)
                     try:
                         loop = asyncio.get_running_loop()
-                        # Main loop is running - try to get it from an existing agent's client
-                        # and schedule run_telegram_loop for the newly enabled agent
-                        from agent import all_agents
-                        from run import run_telegram_loop
-                        
-                        # Find an agent with a running client loop
+                        # We're in an async context - use this loop directly (it's the main loop)
+                        # This fixes the issue where the first agent enabled couldn't find another agent's loop
+                        main_loop = loop
+                        logger.debug(f"Found running event loop for {agent_config_name}")
+                    except RuntimeError:
+                        # No running loop in this thread - try to find the main loop from another agent
                         # Use include_disabled=True to ensure we can find agents even if they're disabled
-                        main_loop = None
                         for other_agent in all_agents(include_disabled=True):
                             if other_agent != agent and other_agent.client:
                                 try:
                                     client_loop = other_agent._get_client_loop()
                                     if client_loop and client_loop.is_running():
                                         main_loop = client_loop
+                                        logger.debug(f"Found main loop from agent {other_agent.config_name} for {agent_config_name}")
                                         break
                                 except Exception:
                                     continue
                         
-                        if main_loop:
-                            # Schedule run_telegram_loop for the newly enabled agent
-                            # Use a closure to capture the agent variable properly and avoid lambda issues
-                            def schedule_loop():
-                                # Double-check agent still doesn't have a client before starting
-                                # This avoids "database is locked" errors if client was created elsewhere
-                                if not agent.client:
-                                    try:
-                                        asyncio.create_task(run_telegram_loop(agent))
-                                    except Exception as e:
-                                        error_msg = str(e).lower()
-                                        if "database is locked" in error_msg or "locked" in error_msg:
-                                            logger.warning(
-                                                f"Agent {agent_config_name} session file is locked when starting run_telegram_loop. "
-                                                "This usually means the agent is already authenticated. The agent is enabled and should work normally."
-                                            )
-                                        else:
-                                            logger.error(f"Error starting run_telegram_loop for {agent_config_name}: {e}")
-                            
-                            main_loop.call_soon_threadsafe(schedule_loop)
-                            logger.info(
-                                f"Scheduled run_telegram_loop for newly enabled agent {agent_config_name}"
-                            )
-                        else:
-                            logger.info(
-                                f"Agent {agent_config_name} enabled but couldn't find main event loop. "
-                                "Client will be created on next system restart, or use the login endpoint to authenticate manually."
-                            )
-                    except RuntimeError:
-                        # No running loop in this thread - we can authenticate synchronously
-                        # But first check if agent already has a client (might have been set elsewhere)
-                        if not agent.client:
-                            from run import authenticate_agent
+                        # If we still don't have a loop, try asyncio.get_event_loop() as a fallback
+                        # This might work if the main loop was set as the default
+                        if not main_loop:
                             try:
-                                auth_success = asyncio.run(authenticate_agent(agent))
-                                if auth_success:
-                                    # The client was created in a temporary event loop that just closed.
-                                    # Telethon doesn't allow using a client in a different event loop than
-                                    # the one it was created in. We need to disconnect and clear the client
-                                    # so that run_telegram_loop can create a fresh one in the correct loop.
-                                    if agent._client:
-                                        try:
-                                            # Disconnect the client from the temporary loop
-                                            # We can't await here, but we can schedule it
-                                            pass  # The client will be disconnected when the temporary loop closes
-                                        except Exception:
-                                            pass
-                                    # Clear the client and loop - run_telegram_loop will create a fresh client
-                                    agent._client = None
-                                    agent._loop = None
-                                    logger.info(f"Successfully authenticated agent {agent_config_name} after enabling (client cleared for loop migration)")
-                                    
-                                    # Try to find the main application loop and schedule run_telegram_loop
-                                    # The main loop is running in a different thread, so we need to find it
-                                    from agent import all_agents
-                                    from run import run_telegram_loop
-                                    
-                                    main_loop = None
-                                    # Try to find any agent with a running client loop (this will be the main loop)
-                                    # Use include_disabled=True to ensure we can find agents even if they're disabled
-                                    for other_agent in all_agents(include_disabled=True):
-                                        if other_agent.client:
-                                            try:
-                                                client_loop = other_agent._get_client_loop()
-                                                if client_loop and client_loop.is_running():
-                                                    main_loop = client_loop
-                                                    break
-                                            except Exception:
-                                                continue
-                                    
-                                    if main_loop:
-                                        # Schedule run_telegram_loop on the main loop
-                                        # It will create a fresh client in the correct event loop
-                                        def schedule_loop():
-                                            # Agent no longer has a client (we cleared it), so run_telegram_loop will create a new one
-                                            try:
-                                                asyncio.create_task(run_telegram_loop(agent))
-                                            except Exception as e:
-                                                logger.warning(f"Error starting run_telegram_loop for {agent_config_name} after sync auth: {e}")
-                                        
-                                        main_loop.call_soon_threadsafe(schedule_loop)
-                                        logger.info(f"Scheduled run_telegram_loop for {agent_config_name} after synchronous authentication")
-                                    else:
-                                        # No main loop found - this shouldn't happen if the application is running
-                                        # but handle it gracefully
-                                        logger.warning(
-                                            f"Agent {agent_config_name} authenticated but couldn't find main event loop. "
-                                            "run_telegram_loop will start on next application restart."
-                                        )
-                                else:
-                                    logger.warning(f"Failed to authenticate agent {agent_config_name} after enabling - agent may need to be logged in first")
-                            except Exception as auth_error:
-                                # Handle "database is locked" and other errors gracefully
-                                error_msg = str(auth_error).lower()
-                                if "database is locked" in error_msg or "locked" in error_msg:
-                                    logger.warning(
-                                        f"Agent {agent_config_name} session file is locked. "
-                                        "This usually means the agent is already authenticated or another process is using it. "
-                                        "The agent will be available once the lock is released."
-                                    )
-                                else:
-                                    logger.error(f"Error authenticating agent {agent_config_name} after enabling: {auth_error}")
+                                default_loop = asyncio.get_event_loop()
+                                if default_loop and default_loop.is_running():
+                                    main_loop = default_loop
+                                    logger.debug(f"Using default event loop for {agent_config_name}")
+                            except (RuntimeError, AttributeError):
+                                pass
+                    
+                    if main_loop:
+                        # Schedule run_telegram_loop on the main loop
+                        # run_telegram_loop will handle authentication internally
+                        schedule_telegram_loop(main_loop, " (using main event loop)")
+                    else:
+                        # No main loop found - we're likely in a synchronous context without access to the main loop
+                        # In this case, we should NOT do synchronous authentication because it creates a client
+                        # in a temporary loop that leaves a session lock. Instead, log that the agent needs
+                        # to be started on the next restart or via the login endpoint.
+                        logger.info(
+                            f"Agent {agent_config_name} enabled but couldn't find main event loop. "
+                            "run_telegram_loop will start on next system restart, or use the login endpoint to authenticate manually."
+                        )
+                    
+                    # Removed the old synchronous authentication code path - it was causing session lock issues
+                    # by creating clients in temporary event loops. Now we only schedule run_telegram_loop
+                    # on the main event loop, which handles authentication internally without leaving locks.
                 except Exception as e:
                     error_msg = str(e).lower()
                     if "database is locked" in error_msg or "locked" in error_msg:
