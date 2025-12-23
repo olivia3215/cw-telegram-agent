@@ -462,19 +462,32 @@ def register_configuration_routes(agents_bp: Blueprint):
             if is_disabled and agent.client:
                 try:
                     # Try to find the main event loop and schedule disconnection
+                    # First, check if the agent being disabled has its own running loop
+                    # This handles the case where it's the last running agent
                     from agent import all_agents
                     
-                    # Find an agent with a running client loop to schedule disconnection
                     main_loop = None
-                    for other_agent in all_agents():
-                        if other_agent != agent and other_agent.client:
-                            try:
-                                client_loop = other_agent._get_client_loop()
-                                if client_loop and client_loop.is_running():
-                                    main_loop = client_loop
-                                    break
-                            except Exception:
-                                continue
+                    # First, try to use the agent's own loop (before it's excluded by all_agents())
+                    if agent.client:
+                        try:
+                            client_loop = agent._get_client_loop()
+                            if client_loop and client_loop.is_running():
+                                main_loop = client_loop
+                        except Exception:
+                            pass
+                    
+                    # If agent's own loop not available, look for another agent's loop
+                    # Use include_disabled=True to ensure we can find other agents even if they're disabled
+                    if not main_loop:
+                        for other_agent in all_agents(include_disabled=True):
+                            if other_agent != agent and other_agent.client:
+                                try:
+                                    client_loop = other_agent._get_client_loop()
+                                    if client_loop and client_loop.is_running():
+                                        main_loop = client_loop
+                                        break
+                                except Exception:
+                                    continue
                     
                     if main_loop:
                         # Schedule disconnection in the main event loop
@@ -513,8 +526,9 @@ def register_configuration_routes(agents_bp: Blueprint):
                         from run import run_telegram_loop
                         
                         # Find an agent with a running client loop
+                        # Use include_disabled=True to ensure we can find agents even if they're disabled
                         main_loop = None
-                        for other_agent in all_agents():
+                        for other_agent in all_agents(include_disabled=True):
                             if other_agent != agent and other_agent.client:
                                 try:
                                     client_loop = other_agent._get_client_loop()
@@ -583,7 +597,8 @@ def register_configuration_routes(agents_bp: Blueprint):
                                     
                                     main_loop = None
                                     # Try to find any agent with a running client loop (this will be the main loop)
-                                    for other_agent in all_agents():
+                                    # Use include_disabled=True to ensure we can find agents even if they're disabled
+                                    for other_agent in all_agents(include_disabled=True):
                                         if other_agent.client:
                                             try:
                                                 client_loop = other_agent._get_client_loop()
