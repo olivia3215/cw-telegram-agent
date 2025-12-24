@@ -198,19 +198,38 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             if len(content) > 40000:
                 content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
             
+            # Close resources before the async_playwright context manager exits
+            # This prevents "Connection closed" errors in the finally block
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass  # Ignore errors if already closed
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass  # Ignore errors if already closed
+            
             # Return original url for deduplication, not final_url
             return (url, content)
                 
     except Exception as e:
         error_type = type(e).__name__
         logger.exception(f"Error fetching {url} with Playwright: {e}")
+        # Try to close resources before returning error
+        if context:
+            try:
+                await context.close()
+            except Exception:
+                pass  # Ignore errors if already closed
+        if browser:
+            try:
+                await browser.close()
+            except Exception:
+                pass  # Ignore errors if already closed
         return (
             url,
             f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
         )
-    finally:
-        if context:
-            await context.close()
-        if browser:
-            await browser.close()
 
