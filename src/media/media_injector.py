@@ -241,7 +241,7 @@ async def _format_service_message(msg: Any, *, agent) -> str | None:
             action_str = str(action_type).replace("MessageAction", "").replace("Chat", " ")
             # Convert CamelCase to Title Case
             import re
-            readable = re.sub(r'(?<!^)(?=[A-Z])', ' ', action_str).title()
+            readable = re.sub(r'(?<!^)(?=[A-Z])', ' ', action_str).title().strip()
             return f"⟦special⟧ {readable}"
             
     except Exception as e:
