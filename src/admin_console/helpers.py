@@ -326,6 +326,10 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
     """
+    # Strip all whitespace to handle copy-paste inputs with accidental spaces
+    # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
+    user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
+    
     # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
     try:
         # Check if it's all digits (no + prefix) - this is a Telegram ID
