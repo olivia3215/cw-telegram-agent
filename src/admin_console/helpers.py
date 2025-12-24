@@ -262,31 +262,39 @@ def resolve_user_id_and_handle_errors(agent: Agent, user_id: str, logger_instanc
 
 def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     """
-    Resolve a user_id (which can be a numeric ID or username) to a channel_id (synchronous wrapper).
+    Resolve a user_id (which can be a numeric ID, username, or phone number) to a channel_id (synchronous wrapper).
     
     This is a synchronous wrapper around the async resolve_user_id_to_channel_id function.
     It handles event loop checks and execution for use in Flask route handlers.
     
     Args:
         agent: The agent instance
-        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        user_id: Can be:
+            - A numeric user ID (as string, e.g., "123456789")
+            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A phone number (e.g., "+1234567890" - must start with + and be all digits)
         
     Returns:
         The numeric channel_id
         
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
-        RuntimeError: If agent client event loop is not available (only for username resolution)
+        RuntimeError: If agent client event loop is not available (only for username/phone resolution)
         TimeoutError: If resolution times out
     """
-    # Try to parse as integer first - if successful, no need to check event loop
-    try:
-        return int(user_id)
-    except ValueError:
-        # Not a numeric ID - need to resolve as username, which requires Telegram client
-        pass
+    # Strip all whitespace to handle copy-paste inputs with accidental spaces
+    # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
+    user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
-    # Check if agent's event loop is accessible (only needed for username resolution)
+    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
+    # Note: We check isdigit() first to avoid int("+1234567890") incorrectly parsing phone numbers
+    if user_id.isdigit():
+        return int(user_id)
+    
+    # If it's a phone number (starts with +) or username, we need the async function
+    # This requires the Telegram client, so we need to check event loop
+    
+    # Check if agent's event loop is accessible (needed for phone number and username resolution)
     try:
         client_loop = agent._get_client_loop()
     except Exception as e:
@@ -309,13 +317,16 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
 
 async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     """
-    Resolve a user_id (which can be a numeric ID or username) to a channel_id.
+    Resolve a user_id (which can be a numeric ID, username, or phone number) to a channel_id.
     
     This is a centralized helper function used by all conversation endpoints.
     
     Args:
         agent: The agent instance
-        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        user_id: Can be:
+            - A numeric user ID (as string, e.g., "123456789")
+            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A phone number (e.g., "+1234567890" - must start with + and be all digits)
         
     Returns:
         The numeric channel_id
@@ -323,24 +334,44 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
     """
-    # Try to parse as integer (user ID)
+    # Strip all whitespace to handle copy-paste inputs with accidental spaces
+    # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
+    user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
+    
+    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
     try:
-        return int(user_id)
-    except ValueError:
-        # Not a numeric ID - try to resolve as username
-        # Remove @ prefix if present
-        username = user_id.lstrip('@')
-        
-        # Use get_entity to resolve username to user ID
+        # Check if it's all digits (no + prefix) - this is a Telegram ID
+        if user_id.isdigit():
+            return int(user_id)
+    except (ValueError, AttributeError):
+        pass
+    
+    # Check if it's a phone number (starts with + and the rest is all digits)
+    if user_id.startswith('+') and user_id[1:].isdigit():
+        # It's a phone number - use get_entity to resolve it
         try:
-            entity = await agent.client.get_entity(username)
-        except (UsernameInvalidError, UsernameNotOccupiedError) as e:
-            # Wrap Telethon exceptions as ValueError to match documented behavior
-            raise ValueError(f"Invalid username '{username}': {str(e)}") from e
+            entity = await agent.client.get_entity(user_id)
+        except Exception as e:
+            raise ValueError(f"Invalid phone number '{user_id}': {str(e)}") from e
         channel_id = getattr(entity, 'id', None)
         if channel_id is None:
-            raise ValueError(f"Could not resolve username '{username}' to user ID")
+            raise ValueError(f"Could not resolve phone number '{user_id}' to user ID")
         return channel_id
+    
+    # Not a numeric ID or phone number - try to resolve as username
+    # Remove @ prefix if present
+    username = user_id.lstrip('@')
+    
+    # Use get_entity to resolve username to user ID
+    try:
+        entity = await agent.client.get_entity(username)
+    except (UsernameInvalidError, UsernameNotOccupiedError) as e:
+        # Wrap Telethon exceptions as ValueError to match documented behavior
+        raise ValueError(f"Invalid username '{username}': {str(e)}") from e
+    channel_id = getattr(entity, 'id', None)
+    if channel_id is None:
+        raise ValueError(f"Could not resolve username '{username}' to user ID")
+    return channel_id
 
 
 def get_available_timezones() -> list[dict[str, Any]]:
