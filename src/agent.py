@@ -255,6 +255,10 @@ class Agent(
         Returns:
             True if connected (or successfully reconnected), False otherwise
         """
+        # Don't try to reconnect if agent is disabled
+        if self.is_disabled:
+            return False
+        
         client = self.client
         if client is None:
             return False

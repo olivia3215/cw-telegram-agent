@@ -59,6 +59,22 @@ class AgentTelegramMixin:
         if self._entity_cache_obj:
             self._entity_cache_obj.clear()
 
+    def clear_client_and_caches(self):
+        """
+        Clear the client reference and all cache objects that hold references to it.
+        
+        This should be called whenever the client is being cleared (e.g., on disconnect,
+        disable, or reconnection) to ensure cache objects don't retain stale client references.
+        
+        Also clears the executor to prevent it from holding references to stale event loops.
+        """
+        self._client = None
+        self._loop = None  # Clear cached loop
+        self._executor = None  # Clear executor to prevent stale event loop references
+        # Clear cache objects that hold references to the old client
+        self._api_cache_obj = None
+        self._entity_cache_obj = None
+
     async def is_muted(self, peer_id: int) -> bool:
         """
         Checks if a peer is muted, using a 60-second cache.

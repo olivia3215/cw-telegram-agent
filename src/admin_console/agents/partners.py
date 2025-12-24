@@ -155,14 +155,14 @@ def register_partner_routes(agents_bp: Blueprint):
                     try:
                         # Check if agent's event loop is accessible before creating coroutine
                         # This prevents RuntimeWarning about unawaited coroutines if execute() fails
+                        client_loop = agent._get_client_loop()
+                        if not client_loop or not client_loop.is_running():
+                            raise RuntimeError("Agent client event loop is not accessible or not running")
+                    except Exception as e:
+                        logger.warning(f"Cannot fetch Telegram conversations - event loop check failed: {e}")
+                        telegram_partners = []
+                    else:
                         try:
-                            client_loop = agent._get_client_loop()
-                            if not client_loop or not client_loop.is_running():
-                                raise RuntimeError("Agent client event loop is not accessible or not running")
-                        except Exception as e:
-                            logger.warning(f"Cannot fetch Telegram conversations - event loop check failed: {e}")
-                            telegram_partners = []
-                        else:
                             async def _fetch_telegram_conversations():
                                 """Fetch Telegram conversations - runs in agent's event loop via agent.execute()."""
                                 telegram_partners = []
@@ -270,22 +270,22 @@ def register_partner_routes(agents_bp: Blueprint):
                             if telegram_partners:
                                 cache_partner_recency(agent.config_name, telegram_partners)
                                 logger.info(f"Cached partner recency for agent {agent_config_name} ({len(telegram_partners)} partners)")
-                        
-                        logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_config_name}")
-                    except RuntimeError as e:
-                        error_msg = str(e).lower()
-                        if "event loop" in error_msg or "no current event loop" in error_msg or "not authenticated" in error_msg or "not running" in error_msg:
-                            logger.warning(f"Cannot fetch Telegram conversations: {e}")
+                            
+                            logger.info(f"Fetched {len(telegram_partners)} partners from Telegram for agent {agent_config_name}")
+                        except RuntimeError as e:
+                            error_msg = str(e).lower()
+                            if "event loop" in error_msg or "no current event loop" in error_msg or "not authenticated" in error_msg or "not running" in error_msg:
+                                logger.warning(f"Cannot fetch Telegram conversations: {e}")
+                                telegram_partners = []
+                            else:
+                                logger.warning(f"RuntimeError fetching Telegram conversations: {e}", exc_info=True)
+                                telegram_partners = []
+                        except TimeoutError as e:
+                            logger.warning(f"Timeout fetching Telegram conversations for agent {agent_config_name}: {e}")
                             telegram_partners = []
-                        else:
-                            logger.warning(f"RuntimeError fetching Telegram conversations: {e}", exc_info=True)
+                        except Exception as e:
+                            logger.warning(f"Error fetching Telegram conversations: {e}", exc_info=True)
                             telegram_partners = []
-                    except TimeoutError as e:
-                        logger.warning(f"Timeout fetching Telegram conversations for agent {agent_config_name}: {e}")
-                        telegram_partners = []
-                    except Exception as e:
-                        logger.warning(f"Error fetching Telegram conversations: {e}", exc_info=True)
-                        telegram_partners = []
             
             # Merge with existing partners (always runs, regardless of success or failure)
             for partner in telegram_partners:

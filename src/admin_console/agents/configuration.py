@@ -2,6 +2,7 @@
 #
 # Agent configuration management routes for the admin console.
 
+import asyncio
 import logging
 import shutil
 from pathlib import Path
@@ -458,6 +459,88 @@ def register_configuration_routes(agents_bp: Blueprint):
 
             # Update agent's disabled status in place
             agent.is_disabled = is_disabled
+
+            # If agent is being disabled, disconnect its client to release the SQLite session lock
+            if is_disabled and agent.client:
+                try:
+                    from main_loop import get_main_loop
+                    
+                    # Store reference to client before clearing it synchronously
+                    # This ensures that if the agent is re-enabled immediately, the check
+                    # for agent.client will see None and start run_telegram_loop
+                    client_to_disconnect = agent._client
+                    
+                    # Clear client reference immediately (synchronously) so that
+                    # subsequent enable checks see None and can start run_telegram_loop
+                    agent.clear_client_and_caches()
+                    
+                    main_loop = get_main_loop()
+                    if main_loop and main_loop.is_running():
+                        # Schedule disconnection in the main event loop
+                        async def disconnect_client():
+                            try:
+                                if client_to_disconnect and client_to_disconnect.is_connected():
+                                    await client_to_disconnect.disconnect()
+                                    logger.info(f"Disconnected client for disabled agent {agent_config_name}")
+                            except Exception as e:
+                                logger.warning(f"Error disconnecting client for disabled agent {agent_config_name}: {e}")
+                        
+                        main_loop.call_soon_threadsafe(lambda: asyncio.create_task(disconnect_client()))
+                        logger.info(f"Scheduled client disconnection for disabled agent {agent_config_name}")
+                    else:
+                        # No main loop found - run_telegram_loop will handle disconnection when it sees is_disabled
+                        logger.info(f"Agent {agent_config_name} disabled - client will be disconnected when run_telegram_loop checks is_disabled")
+                except Exception as e:
+                    logger.warning(f"Error scheduling client disconnection for disabled agent {agent_config_name}: {e}")
+                    # Don't fail the request - run_telegram_loop will handle disconnection when it sees is_disabled
+
+            # If agent is being enabled and doesn't have a client, try to start run_telegram_loop for it
+            # This ensures the agent gets authenticated and its client is available
+            # Note: We only start run_telegram_loop if the agent doesn't already have a client,
+            # to avoid "database is locked" errors from concurrent SQLite access
+            if not is_disabled and not agent.client:
+                try:
+                    from main_loop import get_main_loop
+                    from run import run_telegram_loop
+                    
+                    main_loop = get_main_loop()
+                    if main_loop and main_loop.is_running():
+                        # Schedule run_telegram_loop on the main loop
+                        # run_telegram_loop will handle authentication internally
+                        def schedule_loop():
+                            # Double-check agent still doesn't have a client before starting
+                            # This avoids "database is locked" errors if client was created elsewhere
+                            if not agent.client:
+                                try:
+                                    asyncio.create_task(run_telegram_loop(agent))
+                                    logger.info(f"Scheduled run_telegram_loop for {agent_config_name}")
+                                except Exception as e:
+                                    error_msg = str(e).lower()
+                                    if "database is locked" in error_msg or "locked" in error_msg:
+                                        logger.warning(
+                                            f"Agent {agent_config_name} session file is locked when starting run_telegram_loop. "
+                                            "This usually means the agent is already authenticated. The agent is enabled and should work normally."
+                                        )
+                                    else:
+                                        logger.error(f"Error starting run_telegram_loop for {agent_config_name}: {e}")
+                        
+                        main_loop.call_soon_threadsafe(schedule_loop)
+                    else:
+                        # No main loop available - log that the agent needs to be started on restart
+                        logger.info(
+                            f"Agent {agent_config_name} enabled but main event loop is not available. "
+                            "run_telegram_loop will start on next system restart, or use the login endpoint to authenticate manually."
+                        )
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "database is locked" in error_msg or "locked" in error_msg:
+                        logger.warning(
+                            f"Agent {agent_config_name} session file is locked when enabling. "
+                            "This usually means the agent is already authenticated. The agent is enabled and should work normally."
+                        )
+                    else:
+                        logger.error(f"Error setting up agent {agent_config_name} after enabling: {e}")
+                    # Don't fail the request - the agent is enabled, authentication can happen later
 
             return jsonify({"success": True})
         except Exception as e:
