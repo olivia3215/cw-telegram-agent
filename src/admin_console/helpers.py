@@ -285,10 +285,11 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     # Check if agent's event loop is accessible (only needed for username resolution)
     try:
         client_loop = agent._get_client_loop()
-        if not client_loop or not client_loop.is_running():
-            raise RuntimeError("Agent client event loop is not accessible or not running")
     except Exception as e:
         raise RuntimeError(f"Agent client event loop is not available: {e}")
+    
+    if not client_loop or not client_loop.is_running():
+        raise RuntimeError("Agent client event loop is not accessible or not running")
     
     try:
         async def _resolve():
