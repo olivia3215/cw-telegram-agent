@@ -18,10 +18,6 @@ NNNNun
 
 Roleplay
 
-# LLM
-
-gemini-2.5-flash-lite-preview-09-2025
-
 # Agent Instructions
 
 You should adopt the writing style of a romance novel.

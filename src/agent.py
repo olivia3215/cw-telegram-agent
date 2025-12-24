@@ -96,6 +96,7 @@ class Agent(
         self._client = None
         self._loop = None  # Cached event loop from the client
         self.agent_id = None
+        self.telegram_username = None
         
         # Utility objects (lazily initialized by mixins)
         self._executor = None  # EventLoopExecutor

@@ -109,7 +109,7 @@ def register_partner_routes(agents_bp: Blueprint):
             # Check if we should force refresh (bypass cache)
             force_refresh = request.args.get("refresh", "").lower() == "true"
 
-            # Dictionary to store partners: {user_id: {"name": name, "date": date}}
+            # Dictionary to store partners: {user_id: {"name": name, "username": username, "date": date}}
             partners_dict = {}
 
             # 1. From curated memory files
@@ -121,7 +121,7 @@ def register_partner_routes(agents_bp: Blueprint):
                     for memory_file in memory_dir.glob("*.json"):
                         user_id = memory_file.stem
                         if user_id not in partners_dict:
-                            partners_dict[user_id] = {"name": None, "date": None}
+                            partners_dict[user_id] = {"name": None, "username": None, "date": None}
 
             # 2. From plan files (also includes memory files from state directory)
             plan_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"
@@ -129,7 +129,7 @@ def register_partner_routes(agents_bp: Blueprint):
                 for plan_file in plan_dir.glob("*.json"):
                     user_id = plan_file.stem
                     if user_id not in partners_dict:
-                        partners_dict[user_id] = {"name": None, "date": None}
+                        partners_dict[user_id] = {"name": None, "username": None, "date": None}
 
             # 3. From existing Telegram conversations (if agent has client)
             # Check cache first to avoid unnecessary GetHistoryRequest calls, unless force_refresh is true
@@ -199,6 +199,9 @@ def register_partner_routes(agents_bp: Blueprint):
                                         if isinstance(entity, User) and getattr(entity, "deleted", False):
                                             continue
                                         
+                                        # Initialize username to None
+                                        username = None
+                                        
                                         if isinstance(entity, User):
                                             # User (DM) - get name from first_name/last_name or username
                                             if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
@@ -209,10 +212,31 @@ def register_partner_routes(agents_bp: Blueprint):
                                             
                                             if not dialog_name and hasattr(entity, "username") and entity.username:
                                                 dialog_name = entity.username
+                                            
+                                            # Extract username separately for display (check both username and usernames)
+                                            if hasattr(entity, "username") and entity.username:
+                                                username = entity.username
+                                            elif hasattr(entity, "usernames") and entity.usernames:
+                                                # Check usernames list for the first available username
+                                                for handle in entity.usernames:
+                                                    handle_value = getattr(handle, "username", None)
+                                                    if handle_value:
+                                                        username = handle_value
+                                                        break
                                         elif isinstance(entity, (Chat, Channel)):
                                             # Group or channel - get name from title
                                             if hasattr(entity, "title") and entity.title:
                                                 dialog_name = entity.title
+                                            # Groups/channels can have usernames too (check both username and usernames)
+                                            if hasattr(entity, "username") and entity.username:
+                                                username = entity.username
+                                            elif hasattr(entity, "usernames") and entity.usernames:
+                                                # Check usernames list for the first available username
+                                                for handle in entity.usernames:
+                                                    handle_value = getattr(handle, "username", None)
+                                                    if handle_value:
+                                                        username = handle_value
+                                                        break
                                         
                                         # Normalize empty strings to None
                                         if dialog_name and isinstance(dialog_name, str):
@@ -220,12 +244,19 @@ def register_partner_routes(agents_bp: Blueprint):
                                             if not dialog_name:
                                                 dialog_name = None
                                         
+                                        # Normalize username
+                                        if username and isinstance(username, str):
+                                            username = username.strip()
+                                            if not username:
+                                                username = None
+                                        
                                         # Get most recent message date
                                         dialog_date = dialog.date if hasattr(dialog, 'date') and dialog.date else None
                                         
                                         telegram_partners.append({
                                             "user_id": user_id,
                                             "name": dialog_name,
+                                            "username": username,
                                             "date": dialog_date
                                         })
                                 except Exception as e:
@@ -260,16 +291,26 @@ def register_partner_routes(agents_bp: Blueprint):
             for partner in telegram_partners:
                     user_id = partner["user_id"]
                     partner_name = partner.get("name")
+                    partner_username = partner.get("username")
                     # Only use name if it's a non-empty string
                     if partner_name and isinstance(partner_name, str) and partner_name.strip():
                         partner_name = partner_name.strip()
                     else:
                         partner_name = None
                     
+                    # Normalize username
+                    if partner_username and isinstance(partner_username, str) and partner_username.strip():
+                        partner_username = partner_username.strip()
+                    else:
+                        partner_username = None
+                    
                     if user_id in partners_dict:
                         # Update name if we have a valid name from Telegram
                         if partner_name:
                             partners_dict[user_id]["name"] = partner_name
+                        # Update username if we have one from Telegram
+                        if partner_username:
+                            partners_dict[user_id]["username"] = partner_username
                         # Update date if we have a newer one
                         if partner["date"] and (not partners_dict[user_id]["date"] or partner["date"] > partners_dict[user_id]["date"]):
                             partners_dict[user_id]["date"] = partner["date"]
@@ -277,6 +318,7 @@ def register_partner_routes(agents_bp: Blueprint):
                         # Add new partner from Telegram
                         partners_dict[user_id] = {
                             "name": partner_name,
+                            "username": partner_username,
                             "date": partner["date"]
                         }
 
@@ -286,6 +328,7 @@ def register_partner_routes(agents_bp: Blueprint):
                 partner_list_with_dates.append({
                     "user_id": user_id,
                     "name": info["name"],
+                    "username": info["username"],
                     "date_obj": info["date"]  # Keep datetime object for sorting
                 })
             
@@ -303,6 +346,7 @@ def register_partner_routes(agents_bp: Blueprint):
                 partner_list.append({
                     "user_id": partner["user_id"],
                     "name": partner["name"],
+                    "username": partner["username"],
                     "date": date_str
                 })
 
