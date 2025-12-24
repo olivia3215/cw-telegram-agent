@@ -16,3 +16,4 @@ lottie
 cairosvg
 imageio
 imageio-ffmpeg
+playwright

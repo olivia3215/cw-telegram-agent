@@ -147,9 +147,11 @@ async def test_parse_mixed_tasks_with_retrieve():
 @pytest.mark.asyncio
 async def test_fetch_url_success():
     """Test successful URL fetching with User-Agent header."""
+    from httpx import URL
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "text/html; charset=utf-8"}
     mock_response.text = "<html><body>Test content</body></html>"
+    mock_response.url = URL("https://example.com")
 
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
@@ -172,8 +174,10 @@ async def test_fetch_url_success():
 @pytest.mark.asyncio
 async def test_fetch_url_non_html():
     """Test fetching a non-HTML URL."""
+    from httpx import URL
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "application/pdf"}
+    mock_response.url = URL("https://example.com/doc.pdf")
 
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
@@ -207,8 +211,10 @@ async def test_fetch_url_timeout():
 @pytest.mark.asyncio
 async def test_fetch_url_truncation():
     """Test that long content is truncated to 40k characters."""
+    from httpx import URL
     mock_response = MagicMock()
     mock_response.headers = {"content-type": "text/html"}
+    mock_response.url = URL("https://example.com")
     # Create content longer than 40000 characters
     mock_response.text = "x" * 50000
 
