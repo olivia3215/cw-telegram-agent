@@ -198,16 +198,17 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
             response = await client.get(url, headers=headers)
 
-        # Get the final URL after redirects
+        # Get the final URL after redirects (for logging/debugging)
         final_url = str(response.url)
 
         # Check content type
         content_type = response.headers.get("content-type", "").lower()
 
         # If not HTML, return a note about the content type
+        # Return original url for deduplication, not final_url
         if "html" not in content_type:
             return (
-                final_url,
+                url,
                 f"Content-Type: {content_type} - not fetched (non-HTML content)",
             )
 
@@ -224,16 +225,18 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         # Check if this is a CAPTCHA page (cannot be automated)
         if is_captcha_page(content, final_url):
             logger.warning(f"[fetch_url] CAPTCHA page detected for {final_url}")
+            # Return original url for deduplication, not final_url
             return (
-                final_url,
+                url,
                 "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
             )
         
         # Normal response - truncate and return
+        # Return original url for deduplication, not final_url
         if len(content) > 40000:
             content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
 
-        return (final_url, content)
+        return (url, content)
 
     except httpx.TimeoutException:
         return (

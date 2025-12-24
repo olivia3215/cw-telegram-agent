@@ -166,7 +166,7 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             # Additional wait for any final JavaScript execution
             await page.wait_for_timeout(2000)
             
-            # Get the final URL (after redirects)
+            # Get the final URL (after redirects) for logging/debugging
             final_url = page.url
             
             # Get the page content - handle potential navigation issues
@@ -179,17 +179,18 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
                     content = await page.content()
                 except Exception as e2:
                     error_type = type(e2).__name__
+                    # Return original url for deduplication, not final_url
                     return (
-                        final_url,
+                        url,
                         f"<html><body><h1>Error: {error_type}</h1><p>{str(e2)}</p></body></html>",
                     )
             
             # Check if we got a CAPTCHA page despite using Playwright
             if is_captcha_page(content, final_url):
                 logger.warning(f"[fetch_url] CAPTCHA page detected for {url} even with Playwright")
-                # Return helpful error message
+                # Return original url for deduplication, not final_url
                 return (
-                    final_url,
+                    url,
                     "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
                 )
             
@@ -197,7 +198,8 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             if len(content) > 40000:
                 content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
             
-            return (final_url, content)
+            # Return original url for deduplication, not final_url
+            return (url, content)
                 
     except Exception as e:
         error_type = type(e).__name__
