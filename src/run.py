@@ -382,6 +382,19 @@ async def authenticate_agent(agent: Agent):
         me = await client.get_me()
         agent_id = me.id
         agent.agent_id = agent_id
+        
+        # Extract username (check both username and usernames attributes)
+        username = None
+        if hasattr(me, "username") and me.username:
+            username = me.username
+        elif hasattr(me, "usernames") and me.usernames:
+            # Check usernames list for the first available username
+            for handle in me.usernames:
+                handle_value = getattr(handle, "username", None)
+                if handle_value:
+                    username = handle_value
+                    break
+        agent.telegram_username = username
 
         # Check if agent has premium subscription
         is_premium = getattr(me, "premium", False)

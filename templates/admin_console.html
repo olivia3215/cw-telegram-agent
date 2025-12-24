@@ -2628,10 +2628,16 @@
                         agents.forEach(agent => {
                             const option = document.createElement('option');
                             option.value = agent.config_name;
-                            // Display format: "Name (agent_id)" or just "Name" if no agent_id
-                            let displayName = agent.agent_id 
+                            // Display format: "Name (agent_id) [@username]" or "Name (agent_id)" or just "Name"
+                            // Check explicitly for null/undefined to handle cases where agent_id is 0 (shouldn't happen for Telegram, but be safe)
+                            let displayName = (agent.agent_id !== null && agent.agent_id !== undefined) 
                                 ? `${agent.name} (${agent.agent_id})` 
                                 : agent.name;
+                            
+                            // Add Telegram username if available
+                            if (agent.telegram_username) {
+                                displayName += ` [@${agent.telegram_username}]`;
+                            }
                             
                             if (agent.is_disabled) {
                                 displayName += ' (disabled)';
@@ -3683,10 +3689,16 @@
                         const option = document.createElement('option');
                         const userId = partner.user_id || partner;
                         option.value = userId;
-                        // Display format: "Name (user_id)" or just "user_id" if no name
+                        // Display format: "Name (user_id) [@username]" or "Name (user_id)" or just "user_id"
                         // Check for both null/undefined and empty string
                         const hasName = partner.name && partner.name.trim().length > 0;
                         let displayName = hasName ? `${partner.name} (${userId})` : userId;
+                        
+                        // Add Telegram username if available
+                        if (partner.username) {
+                            displayName += ` [@${partner.username}]`;
+                        }
+                        
                         // Add asterisk if partner has content for current subtab
                         if (partnerContentChecks[userId]) {
                             displayName += ' *';
