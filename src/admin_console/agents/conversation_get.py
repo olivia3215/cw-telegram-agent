@@ -1061,6 +1061,16 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             text = story_html
                         logger.debug(f"Added forwarded story text part for message {message.id}: {story_text}")
                     
+                    # If text is empty but we have parts, extract text from the first text part
+                    # This ensures service messages (which come from format_message_for_prompt) appear in the main text field
+                    if not text and parts:
+                        for part in parts:
+                            if part.get("kind") == "text":
+                                part_text = part.get("text", "")
+                                if part_text:
+                                    text = part_text
+                                    break
+                    
                     # Also handle case where message has no text and no parts (might be other types of empty messages)
                     # This ensures messages always have at least one part so they appear in the UI
                     if not parts and not text:
