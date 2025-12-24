@@ -470,8 +470,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                     
                     # Clear client reference immediately (synchronously) so that
                     # subsequent enable checks see None and can start run_telegram_loop
-                    agent._client = None
-                    agent._loop = None  # Clear cached loop
+                    agent.clear_client_and_caches()
                     
                     main_loop = get_main_loop()
                     if main_loop and main_loop.is_running():

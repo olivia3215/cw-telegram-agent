@@ -384,7 +384,7 @@ async def authenticate_agent(agent: Agent):
                 # Try to check if we can access the client without starting it
                 # If the session is locked but valid, the agent might already be authenticated
                 # In this case, we should return False and let run_telegram_loop handle reconnection
-                agent._client = None
+                agent.clear_client_and_caches()
                 return False
             raise
         
@@ -436,8 +436,7 @@ async def run_telegram_loop(agent: Agent):
                     await agent._client.disconnect()
                 except Exception:
                     pass
-                agent._client = None
-                agent._loop = None  # Clear cached loop
+                agent.clear_client_and_caches()
             break
         
         # Check if agent already has a connected client from initial authentication
@@ -447,8 +446,7 @@ async def run_telegram_loop(agent: Agent):
                 await agent._client.disconnect()
             except Exception:
                 pass
-            agent._client = None
-            agent._loop = None  # Clear cached loop when client is cleared
+            agent.clear_client_and_caches()
 
         if not agent._client:
             # Need to authenticate - either first time or after disconnection
@@ -585,8 +583,7 @@ async def run_telegram_loop(agent: Agent):
 
         finally:
             # client has disconnected
-            agent._client = None
-            agent._loop = None  # Clear cached loop when client is cleared
+            agent.clear_client_and_caches()
 
 
 async def periodic_scan(agents, interval_sec):
