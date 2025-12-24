@@ -43,6 +43,11 @@ from handlers.received_helpers.task_parsing import (
     execute_immediate_tasks,
     process_retrieve_tasks,
 )
+from handlers.received_helpers.url_fetching import (
+    is_challenge_page,
+    is_captcha_page,
+    fetch_url_with_playwright,
+)
 from media.media_injector import (
     inject_media_descriptions,
 )
@@ -102,6 +107,13 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     Fetch a URL and return (url, content) tuple.
     
     Supports both HTTP/HTTPS URLs and file: URLs for local documentation files.
+    
+    For HTTP/HTTPS URLs, this function:
+    1. First attempts a standard HTTP request
+    2. If a JavaScript challenge page is detected (e.g., Fastly Shield), automatically
+       falls back to Playwright to execute JavaScript and wait for the challenge to complete
+    3. If a CAPTCHA page is detected (e.g., Google's bot detection), returns a helpful
+       error message suggesting alternatives
 
     Args:
         url: The URL to fetch (http://, https://, or file:)
@@ -114,8 +126,10 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         - Error message describing the failure if request failed
         - Note about content type if non-HTML
         - "No file `{filename}` was found." if file: URL not found
+        - CAPTCHA error message with helpful alternatives if CAPTCHA is required
 
-    Follows redirects for HTTP URLs, uses 10 second timeout.
+    Follows redirects for HTTP URLs, uses 10 second timeout for standard requests.
+    JavaScript challenges may take 5-25 seconds to complete.
     """
     # Handle file: URLs
     if url.startswith("file:"):
@@ -184,22 +198,42 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
             response = await client.get(url, headers=headers)
 
+        # Get the final URL after redirects
+        final_url = str(response.url)
+
         # Check content type
         content_type = response.headers.get("content-type", "").lower()
 
         # If not HTML, return a note about the content type
         if "html" not in content_type:
             return (
-                url,
+                final_url,
                 f"Content-Type: {content_type} - not fetched (non-HTML content)",
             )
 
         # Get the content, truncate to 40k
         content = response.text
+        
+        # Check if this is a CAPTCHA page (cannot be automated)
+        if is_captcha_page(content, final_url):
+            logger.warning(f"[fetch_url] CAPTCHA page detected for {final_url}")
+            return (
+                final_url,
+                "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
+            )
+        
+        # Check if this is a JavaScript challenge page (can be automated with Playwright)
+        if is_challenge_page(content):
+            logger.info(f"[fetch_url] Challenge page detected for {final_url}, falling back to Playwright...")
+            # Fall back to Playwright to handle the JavaScript challenge
+            # Use the original URL since Playwright will follow redirects
+            return await fetch_url_with_playwright(url)
+        
+        # Normal response - truncate and return
         if len(content) > 40000:
             content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
 
-        return (url, content)
+        return (final_url, content)
 
     except httpx.TimeoutException:
         return (
