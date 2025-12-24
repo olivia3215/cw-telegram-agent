@@ -17,8 +17,9 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, Response, stream_with_context  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY
+from config import STATE_DIRECTORY, TRANSLATION_MODEL
 from handlers.received import parse_llm_reply
+from llm.factory import create_llm_from_name
 from handlers.received_helpers.summarization import trigger_summarization_directly
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
@@ -262,8 +263,13 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
 
                     # If we have messages to translate, batch them (max 10 per batch)
                     if messages_to_translate:
-                        # Use the agent's LLM for translation
-                        agent_llm = agent.llm
+                        # Use the translation LLM specified by TRANSLATION_MODEL environment variable
+                        if not TRANSLATION_MODEL:
+                            raise ValueError(
+                                "TRANSLATION_MODEL environment variable is required for translation. "
+                                "Set TRANSLATION_MODEL to specify the model for translations."
+                            )
+                        translation_llm = create_llm_from_name(TRANSLATION_MODEL)
                         
                         # Batch size: max 10 messages
                         batch_size = 10
@@ -351,7 +357,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                     f"{translation_prompt}"
                                 )
                                 
-                                result_text = await agent_llm.query_with_json_schema(
+                                result_text = await translation_llm.query_with_json_schema(
                                     system_prompt=system_prompt,
                                     json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                                     model=None,  # Use default model

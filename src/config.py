@@ -50,6 +50,7 @@ TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
 GEMINI_MODEL: str | None = _get_optional_str("GEMINI_MODEL")
 GROK_MODEL: str | None = _get_optional_str("GROK_MODEL")
 MEDIA_MODEL: str | None = os.environ.get("MEDIA_MODEL")
+TRANSLATION_MODEL: str | None = os.environ.get("TRANSLATION_MODEL")
 
 
 # Puppet master configuration
