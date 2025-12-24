@@ -21,7 +21,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from clock import clock
-from config import STATE_DIRECTORY
+from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY
 from datetime import UTC
 from admin_console.helpers import (
     find_media_file,
@@ -32,6 +32,7 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
+from media.media_budget import reset_description_budget
 from media.media_source import (
     AIChainMediaSource,
     AIGeneratingMediaSource,
@@ -446,6 +447,14 @@ def api_refresh_from_ai(unique_id: str):
 
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
+
+        # Reset the media description budget for this refresh request
+        # When user explicitly requests refresh, they should be able to get a description
+        # regardless of the current budget state
+        reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+        logger.info(
+            f"Refresh-from-AI: reset budget to {MEDIA_DESC_BUDGET_PER_TICK} for {unique_id}"
+        )
 
         # Pass the media file Path directly as the doc parameter
         # download_media_bytes supports Path objects directly
