@@ -214,6 +214,13 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         # Get the content, truncate to 40k
         content = response.text
         
+        # Check if this is a JavaScript challenge page (can be automated with Playwright)
+        if is_challenge_page(content):
+            logger.info(f"[fetch_url] Challenge page detected for {final_url}, falling back to Playwright...")
+            # Fall back to Playwright to handle the JavaScript challenge
+            # Use the original URL since Playwright will follow redirects
+            return await fetch_url_with_playwright(url)
+
         # Check if this is a CAPTCHA page (cannot be automated)
         if is_captcha_page(content, final_url):
             logger.warning(f"[fetch_url] CAPTCHA page detected for {final_url}")
@@ -221,13 +228,6 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
                 final_url,
                 "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
             )
-        
-        # Check if this is a JavaScript challenge page (can be automated with Playwright)
-        if is_challenge_page(content):
-            logger.info(f"[fetch_url] Challenge page detected for {final_url}, falling back to Playwright...")
-            # Fall back to Playwright to handle the JavaScript challenge
-            # Use the original URL since Playwright will follow redirects
-            return await fetch_url_with_playwright(url)
         
         # Normal response - truncate and return
         if len(content) > 40000:

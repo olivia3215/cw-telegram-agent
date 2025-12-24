@@ -58,7 +58,6 @@ def is_captcha_page(content: str, url: str) -> bool:
     captcha_indicators = [
         "Our systems have detected unusual traffic",
         "unusual traffic from your computer network",
-        "solveSimpleChallenge",
     ]
     
     # Check string indicators
