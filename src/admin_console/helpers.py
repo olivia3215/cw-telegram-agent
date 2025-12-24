@@ -262,31 +262,39 @@ def resolve_user_id_and_handle_errors(agent: Agent, user_id: str, logger_instanc
 
 def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     """
-    Resolve a user_id (which can be a numeric ID or username) to a channel_id (synchronous wrapper).
+    Resolve a user_id (which can be a numeric ID, username, or phone number) to a channel_id (synchronous wrapper).
     
     This is a synchronous wrapper around the async resolve_user_id_to_channel_id function.
     It handles event loop checks and execution for use in Flask route handlers.
     
     Args:
         agent: The agent instance
-        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        user_id: Can be:
+            - A numeric user ID (as string, e.g., "123456789")
+            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A phone number (e.g., "+1234567890" - must start with + and be all digits)
         
     Returns:
         The numeric channel_id
         
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
-        RuntimeError: If agent client event loop is not available (only for username resolution)
+        RuntimeError: If agent client event loop is not available (only for username/phone resolution)
         TimeoutError: If resolution times out
     """
-    # Try to parse as integer first - if successful, no need to check event loop
-    try:
-        return int(user_id)
-    except ValueError:
-        # Not a numeric ID - need to resolve as username, which requires Telegram client
-        pass
+    # Strip all whitespace to handle copy-paste inputs with accidental spaces
+    # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
+    user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
-    # Check if agent's event loop is accessible (only needed for username resolution)
+    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
+    # Note: We check isdigit() first to avoid int("+1234567890") incorrectly parsing phone numbers
+    if user_id.isdigit():
+        return int(user_id)
+    
+    # If it's a phone number (starts with +) or username, we need the async function
+    # This requires the Telegram client, so we need to check event loop
+    
+    # Check if agent's event loop is accessible (needed for phone number and username resolution)
     try:
         client_loop = agent._get_client_loop()
     except Exception as e:
