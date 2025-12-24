@@ -309,13 +309,16 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
 
 async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     """
-    Resolve a user_id (which can be a numeric ID or username) to a channel_id.
+    Resolve a user_id (which can be a numeric ID, username, or phone number) to a channel_id.
     
     This is a centralized helper function used by all conversation endpoints.
     
     Args:
         agent: The agent instance
-        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        user_id: Can be:
+            - A numeric user ID (as string, e.g., "123456789")
+            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A phone number (e.g., "+1234567890" - must start with + and be all digits)
         
     Returns:
         The numeric channel_id
@@ -323,24 +326,40 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     Raises:
         ValueError: If user_id cannot be resolved to a valid channel_id
     """
-    # Try to parse as integer (user ID)
+    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
     try:
-        return int(user_id)
-    except ValueError:
-        # Not a numeric ID - try to resolve as username
-        # Remove @ prefix if present
-        username = user_id.lstrip('@')
-        
-        # Use get_entity to resolve username to user ID
+        # Check if it's all digits (no + prefix) - this is a Telegram ID
+        if user_id.isdigit():
+            return int(user_id)
+    except (ValueError, AttributeError):
+        pass
+    
+    # Check if it's a phone number (starts with + and the rest is all digits)
+    if user_id.startswith('+') and user_id[1:].isdigit():
+        # It's a phone number - use get_entity to resolve it
         try:
-            entity = await agent.client.get_entity(username)
-        except (UsernameInvalidError, UsernameNotOccupiedError) as e:
-            # Wrap Telethon exceptions as ValueError to match documented behavior
-            raise ValueError(f"Invalid username '{username}': {str(e)}") from e
+            entity = await agent.client.get_entity(user_id)
+        except Exception as e:
+            raise ValueError(f"Invalid phone number '{user_id}': {str(e)}") from e
         channel_id = getattr(entity, 'id', None)
         if channel_id is None:
-            raise ValueError(f"Could not resolve username '{username}' to user ID")
+            raise ValueError(f"Could not resolve phone number '{user_id}' to user ID")
         return channel_id
+    
+    # Not a numeric ID or phone number - try to resolve as username
+    # Remove @ prefix if present
+    username = user_id.lstrip('@')
+    
+    # Use get_entity to resolve username to user ID
+    try:
+        entity = await agent.client.get_entity(username)
+    except (UsernameInvalidError, UsernameNotOccupiedError) as e:
+        # Wrap Telethon exceptions as ValueError to match documented behavior
+        raise ValueError(f"Invalid username '{username}': {str(e)}") from e
+    channel_id = getattr(entity, 'id', None)
+    if channel_id is None:
+        raise ValueError(f"Could not resolve username '{username}' to user ID")
+    return channel_id
 
 
 def get_available_timezones() -> list[dict[str, Any]]:
