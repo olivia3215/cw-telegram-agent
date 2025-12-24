@@ -91,6 +91,8 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             "<html><body><h1>Error: Playwright not available</h1><p>Playwright is required to handle JavaScript challenges but is not installed. Please install with: pip install playwright && playwright install chromium</p></body></html>",
         )
     
+    browser = None
+    context = None
     try:
         async with async_playwright() as p:
             # Launch browser in headless mode
@@ -125,95 +127,88 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             
             page = await context.new_page()
             
+            # Navigate to the page
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            
+            if response is None:
+                return (url, "<html><body><h1>Error: No response received</h1></body></html>")
+            
+            # Check if we got a challenge page
             try:
-                # Navigate to the page
-                response = await page.goto(
-                    url,
-                    wait_until="domcontentloaded",
-                    timeout=30000,
-                )
-                
-                if response is None:
-                    return (url, "<html><body><h1>Error: No response received</h1></body></html>")
-                
-                # Check if we got a challenge page
+                initial_title = await page.title()
+                logger.debug(f"[fetch_url] Initial page title: {initial_title}")
+            except Exception:
+                initial_title = None
+            
+            if initial_title == "Client Challenge":
+                logger.info(f"[fetch_url] Challenge page detected for {url}, waiting for completion...")
+                # Wait for navigation event (challenge completion causes page reload/navigation)
+                # The challenge can take 5-25 seconds to complete
                 try:
-                    initial_title = await page.title()
-                    logger.debug(f"[fetch_url] Initial page title: {initial_title}")
-                except Exception:
-                    initial_title = None
+                    await page.wait_for_load_state("domcontentloaded", timeout=35000)
+                    logger.debug(f"[fetch_url] Navigation detected - challenge likely passed")
+                except Exception as e:
+                    logger.debug(f"[fetch_url] Navigation timeout: {e}")
                 
-                if initial_title == "Client Challenge":
-                    logger.info(f"[fetch_url] Challenge page detected for {url}, waiting for completion...")
-                    # Wait for navigation event (challenge completion causes page reload/navigation)
-                    # The challenge can take 5-25 seconds to complete
-                    try:
-                        await page.wait_for_load_state("domcontentloaded", timeout=35000)
-                        logger.debug(f"[fetch_url] Navigation detected - challenge likely passed")
-                    except Exception as e:
-                        logger.debug(f"[fetch_url] Navigation timeout: {e}")
-                    
-                    # Wait a bit for the page to settle after navigation
-                    await page.wait_for_timeout(2000)
-                
-                # Wait for network to settle
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:
-                    pass  # Continue even if network doesn't settle
-                
-                # Additional wait for any final JavaScript execution
+                # Wait a bit for the page to settle after navigation
                 await page.wait_for_timeout(2000)
-                
-                # Get the final URL (after redirects)
-                final_url = page.url
-                
-                # Get the page content - handle potential navigation issues
+            
+            # Wait for network to settle
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass  # Continue even if network doesn't settle
+            
+            # Additional wait for any final JavaScript execution
+            await page.wait_for_timeout(2000)
+            
+            # Get the final URL (after redirects)
+            final_url = page.url
+            
+            # Get the page content - handle potential navigation issues
+            try:
+                content = await page.content()
+            except Exception as e:
+                # If content fetch fails due to navigation, try once more after brief wait
+                await page.wait_for_timeout(1000)
                 try:
                     content = await page.content()
-                except Exception as e:
-                    # If content fetch fails due to navigation, try once more after brief wait
-                    await page.wait_for_timeout(1000)
-                    try:
-                        content = await page.content()
-                    except Exception as e2:
-                        error_type = type(e2).__name__
-                        return (
-                            final_url,
-                            f"<html><body><h1>Error: {error_type}</h1><p>{str(e2)}</p></body></html>",
-                        )
-                
-                # Check if we got a CAPTCHA page despite using Playwright
-                if is_captcha_page(content, final_url):
-                    logger.warning(f"[fetch_url] CAPTCHA page detected for {url} even with Playwright")
-                    # Return helpful error message
+                except Exception as e2:
+                    error_type = type(e2).__name__
                     return (
                         final_url,
-                        "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
+                        f"<html><body><h1>Error: {error_type}</h1><p>{str(e2)}</p></body></html>",
                     )
-                
-                # Truncate to 40k characters (matching current fetch_url behavior)
-                if len(content) > 40000:
-                    content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
-                
-                return (final_url, content)
-                
-            except Exception as e:
-                error_type = type(e).__name__
-                logger.exception(f"Error fetching {url} with Playwright: {e}")
+            
+            # Check if we got a CAPTCHA page despite using Playwright
+            if is_captcha_page(content, final_url):
+                logger.warning(f"[fetch_url] CAPTCHA page detected for {url} even with Playwright")
+                # Return helpful error message
                 return (
-                    url,
-                    f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+                    final_url,
+                    "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
                 )
-            finally:
-                await context.close()
-                await browser.close()
-    
+            
+            # Truncate to 40k characters (matching current fetch_url behavior)
+            if len(content) > 40000:
+                content = content[:40000] + "\n\n[Content truncated at 40000 characters]"
+            
+            return (final_url, content)
+                
     except Exception as e:
         error_type = type(e).__name__
-        logger.exception(f"Unexpected error in Playwright fetch for {url}: {e}")
+        logger.exception(f"Error fetching {url} with Playwright: {e}")
         return (
             url,
             f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
         )
+    finally:
+        if context:
+            await context.close()
+        if browser:
+            await browser.close()
 
