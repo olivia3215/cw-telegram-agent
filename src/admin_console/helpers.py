@@ -14,6 +14,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from flask import jsonify  # pyright: ignore[reportMissingImports]
+from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
+)
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
 from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
@@ -328,7 +332,11 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         username = user_id.lstrip('@')
         
         # Use get_entity to resolve username to user ID
-        entity = await agent.client.get_entity(username)
+        try:
+            entity = await agent.client.get_entity(username)
+        except (UsernameInvalidError, UsernameNotOccupiedError) as e:
+            # Wrap Telethon exceptions as ValueError to match documented behavior
+            raise ValueError(f"Invalid username '{username}': {str(e)}") from e
         channel_id = getattr(entity, 'id', None)
         if channel_id is None:
             raise ValueError(f"Could not resolve username '{username}' to user ID")
