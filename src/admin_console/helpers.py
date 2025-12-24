@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from flask import jsonify  # pyright: ignore[reportMissingImports]
+from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
+)
+
 from agent import Agent, all_agents as get_all_agents, _agent_registry
 from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
 from media.media_sources import iter_directory_media_sources
@@ -210,6 +216,131 @@ def get_work_queue() -> Any:
     """Get the global work queue singleton instance."""
     from task_graph import WorkQueue
     return WorkQueue.get_instance()
+
+
+def resolve_user_id_and_handle_errors(agent: Agent, user_id: str, logger_instance=None):
+    """
+    Resolve a user_id (which can be a numeric ID or username) to a channel_id, handling all errors.
+    
+    This is a convenience wrapper that handles resolution and converts errors to Flask response tuples.
+    
+    Args:
+        agent: The agent instance
+        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        logger_instance: Optional logger instance for logging errors
+        
+    Returns:
+        Tuple of (channel_id, error_response) where:
+        - channel_id is the resolved integer channel_id on success, None on error
+        - error_response is None on success, or a tuple (jsonify_response, status_code) on error
+        
+    Example:
+        channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+        if error_response:
+            return error_response[0], error_response[1]
+        # Use channel_id here
+    """
+    try:
+        channel_id = resolve_user_id_to_channel_id_sync(agent, user_id)
+        return channel_id, None
+    except ValueError as e:
+        error_msg = str(e)
+        return None, (jsonify({"error": error_msg}), 400)
+    except RuntimeError as e:
+        error_msg = str(e)
+        if logger_instance:
+            logger_instance.warning(f"Cannot resolve user ID: {error_msg}")
+        return None, (jsonify({"error": error_msg}), 503)
+    except TimeoutError:
+        return None, (jsonify({"error": "Timeout resolving user ID or username"}), 504)
+    except Exception as e:
+        error_msg = str(e)
+        if logger_instance:
+            logger_instance.error(f"Error resolving user ID or username '{user_id}': {e}")
+        return None, (jsonify({"error": f"Error resolving user ID or username: {error_msg}"}), 500)
+
+
+def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
+    """
+    Resolve a user_id (which can be a numeric ID or username) to a channel_id (synchronous wrapper).
+    
+    This is a synchronous wrapper around the async resolve_user_id_to_channel_id function.
+    It handles event loop checks and execution for use in Flask route handlers.
+    
+    Args:
+        agent: The agent instance
+        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        
+    Returns:
+        The numeric channel_id
+        
+    Raises:
+        ValueError: If user_id cannot be resolved to a valid channel_id
+        RuntimeError: If agent client event loop is not available (only for username resolution)
+        TimeoutError: If resolution times out
+    """
+    # Try to parse as integer first - if successful, no need to check event loop
+    try:
+        return int(user_id)
+    except ValueError:
+        # Not a numeric ID - need to resolve as username, which requires Telegram client
+        pass
+    
+    # Check if agent's event loop is accessible (only needed for username resolution)
+    try:
+        client_loop = agent._get_client_loop()
+    except Exception as e:
+        raise RuntimeError(f"Agent client event loop is not available: {e}")
+    
+    if not client_loop or not client_loop.is_running():
+        raise RuntimeError("Agent client event loop is not accessible or not running")
+    
+    try:
+        async def _resolve():
+            return await resolve_user_id_to_channel_id(agent, user_id)
+        return agent.execute(_resolve(), timeout=10.0)
+    except ValueError as e:
+        raise ValueError(f"Invalid user ID or username: {str(e)}")
+    except TimeoutError:
+        raise TimeoutError("Timeout resolving user ID or username")
+    except Exception as e:
+        raise RuntimeError(f"Error resolving user ID or username: {str(e)}")
+
+
+async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
+    """
+    Resolve a user_id (which can be a numeric ID or username) to a channel_id.
+    
+    This is a centralized helper function used by all conversation endpoints.
+    
+    Args:
+        agent: The agent instance
+        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        
+    Returns:
+        The numeric channel_id
+        
+    Raises:
+        ValueError: If user_id cannot be resolved to a valid channel_id
+    """
+    # Try to parse as integer (user ID)
+    try:
+        return int(user_id)
+    except ValueError:
+        # Not a numeric ID - try to resolve as username
+        # Remove @ prefix if present
+        username = user_id.lstrip('@')
+        
+        # Use get_entity to resolve username to user ID
+        try:
+            entity = await agent.client.get_entity(username)
+        except (UsernameInvalidError, UsernameNotOccupiedError) as e:
+            # Wrap Telethon exceptions as ValueError to match documented behavior
+            raise ValueError(f"Invalid username '{username}': {str(e)}") from e
+        channel_id = getattr(entity, 'id', None)
+        if channel_id is None:
+            raise ValueError(f"Could not resolve username '{username}' to user ID")
+        return channel_id
 
 
 def get_available_timezones() -> list[dict[str, Any]]:

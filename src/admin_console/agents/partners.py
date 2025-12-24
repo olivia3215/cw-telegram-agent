@@ -9,7 +9,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from flask import Blueprint, jsonify  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
@@ -19,7 +19,7 @@ from utils import normalize_peer_id
 logger = logging.getLogger(__name__)
 
 # Cache for conversation partner recency: {(agent_config_name, user_id): (timestamp, ttl_seconds, partner_dict)}
-# TTL: 5 minutes + random 0-1 minute (stored per entry to ensure consistent expiration)
+# TTL: 2 minutes + random 0-30 seconds (stored per entry to ensure consistent expiration)
 # partner_dict contains: {"user_id": str, "name": str|None, "date": datetime|None}
 # The "date" field is the recency data (most recent message date from dialog.date)
 _partner_recency_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
@@ -65,7 +65,7 @@ def get_cached_partner_recency(agent_config_name: str) -> dict[str, dict] | None
 def cache_partner_recency(agent_config_name: str, partners: list[dict]):
     """Cache partner recency data for an agent.
     
-    Each entry gets a TTL of 5 minutes + random 0-1 minute (per entry) to avoid thundering herd.
+    Each entry gets a TTL of 2 minutes + random 0-30 seconds (per entry) to avoid thundering herd.
     
     Args:
         partners: List of partner dicts, each containing:
@@ -78,13 +78,14 @@ def cache_partner_recency(agent_config_name: str, partners: list[dict]):
     calls to determine message recency for sorting the conversation partner list.
     """
     current_time = time.time()
-    # Base TTL: 5 minutes (300 seconds)
+    # Base TTL: 2 minutes (120 seconds) - reduced from 5 minutes for faster updates
+    # This allows new conversations started via username to appear more quickly
     
     for partner in partners:
         user_id = partner["user_id"]
         cache_key = get_partner_recency_cache_key(agent_config_name, user_id)
-        # Random jitter: 0-60 seconds (calculated per entry to spread expiration times)
-        ttl_seconds = 300 + random.uniform(0, 60)
+        # Random jitter: 0-30 seconds (reduced from 60s) to spread expiration times
+        ttl_seconds = 120 + random.uniform(0, 30)
         # Cache structure: (timestamp, ttl_seconds, partner_dict)
         # partner_dict contains "date" field with the recency (most recent message date)
         _partner_recency_cache[cache_key] = (current_time, ttl_seconds, partner)
@@ -95,11 +96,18 @@ def register_partner_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/conversation-partners", methods=["GET"])
     def api_get_conversation_partners(agent_config_name: str):
-        """Get list of conversation partners for an agent."""
+        """Get list of conversation partners for an agent.
+        
+        Query parameters:
+            refresh: If 'true', force refresh from Telegram (bypass cache)
+        """
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            # Check if we should force refresh (bypass cache)
+            force_refresh = request.args.get("refresh", "").lower() == "true"
 
             # Dictionary to store partners: {user_id: {"name": name, "username": username, "date": date}}
             partners_dict = {}
@@ -115,7 +123,7 @@ def register_partner_routes(agents_bp: Blueprint):
                         if user_id not in partners_dict:
                             partners_dict[user_id] = {"name": None, "username": None, "date": None}
 
-            # 2. From plan files
+            # 2. From plan files (also includes memory files from state directory)
             plan_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"
             if plan_dir.exists():
                 for plan_file in plan_dir.glob("*.json"):
@@ -124,8 +132,8 @@ def register_partner_routes(agents_bp: Blueprint):
                         partners_dict[user_id] = {"name": None, "username": None, "date": None}
 
             # 3. From existing Telegram conversations (if agent has client)
-            # Check cache first to avoid unnecessary GetHistoryRequest calls
-            cached_telegram_partners = get_cached_partner_recency(agent.config_name)
+            # Check cache first to avoid unnecessary GetHistoryRequest calls, unless force_refresh is true
+            cached_telegram_partners = None if force_refresh else get_cached_partner_recency(agent.config_name)
             
             if cached_telegram_partners is not None:
                 logger.info(f"Using cached partner recency for agent {agent_config_name} ({len(cached_telegram_partners)} partners)")

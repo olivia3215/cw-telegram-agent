@@ -25,10 +25,11 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             conversation_llm = agent.get_channel_llm_model(channel_id)
             agent_default_llm = agent._llm_name or get_default_llm()
@@ -58,10 +59,11 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            from admin_console.helpers import resolve_user_id_and_handle_errors
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             data = request.json
             llm_name = data.get("llm_name", "").strip()
