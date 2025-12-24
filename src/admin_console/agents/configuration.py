@@ -4,11 +4,13 @@
 
 import asyncio
 import logging
+import shutil
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_available_timezones, get_default_llm
+from config import STATE_DIRECTORY
 from prompt_loader import get_available_system_prompts
 
 logger = logging.getLogger(__name__)
@@ -578,8 +580,101 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not old_agent_file.exists():
                 return jsonify({"error": "Current agent configuration file not found"}), 404
 
-            # Rename file
-            old_agent_file.rename(new_agent_file)
+            # Check if target directories already exist
+            old_config_name = agent.config_name
+            
+            # Check state directory
+            if STATE_DIRECTORY:
+                old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                if new_state_dir.exists():
+                    return jsonify({"error": f"State directory '{new_config_name}' already exists"}), 400
+
+            # Check config directory
+            old_agent_config_dir = Path(agent.config_directory) / "agents" / old_config_name
+            new_agent_config_dir = Path(agent.config_directory) / "agents" / new_config_name
+            if new_agent_config_dir.exists():
+                return jsonify({"error": f"Config directory '{new_config_name}' already exists"}), 400
+
+            # Rename directories first (before renaming the config file)
+            # Track which directories were successfully renamed so we can rollback if file rename fails
+            state_dir_renamed = False
+            config_dir_renamed = False
+            try:
+                # Rename state directory if it exists
+                if STATE_DIRECTORY:
+                    old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                    new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                    if old_state_dir.exists() and old_state_dir.is_dir():
+                        shutil.move(str(old_state_dir), str(new_state_dir))
+                        state_dir_renamed = True
+                        logger.info(f"Renamed state directory from {old_state_dir} to {new_state_dir}")
+
+                # Rename config directory if it exists
+                if old_agent_config_dir.exists() and old_agent_config_dir.is_dir():
+                    shutil.move(str(old_agent_config_dir), str(new_agent_config_dir))
+                    config_dir_renamed = True
+                    logger.info(f"Renamed config directory from {old_agent_config_dir} to {new_agent_config_dir}")
+            except Exception as e:
+                logger.error(f"Error renaming directories for {old_config_name}: {e}")
+                # Rollback directories if they were already renamed
+                rollback_errors = []
+                if state_dir_renamed and STATE_DIRECTORY:
+                    try:
+                        old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                        new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                        if new_state_dir.exists() and new_state_dir.is_dir():
+                            shutil.move(str(new_state_dir), str(old_state_dir))
+                            logger.info(f"Rolled back state directory rename from {new_state_dir} to {old_state_dir}")
+                    except Exception as rollback_e:
+                        rollback_errors.append(f"Failed to rollback state directory: {rollback_e}")
+                        logger.error(f"Failed to rollback state directory rename: {rollback_e}")
+                
+                try:
+                    if config_dir_renamed:
+                        if new_agent_config_dir.exists() and new_agent_config_dir.is_dir():
+                            shutil.move(str(new_agent_config_dir), str(old_agent_config_dir))
+                            logger.info(f"Rolled back config directory rename from {new_agent_config_dir} to {old_agent_config_dir}")
+                except Exception as rollback_e:
+                    rollback_errors.append(f"Failed to rollback config directory: {rollback_e}")
+                    logger.error(f"Failed to rollback config directory rename: {rollback_e}")
+                
+                error_msg = f"Failed to rename directories: {e}"
+                if rollback_errors:
+                    error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
+                return jsonify({"error": error_msg}), 500
+
+            # Rename file - if this fails, rollback the directory renames
+            try:
+                old_agent_file.rename(new_agent_file)
+            except Exception as e:
+                logger.error(f"Error renaming config file for {old_config_name}: {e}")
+                # Rollback directory renames
+                rollback_errors = []
+                try:
+                    if state_dir_renamed and STATE_DIRECTORY:
+                        old_state_dir = Path(STATE_DIRECTORY) / old_config_name
+                        new_state_dir = Path(STATE_DIRECTORY) / new_config_name
+                        if new_state_dir.exists() and new_state_dir.is_dir():
+                            shutil.move(str(new_state_dir), str(old_state_dir))
+                            logger.info(f"Rolled back state directory rename from {new_state_dir} to {old_state_dir}")
+                except Exception as rollback_e:
+                    rollback_errors.append(f"Failed to rollback state directory: {rollback_e}")
+                    logger.error(f"Failed to rollback state directory rename: {rollback_e}")
+                
+                try:
+                    if config_dir_renamed:
+                        if new_agent_config_dir.exists() and new_agent_config_dir.is_dir():
+                            shutil.move(str(new_agent_config_dir), str(old_agent_config_dir))
+                            logger.info(f"Rolled back config directory rename from {new_agent_config_dir} to {old_agent_config_dir}")
+                except Exception as rollback_e:
+                    rollback_errors.append(f"Failed to rollback config directory: {rollback_e}")
+                    logger.error(f"Failed to rollback config directory rename: {rollback_e}")
+                
+                error_msg = f"Failed to rename config file: {e}"
+                if rollback_errors:
+                    error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
+                return jsonify({"error": error_msg}), 500
 
             # Update agent config_name in registry
             # This is tricky because the registry uses config_name as key.

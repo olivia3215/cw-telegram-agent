@@ -169,15 +169,15 @@ async def insert_received_task_for_conversation(
                     if clear_reactions:
                         task.params["clear_reactions"] = True
                     logger.info(
-                        f"[{recipient_id}] Skipping received task creation - active received task {task.id} "
+                        f"[{agent.name}] Skipping received task creation - active received task {task.id} "
                         f"(status: {task.status}) already exists for conversation {channel_id}"
                     )
                     # Save the work queue state after updating existing task params
                     try:
                         work_queue.save()
-                        logger.debug(f"[{recipient_id}] Saved work queue state after updating task {task.id}")
+                        logger.debug(f"[{agent.name}] Saved work queue state after updating task {task.id}")
                     except Exception as e:
-                        logger.error(f"[{recipient_id}] Failed to save work queue state: {e}")
+                        logger.error(f"[{agent.name}] Failed to save work queue state: {e}")
                     return
             # Log if we found a graph but no active received task (for debugging duplicates)
             received_tasks = [t for t in old_graph.tasks if t.type == "received"]
