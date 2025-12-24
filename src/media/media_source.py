@@ -775,21 +775,26 @@ class UnsupportedFormatMediaSource(MediaSource):
             return None
 
         try:
-            # Check MIME type from doc object directly
-            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
+            # Use normalized MIME type from metadata if available, otherwise from doc
+            # (metadata may have been normalized earlier in this function)
+            mime_type = meta_mime if meta_mime else normalize_mime_type(getattr(doc, "mime_type", None))
 
             if not mime_type:
                 return None
 
-            # Get LLM instance to check support
-            llm = getattr(agent, "llm", None)
-            if not llm:
+            # Use media LLM to check support (same as AIGeneratingMediaSource)
+            # This ensures we check against the actual LLM that will be used for generation
+            # Previously this used agent.llm which might have different support capabilities
+            try:
+                media_llm = get_media_llm()
+            except Exception:
+                # If we can't get media LLM, skip the check and let other sources handle it
                 return None
 
             # Check if MIME type is supported (images, videos, or audio)
-            is_supported = llm.is_mime_type_supported_by_llm(mime_type) or (
-                hasattr(llm, "is_audio_mime_type_supported")
-                and llm.is_audio_mime_type_supported(mime_type)
+            is_supported = media_llm.is_mime_type_supported_by_llm(mime_type) or (
+                hasattr(media_llm, "is_audio_mime_type_supported")
+                and media_llm.is_audio_mime_type_supported(mime_type)
             )
 
             if not is_supported:
