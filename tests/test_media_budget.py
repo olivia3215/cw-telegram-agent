@@ -177,6 +177,89 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_directory_media_source_backfills_agent_telegram_id(tmp_path):
+    """
+    DirectoryMediaSource.get should update cached records with agent_telegram_id
+    when agent parameter is provided, even if it's not in metadata.
+    """
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "test-uid-123"
+    
+    # Create a cached record without agent_telegram_id
+    record = {
+        "unique_id": unique_id,
+        "kind": "sticker",
+        "description": "test description",
+        "status": MediaStatus.GENERATED.value,
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    
+    # Create agent with agent_id
+    agent = SimpleNamespace(agent_id=12345)
+    
+    # Create DirectoryMediaSource and call get with agent parameter
+    source = DirectoryMediaSource(cache_dir)
+    result = await source.get(
+        unique_id=unique_id,
+        agent=agent,
+        kind="sticker",
+    )
+    
+    # Verify agent_telegram_id was added to the result
+    assert result is not None
+    assert result["agent_telegram_id"] == 12345
+    
+    # Verify the record was updated on disk
+    updated_record = json.loads((cache_dir / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert updated_record["agent_telegram_id"] == 12345
+
+
+@pytest.mark.asyncio
+async def test_directory_media_source_preserves_existing_agent_telegram_id(tmp_path):
+    """
+    DirectoryMediaSource.get should preserve existing agent_telegram_id in cached records
+    and not overwrite it even if a different agent is provided.
+    """
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "test-uid-456"
+    
+    # Create a cached record with agent_telegram_id already set
+    record = {
+        "unique_id": unique_id,
+        "kind": "sticker",
+        "description": "test description",
+        "status": MediaStatus.GENERATED.value,
+        "agent_telegram_id": 99999,  # Already set
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    
+    # Create agent with different agent_id
+    agent = SimpleNamespace(agent_id=12345)
+    
+    # Create DirectoryMediaSource and call get with agent parameter
+    source = DirectoryMediaSource(cache_dir)
+    result = await source.get(
+        unique_id=unique_id,
+        agent=agent,
+        kind="sticker",
+    )
+    
+    # Verify existing agent_telegram_id was preserved (not overwritten)
+    assert result is not None
+    assert result["agent_telegram_id"] == 99999  # Original value preserved
+    
+    # Verify the record on disk still has the original value
+    updated_record = json.loads((cache_dir / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert updated_record["agent_telegram_id"] == 99999
+
+
+@pytest.mark.asyncio
 async def test_ai_chain_respects_skip_fallback(tmp_path):
     """
     AIChainMediaSource should honor skip_fallback metadata when reading from cache.

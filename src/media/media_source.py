@@ -316,6 +316,17 @@ class DirectoryMediaSource(MediaSource):
                                 f"DirectoryMediaSource: updating cached record {unique_id} with {key}={value}"
                             )
                 
+                # Extract agent_telegram_id from agent parameter if missing from record
+                # (agent is passed as a separate parameter, not in metadata)
+                if agent is not None and "agent_telegram_id" not in record:
+                    agent_telegram_id = getattr(agent, "agent_id", None)
+                    if agent_telegram_id is not None:
+                        record["agent_telegram_id"] = agent_telegram_id
+                        needs_update = True
+                        logger.debug(
+                            f"DirectoryMediaSource: updating cached record {unique_id} with agent_telegram_id={agent_telegram_id}"
+                        )
+                
                 # If we updated the record, write it back to disk and memory cache
                 if needs_update:
                     try:
