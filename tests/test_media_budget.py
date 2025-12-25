@@ -438,3 +438,81 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
         cached_record = ai_cache_source._mem_cache["budget-exhausted-uid"]
         assert cached_record["status"] == MediaStatus.BUDGET_EXHAUSTED.value
         assert cached_record.get("media_file") == "budget-exhausted-uid.png"
+
+
+@pytest.mark.asyncio
+async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path):
+    """
+    AIGeneratingMediaSource should read from cached media file instead of downloading
+    when the file already exists in the cache directory.
+    
+    This test verifies the fix for issue #295: triggering summarization from the console
+    should not re-download media that's already cached.
+    """
+    # Arrange
+    cached_media_bytes = b"cached media file content"
+    
+    # Track what the LLM receives and download calls
+    received_bytes = []
+    download_calls = []
+    
+    class TrackingLLM(FakeLLM):
+        async def describe_image(
+            self,
+            image_bytes: bytes,
+            mime_type: str | None = None,
+            timeout_s: float | None = None,
+        ) -> str:
+            received_bytes.append(image_bytes)
+            return await super().describe_image(image_bytes, mime_type, timeout_s)
+    
+    llm = TrackingLLM("generated description")
+    client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
+    
+    unique_id = "cached-media-uid"
+    
+    # Create cache directory and write a cached media file
+    cache_dir = tmp_path / "media"
+    cache_dir.mkdir()
+    cached_media_file = cache_dir / f"{unique_id}.png"
+    cached_media_file.write_bytes(cached_media_bytes)
+    
+    async def _fake_download_media_bytes(client, doc):
+        download_calls.append((client, doc))
+        return b"downloaded content (should not be called)"
+    
+    import media.media_source as media_source
+    
+    monkeypatch.setattr(
+        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
+    )
+    
+    # Create AIGeneratingMediaSource with the cache directory
+    source = AIGeneratingMediaSource(cache_directory=cache_dir)
+    
+    # Mock document
+    doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
+    
+    # Mock get_media_llm to return our tracking LLM
+    with patch("media.media_source.get_media_llm", return_value=llm):
+        with patch("media.media_source.detect_mime_type_from_bytes", return_value="image/png"):
+            # Act: Request description - should use cached file, not download
+            result = await source.get(
+                unique_id=unique_id,
+                agent=agent,
+                doc=doc,
+                kind="photo",
+            )
+    
+    # Assert: Description was generated
+    assert result["unique_id"] == unique_id
+    assert result["description"] == "generated description"
+    assert result["status"] == MediaStatus.GENERATED.value
+    
+    # Assert: download_media_bytes was NOT called (because cached file was used)
+    assert len(download_calls) == 0, "download_media_bytes should not be called when media file is cached"
+    
+    # Assert: LLM was called with the cached media bytes (not downloaded bytes)
+    assert len(received_bytes) == 1
+    assert received_bytes[0] == cached_media_bytes, "LLM should receive cached bytes, not downloaded bytes"
