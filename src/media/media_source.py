@@ -305,8 +305,9 @@ class DirectoryMediaSource(MediaSource):
                 preserved_fields = {"channel_id", "channel_name", "media_ts"}
                 for key, value in metadata.items():
                     if key != "skip_fallback" and value is not None:
-                        # Skip updating preserved fields if they already exist in the record
-                        if key in preserved_fields and key in record:
+                        # Skip updating preserved fields if they already exist with a meaningful value
+                        # (allow updating if the field is None, as it means it wasn't resolved initially)
+                        if key in preserved_fields and record.get(key) is not None:
                             continue
                         if key not in record or record[key] != value:
                             record[key] = value
