@@ -1795,8 +1795,8 @@
                 if (data.error) {
                     updateSaveStatus(uniqueId, 'error');
                 } else {
-                    const textarea = document.getElementById(`desc-${uniqueId}`);
-                    const description = textarea ? textarea.value.trim() : '';
+                    // Re-get textarea element for DOM traversal (use outer 'description' variable that was saved)
+                    const textareaEl = document.getElementById(`desc-${uniqueId}`);
                     
                     updateSaveStatus(uniqueId, 'saved');
 
@@ -1804,8 +1804,8 @@
                     // (backend only sets curated status when description is non-empty)
                     // Use the textarea to find the parent media item
                     let mediaItem = null;
-                    if (textarea) {
-                        mediaItem = textarea.closest('.media-item');
+                    if (textareaEl) {
+                        mediaItem = textareaEl.closest('.media-item');
                     }
                     
                     // Fallback: try to find by ID
