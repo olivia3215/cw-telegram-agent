@@ -137,6 +137,6 @@ class TelegramAPICache:
 
             self._blocklist_cache = {item.peer_id.user_id for item in result.blocked}
             self._blocklist_last_updated = now
-            logger.info(f"[{self.name}] Updated blocklist cache.")
+            logger.debug(f"[{self.name}] Updated blocklist cache.")
 
         return user_id in self._blocklist_cache

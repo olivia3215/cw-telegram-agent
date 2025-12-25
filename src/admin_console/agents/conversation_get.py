@@ -434,20 +434,20 @@ async def _replace_custom_emoji_in_reactions(
     if not reactions_str:
         return reactions_str
     
-    logger.info(f"Admin console: Processing reactions for message {message_id}")
+    logger.debug(f"Admin console: Processing reactions for message {message_id}")
     
     try:
         reactions_obj = getattr(message, 'reactions', None)
         if not reactions_obj:
-            logger.info(f"Admin console: Message {message_id} has no reactions object")
+            logger.debug(f"Admin console: Message {message_id} has no reactions object")
             return reactions_str
         
         recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
         if not recent_reactions:
-            logger.info(f"Admin console: Message {message_id} has no recent_reactions")
+            logger.debug(f"Admin console: Message {message_id} has no recent_reactions")
             return reactions_str
         
-        logger.info(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
+        logger.debug(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
         
         from utils import get_custom_emoji_name, extract_user_id_from_peer
         from handlers.received_helpers.message_processing import get_channel_name
