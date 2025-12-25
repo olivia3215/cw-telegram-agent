@@ -898,24 +898,42 @@ class AIGeneratingMediaSource(MediaSource):
                     if detected_mime_type:
                         metadata["mime_type"] = detected_mime_type
 
-        # Download media bytes
-        try:
-            data: bytes = await download_media_bytes(client, doc)
-        except Exception as e:
-            logger.exception(
-                f"AIGeneratingMediaSource: download failed for {unique_id}: {e}"
-            )
-            # Transient failure - don't cache to disk
-            return make_error_record(
-                unique_id,
-                MediaStatus.TEMPORARY_FAILURE,
-                f"download failed: {str(e)[:100]}",
-                retryable=True,
-                kind=kind,
-                sticker_set_name=sticker_set_name,
-                sticker_name=sticker_name,
-                **metadata,
-            )
+        # Check if media file already exists in cache before downloading
+        data: bytes | None = None
+        for ext in MEDIA_FILE_EXTENSIONS:
+            cached_file = self.cache_directory / f"{unique_id}{ext}"
+            if cached_file.exists():
+                try:
+                    data = cached_file.read_bytes()
+                    logger.debug(
+                        f"AIGeneratingMediaSource: using cached media file for {unique_id} from {cached_file}"
+                    )
+                    break
+                except Exception as e:
+                    logger.warning(
+                        f"AIGeneratingMediaSource: failed to read cached file {cached_file}: {e}, will download instead"
+                    )
+                    data = None
+        
+        # Download media bytes only if not found in cache
+        if data is None:
+            try:
+                data = await download_media_bytes(client, doc)
+            except Exception as e:
+                logger.exception(
+                    f"AIGeneratingMediaSource: download failed for {unique_id}: {e}"
+                )
+                # Transient failure - don't cache to disk
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.TEMPORARY_FAILURE,
+                    f"download failed: {str(e)[:100]}",
+                    retryable=True,
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    **metadata,
+                )
         dl_ms = (time.perf_counter() - t0) * 1000
 
         # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
