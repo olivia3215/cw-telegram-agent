@@ -52,13 +52,24 @@ def detect_mime_type_from_bytes(data: bytes) -> str:
     elif data.startswith(b"\xff\xd8\xff"):  # JPEG/JFIF
         return "image/jpeg"
 
-    # Video formats
-    elif data[4:8] == b"ftyp":  # MP4 family (video/mp4, audio/mp4)
-        # Check for QuickTime/MOV specific brand
-        if len(data) >= 12 and data[8:12] == b"qt  ":
+    # MP4 family (video/mp4, audio/mp4) - check ftyp box
+    elif len(data) >= 12 and data[4:8] == b"ftyp":
+        # Check brand at offset 8-12 to distinguish audio vs video
+        brand = data[8:12]
+        
+        # QuickTime/MOV uses "qt  " brand
+        if brand == b"qt  ":
             return "video/quicktime"
-        else:
-            return "video/mp4"
+        
+        # M4A and M4B are audio-specific brands
+        if brand in (b"M4A ", b"M4B "):
+            return "audio/mp4"
+        
+        # For other MP4 brands (isom, iso2, mp41, mp42, etc.), we can't determine
+        # from brand alone whether it's audio or video. Default to video/mp4.
+        # The caller (telegram_media.py) should use DocumentAttributeAudio to
+        # distinguish audio files with these generic brands.
+        return "video/mp4"
     elif data[:4] == b"\x1a\x45\xdf\xa3":  # WebM/Matroska (EBML)
         return "video/webm"
     elif data[:4] == b"RIFF" and data[8:12] == b"AVI ":  # AVI
@@ -73,8 +84,6 @@ def detect_mime_type_from_bytes(data: bytes) -> str:
         return "audio/flac"
     elif data.startswith(b"RIFF") and data[8:12] == b"WAVE":  # WAV
         return "audio/wav"
-    elif data.startswith(b"ftypM4A") or data.startswith(b"ftypisom"):  # M4A
-        return "audio/mp4"
 
     # Archive/compressed formats
     elif data.startswith(b"\x1f\x8b"):  # gzip (TGS files are gzipped Lottie)
