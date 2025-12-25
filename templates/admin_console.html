@@ -1802,18 +1802,30 @@
 
                     // Only show "curated" status if description was actually provided
                     // (backend only sets curated status when description is non-empty)
-                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
-                    const statusElements = mediaItem.querySelectorAll('p');
-                    for (const p of statusElements) {
-                        if (p.textContent.includes('Status:')) {
-                            if (description) {
-                                p.innerHTML = '<strong>Status:</strong> curated';
-                            }
-                            // If description is empty, don't change status - keep existing status from backend
-                        } else if (p.classList.contains('error')) {
-                            // Clear the error message (failure_reason) only if description was provided
-                            if (description) {
-                                p.remove();
+                    // Use the textarea to find the parent media item
+                    let mediaItem = null;
+                    if (textarea) {
+                        mediaItem = textarea.closest('.media-item');
+                    }
+                    
+                    // Fallback: try to find by ID
+                    if (!mediaItem) {
+                        mediaItem = document.getElementById(`media-item-${uniqueId}`);
+                    }
+
+                    if (mediaItem) {
+                        const statusElements = mediaItem.querySelectorAll('p');
+                        for (const p of statusElements) {
+                            if (p.textContent.includes('Status:')) {
+                                if (description) {
+                                    p.innerHTML = '<strong>Status:</strong> curated';
+                                }
+                                // If description is empty, don't change status - keep existing status from backend
+                            } else if (p.classList.contains('error')) {
+                                // Clear the error message (failure_reason) only if description was provided
+                                if (description) {
+                                    p.remove();
+                                }
                             }
                         }
                     }
