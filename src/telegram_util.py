@@ -8,6 +8,7 @@ import os
 from typing import TYPE_CHECKING
 
 from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import User, UserProfilePhotoEmpty  # pyright: ignore[reportMissingImports]
 
 from config import STATE_DIRECTORY, TELEGRAM_API_HASH, TELEGRAM_API_ID, PUPPET_MASTER_PHONE
 
@@ -95,7 +96,6 @@ async def is_user_blocking_agent(agent: "Agent", user_id: int) -> bool:
             return False
         
         # Check if this is a User entity (for DMs)
-        from telethon.tl.types import User, UserProfilePhotoEmpty  # pyright: ignore[reportMissingImports]
         if not isinstance(entity, User):
             return False
         
@@ -158,7 +158,6 @@ async def can_agent_send_to_channel(agent: "Agent", channel_id: int) -> bool:
             return False
         
         # Check if this is a User entity (for DMs)
-        from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
         if isinstance(entity, User):
             # For DMs, use more reliable blocking detection
             # Check if user blocked agent

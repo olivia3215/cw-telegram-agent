@@ -299,10 +299,10 @@ class DirectoryMediaSource(MediaSource):
                 # Merge new metadata fields into the cached record if provided
                 # This allows updating cached records with additional metadata
                 # (like sticker_set_title, is_emoji_set) without regenerating
-                # However, preserve channel_id, channel_name, and media_ts if they already exist
+                # However, preserve channel_id, channel_name, media_ts, and agent_telegram_id if they already exist
                 # (these provenance fields should not be overwritten once set)
                 needs_update = False
-                preserved_fields = {"channel_id", "channel_name", "media_ts"}
+                preserved_fields = {"channel_id", "channel_name", "media_ts", "agent_telegram_id"}
                 for key, value in metadata.items():
                     if key != "skip_fallback" and value is not None:
                         # Skip updating preserved fields if they already exist with a meaningful value
@@ -315,6 +315,17 @@ class DirectoryMediaSource(MediaSource):
                             logger.debug(
                                 f"DirectoryMediaSource: updating cached record {unique_id} with {key}={value}"
                             )
+                
+                # Extract agent_telegram_id from agent parameter if missing from record
+                # (agent is passed as a separate parameter, not in metadata)
+                if agent is not None and "agent_telegram_id" not in record:
+                    agent_telegram_id = getattr(agent, "agent_id", None)
+                    if agent_telegram_id is not None:
+                        record["agent_telegram_id"] = agent_telegram_id
+                        needs_update = True
+                        logger.debug(
+                            f"DirectoryMediaSource: updating cached record {unique_id} with agent_telegram_id={agent_telegram_id}"
+                        )
                 
                 # If we updated the record, write it back to disk and memory cache
                 if needs_update:
@@ -394,10 +405,16 @@ class DirectoryMediaSource(MediaSource):
         record: dict[str, Any],
         media_bytes: bytes = None,
         file_extension: str = None,
+        agent: Any = None,
     ) -> None:
         """Store metadata record and optionally media file to disk."""
         with self._lock:
             record_copy = record.copy()
+            # Add agent_telegram_id if missing and agent is available
+            if "agent_telegram_id" not in record_copy and agent is not None:
+                agent_telegram_id = getattr(agent, "agent_id", None)
+                if agent_telegram_id is not None:
+                    record_copy["agent_telegram_id"] = agent_telegram_id
             self.directory.mkdir(parents=True, exist_ok=True)
             if media_bytes and file_extension:
                 media_filename = f"{unique_id}{file_extension}"
@@ -641,7 +658,7 @@ class BudgetExhaustedMediaSource(MediaSource):
                 )
                 description = fallback_sticker_description(sticker_name, animated=is_animated)
 
-            return {
+            record = {
                 "unique_id": unique_id,
                 "kind": kind,
                 "sticker_set_name": sticker_set_name,
@@ -651,6 +668,12 @@ class BudgetExhaustedMediaSource(MediaSource):
                 "ts": clock.now(UTC).isoformat(),
                 **metadata,
             }
+            # Add agent_telegram_id if available and not already in metadata
+            if agent is not None and "agent_telegram_id" not in record:
+                agent_telegram_id = getattr(agent, "agent_id", None)
+                if agent_telegram_id is not None:
+                    record["agent_telegram_id"] = agent_telegram_id
+            return record
 
 
 def make_error_record(
@@ -661,6 +684,7 @@ def make_error_record(
     kind: str | None = None,
     sticker_set_name: str | None = None,
     sticker_name: str | None = None,
+    agent: Any = None,
     **extra,
 ) -> dict[str, Any]:
     """Helper to create an error record."""
@@ -677,6 +701,11 @@ def make_error_record(
             mime_type and is_tgs_mime_type(mime_type)
         )
         description = fallback_sticker_description(sticker_name, animated=is_animated)
+    
+    # Extract agent_telegram_id if agent is provided and not already in extra
+    agent_telegram_id = extra.get("agent_telegram_id")
+    if agent_telegram_id is None and agent is not None:
+        agent_telegram_id = getattr(agent, "agent_id", None)
         
     record = {
         "unique_id": unique_id,
@@ -689,6 +718,9 @@ def make_error_record(
         "ts": clock.now(UTC).isoformat(),
         **extra,
     }
+    # Only add agent_telegram_id if we have it and it's not already in the record
+    if agent_telegram_id is not None and "agent_telegram_id" not in record:
+        record["agent_telegram_id"] = agent_telegram_id
     if retryable:
         record["retryable"] = True
     return record
@@ -755,6 +787,11 @@ class UnsupportedFormatMediaSource(MediaSource):
                 "ts": clock.now(UTC).isoformat(),
                 **metadata,
             }
+            # Add agent_telegram_id if available and not already in metadata
+            if agent is not None and "agent_telegram_id" not in record:
+                agent_telegram_id = getattr(agent, "agent_id", None)
+                if agent_telegram_id is not None:
+                    record["agent_telegram_id"] = agent_telegram_id
 
             # Don't cache AnimatedEmojies descriptions to disk - return directly
             return record
@@ -774,6 +811,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
 
@@ -813,6 +851,7 @@ class UnsupportedFormatMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
 
@@ -932,6 +971,7 @@ class AIGeneratingMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
         dl_ms = (time.perf_counter() - t0) * 1000
@@ -1021,6 +1061,7 @@ class AIGeneratingMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
 
@@ -1104,6 +1145,7 @@ class AIGeneratingMediaSource(MediaSource):
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
+                agent=agent,
                 **metadata,
             )
         except ValueError as e:
@@ -1128,6 +1170,7 @@ class AIGeneratingMediaSource(MediaSource):
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
+                agent=agent,
                 **metadata,
             )
         except RuntimeError as e:
@@ -1161,6 +1204,7 @@ class AIGeneratingMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
             else:
@@ -1173,6 +1217,7 @@ class AIGeneratingMediaSource(MediaSource):
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
+                    agent=agent,
                     **metadata,
                 )
         except Exception as e:
@@ -1195,6 +1240,7 @@ class AIGeneratingMediaSource(MediaSource):
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
+                agent=agent,
                 **metadata,
             )
 
@@ -1217,6 +1263,7 @@ class AIGeneratingMediaSource(MediaSource):
                 kind=kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
+                agent=agent,
                 **metadata,
             )
 
@@ -1239,6 +1286,11 @@ class AIGeneratingMediaSource(MediaSource):
             "ts": clock.now(UTC).isoformat(),
             **record_metadata,
         }
+        # Add agent_telegram_id if available and not already in metadata
+        if agent is not None and "agent_telegram_id" not in record:
+            agent_telegram_id = getattr(agent, "agent_id", None)
+            if agent_telegram_id is not None:
+                record["agent_telegram_id"] = agent_telegram_id
 
         total_ms = (time.perf_counter() - t0) * 1000
         logger.debug(
@@ -1391,7 +1443,7 @@ class AIChainMediaSource(MediaSource):
             if should_store:
                 # Store record with optional media file
                 # If we have media_bytes, this will add media_file to the record
-                self.cache_source.put(unique_id, record, media_bytes, file_extension)
+                self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
 
         return record
 
