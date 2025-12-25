@@ -10,8 +10,8 @@ Telegram API caching utility for mute status and blocklist.
 import logging
 from datetime import UTC, datetime, timedelta
 
-from telethon.tl.functions.account import GetNotifySettingsRequest
-from telethon.tl.functions.contacts import GetBlockedRequest
+from telethon.tl.functions.account import GetNotifySettingsRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.contacts import GetBlockedRequest  # pyright: ignore[reportMissingImports]
 
 from clock import clock
 

@@ -17,6 +17,8 @@ from media.mime_utils import detect_mime_type_from_bytes, get_file_extension_fro
 from telegram_download import download_media_bytes
 from telegram_media import iter_media_parts
 from clock import clock
+from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetStickerSetRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,6 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             async def _get_emoji():
                 try:
                     # Use GetCustomEmojiDocumentsRequest to fetch the document by document_id
-                    from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest  # pyright: ignore[reportMissingImports]
-                    
                     logger.debug(f"Fetching custom emoji document {doc_id} using GetCustomEmojiDocumentsRequest")
                     # Fetch the custom emoji document
                     result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[doc_id]))
@@ -107,9 +107,6 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     
                     if sticker_set_id and not sticker_set_name:
                         try:
-                            from telethon.tl.functions.messages import GetStickerSetRequest
-                            from telethon.tl.types import InputStickerSetID
-                            
                             logger.debug(f"Querying sticker set for custom emoji {doc_id}: set_id={sticker_set_id}")
                             
                             sticker_set_result = await agent.client(
@@ -440,7 +437,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 record["mime_type"] = mime_type
                             
                             try:
-                                cache_source.put(unique_id, record, media_bytes, file_extension)
+                                cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
                                 logger.debug(
                                     f"Cached media file {media_filename} with full metadata to {state_media_dir} for {unique_id}"
                                 )

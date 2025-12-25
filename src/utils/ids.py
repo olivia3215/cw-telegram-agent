@@ -2,6 +2,9 @@
 #
 # ID normalization and extraction utilities.
 
+from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetStickerSetRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissingImports]
+
 def normalize_peer_id(value):
     """
     Normalize Telegram peer/channel/user IDs:
@@ -70,7 +73,6 @@ async def get_custom_emoji_name(agent, document_id) -> str:
     try:
         from media.media_source import get_default_media_source_chain
         from telegram_media import get_unique_id
-        from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest
         
         # Try to get the document from the agent's client using the correct API
         result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[document_id]))
@@ -108,9 +110,6 @@ async def get_custom_emoji_name(agent, document_id) -> str:
         
         if sticker_set_id and not sticker_set_name:
             try:
-                from telethon.tl.functions.messages import GetStickerSetRequest
-                from telethon.tl.types import InputStickerSetID
-                
                 logger.debug(f"Querying sticker set for custom emoji {document_id}: set_id={sticker_set_id}")
                 
                 sticker_set_result = await agent.client(

@@ -17,6 +17,7 @@ from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from telegram_util import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
+from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
 # Import markdown_to_html - use importlib to avoid relative import issues when loaded via importlib
 import importlib.util
@@ -751,8 +752,6 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             # If story_item is None, try to fetch it from Telegram
                             if not story_item and story_id is not None and story_peer:
                                 try:
-                                    # Import here to avoid issues if stories API is not available
-                                    from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
                                     # Fetch the story
                                     stories_result = await client(GetStoriesByIDRequest(
                                         peer=story_peer,
