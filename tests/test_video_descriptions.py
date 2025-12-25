@@ -16,8 +16,8 @@ import base64
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
-import pytest
+import httpx  # pyright: ignore[reportMissingImports]
+import pytest  # pyright: ignore[reportMissingImports]
 
 from llm.gemini import GeminiLLM
 from media.media_source import (
