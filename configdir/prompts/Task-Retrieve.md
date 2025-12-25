@@ -42,3 +42,8 @@ Use retrieval when you need:
 When you retrieve URLs, their content will be injected as messages at the beginning of the conversation.
 
 Check these messages to see what's already been retrieved before requesting URLs.
+
+## Special documents
+
+You can `retrieve` some special documents with a URL like `file:Filename.md`.
+When you become aware of a URL of that form, you can `retrieve` it.

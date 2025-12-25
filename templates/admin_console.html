@@ -1795,17 +1795,38 @@
                 if (data.error) {
                     updateSaveStatus(uniqueId, 'error');
                 } else {
+                    // Re-get textarea element for DOM traversal (use outer 'description' variable that was saved)
+                    const textareaEl = document.getElementById(`desc-${uniqueId}`);
+                    
                     updateSaveStatus(uniqueId, 'saved');
 
-                    // Update the status display to show "curated" and clear error message
-                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
-                    const statusElements = mediaItem.querySelectorAll('p');
-                    for (const p of statusElements) {
-                        if (p.textContent.includes('Status:')) {
-                            p.innerHTML = '<strong>Status:</strong> curated';
-                        } else if (p.classList.contains('error')) {
-                            // Clear the error message (failure_reason)
-                            p.remove();
+                    // Only show "curated" status if description was actually provided
+                    // (backend only sets curated status when description is non-empty)
+                    // Use the textarea to find the parent media item
+                    let mediaItem = null;
+                    if (textareaEl) {
+                        mediaItem = textareaEl.closest('.media-item');
+                    }
+                    
+                    // Fallback: try to find by ID
+                    if (!mediaItem) {
+                        mediaItem = document.getElementById(`media-item-${uniqueId}`);
+                    }
+
+                    if (mediaItem) {
+                        const statusElements = mediaItem.querySelectorAll('p');
+                        for (const p of statusElements) {
+                            if (p.textContent.includes('Status:')) {
+                                if (description) {
+                                    p.innerHTML = '<strong>Status:</strong> curated';
+                                }
+                                // If description is empty, don't change status - keep existing status from backend
+                            } else if (p.classList.contains('error')) {
+                                // Clear the error message (failure_reason) only if description was provided
+                                if (description) {
+                                    p.remove();
+                                }
+                            }
                         }
                     }
                 }
@@ -1843,21 +1864,72 @@
                 if (data.error) {
                     alert('Error refreshing from AI: ' + data.error);
                 } else {
-                    // Update the textarea with the new AI-generated description
-                    textarea.value = data.description || '';
-
-                    // Update the status display
-                    const mediaItem = document.querySelector(`#desc-${uniqueId}`).closest('.media-item');
-                    const statusElements = mediaItem.querySelectorAll('p');
-                    for (const p of statusElements) {
-                        if (p.textContent.includes('Status:')) {
-                            p.innerHTML = `<strong>Status:</strong> ${escapeHtml(data.status || 'ok')}`;
-                            break;
+                    // Update the cached data in allMediaFiles array so pagination shows updated data
+                    const mediaIndex = allMediaFiles.findIndex(m => m.unique_id === uniqueId);
+                    if (mediaIndex !== -1) {
+                        allMediaFiles[mediaIndex].description = data.description || null;
+                        allMediaFiles[mediaIndex].status = data.status || 'ok';
+                        // Clear failure_reason if status is successful
+                        if (data.status && (
+                            data.status === 'generated' || 
+                            data.status === 'curated' ||
+                            (data.status === 'budget_exhausted' && data.description)
+                        )) {
+                            allMediaFiles[mediaIndex].failure_reason = null;
                         }
                     }
 
-                    // Trigger auto-save to save the new description
-                    scheduleAutoSave(uniqueId);
+                    // Update the textarea with the new AI-generated description
+                    if (textarea) {
+                        textarea.value = data.description || '';
+                    }
+
+                    // Update all UI elements that might have changed
+                    // Use the textarea to find the parent media item
+                    let mediaItem = null;
+                    if (textarea) {
+                        mediaItem = textarea.closest('.media-item');
+                    }
+                    
+                    // Fallback: try to find by ID
+                    if (!mediaItem) {
+                        mediaItem = document.getElementById(`media-item-${uniqueId}`);
+                    }
+
+                    if (mediaItem) {
+                        // Update status display
+                        const statusElements = mediaItem.querySelectorAll('p');
+                        for (const p of statusElements) {
+                            if (p.textContent.includes('Status:')) {
+                                p.innerHTML = `<strong>Status:</strong> ${escapeHtml(data.status || 'ok')}`;
+                            } else if (p.classList.contains('error')) {
+                                // Remove failure_reason display if status is successful
+                                // Successful statuses: generated, curated, budget_exhausted (for stickers with fallback)
+                                const isSuccess = data.status && (
+                                    data.status === 'generated' || 
+                                    data.status === 'curated' ||
+                                    (data.status === 'budget_exhausted' && data.description)
+                                );
+                                if (isSuccess) {
+                                    p.remove();
+                                }
+                            }
+                        }
+
+                        // Update save status to show "Saved" since refresh endpoint saved the record
+                        const saveStatusEl = document.getElementById(`save-status-${uniqueId}`);
+                        if (saveStatusEl) {
+                            saveStatusEl.textContent = 'Saved';
+                            saveStatusEl.style.color = '#28a745';
+                        }
+                    } else {
+                        // If media item not found, reload the media list to get updated data
+                        console.warn(`Media item not found for ${uniqueId}, reloading media list`);
+                        loadMediaFiles(currentDirectory, true);
+                    }
+
+                    // Don't trigger auto-save - the refresh endpoint already saves the record
+                    // If description is empty, the status will remain as returned by the refresh (e.g., permanent_failure)
                 }
             })
             .catch(error => {

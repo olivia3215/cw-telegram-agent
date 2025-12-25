@@ -775,21 +775,26 @@ class UnsupportedFormatMediaSource(MediaSource):
             return None
 
         try:
-            # Check MIME type from doc object directly
-            mime_type = normalize_mime_type(getattr(doc, "mime_type", None))
+            # Use normalized MIME type from metadata if available, otherwise from doc
+            # (metadata may have been normalized earlier in this function)
+            mime_type = meta_mime if meta_mime else normalize_mime_type(getattr(doc, "mime_type", None))
 
             if not mime_type:
                 return None
 
-            # Get LLM instance to check support
-            llm = getattr(agent, "llm", None)
-            if not llm:
+            # Use media LLM to check support (same as AIGeneratingMediaSource)
+            # This ensures we check against the actual LLM that will be used for generation
+            # Previously this used agent.llm which might have different support capabilities
+            try:
+                media_llm = get_media_llm()
+            except Exception:
+                # If we can't get media LLM, skip the check and let other sources handle it
                 return None
 
             # Check if MIME type is supported (images, videos, or audio)
-            is_supported = llm.is_mime_type_supported_by_llm(mime_type) or (
-                hasattr(llm, "is_audio_mime_type_supported")
-                and llm.is_audio_mime_type_supported(mime_type)
+            is_supported = media_llm.is_mime_type_supported_by_llm(mime_type) or (
+                hasattr(media_llm, "is_audio_mime_type_supported")
+                and media_llm.is_audio_mime_type_supported(mime_type)
             )
 
             if not is_supported:
@@ -961,12 +966,15 @@ class AIGeneratingMediaSource(MediaSource):
                 data = video_file_path.read_bytes()
 
                 # Preserve original TGS mime_type before updating (needed for fallback descriptions)
-                metadata["original_mime_type"] = final_mime_type
+                # Store the original TGS mime_type - this is what the actual file on disk is
+                original_tgs_mime = final_mime_type
+                metadata["original_mime_type"] = original_tgs_mime
 
-                # Update MIME type to video/mp4
+                # Update final_mime_type to video/mp4 for LLM processing (converted file)
+                # But keep the original TGS mime_type in metadata since that's what's on disk
                 detected_mime_type = normalize_mime_type("video/mp4")
-                final_mime_type = detected_mime_type  # Update final_mime_type for converted TGS
-                metadata["mime_type"] = final_mime_type  # Update metadata too
+                final_mime_type = detected_mime_type  # Use video/mp4 for LLM call
+                # Don't overwrite metadata["mime_type"] - keep original TGS mime_type for saved record
                 is_converted_tgs = True
 
                 logger.info(
@@ -1188,6 +1196,13 @@ class AIGeneratingMediaSource(MediaSource):
             )
 
         # Return record for AIChainMediaSource to handle caching
+        # For converted TGS files, ensure mime_type reflects the original TGS file (on disk),
+        # not the temporary video/mp4 used for AI processing
+        record_metadata = metadata.copy()
+        if is_converted_tgs and "original_mime_type" in record_metadata:
+            # Restore original TGS mime_type for the saved record
+            record_metadata["mime_type"] = record_metadata["original_mime_type"]
+        
         record = {
             "unique_id": unique_id,
             "kind": kind,
@@ -1197,7 +1212,7 @@ class AIGeneratingMediaSource(MediaSource):
             "failure_reason": None,
             "status": MediaStatus.GENERATED.value,
             "ts": clock.now(UTC).isoformat(),
-            **metadata,
+            **record_metadata,
         }
 
         total_ms = (time.perf_counter() - t0) * 1000
@@ -1298,28 +1313,21 @@ class AIChainMediaSource(MediaSource):
         media_bytes = None
         file_extension = None
 
-        if record and not record.get("_on_disk", False):
-            # Check if we need to download and store the media file
-            # Only download if we don't already have the media file on disk
-            media_file_exists = False
-            if isinstance(self.cache_source, DirectoryMediaSource):
-                # Check if media file already exists
-                for ext in MEDIA_FILE_EXTENSIONS:
-                    media_file = self.cache_source.directory / f"{unique_id}{ext}"
-                    if media_file.exists():
-                        media_file_exists = True
-                        break
+        # Check if we need to download and store the media file
+        # Always check if media file exists on disk, even for cached records
+        # (records might have _on_disk=True but no actual media file)
+        media_file_exists = False
+        if isinstance(self.cache_source, DirectoryMediaSource):
+            # Check if media file already exists
+            for ext in MEDIA_FILE_EXTENSIONS:
+                media_file = self.cache_source.directory / f"{unique_id}{ext}"
+                if media_file.exists():
+                    media_file_exists = True
+                    break
 
-            # Download media if we have a doc and media file doesn't exist
-            # Always attempt download if we have doc, regardless of budget status
-            logger.info(
-                f"AIChainMediaSource: checking download for {unique_id}: media_file_exists={media_file_exists}, doc={doc is not None}, agent={agent is not None}"
-            )
-            if doc is not None:
-                logger.info(
-                    f"AIChainMediaSource: doc type for {unique_id}: {type(doc)}, has mime_type: {hasattr(doc, 'mime_type')}"
-                )
-            if not media_file_exists and doc is not None and agent is not None:
+        # Download media if we have a doc and media file doesn't exist
+        # Always attempt download if we have doc, regardless of budget status or _on_disk flag
+        if not media_file_exists and doc is not None and agent is not None:
                 try:
                     logger.debug(
                         f"AIChainMediaSource: downloading media for {unique_id}"
@@ -1339,9 +1347,10 @@ class AIChainMediaSource(MediaSource):
                     )
                     # Continue without media file - metadata is still valuable
 
-        # 5. Store metadata record if we got a new record and it's not another temporary failure
-        # Exception: always store if we downloaded the media file (even if replacing temporary failure)
-        if record and not record.get("_on_disk", False):
+        # 5. Store metadata record if we got a new record or if we downloaded media file
+        # Always store if we downloaded the media file (even if replacing a cached record)
+        # Also store if we got a new record that's not already on disk
+        if record and (media_bytes is not None or not record.get("_on_disk", False)):
             should_store = True
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
@@ -1356,6 +1365,7 @@ class AIChainMediaSource(MediaSource):
 
             if should_store:
                 # Store record with optional media file
+                # If we have media_bytes, this will add media_file to the record
                 self.cache_source.put(unique_id, record, media_bytes, file_extension)
 
         return record
