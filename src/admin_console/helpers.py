@@ -8,7 +8,7 @@ Shared helper functions for the admin console.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -18,6 +18,14 @@ from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImpor
     UsernameInvalidError,
     UsernameNotOccupiedError,
 )
+from telethon.tl.functions.channels import GetParticipantsRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
+    Channel,
+    ChannelParticipantsRecent,
+    Chat,
+    User,
+)
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
 from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
@@ -26,6 +34,10 @@ from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting for cache population: track last run time per agent
+_cache_population_last_run: dict[str, datetime] = {}
+_cache_population_interval = timedelta(minutes=5)
 
 
 def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
@@ -286,10 +298,16 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
     user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
-    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
-    # Note: We check isdigit() first to avoid int("+1234567890") incorrectly parsing phone numbers
-    if user_id.isdigit():
-        return int(user_id)
+    # Try to parse as integer (user ID or group/channel ID)
+    # Telegram IDs can be positive (users) or negative (groups/channels)
+    # Check if it's a valid integer (with optional minus sign) and not a phone number
+    try:
+        # If it starts with +, it's a phone number, not an ID
+        if not user_id.startswith('+'):
+            # Try to parse as integer - this handles both positive and negative IDs
+            return int(user_id)
+    except (ValueError, AttributeError):
+        pass
     
     # If it's a phone number (starts with +) or username, we need the async function
     # This requires the Telegram client, so we need to check event loop
@@ -315,6 +333,208 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
         raise RuntimeError(f"Error resolving user ID or username: {str(e)}")
 
 
+async def _populate_user_cache_from_groups(agent: Agent) -> None:
+    """
+    Populate the user cache by scanning group members and message senders.
+    
+    This function:
+    1. Iterates through all groups/channels the agent is subscribed to
+    2. For each group, tries to get participants
+    3. If that doesn't work, gets senders from the last 200 messages
+    4. Adds all users (except deleted) to the entity cache
+    
+    This is rate-limited to once every 5 minutes per agent.
+    
+    Args:
+        agent: The agent instance
+    """
+    from clock import clock
+    from telegram_util import is_group_or_channel
+    
+    agent_name = agent.name
+    now = clock.now(UTC)
+    
+    # Check rate limiting
+    last_run = _cache_population_last_run.get(agent_name)
+    if last_run and (now - last_run) < _cache_population_interval:
+        logger.debug(
+            f"[{agent.name}] Skipping cache population - last run was {(now - last_run).total_seconds():.0f} seconds ago"
+        )
+        return
+    
+    logger.info(f"[{agent.name}] Populating user cache from groups...")
+    
+    client = agent.client
+    if not client:
+        logger.warning(f"[{agent.name}] Cannot populate cache - no client available")
+        return
+    
+    try:
+        # Ensure client is connected
+        await agent.ensure_client_connected()
+        
+        # Set rate limit timestamp only after client is verified and connected
+        # This ensures we don't block retries if client was None or connection failed
+        _cache_population_last_run[agent_name] = now
+        
+        users_added = 0
+        groups_processed = 0
+        
+        # Iterate through all dialogs
+        async for dialog in client.iter_dialogs():
+            try:
+                # Only process groups and channels (not DMs)
+                entity = dialog.entity
+                if not is_group_or_channel(entity):
+                    continue
+                
+                groups_processed += 1
+                group_id = dialog.id
+                
+                # Try to get participants first
+                participants_added = await _add_group_participants_to_cache(agent, group_id, entity)
+                users_added += participants_added
+                
+                # Also try message senders to maximize cache population
+                # (some users might not be in participants list but have sent messages)
+                senders_added = await _add_message_senders_to_cache(agent, group_id)
+                users_added += senders_added
+                    
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Error processing dialog {dialog.id}: {e}")
+                continue
+        
+        logger.info(
+            f"[{agent.name}] Cache population complete: added {users_added} users from {groups_processed} groups"
+        )
+        
+    except Exception as e:
+        logger.warning(f"[{agent.name}] Error during cache population: {e}")
+
+
+async def _add_group_participants_to_cache(agent: Agent, group_id: int, entity) -> int:
+    """
+    Add group participants to the entity cache.
+    
+    Args:
+        agent: The agent instance
+        group_id: The group/channel ID
+        entity: The group/channel entity
+        
+    Returns:
+        Number of users added to cache
+    """
+    client = agent.client
+    users_added = 0
+    
+    try:
+        if isinstance(entity, Channel):
+            # For channels, get recent participants
+            participants = await client(GetParticipantsRequest(
+                channel=entity,
+                filter=ChannelParticipantsRecent(),
+                offset=0,
+                limit=200,  # Get up to 200 participants
+                hash=0
+            ))
+            
+            if hasattr(participants, 'users') and participants.users:
+                for user in participants.users:
+                    if isinstance(user, User):
+                        # Skip deleted users
+                        if getattr(user, "deleted", False):
+                            continue
+                        
+                        # Add to cache by calling get_cached_entity
+                        # This will fetch and cache the entity
+                        try:
+                            await agent.get_cached_entity(user.id)
+                            users_added += 1
+                        except Exception as e:
+                            logger.debug(f"[{agent.name}] Error caching user {user.id}: {e}")
+                            
+        elif isinstance(entity, Chat):
+            # For groups, try GetFullChatRequest to get participants
+            try:
+                full_chat = await client(GetFullChatRequest(group_id))
+                if hasattr(full_chat, 'full_chat') and hasattr(full_chat.full_chat, 'participants'):
+                    participants = full_chat.full_chat.participants
+                    if hasattr(participants, 'participants'):
+                        for participant in participants.participants:
+                            user_id = getattr(participant, 'user_id', None)
+                            if user_id:
+                                try:
+                                    entity = await agent.get_cached_entity(user_id)
+                                    if entity and isinstance(entity, User):
+                                        # Skip deleted users
+                                        if getattr(entity, "deleted", False):
+                                            continue
+                                        users_added += 1
+                                except Exception as e:
+                                    logger.debug(f"[{agent.name}] Error caching user {user_id}: {e}")
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Error getting full chat for group {group_id}: {e}")
+                # If GetFullChatRequest fails, we'll fall back to message senders
+                return 0
+                        
+    except Exception as e:
+        logger.debug(f"[{agent.name}] Error getting participants for group {group_id}: {e}")
+    
+    return users_added
+
+
+async def _add_message_senders_to_cache(agent: Agent, group_id: int) -> int:
+    """
+    Add message senders from the last 200 messages to the entity cache.
+    
+    Args:
+        agent: The agent instance
+        group_id: The group/channel ID
+        
+    Returns:
+        Number of users added to cache
+    """
+    client = agent.client
+    users_added = 0
+    seen_user_ids = set()
+    
+    try:
+        # Get the last 200 messages
+        async for message in client.iter_messages(group_id, limit=200):
+            sender_id = getattr(message, 'sender_id', None)
+            if not sender_id:
+                continue
+            
+            # Normalize sender_id (could be PeerUser, int, etc.)
+            if hasattr(sender_id, 'user_id'):
+                user_id = sender_id.user_id
+            elif isinstance(sender_id, int):
+                user_id = sender_id
+            else:
+                continue
+            
+            # Skip if we've already processed this user
+            if user_id in seen_user_ids:
+                continue
+            seen_user_ids.add(user_id)
+            
+            # Try to get the entity (this will cache it)
+            try:
+                entity = await agent.get_cached_entity(user_id)
+                if entity and isinstance(entity, User):
+                    # Skip deleted users
+                    if getattr(entity, "deleted", False):
+                        continue
+                    users_added += 1
+            except Exception as e:
+                logger.debug(f"[{agent.name}] Error caching sender {user_id}: {e}")
+                
+    except Exception as e:
+        logger.debug(f"[{agent.name}] Error getting messages for group {group_id}: {e}")
+    
+    return users_added
+
+
 async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     """
     Resolve a user_id (which can be a numeric ID, username, or phone number) to a channel_id.
@@ -338,11 +558,15 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
     user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
-    # Try to parse as integer (user ID) - if it's just digits without +, it's a Telegram ID
+    # Try to parse as integer (user ID or group/channel ID)
+    # Telegram IDs can be positive (users) or negative (groups/channels)
+    # Check if it's a valid integer (with optional minus sign) and not a phone number
     try:
-        # Check if it's all digits (no + prefix) - this is a Telegram ID
-        if user_id.isdigit():
-            return int(user_id)
+        # If it starts with +, it's a phone number, not an ID
+        if not user_id.startswith('+'):
+            # Try to parse as integer - this handles both positive and negative IDs
+            parsed_id = int(user_id)
+            return parsed_id
     except (ValueError, AttributeError):
         pass
     
@@ -352,7 +576,14 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         try:
             entity = await agent.client.get_entity(user_id)
         except Exception as e:
-            raise ValueError(f"Invalid phone number '{user_id}': {str(e)}") from e
+            # If initial resolution fails, try populating cache from groups and retry
+            logger.info(f"[{agent.name}] Phone number resolution failed for '{user_id}', attempting cache population...")
+            try:
+                await _populate_user_cache_from_groups(agent)
+                # Retry after populating cache
+                entity = await agent.client.get_entity(user_id)
+            except Exception as retry_e:
+                raise ValueError(f"Invalid phone number '{user_id}': {str(retry_e)}") from retry_e
         channel_id = getattr(entity, 'id', None)
         if channel_id is None:
             raise ValueError(f"Could not resolve phone number '{user_id}' to user ID")
