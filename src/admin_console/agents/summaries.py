@@ -37,31 +37,6 @@ def register_summary_routes(agents_bp: Blueprint):
             except ValueError:
                 return jsonify({"error": "Invalid user ID"}), 400
 
-            # Trigger backfill for missing dates using agent's executor (runs in agent's thread)
-            try:
-                async def _backfill_dates():
-                    try:
-                        storage = agent._storage
-                        if storage:
-                            await storage.backfill_summary_dates(channel_id, agent)
-                    except Exception as e:
-                        logger.warning(f"Backfill failed for {agent_config_name}/{user_id}: {e}", exc_info=True)
-                
-                # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
-                executor = agent.executor
-                if executor and executor.loop and executor.loop.is_running():
-                    # Schedule the coroutine without waiting for it
-                    asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
-                    logger.info(f"Scheduled backfill for {agent_config_name}/{user_id} (channel {channel_id})")
-                else:
-                    logger.info(
-                        f"Agent executor not available for {agent_config_name}, skipping backfill. "
-                        f"executor={executor}, loop={executor.loop if executor else None}, "
-                        f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
-                    )
-            except Exception as e:
-                # Don't fail the request if backfill setup fails
-                logger.warning(f"Failed to setup backfill for {agent_config_name}/{user_id}: {e}", exc_info=True)
 
             summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
             summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")

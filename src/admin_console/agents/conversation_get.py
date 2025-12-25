@@ -434,20 +434,20 @@ async def _replace_custom_emoji_in_reactions(
     if not reactions_str:
         return reactions_str
     
-    logger.info(f"Admin console: Processing reactions for message {message_id}")
+    logger.debug(f"Admin console: Processing reactions for message {message_id}")
     
     try:
         reactions_obj = getattr(message, 'reactions', None)
         if not reactions_obj:
-            logger.info(f"Admin console: Message {message_id} has no reactions object")
+            logger.debug(f"Admin console: Message {message_id} has no reactions object")
             return reactions_str
         
         recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
         if not recent_reactions:
-            logger.info(f"Admin console: Message {message_id} has no recent_reactions")
+            logger.debug(f"Admin console: Message {message_id} has no recent_reactions")
             return reactions_str
         
-        logger.info(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
+        logger.debug(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
         
         from utils import get_custom_emoji_name, extract_user_id_from_peer
         from handlers.received_helpers.message_processing import get_channel_name
@@ -578,32 +578,6 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
-        
-        # Trigger backfill for missing dates using agent's executor (runs in agent's thread)
-        try:
-            async def _backfill_dates():
-                try:
-                    storage = agent._storage
-                    if storage:
-                        await storage.backfill_summary_dates(channel_id, agent)
-                except Exception as e:
-                    logger.warning(f"Backfill failed for {agent_config_name}/{user_id}: {e}", exc_info=True)
-            
-            # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
-            executor = agent.executor
-            if executor and executor.loop and executor.loop.is_running():
-                # Schedule the coroutine without waiting for it
-                asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
-                logger.info(f"Scheduled backfill for {agent_config_name}/{user_id} (channel {channel_id})")
-            else:
-                logger.info(
-                    f"Agent executor not available for {agent_config_name}, skipping backfill. "
-                    f"executor={executor}, loop={executor.loop if executor else None}, "
-                    f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
-                )
-        except Exception as e:
-            # Don't fail the request if backfill setup fails
-            logger.warning(f"Failed to setup backfill for {agent_config_name}/{user_id}: {e}", exc_info=True)
         
         # Get highest summarized message ID to filter messages
         highest_summarized_id = _get_highest_summarized_message_id_for_api(agent.config_name, channel_id)
