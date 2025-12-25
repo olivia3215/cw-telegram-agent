@@ -106,3 +106,111 @@ def test_put_does_not_write_json_when_media_write_fails(tmp_path, monkeypatch):
     assert not (tmp_path / f"{unique_id}.json").exists()
     assert source.get_cached_record(unique_id) is None
 
+
+@pytest.mark.asyncio
+async def test_get_preserves_provenance_fields_when_existing(tmp_path):
+    """Test that channel_id, channel_name, and media_ts are preserved when they already exist."""
+    reset_media_source_registry()
+    source = get_directory_media_source(tmp_path)
+    unique_id = "preserve-provenance"
+    
+    # Create initial record with provenance fields
+    initial_record = {
+        "unique_id": unique_id,
+        "description": "original description",
+        "channel_id": -1002100080800,
+        "channel_name": "Cindy's World Pod 18",
+        "media_ts": "2025-12-20T05:15:31+00:00",
+    }
+    source.put(unique_id, initial_record.copy())
+    
+    # Try to update with different provenance fields and new metadata
+    result = await source.get(
+        unique_id,
+        channel_id=7181309525,  # Different channel_id
+        channel_name="Asmodeus",  # Different channel_name
+        media_ts="2025-12-24T19:09:53+00:00",  # Different media_ts
+        sticker_set_title="New Set Title",  # New metadata field
+    )
+    
+    # Verify provenance fields were preserved
+    assert result is not None
+    assert result["channel_id"] == -1002100080800  # Original value preserved
+    assert result["channel_name"] == "Cindy's World Pod 18"  # Original value preserved
+    assert result["media_ts"] == "2025-12-20T05:15:31+00:00"  # Original value preserved
+    assert result["sticker_set_title"] == "New Set Title"  # New field was added
+    
+    # Verify the record on disk also has preserved values
+    stored = json.loads((tmp_path / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert stored["channel_id"] == -1002100080800
+    assert stored["channel_name"] == "Cindy's World Pod 18"
+    assert stored["media_ts"] == "2025-12-20T05:15:31+00:00"
+
+
+@pytest.mark.asyncio
+async def test_get_sets_provenance_fields_when_missing(tmp_path):
+    """Test that channel_id, channel_name, and media_ts are set when they don't exist."""
+    reset_media_source_registry()
+    source = get_directory_media_source(tmp_path)
+    unique_id = "set-provenance"
+    
+    # Create initial record without provenance fields
+    initial_record = {
+        "unique_id": unique_id,
+        "description": "original description",
+    }
+    source.put(unique_id, initial_record.copy())
+    
+    # Try to update with provenance fields
+    result = await source.get(
+        unique_id,
+        channel_id=7181309525,
+        channel_name="Asmodeus",
+        media_ts="2025-12-24T19:09:53+00:00",
+    )
+    
+    # Verify provenance fields were set
+    assert result is not None
+    assert result["channel_id"] == 7181309525
+    assert result["channel_name"] == "Asmodeus"
+    assert result["media_ts"] == "2025-12-24T19:09:53+00:00"
+
+
+@pytest.mark.asyncio
+async def test_get_updates_provenance_fields_when_none(tmp_path):
+    """Test that channel_id, channel_name, and media_ts are updated when they are None."""
+    reset_media_source_registry()
+    source = get_directory_media_source(tmp_path)
+    unique_id = "update-none-provenance"
+    
+    # Create initial record with provenance fields set to None
+    # (simulating a case where they couldn't be resolved initially)
+    initial_record = {
+        "unique_id": unique_id,
+        "description": "original description",
+        "channel_id": None,
+        "channel_name": None,
+        "media_ts": None,
+    }
+    source.put(unique_id, initial_record.copy())
+    
+    # Try to update with valid provenance fields
+    result = await source.get(
+        unique_id,
+        channel_id=7181309525,
+        channel_name="Asmodeus",
+        media_ts="2025-12-24T19:09:53+00:00",
+    )
+    
+    # Verify provenance fields were updated (not preserved as None)
+    assert result is not None
+    assert result["channel_id"] == 7181309525
+    assert result["channel_name"] == "Asmodeus"
+    assert result["media_ts"] == "2025-12-24T19:09:53+00:00"
+    
+    # Verify the record on disk also has updated values
+    stored = json.loads((tmp_path / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert stored["channel_id"] == 7181309525
+    assert stored["channel_name"] == "Asmodeus"
+    assert stored["media_ts"] == "2025-12-24T19:09:53+00:00"
+

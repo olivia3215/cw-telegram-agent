@@ -299,9 +299,16 @@ class DirectoryMediaSource(MediaSource):
                 # Merge new metadata fields into the cached record if provided
                 # This allows updating cached records with additional metadata
                 # (like sticker_set_title, is_emoji_set) without regenerating
+                # However, preserve channel_id, channel_name, and media_ts if they already exist
+                # (these provenance fields should not be overwritten once set)
                 needs_update = False
+                preserved_fields = {"channel_id", "channel_name", "media_ts"}
                 for key, value in metadata.items():
                     if key != "skip_fallback" and value is not None:
+                        # Skip updating preserved fields if they already exist with a meaningful value
+                        # (allow updating if the field is None, as it means it wasn't resolved initially)
+                        if key in preserved_fields and record.get(key) is not None:
+                            continue
                         if key not in record or record[key] != value:
                             record[key] = value
                             needs_update = True
