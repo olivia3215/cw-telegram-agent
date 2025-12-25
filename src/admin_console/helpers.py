@@ -363,7 +363,6 @@ async def _populate_user_cache_from_groups(agent: Agent) -> None:
         return
     
     logger.info(f"[{agent.name}] Populating user cache from groups...")
-    _cache_population_last_run[agent_name] = now
     
     client = agent.client
     if not client:
@@ -373,6 +372,10 @@ async def _populate_user_cache_from_groups(agent: Agent) -> None:
     try:
         # Ensure client is connected
         await agent.ensure_client_connected()
+        
+        # Set rate limit timestamp only after client is verified and connected
+        # This ensures we don't block retries if client was None or connection failed
+        _cache_population_last_run[agent_name] = now
         
         users_added = 0
         groups_processed = 0
