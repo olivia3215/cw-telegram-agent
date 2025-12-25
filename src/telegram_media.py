@@ -238,6 +238,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
     # so we need to skip them here to avoid duplication
     is_animated = False
     is_video = False
+    is_audio = False
     video_duration = None
     audio_duration = None
     if isinstance(attrs, (list, tuple)):
@@ -247,13 +248,15 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
             n = a.__class__.__name__
             if n == "DocumentAttributeAnimated":
                 is_animated = True
+            elif n == "DocumentAttributeAudio":
+                # Check for audio attribute FIRST (before video) to avoid misclassification
+                is_audio = True
+                # Extract duration from DocumentAttributeAudio
+                audio_duration = getattr(a, "duration", None)
             elif n == "DocumentAttributeVideo":
                 is_video = True
                 # Extract duration from DocumentAttributeVideo
                 video_duration = getattr(a, "duration", None)
-            elif n == "DocumentAttributeAudio":
-                # Extract duration from DocumentAttributeAudio
-                audio_duration = getattr(a, "duration", None)
 
     uid = get_unique_id(doc)
     if not uid:
@@ -290,8 +293,10 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         return
 
     # Check for audio files first (before video check to avoid misclassifying audio/mp4 as video)
+    # Prioritize DocumentAttributeAudio over DocumentAttributeVideo
+    # Also check MIME type for audio (audio/mp4, audio/mpeg, etc.)
     # But skip if this is a voice message (handled by _maybe_add_voice_message)
-    if mime and mime.lower().startswith("audio/") and not hasattr(msg, "voice"):
+    if (is_audio or (mime and mime.lower().startswith("audio/"))) and not hasattr(msg, "voice"):
         for existing_item in out:
             if (
                 existing_item.kind == MediaKind.AUDIO
@@ -310,7 +315,7 @@ def _maybe_add_gif_or_animation(msg: Any, out: list[MediaItem]) -> None:
         )
         return
 
-    if (mime and mime.lower().startswith("video/")) or is_video:
+    if (mime and mime.lower().startswith("video/")) or (is_video and not is_audio):
         # Regular video files - include duration
         out.append(
             MediaItem(
