@@ -579,32 +579,6 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
         
-        # Trigger backfill for missing dates using agent's executor (runs in agent's thread)
-        try:
-            async def _backfill_dates():
-                try:
-                    storage = agent._storage
-                    if storage:
-                        await storage.backfill_summary_dates(channel_id, agent)
-                except Exception as e:
-                    logger.warning(f"Backfill failed for {agent_config_name}/{user_id}: {e}", exc_info=True)
-            
-            # Schedule backfill in agent's thread (non-blocking, fire-and-forget)
-            executor = agent.executor
-            if executor and executor.loop and executor.loop.is_running():
-                # Schedule the coroutine without waiting for it
-                asyncio.run_coroutine_threadsafe(_backfill_dates(), executor.loop)
-                logger.info(f"Scheduled backfill for {agent_config_name}/{user_id} (channel {channel_id})")
-            else:
-                logger.info(
-                    f"Agent executor not available for {agent_config_name}, skipping backfill. "
-                    f"executor={executor}, loop={executor.loop if executor else None}, "
-                    f"is_running={executor.loop.is_running() if executor and executor.loop else None}"
-                )
-        except Exception as e:
-            # Don't fail the request if backfill setup fails
-            logger.warning(f"Failed to setup backfill for {agent_config_name}/{user_id}: {e}", exc_info=True)
-        
         # Get highest summarized message ID to filter messages
         highest_summarized_id = _get_highest_summarized_message_id_for_api(agent.config_name, channel_id)
 

@@ -168,7 +168,7 @@ async def insert_received_task_for_conversation(
                         task.params["clear_mentions"] = True
                     if clear_reactions:
                         task.params["clear_reactions"] = True
-                    logger.info(
+                    logger.debug(
                         f"[{agent.name}] Skipping received task creation - active received task {task.id} "
                         f"(status: {task.status}) already exists for conversation {channel_id}"
                     )
