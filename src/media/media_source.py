@@ -233,17 +233,6 @@ class DirectoryMediaSource(MediaSource):
         "agent_telegram_id",
     }
     
-    # Core fields that are always kept
-    _CORE_FIELDS = {
-        "unique_id",
-        "kind",
-        "description",
-        "status",
-        "duration",
-        "mime_type",
-        "media_file",
-    }
-    
     # Sticker-specific fields (only keep if kind is sticker)
     _STICKER_FIELDS = {
         "sticker_set_name",
