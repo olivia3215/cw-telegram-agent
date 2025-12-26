@@ -331,18 +331,11 @@ class DirectoryMediaSource(MediaSource):
             if key in self._EXCLUDED_FIELDS:
                 continue
             
-            # Include core fields
-            if key in self._CORE_FIELDS:
-                filtered[key] = value
+            # Skip sticker-specific fields if this is not a sticker
+            if not is_sticker and key in self._STICKER_FIELDS:
                 continue
             
-            # Include sticker-specific fields if this is a sticker
-            if is_sticker and key in self._STICKER_FIELDS:
-                filtered[key] = value
-                continue
-            
-            # Preserve any other fields that might be needed for other media types
-            # (for future extensibility)
+            # Include all other fields (core fields, sticker fields if sticker, and other fields)
             filtered[key] = value
         
         return filtered
