@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670341882",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "🤤",
-  "description": "A cartoon duck wearing a smug, knowing expression is holding a joint in its left hand. Above it is the text \"HAHA, CLASSIC\".",
   "status": "curated",
-  "ts": "2025-10-08T23:08:08.591335+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670341882",
   "media_file": "773947703670341882.tgs",
+  "description": "A cartoon duck wearing a smug, knowing expression is holding a joint in its left hand. Above it is the text \"HAHA, CLASSIC\".",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "🤤"
 }

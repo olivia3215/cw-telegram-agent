@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291467",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "🤙",
-  "description": "The image features a cartoon-style illustration of a blond woman dressed as a nun, rendered in a playful and somewhat provocative manner. The woman has striking blue eyes, one of which is winking, and a bold red lipstick that draws attention to her lips, which are parted in a mischievous smile. A small beauty mark graces her upper lip. Her blond hair is styled in a retro, wavy fashion, contrasting with the traditional nun's habit. The habit is a combination of white and dark purple, with the white framing her face and a portion of her upper body, while the dark purple forms the veil and robe. A small red cross adorns the white part of her habit. She is making a \"call me\" gesture with her hand, thumb and pinky extended while the other fingers are folded down. Overall, the image is a lighthearted and slightly irreverent take on the traditional image of a nun.",
   "status": "curated",
-  "ts": "2025-11-13T23:16:51.474062+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291467",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image features a cartoon-style illustration of a blond woman dressed as a nun, rendered in a playful and somewhat provocative manner. The woman has striking blue eyes, one of which is winking, and a bold red lipstick that draws attention to her lips, which are parted in a mischievous smile. A small beauty mark graces her upper lip. Her blond hair is styled in a retro, wavy fashion, contrasting with the traditional nun's habit. The habit is a combination of white and dark purple, with the white framing her face and a portion of her upper body, while the dark purple forms the veil and robe. A small red cross adorns the white part of her habit. She is making a \"call me\" gesture with her hand, thumb and pinky extended while the other fingers are folded down. Overall, the image is a lighthearted and slightly irreverent take on the traditional image of a nun.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "🤙",
+  "media_file": "669159254791291467.webp"
 }

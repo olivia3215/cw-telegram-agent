@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291481",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "❤",
-  "description": "The image depicts an illustration of a pope, dressed in a golden mitre and robe emblazoned with red crosses, gently kissing the hand of a stylized nun. The nun, with her platinum blonde, curled hair and striking blue eyes, wears a traditional dark purple habit but in a somewhat provocative manner. Her expression suggests flirtatiousness or amusement, and a vibrant pink heart hovers playfully above her head. The cartoonish style of the artwork lends it a lighthearted, humorous tone, juxtaposing the traditional religious figures in an unexpected romantic or suggestive scenario.",
   "status": "curated",
-  "ts": "2025-11-13T23:10:19.729462+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291481",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image depicts an illustration of a pope, dressed in a golden mitre and robe emblazoned with red crosses, gently kissing the hand of a stylized nun. The nun, with her platinum blonde, curled hair and striking blue eyes, wears a traditional dark purple habit but in a somewhat provocative manner. Her expression suggests flirtatiousness or amusement, and a vibrant pink heart hovers playfully above her head. The cartoonish style of the artwork lends it a lighthearted, humorous tone, juxtaposing the traditional religious figures in an unexpected romantic or suggestive scenario.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "❤",
+  "media_file": "669159254791291481.webp"
 }

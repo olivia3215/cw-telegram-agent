@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670341891",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "🤑",
-  "description": "The video shows a cartoon duck with a top hat. Small spectacles give the duck a sophisticated look. It is surrounded by falling green paper currency and turns its head from side to side in glee.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:07.467694+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670341891",
   "media_file": "773947703670341891.tgs",
+  "description": "The video shows a cartoon duck with a top hat. Small spectacles give the duck a sophisticated look. It is surrounded by falling green paper currency and turns its head from side to side in glee.",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "🤑"
 }

@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291476",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "🤐",
-  "description": "The image depicts a cartoon nun with a surprised expression. She has a fair complexion, blonde hair peeking from underneath her white and dark purple nun's habit, and wide, bright blue eyes. Her mouth is covered by her hand, which has dark polished fingernails. She's wearing a dark purple nun's habit trimmed with white, with a visible gold cross pendant hanging from her neck.",
   "status": "curated",
-  "ts": "2025-11-13T23:06:41.485411+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291476",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image depicts a cartoon nun with a surprised expression. She has a fair complexion, blonde hair peeking from underneath her white and dark purple nun's habit, and wide, bright blue eyes. Her mouth is covered by her hand, which has dark polished fingernails. She's wearing a dark purple nun's habit trimmed with white, with a visible gold cross pendant hanging from her neck.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "🤐",
+  "media_file": "669159254791291476.webp"
 }

@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670342219",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "🧮",
-  "description": "The video features three cartoon swimming in a circle. There is a large mother duck in the center with tan skin, big cartoon eyes with eyelashes, and an orange beak. It has one finger raised to count the smaller ducks.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:10.592847+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670342219",
   "media_file": "773947703670342219.tgs",
+  "description": "The video features three cartoon swimming in a circle. There is a large mother duck in the center with tan skin, big cartoon eyes with eyelashes, and an orange beak. It has one finger raised to count the smaller ducks.",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "🧮"
 }

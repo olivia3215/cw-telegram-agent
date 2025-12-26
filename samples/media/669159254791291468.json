@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291468",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "🤔",
-  "description": "The image features a cartoon-style illustration of a young woman dressed in a nun's habit. Her light blonde, short hair is visible beneath the white wimple. She has fair skin, large, light blue eyes, and a thoughtful expression with a furrowed brow. A small beauty mark sits beside her full, red lips. Her right hand is raised to her chin in a pensive or questioning pose, with long, black-painted fingernails. She wears a greyish-purple habit, accented with a white collar and cuffs; the collar is decorated with a small, red cross. The overall impression is one of contemplation, with a slightly humorous and modern twist on the traditional nun attire.",
   "status": "curated",
-  "ts": "2025-11-13T23:08:54.921846+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291468",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image features a cartoon-style illustration of a young woman dressed in a nun's habit. Her light blonde, short hair is visible beneath the white wimple. She has fair skin, large, light blue eyes, and a thoughtful expression with a furrowed brow. A small beauty mark sits beside her full, red lips. Her right hand is raised to her chin in a pensive or questioning pose, with long, black-painted fingernails. She wears a greyish-purple habit, accented with a white collar and cuffs; the collar is decorated with a small, red cross. The overall impression is one of contemplation, with a slightly humorous and modern twist on the traditional nun attire.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "🤔",
+  "media_file": "669159254791291468.webp"
 }
