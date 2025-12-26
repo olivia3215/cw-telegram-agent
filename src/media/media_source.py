@@ -219,6 +219,38 @@ class DirectoryMediaSource(MediaSource):
     Loads all JSON files into memory at creation time for fast lookups
     without repeated disk I/O. Cache never expires.
     """
+    
+    # Fields to always exclude from config directories
+    _EXCLUDED_FIELDS = {
+        "ts",
+        "sender_id",
+        "sender_name",
+        "channel_id",
+        "channel_name",
+        "media_ts",
+        "skip_fallback",
+        "_on_disk",
+        "agent_telegram_id",
+    }
+    
+    # Core fields that are always kept
+    _CORE_FIELDS = {
+        "unique_id",
+        "kind",
+        "description",
+        "status",
+        "duration",
+        "mime_type",
+        "media_file",
+    }
+    
+    # Sticker-specific fields (only keep if kind is sticker)
+    _STICKER_FIELDS = {
+        "sticker_set_name",
+        "sticker_name",
+        "is_emoji_set",
+        "sticker_set_title",
+    }
 
     def __init__(self, directory: Path):
         """
@@ -234,7 +266,7 @@ class DirectoryMediaSource(MediaSource):
 
     def _is_config_directory(self) -> bool:
         """
-        Check if this directory is within a config directory (not state directory).
+        Check if this media directory is directly within a config directory (not state directory).
         
         Config directories are those in CONFIG_DIRECTORIES, and media is stored
         in {config_dir}/media/ subdirectories.
@@ -248,14 +280,6 @@ class DirectoryMediaSource(MediaSource):
                 config_path = Path(config_dir).resolve()
                 if parent_dir == config_path:
                     return True
-            # Check if this is within a config directory (for nested structures)
-            for config_dir in CONFIG_DIRECTORIES:
-                config_path = Path(config_dir).resolve()
-                try:
-                    abs_dir.relative_to(config_path)
-                    return True
-                except ValueError:
-                    continue
             return False
         except Exception:
             # If we can't determine, assume it's not a config directory to be safe
@@ -295,63 +319,25 @@ class DirectoryMediaSource(MediaSource):
         - failure_reason: Used to prevent fallback descriptions and track errors
         - original_mime_type: Used to correctly determine if TGS stickers are animated
         """
-        # Fields to always exclude from config directories
-        excluded_fields = {
-            "ts",
-            "sender_id",
-            "sender_name",
-            "channel_id",
-            "channel_name",
-            "media_ts",
-            "skip_fallback",
-            "_on_disk",
-            "agent_telegram_id",
-        }
-        
-        # Fields that are preserved if present (needed for pipeline health)
-        # These are not in excluded_fields so they will be preserved:
-        # - retryable: Used to mark temporary failures that should be retried
-        # - failure_reason: Used to prevent fallback descriptions and track errors
-        # - original_mime_type: Used to correctly determine if TGS stickers are animated
-        
-        # Core fields that are always kept
-        core_fields = {
-            "unique_id",
-            "kind",
-            "description",
-            "status",
-            "duration",
-            "mime_type",
-            "media_file",
-        }
-        
-        # Sticker-specific fields (only keep if kind is sticker)
-        sticker_fields = {
-            "sticker_set_name",
-            "sticker_name",
-            "is_emoji_set",
-            "sticker_set_title",
-        }
-        
         filtered = {}
         kind = record.get("kind")
         is_sticker = kind == "sticker"
         
         # Add core fields
-        for field in core_fields:
+        for field in self._CORE_FIELDS:
             if field in record:
                 filtered[field] = record[field]
         
         # Add sticker-specific fields if this is a sticker
         if is_sticker:
-            for field in sticker_fields:
+            for field in self._STICKER_FIELDS:
                 if field in record:
                     filtered[field] = record[field]
         
         # Preserve any other fields that might be needed for other media types
         # but exclude the explicitly excluded fields
         for key, value in record.items():
-            if key not in excluded_fields and key not in filtered:
+            if key not in self._EXCLUDED_FIELDS and key not in filtered:
                 # Allow other fields through (for future extensibility for other media types)
                 # but log a warning if we see something unexpected
                 filtered[key] = value
