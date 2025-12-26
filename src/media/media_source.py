@@ -318,29 +318,32 @@ class DirectoryMediaSource(MediaSource):
         - retryable: Used to mark temporary failures that should be retried
         - failure_reason: Used to prevent fallback descriptions and track errors
         - original_mime_type: Used to correctly determine if TGS stickers are animated
+        
+        Preserves the original field order from the record.
         """
         filtered = {}
         kind = record.get("kind")
         is_sticker = kind == "sticker"
         
-        # Add core fields
-        for field in self._CORE_FIELDS:
-            if field in record:
-                filtered[field] = record[field]
-        
-        # Add sticker-specific fields if this is a sticker
-        if is_sticker:
-            for field in self._STICKER_FIELDS:
-                if field in record:
-                    filtered[field] = record[field]
-        
-        # Preserve any other fields that might be needed for other media types
-        # but exclude the explicitly excluded fields
+        # Iterate over the record once to preserve original order
         for key, value in record.items():
-            if key not in self._EXCLUDED_FIELDS and key not in filtered:
-                # Allow other fields through (for future extensibility for other media types)
-                # but log a warning if we see something unexpected
+            # Skip excluded fields
+            if key in self._EXCLUDED_FIELDS:
+                continue
+            
+            # Include core fields
+            if key in self._CORE_FIELDS:
                 filtered[key] = value
+                continue
+            
+            # Include sticker-specific fields if this is a sticker
+            if is_sticker and key in self._STICKER_FIELDS:
+                filtered[key] = value
+                continue
+            
+            # Preserve any other fields that might be needed for other media types
+            # (for future extensibility)
+            filtered[key] = value
         
         return filtered
 
