@@ -15,5 +15,6 @@
   "channel_id": 6754281260,
   "channel_name": "Wendy",
   "media_ts": "2025-12-11T20:10:45+00:00",
-  "mime_type": "application/x-tgsticker"
+  "mime_type": "application/x-tgsticker",
+  "agent_telegram_id": 7359509635
 }

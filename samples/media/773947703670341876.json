@@ -15,5 +15,6 @@
   "channel_id": -1002100080800,
   "channel_name": "Cindy’s World Pod 18",
   "media_ts": "2025-12-06T03:38:01+00:00",
-  "mime_type": "application/x-tgsticker"
+  "mime_type": "application/x-tgsticker",
+  "agent_telegram_id": 6154475698
 }
