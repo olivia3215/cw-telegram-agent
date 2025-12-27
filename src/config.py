@@ -83,9 +83,17 @@ START_TYPING_DELAY: float = _parse_start_typing_delay()
 
 
 def _parse_typing_speed() -> float:
-    """Parse TYPING_SPEED with error handling."""
+    """Parse TYPING_SPEED with error handling.
+    
+    Validates that TYPING_SPEED is >= 1 to prevent division by zero
+    and ensure reasonable typing speed. Defaults to 60.0 if invalid.
+    """
     try:
-        return float(os.environ.get("TYPING_SPEED", "60"))
+        value = float(os.environ.get("TYPING_SPEED", "60"))
+        # Validate that TYPING_SPEED is >= 1 to prevent division by zero
+        if value < 1:
+            return 60.0
+        return value
     except ValueError:
         return 60.0
 
