@@ -100,94 +100,106 @@ def test_challenge_manager_isolated_per_app_instance():
             manager_b.verify(code)
 
 
-def test_global_parameters_reject_empty_default_agent_llm():
+def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
     """Test that DEFAULT_AGENT_LLM cannot be set to empty string or whitespace."""
-    client = _make_client()
+    # Create a temporary .env file to avoid writing to the real one
+    test_env_file = tmp_path / ".env"
+    test_env_file.touch()
     
-    # Test empty string
-    response = client.post(
-        "/admin/api/global-parameters",
-        json={"name": "DEFAULT_AGENT_LLM", "value": ""},
-    )
-    assert response.status_code == 400
-    data = response.get_json()
-    assert "error" in data
-    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
-    
-    # Test whitespace-only
-    response = client.post(
-        "/admin/api/global-parameters",
-        json={"name": "DEFAULT_AGENT_LLM", "value": "   "},
-    )
-    assert response.status_code == 400
-    data = response.get_json()
-    assert "error" in data
-    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
-    
-    # Test whitespace with tabs/newlines
-    response = client.post(
-        "/admin/api/global-parameters",
-        json={"name": "DEFAULT_AGENT_LLM", "value": "\t\n  "},
-    )
-    assert response.status_code == 400
-    data = response.get_json()
-    assert "error" in data
-    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+    # Mock get_env_file_path to return our temporary file
+    with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
+        client = _make_client()
+        
+        # Test empty string
+        response = client.post(
+            "/admin/api/global-parameters",
+            json={"name": "DEFAULT_AGENT_LLM", "value": ""},
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+        assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+        
+        # Test whitespace-only
+        response = client.post(
+            "/admin/api/global-parameters",
+            json={"name": "DEFAULT_AGENT_LLM", "value": "   "},
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+        assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+        
+        # Test whitespace with tabs/newlines
+        response = client.post(
+            "/admin/api/global-parameters",
+            json={"name": "DEFAULT_AGENT_LLM", "value": "\t\n  "},
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert "error" in data
+        assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
 
 
-def test_global_parameters_reject_zero_or_negative_typing_speed():
+def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
     """Test that TYPING_SPEED cannot be set to values less than 1."""
     import config
+    
+    # Create a temporary .env file to avoid writing to the real one
+    test_env_file = tmp_path / ".env"
+    test_env_file.touch()
     
     # Save original value to restore later
     original_typing_speed = config.TYPING_SPEED
     
     try:
-        client = _make_client()
-        
-        # Test zero
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "TYPING_SPEED", "value": "0"},
-        )
-        assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
-        
-        # Test negative
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "TYPING_SPEED", "value": "-1"},
-        )
-        assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
-        
-        # Test value less than 1 (e.g., 0.5)
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "TYPING_SPEED", "value": "0.5"},
-        )
-        assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
-        
-        # Test that 1 is accepted
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "TYPING_SPEED", "value": "1"},
-        )
-        assert response.status_code == 200
-        
-        # Test that values greater than 1 are accepted
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "TYPING_SPEED", "value": "60"},
-        )
-        assert response.status_code == 200
+        # Mock get_env_file_path to return our temporary file
+        with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
+            client = _make_client()
+            
+            # Test zero
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "TYPING_SPEED", "value": "0"},
+            )
+            assert response.status_code == 400
+            data = response.get_json()
+            assert "error" in data
+            assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
+            
+            # Test negative
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "TYPING_SPEED", "value": "-1"},
+            )
+            assert response.status_code == 400
+            data = response.get_json()
+            assert "error" in data
+            assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
+            
+            # Test value less than 1 (e.g., 0.5)
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "TYPING_SPEED", "value": "0.5"},
+            )
+            assert response.status_code == 400
+            data = response.get_json()
+            assert "error" in data
+            assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
+            
+            # Test that 1 is accepted
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "TYPING_SPEED", "value": "1"},
+            )
+            assert response.status_code == 200
+            
+            # Test that values greater than 1 are accepted
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "TYPING_SPEED", "value": "60"},
+            )
+            assert response.status_code == 200
     finally:
         # Restore original value to avoid affecting other tests
         config.TYPING_SPEED = original_typing_speed
@@ -196,49 +208,55 @@ def test_global_parameters_reject_zero_or_negative_typing_speed():
             del os.environ["TYPING_SPEED"]
 
 
-def test_global_parameters_reject_negative_delays():
+def test_global_parameters_reject_negative_delays(tmp_path):
     """Test that START_TYPING_DELAY and SELECT_STICKER_DELAY cannot be negative."""
     import config
+    
+    # Create a temporary .env file to avoid writing to the real one
+    test_env_file = tmp_path / ".env"
+    test_env_file.touch()
     
     # Save original values to restore later
     original_start_delay = config.START_TYPING_DELAY
     original_sticker_delay = config.SELECT_STICKER_DELAY
     
     try:
-        client = _make_client()
-        
-        # Test negative START_TYPING_DELAY
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "START_TYPING_DELAY", "value": "-1"},
-        )
-        assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
-        
-        # Test negative SELECT_STICKER_DELAY
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "SELECT_STICKER_DELAY", "value": "-2"},
-        )
-        assert response.status_code == 400
-        data = response.get_json()
-        assert "error" in data
-        assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
-        
-        # Test that zero and positive values are accepted for delays
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "START_TYPING_DELAY", "value": "0"},
-        )
-        assert response.status_code == 200
-        
-        response = client.post(
-            "/admin/api/global-parameters",
-            json={"name": "SELECT_STICKER_DELAY", "value": "2"},
-        )
-        assert response.status_code == 200
+        # Mock get_env_file_path to return our temporary file
+        with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
+            client = _make_client()
+            
+            # Test negative START_TYPING_DELAY
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "START_TYPING_DELAY", "value": "-1"},
+            )
+            assert response.status_code == 400
+            data = response.get_json()
+            assert "error" in data
+            assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
+            
+            # Test negative SELECT_STICKER_DELAY
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "SELECT_STICKER_DELAY", "value": "-2"},
+            )
+            assert response.status_code == 400
+            data = response.get_json()
+            assert "error" in data
+            assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
+            
+            # Test that zero and positive values are accepted for delays
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "START_TYPING_DELAY", "value": "0"},
+            )
+            assert response.status_code == 200
+            
+            response = client.post(
+                "/admin/api/global-parameters",
+                json={"name": "SELECT_STICKER_DELAY", "value": "2"},
+            )
+            assert response.status_code == 200
     finally:
         # Restore original values to avoid affecting other tests
         config.START_TYPING_DELAY = original_start_delay
