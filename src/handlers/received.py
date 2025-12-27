@@ -375,12 +375,13 @@ async def _schedule_tasks(
                 fallback_reply_to = None
 
             # Calculate delay based on task type
+            from config import START_TYPING_DELAY, TYPING_SPEED, SELECT_STICKER_DELAY
             if task.type == "send":
                 raw_text = task.params.get("text")
                 message = str(raw_text) if raw_text is not None else ""
-                delay_seconds = 2 + len(message) / 60
+                delay_seconds = START_TYPING_DELAY + len(message) / TYPING_SPEED
             else:  # sticker
-                delay_seconds = 4
+                delay_seconds = SELECT_STICKER_DELAY
 
             # Create wait task for typing indicator
             wait_task = task.insert_delay(graph, delay_seconds)

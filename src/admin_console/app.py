@@ -22,6 +22,7 @@ from admin_console.docs import docs_bp
 from admin_console.prompts import prompts_bp
 from admin_console.agents import agents_bp
 from admin_console.routes import routes_bp, scan_media_directories, set_available_directories
+from admin_console.global_parameters import global_parameters_bp
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ def create_admin_app() -> Flask:
     app.register_blueprint(prompts_bp, url_prefix="/admin")
     app.register_blueprint(agents_bp, url_prefix="/admin")
     app.register_blueprint(routes_bp, url_prefix="/admin")
+    app.register_blueprint(global_parameters_bp, url_prefix="/admin")
     
     # Add before_request handler for authentication (applied to all routes)
     # Import here to avoid circular imports
