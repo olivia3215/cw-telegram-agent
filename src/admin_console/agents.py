@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from flask import Blueprint, jsonify  # pyright: ignore[reportMissingImports]
+from typing import Any
 
 from register_agents import register_all_agents, all_agents as get_all_agents
 
@@ -67,6 +68,17 @@ conversation_module.register_conversation_routes(agents_bp)
 login_module = _load_submodule("login")
 login_module.register_login_routes(agents_bp)
 
+
+def _sort_agents_by_name(agent_list: list[dict[str, Any]]) -> None:
+    """Sort a list of agent dictionaries alphabetically by name (case-insensitive).
+    
+    Args:
+        agent_list: List of agent dictionaries, each containing at least a "name" key.
+                    The list is modified in-place.
+    """
+    agent_list.sort(key=lambda x: x["name"].lower())
+
+
 @agents_bp.route("/api/agents", methods=["GET"])
 def api_agents():
     """Get list of all agents."""
@@ -85,6 +97,7 @@ def api_agents():
             }
             for agent in agents
         ]
+        _sort_agents_by_name(agent_list)
         return jsonify({"agents": agent_list})
     except Exception as e:
         logger.error(f"Error getting agents list: {e}")
