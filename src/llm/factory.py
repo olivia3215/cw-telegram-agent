@@ -6,7 +6,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from config import GEMINI_MODEL, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, GROK_MODEL, OPENAI_API_KEY
+from config import DEFAULT_AGENT_LLM, GEMINI_MODEL, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, GROK_MODEL, OPENAI_API_KEY
 
 if TYPE_CHECKING:
     from .base import LLM
@@ -43,14 +43,8 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
         ImportError: If GrokLLM is not available and grok is requested
     """
     if not llm_name or not llm_name.strip():
-        # Default to Gemini with hardcoded default model (per documentation)
-        if not GOOGLE_GEMINI_API_KEY:
-            raise ValueError(
-                "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY or specify an LLM with its API key."
-            )
-        # Use hardcoded default model when LLM field is omitted (per documentation)
-        default_model = "gemini-3-flash-preview"
-        return GeminiLLM(model=default_model, api_key=GOOGLE_GEMINI_API_KEY)
+        # Use DEFAULT_AGENT_LLM when LLM field is omitted
+        return create_llm_from_name(DEFAULT_AGENT_LLM)
 
     llm_name = llm_name.strip().lower()
 

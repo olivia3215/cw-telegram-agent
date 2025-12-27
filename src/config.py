@@ -70,5 +70,43 @@ def _parse_media_budget() -> int:
 MEDIA_DESC_BUDGET_PER_TICK: int = _parse_media_budget()
 
 
+# Typing behavior configuration
+def _parse_start_typing_delay() -> float:
+    """Parse START_TYPING_DELAY with error handling."""
+    try:
+        return float(os.environ.get("START_TYPING_DELAY", "2"))
+    except ValueError:
+        return 2.0
+
+
+START_TYPING_DELAY: float = _parse_start_typing_delay()
+
+
+def _parse_typing_speed() -> float:
+    """Parse TYPING_SPEED with error handling."""
+    try:
+        return float(os.environ.get("TYPING_SPEED", "60"))
+    except ValueError:
+        return 60.0
+
+
+TYPING_SPEED: float = _parse_typing_speed()
+
+
+def _parse_select_sticker_delay() -> float:
+    """Parse SELECT_STICKER_DELAY with error handling."""
+    try:
+        return float(os.environ.get("SELECT_STICKER_DELAY", "4"))
+    except ValueError:
+        return 4.0
+
+
+SELECT_STICKER_DELAY: float = _parse_select_sticker_delay()
+
+
+# Default LLM configuration
+DEFAULT_AGENT_LLM: str = os.environ.get("DEFAULT_AGENT_LLM", "gemini")
+
+
 # Fetched resource lifetime in seconds (how long to keep fetched web resources alive)
 FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes

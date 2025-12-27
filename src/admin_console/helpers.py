@@ -129,7 +129,8 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
 
 def get_default_llm() -> str:
     """Get the default LLM name (system default)."""
-    return "gemini-3-flash-preview"  # Default Gemini model
+    from config import DEFAULT_AGENT_LLM
+    return DEFAULT_AGENT_LLM
 
 
 def get_available_llms() -> list[dict[str, Any]]:

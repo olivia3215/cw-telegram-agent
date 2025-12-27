@@ -506,6 +506,7 @@
                 <button class="tab-button active" data-subtab="media">Media Editor</button>
                 <button class="tab-button" data-subtab="documents-global">Documents</button>
                 <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
+                <button class="tab-button" data-subtab="parameters-global">Parameters</button>
             </nav>
             <div id="global-container" class="main-container">
                 <!-- Media Editor Subtab -->
@@ -608,6 +609,15 @@
                     <div class="main-container" style="margin-top: 16px;">
                         <div id="global-prompts-editor-container">
                             <div class="loading">Select a config directory and role prompt to edit</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Parameters Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="parameters-global">
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="global-parameters-container">
+                            <div class="loading">Loading parameters...</div>
                         </div>
                     </div>
                 </div>
@@ -2277,6 +2287,8 @@
                     loadGlobalDocsConfigDirectories();
                 } else if (subtabName === 'role-prompts') {
                     loadGlobalPromptsConfigDirectories();
+                } else if (subtabName === 'parameters-global') {
+                    loadGlobalParameters();
                 }
             } else if (mainTabName === 'conversations') {
                 // Reload conversation partners dropdown to update asterisks for new subtab
@@ -6692,6 +6704,97 @@
                 });
             } catch (error) {
                 console.error('Error loading config directories:', error);
+            }
+        }
+        
+        // Global parameters functions
+        async function loadGlobalParameters() {
+            const container = document.getElementById('global-parameters-container');
+            container.innerHTML = '<div class="loading">Loading parameters...</div>';
+            
+            try {
+                const response = await fetchWithAuth('/admin/api/global-parameters');
+                const data = await response.json();
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                    return;
+                }
+                
+                const parameters = data.parameters || [];
+                
+                container.innerHTML = `
+                    <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-top: 0;">Global Parameters</h3>
+                        <div class="agent-param-grid">
+                            ${parameters.map(param => {
+                                const inputType = param.type === 'float' ? 'number' : 'text';
+                                const stepAttr = param.type === 'float' ? 'step="0.1"' : '';
+                                return `
+                                    <div class="agent-param-section">
+                                        <h3>${escapeHtml(param.name)}</h3>
+                                        <input 
+                                            id="global-param-${escapeHtml(param.name)}" 
+                                            type="${inputType}" 
+                                            class="agent-param-input" 
+                                            value="${escapeHtml(param.value)}"
+                                            ${stepAttr}
+                                            onchange="updateGlobalParameter('${escJsAttr(param.name)}', this.value)">
+                                        <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                            ${escapeHtml(param.comment || '')}
+                                            ${param.default ? ` (Default: ${escapeHtml(param.default)})` : ''}
+                                        </div>
+                                        <div id="global-param-status-${escapeHtml(param.name)}" style="margin-top: 4px; font-size: 12px; color: #28a745;"></div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading global parameters:', error);
+                container.innerHTML = `<div class="error">Error loading parameters: ${escapeHtml(error.message || error)}</div>`;
+            }
+        }
+        
+        async function updateGlobalParameter(parameterName, value) {
+            const statusEl = document.getElementById(`global-param-status-${parameterName}`);
+            if (statusEl) {
+                statusEl.textContent = 'Saving...';
+                statusEl.style.color = '#666';
+            }
+            
+            try {
+                const response = await fetchWithAuth('/admin/api/global-parameters', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: parameterName,
+                        value: value
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    if (statusEl) {
+                        statusEl.textContent = `Error: ${escapeHtml(data.error)}`;
+                        statusEl.style.color = '#dc3545';
+                    }
+                    alert(`Error updating ${parameterName}: ${data.error}`);
+                } else {
+                    if (statusEl) {
+                        statusEl.textContent = 'Saved';
+                        statusEl.style.color = '#28a745';
+                    }
+                }
+            } catch (error) {
+                console.error(`Error updating ${parameterName}:`, error);
+                if (statusEl) {
+                    statusEl.textContent = `Error: ${escapeHtml(error.message || error)}`;
+                    statusEl.style.color = '#dc3545';
+                }
+                alert(`Error updating ${parameterName}: ${error.message || error}`);
             }
         }
 
