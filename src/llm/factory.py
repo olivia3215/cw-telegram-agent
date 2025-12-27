@@ -22,7 +22,7 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
 
     Routing rules:
     - Names starting with "gemini" route through GeminiLLM
-      - If name is exactly "gemini", uses GEMINI_MODEL env variable (required if using "gemini")
+      - If name is exactly "gemini", uses GEMINI_MODEL env variable if set, otherwise defaults to "gemini-3-flash-preview"
       - Otherwise uses the specified model name
     - Names starting with "grok" route through GrokLLM
       - If name is exactly "grok", uses GROK_MODEL env variable if set, otherwise defaults to "grok-4-fast-non-reasoning"
@@ -61,11 +61,8 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
             )
         # Use env variable if just "gemini", otherwise use specified model name
         if llm_name == "gemini":
-            if not GEMINI_MODEL:
-                raise ValueError(
-                    "Missing GEMINI_MODEL environment variable. Set GEMINI_MODEL to specify the Gemini model."
-                )
-            model = GEMINI_MODEL
+            # Default to gemini-3-flash-preview if GEMINI_MODEL not set (per documentation)
+            model = GEMINI_MODEL if GEMINI_MODEL else "gemini-3-flash-preview"
         else:
             model = llm_name
         return GeminiLLM(model=model, api_key=GOOGLE_GEMINI_API_KEY)
