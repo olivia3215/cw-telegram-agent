@@ -140,9 +140,19 @@ def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str
     # Type validation
     if param_type == "float":
         try:
-            float(value_str)
+            float_value = float(value_str)
         except ValueError:
             return False, f"Invalid value for {parameter_name}: must be a number"
+        
+        # Validate TYPING_SPEED must be 1 or greater to prevent division by zero and ensure reasonable typing speed
+        if parameter_name == "TYPING_SPEED":
+            if float_value < 1:
+                return False, f"TYPING_SPEED must be 1 or greater (got {float_value})"
+        
+        # Validate delay parameters must be non-negative
+        if parameter_name in ("START_TYPING_DELAY", "SELECT_STICKER_DELAY"):
+            if float_value < 0:
+                return False, f"{parameter_name} must be non-negative (got {float_value})"
     
     # Special validation for DEFAULT_AGENT_LLM
     if parameter_name == "DEFAULT_AGENT_LLM":
