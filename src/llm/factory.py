@@ -44,6 +44,12 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
     """
     if not llm_name or not llm_name.strip():
         # Use DEFAULT_AGENT_LLM when LLM field is omitted
+        # Safeguard: prevent infinite recursion if DEFAULT_AGENT_LLM is empty/whitespace
+        if not DEFAULT_AGENT_LLM or not DEFAULT_AGENT_LLM.strip():
+            raise ValueError(
+                "DEFAULT_AGENT_LLM is empty or whitespace. "
+                "Set DEFAULT_AGENT_LLM to a valid LLM name (e.g., 'gemini', 'grok', 'gpt')."
+            )
         return create_llm_from_name(DEFAULT_AGENT_LLM)
 
     llm_name = llm_name.strip().lower()
