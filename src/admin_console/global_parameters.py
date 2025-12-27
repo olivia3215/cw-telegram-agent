@@ -163,9 +163,6 @@ def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str
         # Reject empty or whitespace-only values to prevent infinite recursion
         if not value_str or not value_str.strip():
             return False, "DEFAULT_AGENT_LLM cannot be empty or whitespace"
-        value_lower = value_str.strip().lower()
-        if value_lower == "gemini" and not config.GEMINI_MODEL:
-            return False, "DEFAULT_AGENT_LLM cannot be set to 'gemini' when GEMINI_MODEL is not set"
     
     return True, None
 
