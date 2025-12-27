@@ -6700,7 +6700,7 @@
                 // Load config directories and agents in parallel
                 const [configDirsResponse, agentsResponse] = await Promise.all([
                     fetch('/admin/api/config-directories'),
-                    fetch('/admin/api/agents-for-docs')
+                    fetchWithAuth(`${API_BASE}/agents`)
                 ]);
                 
                 const configDirsData = await configDirsResponse.json();
@@ -6772,7 +6772,7 @@
         
         async function loadAgentsForMove(selectId) {
             try {
-                const response = await fetch('/admin/api/agents-for-docs');
+                const response = await fetchWithAuth(`${API_BASE}/agents`);
                 const data = await response.json();
                 
                 const select = document.getElementById(selectId);

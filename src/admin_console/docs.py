@@ -467,29 +467,3 @@ def api_config_directories():
         return jsonify({"error": str(e)}), 500
 
 
-@docs_bp.route("/api/agents-for-docs", methods=["GET"])
-def api_agents_for_docs():
-    """Get list of agents for docs operations."""
-    try:
-        from register_agents import register_all_agents, all_agents as get_all_agents
-        
-        register_all_agents()
-        agents = list(get_all_agents(include_disabled=True))
-        
-        agent_list = [
-            {
-                "name": agent.name,
-                "config_name": agent.config_name,
-                "config_directory": agent.config_directory,
-            }
-            for agent in agents
-        ]
-        
-        return jsonify({"agents": agent_list})
-    
-    except Exception as e:
-        logger.error(f"Error getting agents list: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-
