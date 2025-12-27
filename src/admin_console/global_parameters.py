@@ -9,6 +9,7 @@ Global parameters editor routes and functionality for the admin console.
 
 import logging
 import os
+import shlex
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
@@ -68,18 +69,21 @@ def update_env_file(parameter_name: str, value: str) -> None:
     
     Args:
         parameter_name: Name of the environment variable
-        value: Value to set
+        value: Value to set (will be shell-quoted for safety)
     """
     env_file = get_env_file_path()
     metadata = PARAMETER_METADATA.get(parameter_name, {})
     comment = metadata.get("comment", "")
+    
+    # Shell-quote the value to prevent command injection when the .env file is sourced
+    quoted_value = shlex.quote(value)
     
     # Append blank line, comment, and export line
     with env_file.open("a") as f:
         f.write("\n")
         if comment:
             f.write(f"# {comment}\n")
-        f.write(f"export {parameter_name}={value}\n")
+        f.write(f"export {parameter_name}={quoted_value}\n")
 
 
 def update_runtime_config(parameter_name: str, value: str) -> None:

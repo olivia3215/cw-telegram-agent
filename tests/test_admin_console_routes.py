@@ -1,4 +1,7 @@
 import json
+import shlex
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -245,4 +248,71 @@ def test_global_parameters_reject_negative_delays():
             del os.environ["START_TYPING_DELAY"]
         if "SELECT_STICKER_DELAY" in os.environ:
             del os.environ["SELECT_STICKER_DELAY"]
+
+
+def test_global_parameters_shell_quote_values(tmp_path):
+    """Test that values with shell metacharacters are properly quoted in .env file."""
+    import config
+    from admin_console.global_parameters import update_env_file, get_env_file_path
+    
+    # Save original value to restore later
+    original_media_model = config.MEDIA_MODEL
+    
+    try:
+        # Create a temporary .env file
+        test_env_file = tmp_path / ".env"
+        test_env_file.touch()
+        
+        # Mock get_env_file_path to return our temporary file
+        with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
+            # Test with various shell metacharacters that could cause command injection
+            test_cases = [
+                ("model$(whoami)", "Command substitution"),
+                ("model`id`", "Backtick command substitution"),
+                ("model with spaces", "Spaces"),
+                ("model$VAR", "Variable expansion"),
+                ("model; rm -rf /", "Command separator"),
+                ("model\nnewline", "Newlines"),
+                ("model'single'quote", "Single quotes"),
+                ('model"double"quote', "Double quotes"),
+                ("model&background", "Background process"),
+                ("model|pipe", "Pipe"),
+            ]
+            
+            for test_value, description in test_cases:
+                    # Clear the file for each test
+                    test_env_file.write_text("")
+                    
+                    # Update the parameter
+                    update_env_file("MEDIA_MODEL", test_value)
+                    
+                    # Read the file content
+                    content = test_env_file.read_text()
+                    
+                    # Verify the value is properly quoted
+                    expected_quoted = shlex.quote(test_value)
+                    expected_line = f"export MEDIA_MODEL={expected_quoted}"
+                    
+                    # Check that the expected line appears in the content
+                    # (may span multiple lines if value contains newlines)
+                    assert expected_line in content, (
+                        f"Failed for {description}: expected '{expected_line}' in file content, "
+                        f"but got: {content!r}"
+                    )
+                    
+                    # For values without newlines, also verify the exact line format
+                    if "\n" not in test_value:
+                        # Verify that the quoted value matches what shlex.quote would produce
+                        lines = [line.strip() for line in content.split("\n") if line.strip() and not line.strip().startswith("#")]
+                        export_line = [line for line in lines if line.startswith("export MEDIA_MODEL=")][0]
+                        assert export_line == expected_line, (
+                            f"Failed for {description}: export line should be properly quoted. "
+                            f"Expected: {expected_line}, Got: {export_line}"
+                        )
+    finally:
+        # Restore original value
+        config.MEDIA_MODEL = original_media_model
+        import os
+        if "MEDIA_MODEL" in os.environ:
+            del os.environ["MEDIA_MODEL"]
 
