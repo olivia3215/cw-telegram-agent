@@ -128,9 +128,26 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
 
 
 def get_default_llm() -> str:
-    """Get the default LLM name (system default)."""
+    """Get the default LLM name (system default).
+    
+    Resolves provider identifiers (e.g., "gemini", "grok") to specific model names
+    that match the values in get_available_llms().
+    
+    Uses the centralized resolution logic from llm.factory.resolve_llm_name_to_model().
+    """
     from config import DEFAULT_AGENT_LLM
-    return DEFAULT_AGENT_LLM
+    from llm.factory import resolve_llm_name_to_model
+    
+    # Use centralized resolution logic
+    # If DEFAULT_AGENT_LLM is None/empty, resolve_llm_name_to_model will handle it
+    # (it will use DEFAULT_AGENT_LLM, and if that's also empty, raise ValueError)
+    try:
+        return resolve_llm_name_to_model(DEFAULT_AGENT_LLM)
+    except ValueError:
+        # If DEFAULT_AGENT_LLM is somehow empty/invalid, fallback to gemini default
+        # This shouldn't happen per config defaults, but be safe
+        from config import GEMINI_MODEL
+        return GEMINI_MODEL if GEMINI_MODEL else "gemini-3-flash-preview"
 
 
 def get_available_llms() -> list[dict[str, Any]]:
