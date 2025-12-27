@@ -6778,7 +6778,7 @@
                 
                 if (data.error) {
                     if (statusEl) {
-                        statusEl.textContent = `Error: ${escapeHtml(data.error)}`;
+                        statusEl.textContent = `Error: ${data.error}`;
                         statusEl.style.color = '#dc3545';
                     }
                     alert(`Error updating ${parameterName}: ${data.error}`);
@@ -6791,7 +6791,7 @@
             } catch (error) {
                 console.error(`Error updating ${parameterName}:`, error);
                 if (statusEl) {
-                    statusEl.textContent = `Error: ${escapeHtml(error.message || error)}`;
+                    statusEl.textContent = `Error: ${error.message || error}`;
                     statusEl.style.color = '#dc3545';
                 }
                 alert(`Error updating ${parameterName}: ${error.message || error}`);
