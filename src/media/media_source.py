@@ -219,6 +219,27 @@ class DirectoryMediaSource(MediaSource):
     Loads all JSON files into memory at creation time for fast lookups
     without repeated disk I/O. Cache never expires.
     """
+    
+    # Fields to always exclude from config directories
+    _EXCLUDED_FIELDS = {
+        "ts",
+        "sender_id",
+        "sender_name",
+        "channel_id",
+        "channel_name",
+        "media_ts",
+        "skip_fallback",
+        "_on_disk",
+        "agent_telegram_id",
+    }
+    
+    # Sticker-specific fields (only keep if kind is sticker)
+    _STICKER_FIELDS = {
+        "sticker_set_name",
+        "sticker_name",
+        "is_emoji_set",
+        "sticker_set_title",
+    }
 
     def __init__(self, directory: Path):
         """
@@ -232,6 +253,82 @@ class DirectoryMediaSource(MediaSource):
         self._lock = threading.RLock()
         self._load_cache()
 
+    def _is_config_directory(self) -> bool:
+        """
+        Check if this media directory is directly within a config directory (not state directory).
+        
+        Config directories are those in CONFIG_DIRECTORIES, and media is stored
+        in {config_dir}/media/ subdirectories.
+        State directory is {STATE_DIRECTORY}/media/.
+        """
+        try:
+            abs_dir = self.directory.resolve()
+            # Check if parent directory is one of the config directories
+            parent_dir = abs_dir.parent
+            for config_dir in CONFIG_DIRECTORIES:
+                config_path = Path(config_dir).resolve()
+                if parent_dir == config_path:
+                    return True
+            return False
+        except Exception:
+            # If we can't determine, assume it's not a config directory to be safe
+            return False
+
+    def _filter_config_fields(self, record: dict[str, Any]) -> dict[str, Any]:
+        """
+        Filter record to only include core fields appropriate for config directories.
+        
+        Core fields kept:
+        - unique_id
+        - kind
+        - sticker_set_name (for stickers)
+        - sticker_name (for stickers)
+        - description
+        - status
+        - duration
+        - mime_type
+        - is_emoji_set (for stickers)
+        - sticker_set_title (for stickers)
+        - media_file
+        - Other fields needed for non-sticker media types (preserved as needed)
+        
+        Fields removed:
+        - ts
+        - sender_id
+        - sender_name
+        - channel_id
+        - channel_name
+        - media_ts
+        - skip_fallback
+        - _on_disk
+        - agent_telegram_id
+        
+        Note: The following fields are preserved if present (needed for pipeline health):
+        - retryable: Used to mark temporary failures that should be retried
+        - failure_reason: Used to prevent fallback descriptions and track errors
+        - original_mime_type: Used to correctly determine if TGS stickers are animated
+        
+        Preserves the original field order from the record.
+        """
+        filtered = {}
+        kind = record.get("kind")
+        is_sticker = kind == "sticker"
+        
+        # Iterate over the record once to preserve original order
+        for key, value in record.items():
+            # Skip excluded fields
+            if key in self._EXCLUDED_FIELDS:
+                continue
+            
+            # Skip sticker-specific fields if this is not a sticker
+            if not is_sticker and key in self._STICKER_FIELDS:
+                continue
+            
+            # Include all other fields (core fields, sticker fields if sticker, and other fields)
+            filtered[key] = value
+        
+        return filtered
+
     def _load_cache(self) -> None:
         """Load all JSON files from the directory into memory cache."""
         with self._lock:
@@ -242,11 +339,15 @@ class DirectoryMediaSource(MediaSource):
                 return
 
             loaded_count = 0
+            is_config_dir = self._is_config_directory()
             for json_file in self.directory.glob("*.json"):
                 try:
                     unique_id = json_file.stem
                     data = json.loads(json_file.read_text(encoding="utf-8"))
                     if isinstance(data, dict):
+                        # Filter fields if this is a config directory
+                        if is_config_dir:
+                            data = self._filter_config_fields(data)
                         self._mem_cache[unique_id] = data
                         loaded_count += 1
                     else:
@@ -295,6 +396,20 @@ class DirectoryMediaSource(MediaSource):
                     f"DirectoryMediaSource: cache hit for {unique_id} in {self.directory.name}"
                 )
                 record = self._mem_cache[unique_id].copy()
+                # Check if this is a config directory once
+                is_config_dir = self._is_config_directory()
+                
+                # Ensure record is filtered for config directories (in case it wasn't filtered on load)
+                if is_config_dir:
+                    record = self._filter_config_fields(record)
+                
+                # For config directories, don't add non-core fields
+                # Note: retryable, failure_reason, and original_mime_type are preserved
+                # if they exist (needed for pipeline health)
+                excluded_fields_config = {
+                    "ts", "sender_id", "sender_name", "channel_id", "channel_name",
+                    "media_ts", "skip_fallback", "_on_disk", "agent_telegram_id"
+                }
                 
                 # Merge new metadata fields into the cached record if provided
                 # This allows updating cached records with additional metadata
@@ -304,7 +419,12 @@ class DirectoryMediaSource(MediaSource):
                 needs_update = False
                 preserved_fields = {"channel_id", "channel_name", "media_ts", "agent_telegram_id"}
                 for key, value in metadata.items():
-                    if key != "skip_fallback" and value is not None:
+                    if key == "skip_fallback":
+                        continue
+                    # For config directories, skip excluded fields
+                    if is_config_dir and key in excluded_fields_config:
+                        continue
+                    if value is not None:
                         # Skip updating preserved fields if they already exist with a meaningful value
                         # (allow updating if the field is None, as it means it wasn't resolved initially)
                         if key in preserved_fields and record.get(key) is not None:
@@ -318,7 +438,8 @@ class DirectoryMediaSource(MediaSource):
                 
                 # Extract agent_telegram_id from agent parameter if missing from record
                 # (agent is passed as a separate parameter, not in metadata)
-                if agent is not None and "agent_telegram_id" not in record:
+                # Only add agent_telegram_id for state directories, not config directories
+                if not is_config_dir and agent is not None and "agent_telegram_id" not in record:
                     agent_telegram_id = getattr(agent, "agent_id", None)
                     if agent_telegram_id is not None:
                         record["agent_telegram_id"] = agent_telegram_id
@@ -330,6 +451,10 @@ class DirectoryMediaSource(MediaSource):
                 # If we updated the record, write it back to disk and memory cache
                 if needs_update:
                     try:
+                        # For config directories, filter fields to only include core fields
+                        if is_config_dir:
+                            record = self._filter_config_fields(record)
+                        
                         json_file = self.directory / f"{unique_id}.json"
                         temp_file = json_file.with_name(f"{json_file.name}.tmp")
                         temp_file.write_text(
@@ -387,9 +512,15 @@ class DirectoryMediaSource(MediaSource):
                     # (we want to retry BUDGET_EXHAUSTED stickers when budget returns)
                     if not MediaStatus.is_temporary_failure(status):
                         record["status"] = MediaStatus.GENERATED.value
-                    record["ts"] = clock.now(UTC).isoformat()
+                    # Only add ts for state directories, not config directories
+                    is_config_dir_fallback = self._is_config_directory()
+                    if not is_config_dir_fallback:
+                        record["ts"] = clock.now(UTC).isoformat()
 
                     # Update the cache with the new description
+                    # For config directories, filter the record before caching
+                    if is_config_dir_fallback:
+                        record = self._filter_config_fields(record)
                     self._mem_cache[unique_id] = record.copy()
 
                 return record
@@ -441,8 +572,12 @@ class DirectoryMediaSource(MediaSource):
             file_path = self.directory / f"{unique_id}.json"
             temp_path = self.directory / f"{unique_id}.json.tmp"
 
-            # Mark record as stored on disk
-            record["_on_disk"] = True
+            # Filter fields if this is a config directory
+            if self._is_config_directory():
+                record = self._filter_config_fields(record)
+            else:
+                # For state directories, mark record as stored on disk
+                record["_on_disk"] = True
 
             # Write to temporary file first, then atomically rename
             temp_path.write_text(

@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291466",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😭",
-  "description": "The image presents a cartoon-style depiction of a crying nun. The nun has pale skin, bright red lipstick, and blonde hair that peeks out from under her traditional nun's habit, which is a dark purple color with white trim. Her eyes are closed, and large, bright blue tears stream down her face. She has her hand raised to her forehead in a gesture of distress. She's wearing a purple dress with white trim at the collar and cuffs, and there are gold crosses stitched onto her dress at the neck and on the right cuff. The overall tone is somewhat humorous.",
   "status": "curated",
-  "ts": "2025-11-13T23:14:12.221047+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291466",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image presents a cartoon-style depiction of a crying nun. The nun has pale skin, bright red lipstick, and blonde hair that peeks out from under her traditional nun's habit, which is a dark purple color with white trim. Her eyes are closed, and large, bright blue tears stream down her face. She has her hand raised to her forehead in a gesture of distress. She's wearing a purple dress with white trim at the collar and cuffs, and there are gold crosses stitched onto her dress at the neck and on the right cuff. The overall tone is somewhat humorous.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "😭",
+  "media_file": "669159254791291466.webp"
 }

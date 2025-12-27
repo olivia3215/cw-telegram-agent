@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670342106",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "🦠",
-  "description": "The video shows a cartoon of a yellow rubber duck holding a pink bar of soap in its wings which it uses to wash. A green cartoon germ floats behind the duck.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:10.296386+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670342106",
   "media_file": "773947703670342106.tgs",
+  "description": "The video shows a cartoon of a yellow rubber duck holding a pink bar of soap in its wings which it uses to wash. A green cartoon germ floats behind the duck.",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "🦠"
 }

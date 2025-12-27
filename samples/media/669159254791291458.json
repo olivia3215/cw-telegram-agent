@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291458",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😘",
-  "description": "The image presents a cartoonish, stylized rendering of a young woman dressed as a nun, exuding a playful and provocative demeanor. She wears a nun's habit in shades of white and dark purple, with her short, platinum blonde hair peeking out from underneath. One blue eye is open, while the other is winked shut in a flirty gesture. Her lips are painted a bright red, pursed for a kiss, and her cheeks are rosy. A gold cross hangs from a thin chain around her neck, drawing attention to her ample cleavage, partially exposed by the low neckline of her habit. Her manicured hands are positioned to either side of her body, with black painted nails. She appears to be blowing a kiss, and a pink heart floats from her mouth, adding to the flirtatious and humorous tone of the image.",
   "status": "curated",
-  "ts": "2025-11-13T23:07:41.180574+00:00",
-  "sender_id": 6765630192,
-  "sender_name": "Sister Mary",
-  "channel_id": -1002100080800,
-  "channel_name": "Cindy’s World Pod 18",
-  "media_ts": "2025-12-20T05:12:19+00:00",
+  "unique_id": "669159254791291458",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image presents a cartoonish, stylized rendering of a young woman dressed as a nun, exuding a playful and provocative demeanor. She wears a nun's habit in shades of white and dark purple, with her short, platinum blonde hair peeking out from underneath. One blue eye is open, while the other is winked shut in a flirty gesture. Her lips are painted a bright red, pursed for a kiss, and her cheeks are rosy. A gold cross hangs from a thin chain around her neck, drawing attention to her ample cleavage, partially exposed by the low neckline of her habit. Her manicured hands are positioned to either side of her body, with black painted nails. She appears to be blowing a kiss, and a pink heart floats from her mouth, adding to the flirtatious and humorous tone of the image.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 8509235284
+  "sticker_name": "😘",
+  "media_file": "669159254791291458.webp"
 }

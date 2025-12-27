@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291473",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "👎",
-  "description": "A cartoon sticker depicts a woman dressed as a nun with a rebellious and provocative expression. She has blonde, stylized hair with curled ends peeking out from under her traditional white and dark grey nun's habit. Her left eye is a striking blue, while her right eye is winking suggestively. Her tongue is sticking out in a playful, slightly rude manner, and she has a small mole near her mouth. She is wearing a low-cut dark grey dress beneath the white bib of the nun's habit, a gold cross necklace hangs between her breasts. Her left hand is visible and gesturing a \"thumbs down.\"",
   "status": "curated",
-  "ts": "2025-11-13T23:06:25.079194+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291473",
   "duration": null,
-  "skip_fallback": true,
+  "description": "A cartoon sticker depicts a woman dressed as a nun with a rebellious and provocative expression. She has blonde, stylized hair with curled ends peeking out from under her traditional white and dark grey nun's habit. Her left eye is a striking blue, while her right eye is winking suggestively. Her tongue is sticking out in a playful, slightly rude manner, and she has a small mole near her mouth. She is wearing a low-cut dark grey dress beneath the white bib of the nun's habit, a gold cross necklace hangs between her breasts. Her left hand is visible and gesturing a \"thumbs down.\"",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "👎",
+  "media_file": "669159254791291473.webp"
 }

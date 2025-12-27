@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291492",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "👌",
-  "description": "The image depicts a stylized cartoon woman dressed as a nun, but with a provocative twist. She has bright blue eyes, fair skin with a prominent beauty mark near her lip, and platinum blonde hair styled in a retro-glamourous fashion. Her red lips are slightly parted in a knowing smile. She is wearing a traditional nun's habit, the hood is a crisp white and the veil is a deep violet, but her cleavage is prominently displayed. Around her neck, she wears a gold cross pendant on a thin gold chain. Her right hand is raised and making the \"okay\" sign. The overall tone is playful and suggestive, presenting a subversion of the traditional nun image.",
   "status": "curated",
-  "ts": "2025-11-13T23:06:08.697194+00:00",
-  "sender_id": 6765630192,
-  "sender_name": "Sister Mary",
-  "channel_id": 6899498634,
-  "channel_name": "Michael Duboy",
-  "media_ts": "2025-12-23T21:27:21+00:00",
+  "unique_id": "669159254791291492",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image depicts a stylized cartoon woman dressed as a nun, but with a provocative twist. She has bright blue eyes, fair skin with a prominent beauty mark near her lip, and platinum blonde hair styled in a retro-glamourous fashion. Her red lips are slightly parted in a knowing smile. She is wearing a traditional nun's habit, the hood is a crisp white and the veil is a deep violet, but her cleavage is prominently displayed. Around her neck, she wears a gold cross pendant on a thin gold chain. Her right hand is raised and making the \"okay\" sign. The overall tone is playful and suggestive, presenting a subversion of the traditional nun image.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "👌",
+  "media_file": "669159254791291492.webp"
 }

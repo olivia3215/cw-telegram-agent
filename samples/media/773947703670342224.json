@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670342224",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "🐯",
-  "description": "The video showcases a series of animated duck-like characters with different color schemes and designs. Above the character are three floating circles in pink, orange with a white ring, and gray. The first character is orange with brown tiger stripes, white ears, and a yellow bill. It also has two small white fangs. The next character is gray with orange floral designs, black eyes with orange pupils, and a light gray bill. The final character is a bright pink with a blue bill and a blue mohawk.",
   "status": "curated",
-  "ts": "2025-10-08T23:07:58.797953+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670342224",
   "media_file": "773947703670342224.tgs",
+  "description": "The video showcases a series of animated duck-like characters with different color schemes and designs. Above the character are three floating circles in pink, orange with a white ring, and gray. The first character is orange with brown tiger stripes, white ears, and a yellow bill. It also has two small white fangs. The next character is gray with orange floral designs, black eyes with orange pupils, and a light gray bill. The final character is a bright pink with a blue bill and a blue mohawk.",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "🐯"
 }

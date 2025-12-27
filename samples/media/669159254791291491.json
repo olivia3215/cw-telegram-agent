@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291491",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "👏",
-  "description": "The image features a cartoon-style depiction of a young woman dressed as a nun, rendered with vibrant colors and a playful aesthetic. She has fair skin, bright blue eyes, and short, voluminous blonde hair that peeks out from under her nun's habit. A small beauty mark is visible on her left cheek near her red lips. She is wearing a traditional nun's outfit, predominantly in shades of purple and white. The main garment is a long, flowing purple dress or robe, and she also wears a white wimple or headdress that frames her face. Her cuffs are also white, adorned with small, cross-shaped buttons. The woman is shown clapping her hands together in front of her, and radiating lines come out to emphasize the clapping.",
   "status": "curated",
-  "ts": "2025-11-13T23:14:38.053452+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291491",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image features a cartoon-style depiction of a young woman dressed as a nun, rendered with vibrant colors and a playful aesthetic. She has fair skin, bright blue eyes, and short, voluminous blonde hair that peeks out from under her nun's habit. A small beauty mark is visible on her left cheek near her red lips. She is wearing a traditional nun's outfit, predominantly in shades of purple and white. The main garment is a long, flowing purple dress or robe, and she also wears a white wimple or headdress that frames her face. Her cuffs are also white, adorned with small, cross-shaped buttons. The woman is shown clapping her hands together in front of her, and radiating lines come out to emphasize the clapping.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "👏",
+  "media_file": "669159254791291491.webp"
 }

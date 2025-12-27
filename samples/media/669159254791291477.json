@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291477",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "❓",
-  "description": "A cartoon image depicts a blonde woman dressed as a nun, operating a Ouija board. The nun has pale skin, closed eyes, red lipstick, and a beauty mark near her lips. She is wearing a white wimple covered by a long, draping habit in shades of lavender and dark purple. Her white collar reveals a generous cleavage, adorned with a golden crucifix on a matching chain. Her hands rest on a triangular, light-brown planchette placed on the Ouija board. The board, also light-brown, is inscribed with the words \"OUIJA\" at the bottom, followed by \"YES\" and \"NO\" on either side. Above this, the letters of the alphabet are arranged in a semi-circular fashion. Floating above the nun's head is a golden question mark.",
   "status": "curated",
-  "ts": "2025-11-13T23:12:17.927392+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291477",
   "duration": null,
-  "skip_fallback": true,
+  "description": "A cartoon image depicts a blonde woman dressed as a nun, operating a Ouija board. The nun has pale skin, closed eyes, red lipstick, and a beauty mark near her lips. She is wearing a white wimple covered by a long, draping habit in shades of lavender and dark purple. Her white collar reveals a generous cleavage, adorned with a golden crucifix on a matching chain. Her hands rest on a triangular, light-brown planchette placed on the Ouija board. The board, also light-brown, is inscribed with the words \"OUIJA\" at the bottom, followed by \"YES\" and \"NO\" on either side. Above this, the letters of the alphabet are arranged in a semi-circular fashion. Floating above the nun's head is a golden question mark.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "❓",
+  "media_file": "669159254791291477.webp"
 }

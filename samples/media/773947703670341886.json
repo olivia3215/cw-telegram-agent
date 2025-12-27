@@ -1,20 +1,12 @@
 {
-  "unique_id": "773947703670341886",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "👍",
-  "description": "The video shows a stylized cartoon rubber duck whose hand morphs into a huge thumbs up emoji.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:01.237178+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670341886",
   "media_file": "773947703670341886.tgs",
-  "is_emoji_set": false,
-  "sticker_set_title": "Duck",
-  "sender_id": 7359509635,
-  "sender_name": "Heidi",
-  "channel_id": 6754281260,
-  "channel_name": "Wendy",
-  "media_ts": "2025-12-18T00:23:49+00:00",
+  "description": "The video shows a stylized cartoon rubber duck whose hand morphs into a huge thumbs up emoji.",
+  "kind": "sticker",
   "mime_type": "application/x-tgsticker",
-  "agent_telegram_id": 7359509635
+  "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
+  "sticker_set_title": "Duck",
+  "sticker_name": "👍"
 }

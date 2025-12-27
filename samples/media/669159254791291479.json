@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291479",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😈",
-  "description": "The image features a stylized, cartoon-like depiction of a blonde woman dressed in a nun's habit. The habit is a muted purple color with white trim and a white wimple framing her face. She has short, sculpted blonde hair with retro-style curls framing her forehead. Her skin is fair, and she has a dark beauty mark on her cheek. Her expression is mischievous, with narrowed blue eyes and a smirk playing on her red lips. Her hands are clasped together at chest level, fingers interlaced, and she is wearing a thin gold cross necklace. Her fingernails are painted black. The overall impression is one of seductive subversiveness, a play on the traditional image of a nun.",
   "status": "curated",
-  "ts": "2025-11-13T23:21:04.346846+00:00",
-  "sender_id": 6765630192,
-  "sender_name": "Sister Mary",
-  "channel_id": 6899498634,
-  "channel_name": "Michael Duboy",
-  "media_ts": "2025-12-23T21:46:31+00:00",
+  "unique_id": "669159254791291479",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image features a stylized, cartoon-like depiction of a blonde woman dressed in a nun's habit. The habit is a muted purple color with white trim and a white wimple framing her face. She has short, sculpted blonde hair with retro-style curls framing her forehead. Her skin is fair, and she has a dark beauty mark on her cheek. Her expression is mischievous, with narrowed blue eyes and a smirk playing on her red lips. Her hands are clasped together at chest level, fingers interlaced, and she is wearing a thin gold cross necklace. Her fingernails are painted black. The overall impression is one of seductive subversiveness, a play on the traditional image of a nun.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "😈",
+  "media_file": "669159254791291479.webp"
 }

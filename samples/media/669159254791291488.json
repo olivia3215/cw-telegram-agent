@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291488",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😡",
-  "description": "The image depicts a cartoon rendering of an extremely angry nun. She has pale skin, blonde, rolled hair peeking out from under her dark purple nun's veil, bright blue eyes, and a red mouth open in a scream. Her eyebrows are furrowed in a deep scowl, and two puffs of white \"steam\" emanate from either side of her head, further emphasizing her rage. She wears a white, high-collared blouse under a dark purple habit dress, and a gold cross hangs from a thin chain around her neck. Her hands are raised and outstretched, fingers splayed as if she is about to grab or strangle someone. The cuffs of her habit are white, each marked with a small red cross.",
   "status": "curated",
-  "ts": "2025-11-13T23:20:05.062043+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291488",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image depicts a cartoon rendering of an extremely angry nun. She has pale skin, blonde, rolled hair peeking out from under her dark purple nun's veil, bright blue eyes, and a red mouth open in a scream. Her eyebrows are furrowed in a deep scowl, and two puffs of white \"steam\" emanate from either side of her head, further emphasizing her rage. She wears a white, high-collared blouse under a dark purple habit dress, and a gold cross hangs from a thin chain around her neck. Her hands are raised and outstretched, fingers splayed as if she is about to grab or strangle someone. The cuffs of her habit are white, each marked with a small red cross.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "😡",
+  "media_file": "669159254791291488.webp"
 }

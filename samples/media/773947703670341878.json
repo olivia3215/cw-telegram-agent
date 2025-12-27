@@ -1,14 +1,11 @@
 {
-  "unique_id": "773947703670341878",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "😈",
-  "description": "A cartoon animation of a purple rubber duck with black eyes and a dark orange beak. This duck has short horns on its head and its arms are positioned in front of it as if it's plotting something. A blue line appears around the base of the duck, suggesting that it is sitting in water.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:03.787861+00:00",
-  "_on_disk": true,
+  "unique_id": "773947703670341878",
   "media_file": "773947703670341878.tgs",
+  "description": "A cartoon animation of a purple rubber duck with black eyes and a dark orange beak. This duck has short horns on its head and its arms are positioned in front of it as if it's plotting something. A blue line appears around the base of the duck, suggesting that it is sitting in water.",
+  "kind": "sticker",
   "is_emoji_set": false,
+  "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "agent_telegram_id": 7359509635
+  "sticker_name": "😈"
 }

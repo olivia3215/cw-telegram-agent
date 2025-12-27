@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291494",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😊",
-  "description": "A cartoon image portrays a woman dressed as a nun, rendered in a vibrant, stylized manner. She has fair skin, with noticeable blush on her cheeks and glossy red lipstick accentuating her lips, which are adorned with a beauty mark. Her eyes are closed, and she appears serene, almost flirtatious. She is wearing a traditional nun's habit in shades of purple and white. A gold cross hangs from a delicate chain around her neck. Her manicured fingers, painted with black nail polish, are gently pressed against her mouth.",
   "status": "curated",
-  "ts": "2025-11-13T23:05:01.092415+00:00",
-  "sender_id": 6765630192,
-  "sender_name": "Sister Mary",
-  "channel_id": -1002100080800,
-  "channel_name": "Cindy’s World Pod 18",
-  "media_ts": "2025-12-19T19:32:34+00:00",
+  "unique_id": "669159254791291494",
   "duration": null,
-  "skip_fallback": true,
+  "description": "A cartoon image portrays a woman dressed as a nun, rendered in a vibrant, stylized manner. She has fair skin, with noticeable blush on her cheeks and glossy red lipstick accentuating her lips, which are adorned with a beauty mark. Her eyes are closed, and she appears serene, almost flirtatious. She is wearing a traditional nun's habit in shades of purple and white. A gold cross hangs from a delicate chain around her neck. Her manicured fingers, painted with black nail polish, are gently pressed against her mouth.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 8509235284
+  "sticker_name": "😊",
+  "media_file": "669159254791291494.webp"
 }

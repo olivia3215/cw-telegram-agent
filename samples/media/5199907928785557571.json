@@ -1,13 +1,11 @@
 {
-  "unique_id": "5199907928785557571",
-  "kind": "sticker",
-  "sticker_set_name": "UtyaDuck",
-  "sticker_name": "😢",
-  "description": "The video shows a cartoon image of a yellow rubber ducky crying. The ducky has black eyes and brows that angle down towards the center of its face. The duck's beak is an orange triangle shape, and its mouth is open, showing a dark-red inside. Water droplets in a pale blue color appear to be falling from the duckling's eyes.",
   "status": "curated",
-  "ts": "2025-10-08T23:08:05.541273+00:00",
-  "_on_disk": true,
+  "unique_id": "5199907928785557571",
   "media_file": "5199907928785557571.tgs",
+  "description": "The video shows a cartoon image of a yellow rubber ducky crying. The ducky has black eyes and brows that angle down towards the center of its face. The duck's beak is an orange triangle shape, and its mouth is open, showing a dark-red inside. Water droplets in a pale blue color appear to be falling from the duckling's eyes.",
+  "kind": "sticker",
   "is_emoji_set": false,
-  "sticker_set_title": "Duck"
+  "sticker_set_name": "UtyaDuck",
+  "sticker_set_title": "Duck",
+  "sticker_name": "😢"
 }

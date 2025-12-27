@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291472",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "🙏",
-  "description": "The image depicts a stylized cartoon of a nun kneeling with her hands clasped in prayer. She has pale skin, large, expressive blue eyes, and short, wavy blonde hair. Her nun's habit is a shade of violet and it is draped over her shoulders and head, with white collar pieces visible at the neckline of her dress. The habit extends down to the floor, pooling around her knees in folds. Her lips are painted a bright red, and a small beauty mark is visible near her lip. Her expression is one of supplication, with her eyes looking upward and her hands pressed together in front of her chest.",
   "status": "curated",
-  "ts": "2025-11-13T23:15:21.527947+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291472",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image depicts a stylized cartoon of a nun kneeling with her hands clasped in prayer. She has pale skin, large, expressive blue eyes, and short, wavy blonde hair. Her nun's habit is a shade of violet and it is draped over her shoulders and head, with white collar pieces visible at the neckline of her dress. The habit extends down to the floor, pooling around her knees in folds. Her lips are painted a bright red, and a small beauty mark is visible near her lip. Her expression is one of supplication, with her eyes looking upward and her hands pressed together in front of her chest.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "🙏",
+  "media_file": "669159254791291472.webp"
 }

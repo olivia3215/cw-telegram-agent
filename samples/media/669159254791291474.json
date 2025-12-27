@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291474",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "😏",
-  "description": "The image is a cartoon-style drawing of a blonde-haired woman dressed in a nun's habit. The habit is primarily a dark purplish-grey color with a white bib-like front and matching white cuffs on the sleeves. A gold-colored crucifix hangs from a thin chain around her neck. The woman has fair skin, blue eyes, and a sultry expression, with red lipstick emphasizing her lips. She's holding a finger to her chin in a suggestive or coy manner.",
   "status": "curated",
-  "ts": "2025-11-13T23:05:48.642154+00:00",
-  "sender_id": 6765630192,
-  "sender_name": "Sister Mary",
-  "channel_id": 6899498634,
-  "channel_name": "Michael Duboy",
-  "media_ts": "2025-12-23T21:08:17+00:00",
+  "unique_id": "669159254791291474",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The image is a cartoon-style drawing of a blonde-haired woman dressed in a nun's habit. The habit is primarily a dark purplish-grey color with a white bib-like front and matching white cuffs on the sleeves. A gold-colored crucifix hangs from a thin chain around her neck. The woman has fair skin, blue eyes, and a sultry expression, with red lipstick emphasizing her lips. She's holding a finger to her chin in a suggestive or coy manner.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "😏",
+  "media_file": "669159254791291474.webp"
 }

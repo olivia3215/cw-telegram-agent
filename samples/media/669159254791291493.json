@@ -1,21 +1,13 @@
 {
-  "unique_id": "669159254791291493",
-  "kind": "sticker",
-  "sticker_set_name": "NNNNun",
-  "sticker_name": "🙁",
-  "description": "The illustration depicts a cartoon-style nun with a sad expression, seated with both knees bent and to the side. She is wearing a traditional nun's habit in shades of purple, with a white wimple framing her face. Her hair is short, blonde, and styled in a retro, curled bob. She has fair skin, blue eyes, and dark mascara. A small cross pendant hangs around her neck. Her fingernails are painted black.",
   "status": "curated",
-  "ts": "2025-11-13T23:06:59.130613+00:00",
-  "sender_id": null,
-  "sender_name": null,
-  "channel_id": null,
-  "channel_name": null,
-  "media_ts": null,
+  "unique_id": "669159254791291493",
   "duration": null,
-  "skip_fallback": true,
+  "description": "The illustration depicts a cartoon-style nun with a sad expression, seated with both knees bent and to the side. She is wearing a traditional nun's habit in shades of purple, with a white wimple framing her face. Her hair is short, blonde, and styled in a retro, curled bob. She has fair skin, blue eyes, and dark mascara. A small cross pendant hangs around her neck. Her fingernails are painted black.",
+  "kind": "sticker",
   "mime_type": "image/webp",
-  "_on_disk": true,
   "is_emoji_set": false,
+  "sticker_set_name": "NNNNun",
   "sticker_set_title": "Naughty Nun",
-  "agent_telegram_id": 6765630192
+  "sticker_name": "🙁",
+  "media_file": "669159254791291493.webp"
 }
