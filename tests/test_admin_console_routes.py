@@ -96,3 +96,38 @@ def test_challenge_manager_isolated_per_app_instance():
         with pytest.raises(ChallengeNotFound):
             manager_b.verify(code)
 
+
+def test_global_parameters_reject_empty_default_agent_llm():
+    """Test that DEFAULT_AGENT_LLM cannot be set to empty string or whitespace."""
+    client = _make_client()
+    
+    # Test empty string
+    response = client.post(
+        "/admin/api/global-parameters",
+        json={"name": "DEFAULT_AGENT_LLM", "value": ""},
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+    
+    # Test whitespace-only
+    response = client.post(
+        "/admin/api/global-parameters",
+        json={"name": "DEFAULT_AGENT_LLM", "value": "   "},
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+    
+    # Test whitespace with tabs/newlines
+    response = client.post(
+        "/admin/api/global-parameters",
+        json={"name": "DEFAULT_AGENT_LLM", "value": "\t\n  "},
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert "error" in data
+    assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
+
