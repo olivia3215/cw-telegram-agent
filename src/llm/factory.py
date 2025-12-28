@@ -6,7 +6,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from config import DEFAULT_AGENT_LLM, GEMINI_MODEL, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, GROK_MODEL, OPENAI_API_KEY
+from config import GEMINI_MODEL, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, GROK_MODEL, OPENAI_API_KEY
 
 if TYPE_CHECKING:
     from .base import LLM
@@ -40,6 +40,8 @@ def resolve_llm_name_to_model(llm_name: str | None) -> str:
         ValueError: If DEFAULT_AGENT_LLM is empty/whitespace when llm_name is None/empty
     """
     if not llm_name or not llm_name.strip():
+        # Import at function level to pick up runtime config changes
+        from config import DEFAULT_AGENT_LLM
         # Use DEFAULT_AGENT_LLM when LLM field is omitted
         # Safeguard: prevent infinite recursion if DEFAULT_AGENT_LLM is empty/whitespace
         if not DEFAULT_AGENT_LLM or not DEFAULT_AGENT_LLM.strip():
