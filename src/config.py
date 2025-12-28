@@ -72,3 +72,16 @@ MEDIA_DESC_BUDGET_PER_TICK: int = _parse_media_budget()
 
 # Fetched resource lifetime in seconds (how long to keep fetched web resources alive)
 FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes
+
+
+# MySQL configuration
+MYSQL_HOST: str = os.environ.get("CINDY_AGENT_MYSQL_HOST", "localhost")
+MYSQL_PORT: int = int(os.environ.get("CINDY_AGENT_MYSQL_PORT", "3306"))
+MYSQL_DATABASE: str | None = os.environ.get("CINDY_AGENT_MYSQL_DATABASE")
+MYSQL_USER: str | None = os.environ.get("CINDY_AGENT_MYSQL_USER")
+MYSQL_PASSWORD: str | None = os.environ.get("CINDY_AGENT_MYSQL_PASSWORD")
+MYSQL_POOL_SIZE: int = int(os.environ.get("CINDY_AGENT_MYSQL_POOL_SIZE", "5"))
+MYSQL_POOL_TIMEOUT: int = int(os.environ.get("CINDY_AGENT_MYSQL_POOL_TIMEOUT", "30"))
+
+# Storage backend selection
+STORAGE_BACKEND: str = os.environ.get("CINDY_AGENT_STORAGE_BACKEND", "filesystem")

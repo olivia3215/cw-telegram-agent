@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_default_llm
-from config import STATE_DIRECTORY
+from config import STATE_DIRECTORY, STORAGE_BACKEND
 from memory_storage import (
     MemoryStorageError,
     load_property_entries,
@@ -26,16 +26,24 @@ def register_memory_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/memories", methods=["GET"])
     def api_get_memories(agent_config_name: str):
-        """Get memories for an agent (from state/AgentName/memory.json)."""
+        """Get memories for an agent (from MySQL if enabled, otherwise from state/AgentName/memory.json)."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-            memories, _ = load_property_entries(
-                memory_file, "memory", default_id_prefix="memory"
-            )
+            if STORAGE_BACKEND == "mysql":
+                # Load from MySQL
+                from db.memories import load_memories
+                if not agent.agent_id:
+                    return jsonify({"error": "Agent has no Telegram ID"}), 400
+                memories = load_memories(agent.agent_id)
+            else:
+                # Load from filesystem
+                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
+                memories, _ = load_property_entries(
+                    memory_file, "memory", default_id_prefix="memory"
+                )
 
             # Sort by created timestamp (newest first)
             memories.sort(key=lambda x: x.get("created", ""), reverse=True)
@@ -59,18 +67,41 @@ def register_memory_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
+            if STORAGE_BACKEND == "mysql":
+                # Update in MySQL
+                from db.memories import load_memories, save_memory
+                if not agent.agent_id:
+                    return jsonify({"error": "Agent has no Telegram ID"}), 400
+                # Load existing memory to preserve other fields
+                memories = load_memories(agent.agent_id)
+                memory = next((m for m in memories if m.get("id") == memory_id), None)
+                if not memory:
+                    return jsonify({"error": "Memory not found"}), 404
+                # Update content and save
+                save_memory(
+                    agent_telegram_id=agent.agent_id,
+                    memory_id=memory_id,
+                    content=content,
+                    created=memory.get("created"),
+                    creation_channel=memory.get("creation_channel"),
+                    creation_channel_id=memory.get("creation_channel_id"),
+                    creation_channel_username=memory.get("creation_channel_username"),
+                    metadata={k: v for k, v in memory.items() if k not in {"id", "content", "created", "creation_channel", "creation_channel_id", "creation_channel_username"}},
+                )
+            else:
+                # Update in filesystem
+                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
-            def update_memory(entries, payload):
-                for entry in entries:
-                    if entry.get("id") == memory_id:
-                        entry["content"] = content
-                        break
-                return entries, payload
+                def update_memory(entries, payload):
+                    for entry in entries:
+                        if entry.get("id") == memory_id:
+                            entry["content"] = content
+                            break
+                    return entries, payload
 
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=update_memory
-            )
+                mutate_property_entries(
+                    memory_file, "memory", default_id_prefix="memory", mutator=update_memory
+                )
 
             return jsonify({"success": True})
         except Exception as e:
@@ -85,15 +116,23 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
+            if STORAGE_BACKEND == "mysql":
+                # Delete from MySQL
+                from db.memories import delete_memory
+                if not agent.agent_id:
+                    return jsonify({"error": "Agent has no Telegram ID"}), 400
+                delete_memory(agent.agent_id, memory_id)
+            else:
+                # Delete from filesystem
+                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
-            def delete_memory(entries, payload):
-                entries = [e for e in entries if e.get("id") != memory_id]
-                return entries, payload
+                def delete_memory_func(entries, payload):
+                    entries = [e for e in entries if e.get("id") != memory_id]
+                    return entries, payload
 
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=delete_memory
-            )
+                mutate_property_entries(
+                    memory_file, "memory", default_id_prefix="memory", mutator=delete_memory_func
+                )
 
             return jsonify({"success": True})
         except Exception as e:
@@ -114,8 +153,6 @@ def register_memory_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-            
             memory_id = f"memory-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
             
@@ -126,13 +163,29 @@ def register_memory_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
 
-            def create_memory(entries, payload):
-                entries.append(new_entry)
-                return entries, payload
+            if STORAGE_BACKEND == "mysql":
+                # Save to MySQL
+                from db.memories import save_memory
+                if not agent.agent_id:
+                    return jsonify({"error": "Agent has no Telegram ID"}), 400
+                save_memory(
+                    agent_telegram_id=agent.agent_id,
+                    memory_id=memory_id,
+                    content=content,
+                    created=created_value,
+                    metadata={"origin": "puppetmaster"},
+                )
+            else:
+                # Save to filesystem
+                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
 
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=create_memory
-            )
+                def create_memory(entries, payload):
+                    entries.append(new_entry)
+                    return entries, payload
+
+                mutate_property_entries(
+                    memory_file, "memory", default_id_prefix="memory", mutator=create_memory
+                )
 
             return jsonify({"success": True, "memory": new_entry})
         except Exception as e:
@@ -525,15 +578,29 @@ def register_memory_routes(agents_bp: Blueprint):
                     checks["conversation_llm"] = False
                 
                 # Check plans
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-                if plan_file.exists():
-                    try:
-                        plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
-                        checks["plans"] = len(plans) > 0
-                    except Exception:
+                from config import STORAGE_BACKEND
+                if STORAGE_BACKEND == "mysql":
+                    # Check MySQL
+                    from db.plans import load_plans
+                    if agent.agent_id:
+                        try:
+                            plans = load_plans(agent.agent_id, channel_id)
+                            checks["plans"] = len(plans) > 0
+                        except Exception:
+                            checks["plans"] = False
+                    else:
                         checks["plans"] = False
                 else:
-                    checks["plans"] = False
+                    # Check filesystem
+                    plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+                    if plan_file.exists():
+                        try:
+                            plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
+                            checks["plans"] = len(plans) > 0
+                        except Exception:
+                            checks["plans"] = False
+                    else:
+                        checks["plans"] = False
                 
                 content_checks[user_id_str] = checks
                 

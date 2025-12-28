@@ -83,20 +83,77 @@ def _sort_agents_by_name(agent_list: list[dict[str, Any]]) -> None:
 def api_agents():
     """Get list of all agents."""
     try:
+        from config import CONFIG_DIRECTORIES
+        from admin_console.docs import resolve_docs_path
+        
         register_all_agents()
         agents = list(get_all_agents(include_disabled=True))
-        agent_list = [
-            {
+        agent_list = []
+        
+        for agent in agents:
+            # Check if agent has documents
+            # Check all config directories for this agent's docs (agent can have docs in any config dir)
+            has_documents = False
+            if agent.config_name:
+                for config_dir in CONFIG_DIRECTORIES:
+                    try:
+                        docs_path = resolve_docs_path(config_dir, agent.config_name)
+                        if docs_path.exists() and docs_path.is_dir():
+                            # Check if there are any .md files
+                            md_files = list(docs_path.glob("*.md"))
+                            if md_files:
+                                has_documents = True
+                                logger.debug(f"Agent {agent.name} ({agent.config_name}) has {len(md_files)} documents in {docs_path}")
+                                break
+                    except Exception as e:
+                        # If path resolution fails, skip this config directory
+                        logger.debug(f"Failed to check docs path for {agent.config_name} in {config_dir}: {e}")
+                        continue
+            
+            # Check if agent has plans
+            has_plans = False
+            from config import STORAGE_BACKEND, STATE_DIRECTORY
+            if STORAGE_BACKEND == "mysql":
+                # Check MySQL
+                if agent.agent_id:
+                    try:
+                        from db.plans import has_plans_for_agent
+                        has_plans = has_plans_for_agent(agent.agent_id)
+                    except Exception as e:
+                        logger.debug(f"Error checking plans in MySQL for agent {agent.config_name}: {e}")
+                        has_plans = False
+            else:
+                # Check filesystem
+                if agent.config_name:
+                    try:
+                        memory_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"
+                        if memory_dir.exists():
+                            # Check all JSON files in memory directory for plans
+                            for memory_file in memory_dir.glob("*.json"):
+                                try:
+                                    from memory_storage import load_property_entries
+                                    plans, _ = load_property_entries(memory_file, "plan", default_id_prefix="plan")
+                                    if plans and len(plans) > 0:
+                                        has_plans = True
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception as e:
+                        logger.debug(f"Error checking plans in filesystem for agent {agent.config_name}: {e}")
+                        has_plans = False
+            
+            agent_list.append({
                 "name": agent.name,
                 "config_name": agent.config_name,
                 "phone": agent.phone,
                 "agent_id": agent.agent_id if agent.agent_id is not None else None,
                 "telegram_username": agent.telegram_username if agent.telegram_username else None,
                 "config_directory": agent.config_directory if agent.config_directory else None,
-                "is_disabled": agent.is_disabled
-            }
-            for agent in agents
-        ]
+                "is_disabled": agent.is_disabled,
+                "has_documents": has_documents,
+                "has_plans": has_plans
+            })
+        
         _sort_agents_by_name(agent_list)
         return jsonify({"agents": agent_list})
     except Exception as e:

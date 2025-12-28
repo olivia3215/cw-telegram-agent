@@ -540,8 +540,28 @@ def _get_highest_summarized_message_id_for_api(agent_config_name: str, channel_i
     Returns None if no summaries exist.
     """
     try:
-        summary_file = Path(STATE_DIRECTORY) / agent_config_name / "memory" / f"{channel_id}.json"
-        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        from config import STORAGE_BACKEND
+        from admin_console.helpers import get_agent_by_name
+        
+        agent = get_agent_by_name(agent_config_name)
+        if not agent:
+            return None
+        
+        # Check if we should use MySQL or filesystem
+        use_mysql = (
+            STORAGE_BACKEND == "mysql"
+            and hasattr(agent, "agent_id")
+            and agent.agent_id is not None
+        )
+        
+        if use_mysql:
+            # Load from MySQL
+            from db import summaries as db_summaries
+            summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
+        else:
+            # Load from filesystem
+            summary_file = Path(STATE_DIRECTORY) / agent_config_name / "memory" / f"{channel_id}.json"
+            summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
         
         highest_max_id = None
         for summary in summaries:
@@ -576,8 +596,23 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             return error_response
 
         # Get summaries
-        summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        from config import STORAGE_BACKEND
+        
+        use_mysql = (
+            STORAGE_BACKEND == "mysql"
+            and hasattr(agent, "agent_id")
+            and agent.agent_id is not None
+        )
+        
+        if use_mysql:
+            # Load from MySQL
+            from db import summaries as db_summaries
+            summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
+        else:
+            # Load from filesystem
+            summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+            summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        
         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
         
         # Get highest summarized message ID to filter messages

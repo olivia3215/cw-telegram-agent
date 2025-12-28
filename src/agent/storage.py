@@ -12,12 +12,13 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agent.storage_impl import AgentStorage
+from agent.storage_factory import create_storage
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent import Agent
+    from agent.storage_impl import AgentStorage
 
 
 class AgentStorageMixin:
@@ -25,7 +26,7 @@ class AgentStorageMixin:
 
     name: str
     config_directory: str | None
-    _storage_obj: AgentStorage | None
+    _storage_obj: "AgentStorage | None"
 
     @property
     def _storage(self):
@@ -33,14 +34,17 @@ class AgentStorageMixin:
         Get or create the AgentStorage for this agent.
         
         Returns:
-            AgentStorage instance
+            AgentStorage instance (filesystem or MySQL based on configuration)
         """
         if self._storage_obj is None:
             from config import STATE_DIRECTORY  # Import dynamically to allow patching in tests
             config_dir = Path(self.config_directory) if self.config_directory else None
             state_dir = Path(STATE_DIRECTORY)
-            self._storage_obj = AgentStorage(
+            # Get agent_telegram_id if available (may be None if not authenticated yet)
+            agent_telegram_id = getattr(self, "agent_id", None)
+            self._storage_obj = create_storage(
                 agent_config_name=self.config_name,
+                agent_telegram_id=agent_telegram_id,
                 config_directory=config_dir,
                 state_directory=state_dir,
             )

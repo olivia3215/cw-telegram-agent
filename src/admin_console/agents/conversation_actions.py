@@ -17,7 +17,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, Response, stream_with_context  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY, TRANSLATION_MODEL
+from config import STATE_DIRECTORY, STORAGE_BACKEND, TRANSLATION_MODEL
 from handlers.received import parse_llm_reply
 from llm.factory import create_llm_from_name
 from handlers.received_helpers.summarization import trigger_summarization_directly
@@ -105,14 +105,21 @@ def _translation_cache_lock():
 
 def _load_translation_cache() -> dict[str, dict[str, str]]:
     """
-    Load translation cache from disk, removing expired entries (older than 10 days).
+    Load translation cache from disk or MySQL, removing expired entries (older than 10 days).
     
     NOTE: This function does NOT acquire a lock. Use _translation_cache_lock() context manager
-    when loading and saving to ensure atomic read-modify-write operations.
+    when loading and saving to ensure atomic read-modify-write operations (filesystem only).
     
     Returns:
         Dictionary mapping text to translation dict with 'translated_text' and 'timestamp' keys
     """
+    # For MySQL, we can't efficiently load the entire cache, so return empty dict
+    # Individual lookups will use MySQL directly via translation_cache module
+    # Do NOT read from disk when MySQL is enabled
+    if STORAGE_BACKEND == "mysql":
+        return {}
+    
+    # Filesystem implementation
     if not TRANSLATIONS_CACHE_PATH.exists():
         return {}
     
@@ -148,14 +155,27 @@ def _load_translation_cache() -> dict[str, dict[str, str]]:
 
 def _save_translation_cache(cache: dict[str, dict[str, str]]) -> None:
     """
-    Save translation cache to disk, removing expired entries (older than 10 days).
+    Save translation cache to disk or MySQL, removing expired entries (older than 10 days).
     
     NOTE: This function does NOT acquire a lock. Use _translation_cache_lock() context manager
-    when loading and saving to ensure atomic read-modify-write operations.
+    when loading and saving to ensure atomic read-modify-write operations (filesystem only).
     
     Args:
         cache: Dictionary mapping text to translation dict with 'translated_text' and 'timestamp' keys
     """
+    # For MySQL, save individual translations
+    if STORAGE_BACKEND == "mysql":
+        try:
+            from translation_cache import save_translation
+            for text, translation_data in cache.items():
+                translated_text = translation_data.get("translated_text")
+                save_translation(text, translated_text)
+            return
+        except Exception as e:
+            logger.warning(f"Failed to save translation cache to MySQL: {e}, falling back to filesystem")
+            # Fall through to filesystem
+    
+    # Filesystem implementation
     # Filter out expired entries before saving
     now = datetime.now()
     expiry_threshold = now - timedelta(days=TRANSLATION_CACHE_EXPIRY_DAYS)
@@ -236,8 +256,22 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         text_to_message_ids[msg_text].append(msg_id)
                         message_id_to_text[msg_id] = msg_text
                         
-                        # If not in cache, add to translation list (only once per unique text)
-                        if msg_text not in cache:
+                        # Check for existing translation (MySQL or filesystem, depending on backend)
+                        translation = None
+                        if STORAGE_BACKEND == "mysql":
+                            # MySQL backend: check MySQL only, not filesystem
+                            try:
+                                from translation_cache import get_translation
+                                translation = get_translation(msg_text)
+                            except Exception:
+                                pass
+                        else:
+                            # Filesystem backend: check filesystem cache
+                            if msg_text in cache:
+                                translation = cache[msg_text].get("translated_text", "")
+                        
+                        # If not found in cache, add to translation list
+                        if translation is None:
                             # Only add if we haven't already added this text
                             if not any(m["text"] == msg_text for m in messages_to_translate):
                                 messages_to_translate.append({
@@ -251,11 +285,26 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
                         msg_text = msg.get("text", "")  # HTML text (already XSS-protected)
-                        if msg_text and msg_text in cache:
-                            translated_text = cache[msg_text].get("translated_text", "")
-                            if translated_text:
-                                # Translation is already final HTML (tags restored)
-                                cached_translations[msg_id] = translated_text
+                        if not msg_text:
+                            continue
+                        
+                        # Check for cached translation (MySQL or filesystem, depending on backend)
+                        translated_text = None
+                        if STORAGE_BACKEND == "mysql":
+                            # MySQL backend: check MySQL only, not filesystem
+                            try:
+                                from translation_cache import get_translation
+                                translated_text = get_translation(msg_text)
+                            except Exception:
+                                pass
+                        else:
+                            # Filesystem backend: check filesystem cache
+                            if msg_text in cache:
+                                translated_text = cache[msg_text].get("translated_text", "")
+                        
+                        if translated_text:
+                            # Translation is already final HTML (tags restored)
+                            cached_translations[msg_id] = translated_text
 
                     # Send cached translations immediately as first event
                     if cached_translations:

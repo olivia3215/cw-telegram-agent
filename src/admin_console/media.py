@@ -21,7 +21,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from clock import clock
-from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY
+from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY, STORAGE_BACKEND
 from datetime import UTC
 from admin_console.helpers import (
     find_media_file,
@@ -40,6 +40,7 @@ from media.media_source import (
     CompositeMediaSource,
     MediaStatus,
     UnsupportedFormatMediaSource,
+    get_default_media_source_chain,
     get_emoji_unicode_name,
 )
 from media.media_sources import get_directory_media_source
@@ -121,18 +122,28 @@ def api_media_list():
         if not media_dir.exists():
             return jsonify({"error": "Directory not found"}), 404
 
-        # Use MediaSource API to read media descriptions
-        # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
-        # but without AIGeneratingMediaSource (no AI generation in listing)
-        cache_source = get_directory_media_source(media_dir)
-        unsupported_source = UnsupportedFormatMediaSource()
+        # Check if this is the state/media directory and MySQL backend is enabled
+        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
+        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
 
-        media_chain = CompositeMediaSource(
-            [
-                cache_source,
-                unsupported_source,
-            ]
-        )
+        # Use MediaSource API to read media descriptions
+        # For state/media with MySQL, use the default chain (includes MySQLMediaSource)
+        # For other directories, use directory source only
+        if use_mysql:
+            # Use the default media source chain which includes MySQL
+            media_chain = get_default_media_source_chain()
+            cache_source = None  # Not used when MySQL is enabled
+        else:
+            # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
+            # but without AIGeneratingMediaSource (no AI generation in listing)
+            cache_source = get_directory_media_source(media_dir)
+            unsupported_source = UnsupportedFormatMediaSource()
+            media_chain = CompositeMediaSource(
+                [
+                    cache_source,
+                    unsupported_source,
+                ]
+            )
 
         media_files = []
 
@@ -141,11 +152,32 @@ def api_media_list():
         asyncio.set_event_loop(loop)
         
         try:
-            # Find all JSON files to get unique IDs
-            for json_file in media_dir.glob("*.json"):
+            # Get unique IDs - from MySQL if enabled, otherwise from JSON files
+            unique_ids = []
+            if use_mysql:
+                # For MySQL, query the database directly to get all unique_ids
                 try:
-                    unique_id = json_file.stem
-
+                    from db.connection import get_db_connection
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        try:
+                            cursor.execute("SELECT unique_id FROM media_metadata")
+                            rows = cursor.fetchall()
+                            unique_ids = [row["unique_id"] for row in rows]
+                        finally:
+                            cursor.close()
+                except Exception as e:
+                    logger.warning(f"Failed to load unique IDs from MySQL: {e}, falling back to filesystem")
+                    use_mysql = False
+                    # Fall back to filesystem
+                    unique_ids = [json_file.stem for json_file in media_dir.glob("*.json")]
+            else:
+                # Find all JSON files to get unique IDs (filesystem)
+                unique_ids = [json_file.stem for json_file in media_dir.glob("*.json")]
+            
+            # Process each unique ID
+            for unique_id in unique_ids:
+                try:
                     # Use MediaSource chain to get the record (applies all transformations)
                     record = loop.run_until_complete(
                         media_chain.get(unique_id=unique_id)
@@ -253,7 +285,12 @@ def api_media_list():
                                     record["is_emoji_set"] = is_emoji_set
                                 if sticker_set_title is not None:
                                     record["sticker_set_title"] = sticker_set_title
-                                cache_source.put(unique_id, record)
+                                # Save to MySQL or filesystem
+                                if use_mysql:
+                                    from db import media_metadata
+                                    media_metadata.save_media_metadata(record)
+                                else:
+                                    cache_source.put(unique_id, record)
                     else:
                         # For non-stickers, create categorized "Other Media" groups
                         if kind == "photo":
@@ -283,10 +320,13 @@ def api_media_list():
                         except Exception:
                             emoji_description = ""
 
+                    # Determine json_file path (for display purposes)
+                    json_file_path = media_dir / f"{unique_id}.json" if not use_mysql else None
+                    
                     media_files.append(
                         {
                             "unique_id": unique_id,
-                            "json_file": str(json_file),
+                            "json_file": str(json_file_path) if json_file_path else None,
                             "media_file": media_file,
                             "description": record.get("description"),
                             "kind": kind,
@@ -302,7 +342,7 @@ def api_media_list():
                     )
 
                 except Exception as e:
-                    logger.error(f"Error processing {json_file}: {e}")
+                    logger.error(f"Error processing {unique_id}: {e}")
                     continue
         finally:
             loop.close()
@@ -374,22 +414,47 @@ def api_update_description(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        source = get_directory_media_source(media_dir)
-        record = source.get_cached_record(unique_id)
+        
+        # Check if this is the state/media directory and MySQL backend is enabled
+        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
+        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        
+        if use_mysql:
+            # Load from MySQL
+            from db import media_metadata
+            record = media_metadata.load_media_metadata(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
+            
+            # Update description
+            new_description = request.json.get("description", "").strip()
+            record["description"] = new_description if new_description else None
+            
+            # Clear error fields if description is provided
+            if new_description:
+                record.pop("failure_reason", None)
+                record["status"] = "curated"  # Mark as curated when user edits description
+            
+            # Save to MySQL
+            media_metadata.save_media_metadata(record)
+        else:
+            # Use filesystem
+            source = get_directory_media_source(media_dir)
+            record = source.get_cached_record(unique_id)
 
-        if not record:
-            return jsonify({"error": "Media record not found"}), 404
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
 
-        # Update description
-        new_description = request.json.get("description", "").strip()
-        record["description"] = new_description if new_description else None
+            # Update description
+            new_description = request.json.get("description", "").strip()
+            record["description"] = new_description if new_description else None
 
-        # Clear error fields if description is provided
-        if new_description:
-            record.pop("failure_reason", None)
-            record["status"] = "curated"  # Mark as curated when user edits description
+            # Clear error fields if description is provided
+            if new_description:
+                record.pop("failure_reason", None)
+                record["status"] = "curated"  # Mark as curated when user edits description
 
-        source.put(unique_id, record)
+            source.put(unique_id, record)
 
         return jsonify({"success": True})
 
@@ -407,8 +472,18 @@ def api_refresh_from_ai(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        media_cache_source = get_directory_media_source(media_dir)
-        data = media_cache_source.get_cached_record(unique_id)
+        
+        # Check if this is the state/media directory and MySQL backend is enabled
+        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
+        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        
+        # Load the record - use MySQL if enabled, otherwise filesystem
+        if use_mysql:
+            from db import media_metadata
+            data = media_metadata.load_media_metadata(unique_id)
+        else:
+            media_cache_source = get_directory_media_source(media_dir)
+            data = media_cache_source.get_cached_record(unique_id)
 
         if not data:
             return jsonify({"error": "Media record not found"}), 404
@@ -422,7 +497,14 @@ def api_refresh_from_ai(unique_id: str):
         data["description"] = None
         data.pop("failure_reason", None)
         data["status"] = MediaStatus.TEMPORARY_FAILURE.value
-        media_cache_source.put(unique_id, data)
+        
+        # Save the updated record using the appropriate backend
+        if use_mysql:
+            from db import media_metadata
+            media_metadata.save_media_metadata(data)
+        else:
+            media_cache_source = get_directory_media_source(media_dir)
+            media_cache_source.put(unique_id, data)
 
         # Use the puppetmaster's client for media operations
         # (The client isn't actually used when doc is a Path, but the interface requires it)
@@ -444,7 +526,6 @@ def api_refresh_from_ai(unique_id: str):
         
         # Find the media file
         media_file = find_media_file(media_dir, unique_id)
-
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
 
@@ -466,7 +547,13 @@ def api_refresh_from_ai(unique_id: str):
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the same chain structure as the main application
-        ai_cache_source = get_directory_media_source(ai_cache_dir)
+        # Use MySQL cache source if MySQL backend is enabled and this is state/media
+        if use_mysql:
+            from media.mysql_media_source import MySQLMediaSource
+            ai_cache_source = MySQLMediaSource()
+        else:
+            ai_cache_source = get_directory_media_source(ai_cache_dir)
+        
         unsupported_source = UnsupportedFormatMediaSource()
         budget_source = BudgetExhaustedMediaSource()
         ai_source = AIGeneratingMediaSource(cache_directory=ai_cache_dir)
@@ -615,13 +702,25 @@ def api_delete_media(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
-        source = get_directory_media_source(media_dir)
-
-        record = source.get_cached_record(unique_id)
-        if not record:
-            return jsonify({"error": "Media record not found"}), 404
-
-        source.delete_record(unique_id)
+        
+        # Check if this is the state/media directory and MySQL backend is enabled
+        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
+        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        
+        if use_mysql:
+            # Delete from MySQL
+            from db import media_metadata
+            record = media_metadata.load_media_metadata(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
+            media_metadata.delete_media_metadata(unique_id)
+        else:
+            # Delete from filesystem
+            source = get_directory_media_source(media_dir)
+            record = source.get_cached_record(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
+            source.delete_record(unique_id)
 
         logger.info(f"Deleted media {unique_id} from {directory_path}")
         return jsonify({"success": True})

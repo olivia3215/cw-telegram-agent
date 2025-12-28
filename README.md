@@ -115,7 +115,71 @@ export MEDIA_DESC_BUDGET_PER_TICK=8
 export GEMINI_DEBUG_LOGGING=true
 ```
 
-### 4) Log in Telegram sessions
+### 4) Set up MySQL database (optional, for MySQL storage backend)
+
+If you want to use MySQL for data storage instead of the filesystem, you'll need to set up a MySQL database:
+
+**Installing MySQL:**
+
+- **Ubuntu/Debian**: `sudo apt-get install mysql-server`
+- **macOS**: `brew install mysql` or download from [mysql.com](https://dev.mysql.com/downloads/mysql/)
+- **Windows**: Download installer from [mysql.com](https://dev.mysql.com/downloads/mysql/)
+
+**Creating the database and user:**
+
+First, decide on your database name, username, and password. Then:
+
+```bash
+mysql -u root -p
+```
+
+Then run these SQL commands (replace `your_database_name`, `your_username`, and `your_password_here` with your chosen values):
+
+```sql
+CREATE DATABASE your_database_name CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'your_username'@'localhost' IDENTIFIED BY 'your_password_here';
+GRANT ALL PRIVILEGES ON your_database_name.* TO 'your_username'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+**Note:** The database name, username, and password you choose here should match the values you set in the environment variables below.
+
+**Creating the schema:**
+
+After the MySQL migration is implemented, you'll be able to create the schema using:
+
+```bash
+# Option 1: Using the Python script (when available)
+# This will use the database connection settings from your environment variables
+PYTHONPATH=src python scripts/create_mysql_schema.py
+
+# Option 2: Using SQL file directly (replace with your database name and username)
+mysql -u your_username -p your_database_name < scripts/mysql_schema.sql
+```
+
+**Configuring MySQL connection:**
+
+Add these environment variables (or add them to your `.env` file):
+
+```bash
+export CINDY_AGENT_MYSQL_HOST=localhost
+export CINDY_AGENT_MYSQL_PORT=3306
+export CINDY_AGENT_MYSQL_DATABASE=your_database_name
+export CINDY_AGENT_MYSQL_USER=your_username
+export CINDY_AGENT_MYSQL_PASSWORD=your_password_here
+export CINDY_AGENT_MYSQL_POOL_SIZE=5
+export CINDY_AGENT_MYSQL_POOL_TIMEOUT=30
+
+# Enable MySQL storage backend
+export CINDY_AGENT_STORAGE_BACKEND=mysql
+```
+
+Replace `your_database_name`, `your_username`, and `your_password_here` with the values you used when creating the database.
+
+**Note:** If `CINDY_AGENT_STORAGE_BACKEND` is not set or set to `filesystem`, the system will use filesystem storage (default). Set it to `mysql` to use MySQL storage.
+
+### 5) Log in Telegram sessions
 
 Run the helper to establish Telegram sessions:
 
@@ -123,7 +187,7 @@ Run the helper to establish Telegram sessions:
 ./telegram_login.sh
 ```
 
-### 5) Start the agent loop
+### 6) Start the agent loop
 
 ```bash
 ./run.sh start
