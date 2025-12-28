@@ -58,18 +58,19 @@ async def process_property_entry_task(
         raw_created = task_params.pop("created", None)
         entry_id = task.id or f"{default_id_prefix}-{uuid.uuid4().hex[:8]}"
 
+        # Check if we should use MySQL or filesystem (needed for both create/update and delete)
+        use_mysql = (
+            STORAGE_BACKEND == "mysql"
+            and hasattr(agent, "agent_id")
+            and agent.agent_id is not None
+        )
+
         # Prepare the new entry
         new_entry: dict[str, Any] | None = None
         existing_entry: dict[str, Any] | None = None
         
         if content_value is not None:
             # Load existing entries to check if we're updating
-            # Check if we should use MySQL or filesystem
-            use_mysql = (
-                STORAGE_BACKEND == "mysql"
-                and hasattr(agent, "agent_id")
-                and agent.agent_id is not None
-            )
             
             if use_mysql:
                 # Load from MySQL

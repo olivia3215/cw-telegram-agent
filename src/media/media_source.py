@@ -1626,7 +1626,12 @@ class AIChainMediaSource(MediaSource):
             if should_store:
                 # Store record with optional media file
                 # If we have media_bytes, this will add media_file to the record
-                await self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                # Handle both sync and async put methods
+                import inspect
+                if inspect.iscoroutinefunction(self.cache_source.put):
+                    await self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                else:
+                    self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
 
         return record
 
