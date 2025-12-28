@@ -63,8 +63,8 @@ def load_memories(agent_telegram_id: int) -> list[dict[str, Any]]:
                         metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
                         if isinstance(metadata, dict):
                             memory.update(metadata)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to parse metadata JSON for memory {row['id']}: {e}")
                 
                 memories.append(memory)
             

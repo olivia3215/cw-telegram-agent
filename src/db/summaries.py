@@ -66,8 +66,8 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
                         metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
                         if isinstance(metadata, dict):
                             summary.update(metadata)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to parse metadata JSON for summary {row['id']}: {e}")
                 
                 summaries.append(summary)
             

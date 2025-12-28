@@ -47,6 +47,9 @@ class AgentStorageMySQL:
             config_directory: Optional config directory path (for curated memories)
             state_directory: State directory path (for config memory fallback)
         """
+        if not agent_telegram_id or agent_telegram_id <= 0:
+            raise ValueError(f"Invalid agent_telegram_id: {agent_telegram_id}")
+        
         self.agent_config_name = agent_config_name
         self.agent_telegram_id = agent_telegram_id
         self.config_directory = config_directory

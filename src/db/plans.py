@@ -57,8 +57,8 @@ def load_plans(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]:
                         metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
                         if isinstance(metadata, dict):
                             plan.update(metadata)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to parse metadata JSON for plan {row['id']}: {e}")
                 
                 plans.append(plan)
             

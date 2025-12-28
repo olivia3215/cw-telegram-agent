@@ -68,6 +68,8 @@ def save_schedule(agent_telegram_id: int, schedule: dict[str, Any]) -> None:
         cursor = conn.cursor()
         try:
             activities = schedule.get("activities", [])
+            if not isinstance(activities, list):
+                raise ValueError(f"activities must be a list, got {type(activities).__name__}")
             activities_json = json.dumps(activities, ensure_ascii=False)
             
             timezone = schedule.get("timezone")

@@ -56,8 +56,8 @@ def load_intentions(agent_telegram_id: int) -> list[dict[str, Any]]:
                         metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
                         if isinstance(metadata, dict):
                             intention.update(metadata)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to parse metadata JSON for intention {row['id']}: {e}")
                 
                 intentions.append(intention)
             

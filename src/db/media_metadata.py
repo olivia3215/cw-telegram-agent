@@ -75,8 +75,8 @@ def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
                     metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
                     if isinstance(metadata, dict):
                         record.update(metadata)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to parse metadata JSON for media {row['unique_id']}: {e}")
             
             return record
         finally:
@@ -91,8 +91,8 @@ def save_media_metadata(record: dict[str, Any]) -> None:
         record: Media metadata dictionary (must include unique_id)
     """
     unique_id = record.get("unique_id")
-    if not unique_id:
-        raise ValueError("unique_id is required")
+    if not unique_id or not str(unique_id).strip():
+        raise ValueError("unique_id is required and cannot be empty")
     
     # Extract core fields
     core_fields = {

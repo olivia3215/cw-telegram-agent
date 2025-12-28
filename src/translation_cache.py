@@ -42,10 +42,10 @@ def get_translation(message: str) -> str | None:
                 db_translations.update_last_used(message)
             return translation
         except Exception as e:
-            logger.warning(f"Failed to get translation from MySQL, falling back to filesystem: {e}")
-            # Fall through to filesystem
+            logger.error(f"Failed to get translation from MySQL: {e}")
+            return None
     
-    # Filesystem fallback
+    # Filesystem implementation
     return _get_translation_filesystem(message)
 
 
@@ -63,10 +63,10 @@ def save_translation(message: str, translation: str | None) -> None:
             db_translations.save_translation(message, translation)
             return
         except Exception as e:
-            logger.warning(f"Failed to save translation to MySQL, falling back to filesystem: {e}")
-            # Fall through to filesystem
+            logger.error(f"Failed to save translation to MySQL: {e}")
+            raise
     
-    # Filesystem fallback
+    # Filesystem implementation
     _save_translation_filesystem(message, translation)
 
 
