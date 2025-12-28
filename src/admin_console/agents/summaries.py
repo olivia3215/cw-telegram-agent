@@ -107,23 +107,24 @@ def register_summary_routes(agents_bp: Blueprint):
                 if not existing_summary:
                     return jsonify({"error": "Summary not found"}), 404
                 
-                # Update fields
-                metadata = existing_summary.get("metadata", {}) if isinstance(existing_summary.get("metadata"), dict) else {}
-                if content is not None:
-                    # Content is stored separately, not in metadata
-                    pass
-                if min_message_id is not None:
-                    metadata["min_message_id"] = min_message_id
-                if max_message_id is not None:
-                    metadata["max_message_id"] = max_message_id
+                # Extract metadata (fields that are not core fields)
+                # load_summaries() merges metadata directly into the summary dict, so we need to extract
+                # all fields that are not core fields
+                core_fields = {"id", "content", "min_message_id", "max_message_id", "first_message_date", "last_message_date", "created"}
+                metadata = {k: v for k, v in existing_summary.items() if k not in core_fields}
+                
+                # Handle date fields - strip whitespace if provided
+                updated_first_message_date = existing_summary.get("first_message_date")
                 if first_message_date is not None:
                     stripped_date = first_message_date.strip() if first_message_date else ""
                     if stripped_date:
-                        metadata["first_message_date"] = stripped_date
+                        updated_first_message_date = stripped_date
+                
+                updated_last_message_date = existing_summary.get("last_message_date")
                 if last_message_date is not None:
                     stripped_date = last_message_date.strip() if last_message_date else ""
                     if stripped_date:
-                        metadata["last_message_date"] = stripped_date
+                        updated_last_message_date = stripped_date
                 
                 # Save updated summary
                 db_summaries.save_summary(
@@ -133,8 +134,8 @@ def register_summary_routes(agents_bp: Blueprint):
                     content=content if content is not None else existing_summary.get("content", ""),
                     min_message_id=min_message_id if min_message_id is not None else existing_summary.get("min_message_id"),
                     max_message_id=max_message_id if max_message_id is not None else existing_summary.get("max_message_id"),
-                    first_message_date=metadata.get("first_message_date") or existing_summary.get("first_message_date"),
-                    last_message_date=metadata.get("last_message_date") or existing_summary.get("last_message_date"),
+                    first_message_date=updated_first_message_date,
+                    last_message_date=updated_last_message_date,
                     created=existing_summary.get("created"),
                     metadata=metadata,
                 )
