@@ -35,45 +35,51 @@ _pool_initialized = False
 
 
 def _init_connection_pool() -> None:
-    """Initialize the connection pool."""
+    """Initialize the connection pool (thread-safe)."""
     global _connection_pool, _pool_initialized
 
+    # Use double-checked locking pattern for thread safety
     if _pool_initialized:
         return
 
-    if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
-        logger.warning(
-            "MySQL configuration incomplete. Missing: "
-            f"{'DATABASE' if not MYSQL_DATABASE else ''} "
-            f"{'USER' if not MYSQL_USER else ''} "
-            f"{'PASSWORD' if not MYSQL_PASSWORD else ''}"
-        )
-        return
+    with _pool_lock:
+        # Check again after acquiring lock (another thread may have initialized)
+        if _pool_initialized:
+            return
 
-    try:
-        import pymysql
-
-        # Create initial connections
-        for _ in range(MYSQL_POOL_SIZE):
-            conn = pymysql.connect(
-                host=MYSQL_HOST,
-                port=MYSQL_PORT,
-                user=MYSQL_USER,
-                password=MYSQL_PASSWORD,
-                database=MYSQL_DATABASE,
-                charset="utf8mb4",
-                cursorclass=pymysql.cursors.DictCursor,
-                autocommit=False,
+        if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
+            logger.warning(
+                "MySQL configuration incomplete. Missing: "
+                f"{'DATABASE' if not MYSQL_DATABASE else ''} "
+                f"{'USER' if not MYSQL_USER else ''} "
+                f"{'PASSWORD' if not MYSQL_PASSWORD else ''}"
             )
-            _connection_pool.append(conn)
+            return
 
-        _pool_initialized = True
-        logger.info(
-            f"MySQL connection pool initialized with {MYSQL_POOL_SIZE} connections"
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize MySQL connection pool: {e}")
-        raise
+        try:
+            import pymysql
+
+            # Create initial connections
+            for _ in range(MYSQL_POOL_SIZE):
+                conn = pymysql.connect(
+                    host=MYSQL_HOST,
+                    port=MYSQL_PORT,
+                    user=MYSQL_USER,
+                    password=MYSQL_PASSWORD,
+                    database=MYSQL_DATABASE,
+                    charset="utf8mb4",
+                    cursorclass=pymysql.cursors.DictCursor,
+                    autocommit=False,
+                )
+                _connection_pool.append(conn)
+
+            _pool_initialized = True
+            logger.info(
+                f"MySQL connection pool initialized with {MYSQL_POOL_SIZE} connections"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize MySQL connection pool: {e}")
+            raise
 
 
 @contextmanager
