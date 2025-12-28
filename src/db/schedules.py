@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from db.connection import get_db_connection
+from db.datetime_util import normalize_datetime_for_mysql
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,9 @@ def save_schedule(agent_telegram_id: int, schedule: dict[str, Any]) -> None:
             timezone = schedule.get("timezone")
             last_extended = schedule.get("last_extended")
             
+            # Normalize datetime for MySQL
+            last_extended_normalized = normalize_datetime_for_mysql(last_extended)
+            
             cursor.execute(
                 """
                 INSERT INTO schedules (agent_telegram_id, timezone, last_extended, activities)
@@ -84,7 +88,7 @@ def save_schedule(agent_telegram_id: int, schedule: dict[str, Any]) -> None:
                     last_extended = VALUES(last_extended),
                     activities = VALUES(activities)
                 """,
-                (agent_telegram_id, timezone, last_extended, activities_json),
+                (agent_telegram_id, timezone, last_extended_normalized, activities_json),
             )
             conn.commit()
         except Exception as e:
