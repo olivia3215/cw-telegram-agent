@@ -175,6 +175,15 @@ def api_media_list():
                 except Exception as e:
                     logger.warning(f"Failed to load unique IDs from MySQL: {e}, falling back to filesystem")
                     use_mysql = False
+                    # Fall back to filesystem - initialize cache_source and media_chain
+                    cache_source = get_directory_media_source(media_dir)
+                    unsupported_source = UnsupportedFormatMediaSource()
+                    media_chain = CompositeMediaSource(
+                        [
+                            cache_source,
+                            unsupported_source,
+                        ]
+                    )
                     # Fall back to filesystem
                     unique_ids = [json_file.stem for json_file in media_dir.glob("*.json")]
             else:
