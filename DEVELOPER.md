@@ -105,11 +105,7 @@ state/
 ```
 
 **Storage Backend:**
-The system supports two storage backends (configurable via `CINDY_AGENT_STORAGE_BACKEND`):
-- **Filesystem** (default): Data stored in JSON files in the state directory as shown above
-- **MySQL**: Data stored in MySQL database tables (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity)
-
-When MySQL backend is enabled, agent data (memories, intentions, plans, summaries, schedules) is stored in MySQL instead of JSON files. Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
+The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
 
 **Important:** Agent display names and config file names (the filename without `.md`) cannot be `media` as this conflicts with the reserved media directory. Both display names and config file names must be unique across all config directories to prevent state directory conflicts.
 
@@ -218,7 +214,7 @@ At startup, the agent performs a check to ensure `Instructions.md` is available 
 
 Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property in channel memory files.
 
-**Location:** `{statedir}/{agent_name}/memory/{channel_id}.json` (filesystem) or MySQL `summaries` table (when MySQL backend is enabled)
+**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
 
 **Configuration:**
 
@@ -253,11 +249,11 @@ The `llm_model` property in the channel memory file specifies which LLM model to
 - Logs indicate when a channel-specific LLM is being used
 
 **Example usage:**
-1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json` (filesystem) or update via MySQL (when MySQL backend is enabled)
+1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json`
 2. Add or update the `llm_model` property
 3. The next `received` task for that channel will use the specified model
 
-**Note:** LLM model overrides are stored in channel memory files, which are filesystem-only (not migrated to MySQL). If using MySQL backend, you can still edit the filesystem channel memory files to set `llm_model` overrides.
+**Note:** LLM model overrides are stored in channel memory files in the filesystem. These files are used only for the `llm_model` property override; other data (summaries, plans) is stored in MySQL.
 
 ## Tests you’ll care about
 

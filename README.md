@@ -171,15 +171,85 @@ export CINDY_AGENT_MYSQL_PASSWORD=your_password_here
 export CINDY_AGENT_MYSQL_POOL_SIZE=5
 export CINDY_AGENT_MYSQL_POOL_TIMEOUT=30
 
-# Enable MySQL storage backend
-export CINDY_AGENT_STORAGE_BACKEND=mysql
 ```
 
 Replace `your_database_name`, `your_username`, and `your_password_here` with the values you used when creating the database.
 
-**Note:** If `CINDY_AGENT_STORAGE_BACKEND` is not set or set to `filesystem`, the system will use filesystem storage (default). Set it to `mysql` to use MySQL storage.
+**Note:** The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, and media metadata). Media files, Telegram sessions, and work queue state always remain in the filesystem.
 
-### 5) Log in Telegram sessions
+### 5) Set up test database (for running tests)
+
+To run tests, you'll need a separate test database. Tests automatically use `CINDY_AGENT_MYSQL_TEST_*` environment variables to prevent accidental use of the production database.
+
+**Creating the test database:**
+
+```bash
+mysql -u root -p
+```
+
+Then run these SQL commands (replace `test_cindy_agent`, `test_user`, and `test_password` with your chosen values):
+
+```sql
+CREATE DATABASE test_cindy_agent CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'test_user'@'localhost' IDENTIFIED BY 'test_password';
+GRANT ALL PRIVILEGES ON test_cindy_agent.* TO 'test_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+**Creating the test database schema:**
+
+The schema creation script uses production database variables (`CINDY_AGENT_MYSQL_*`). To create the test database schema, temporarily set the test variables as production variables:
+
+```bash
+# Set test database environment variables first (as shown above)
+export CINDY_AGENT_MYSQL_TEST_DATABASE=test_cindy_agent
+export CINDY_AGENT_MYSQL_TEST_USER=test_user
+export CINDY_AGENT_MYSQL_TEST_PASSWORD=test_password
+export CINDY_AGENT_MYSQL_TEST_HOST=localhost
+export CINDY_AGENT_MYSQL_TEST_PORT=3306
+
+# Temporarily use test variables as production variables for schema creation
+export CINDY_AGENT_MYSQL_DATABASE=$CINDY_AGENT_MYSQL_TEST_DATABASE
+export CINDY_AGENT_MYSQL_USER=$CINDY_AGENT_MYSQL_TEST_USER
+export CINDY_AGENT_MYSQL_PASSWORD=$CINDY_AGENT_MYSQL_TEST_PASSWORD
+export CINDY_AGENT_MYSQL_HOST=$CINDY_AGENT_MYSQL_TEST_HOST
+export CINDY_AGENT_MYSQL_PORT=$CINDY_AGENT_MYSQL_TEST_PORT
+
+# Create the schema
+PYTHONPATH=src python scripts/create_mysql_schema.py
+
+# Optionally unset the temporary production variables after (or leave them if you want to use test DB for development)
+```
+
+**Configuring test database connection:**
+
+Add these environment variables for tests (or add them to your `.env` file):
+
+```bash
+export CINDY_AGENT_MYSQL_TEST_DATABASE=test_cindy_agent
+export CINDY_AGENT_MYSQL_TEST_USER=test_user
+export CINDY_AGENT_MYSQL_TEST_PASSWORD=test_password
+export CINDY_AGENT_MYSQL_TEST_HOST=localhost
+export CINDY_AGENT_MYSQL_TEST_PORT=3306
+```
+
+**Important safety features:**
+
+- Tests automatically use `CINDY_AGENT_MYSQL_TEST_*` variables instead of production `CINDY_AGENT_MYSQL_*` variables
+- The test database name **must contain 'test'** (case-insensitive) or tests will fail
+- Production database variables are ignored when running tests
+- Tests will fail immediately if attempting to use a database name without 'test'
+
+**Running tests:**
+
+```bash
+# Set PYTHONPATH and run tests
+export PYTHONPATH=src
+pytest
+```
+
+### 6) Log in Telegram sessions
 
 Run the helper to establish Telegram sessions:
 
@@ -187,7 +257,7 @@ Run the helper to establish Telegram sessions:
 ./telegram_login.sh
 ```
 
-### 6) Start the agent loop
+### 7) Start the agent loop
 
 ```bash
 ./run.sh start

@@ -17,7 +17,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, Response, stream_with_context  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY, STORAGE_BACKEND, TRANSLATION_MODEL
+from config import STATE_DIRECTORY, TRANSLATION_MODEL
 from handlers.received import parse_llm_reply
 from llm.factory import create_llm_from_name
 from handlers.received_helpers.summarization import trigger_summarization_directly
@@ -115,42 +115,7 @@ def _load_translation_cache() -> dict[str, dict[str, str]]:
     """
     # For MySQL, we can't efficiently load the entire cache, so return empty dict
     # Individual lookups will use MySQL directly via translation_cache module
-    # Do NOT read from disk when MySQL is enabled
-    if STORAGE_BACKEND == "mysql":
-        return {}
-    
-    # Filesystem implementation
-    if not TRANSLATIONS_CACHE_PATH.exists():
-        return {}
-    
-    try:
-        with open(TRANSLATIONS_CACHE_PATH, "r", encoding="utf-8") as f:
-            cache = json_lib.load(f)
-    except Exception as e:
-        logger.warning(f"Failed to load translation cache: {e}")
-        return {}
-    
-    # Filter out expired entries (older than 10 days)
-    now = datetime.now()
-    expiry_threshold = now - timedelta(days=TRANSLATION_CACHE_EXPIRY_DAYS)
-    filtered_cache = {}
-    
-    for text, translation_data in cache.items():
-        timestamp_str = translation_data.get("timestamp")
-        if timestamp_str:
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                if timestamp >= expiry_threshold:
-                    filtered_cache[text] = translation_data
-            except (ValueError, TypeError) as e:
-                logger.debug(f"Invalid timestamp in cache entry: {e}")
-                # Keep entries with invalid timestamps (they'll be overwritten)
-                filtered_cache[text] = translation_data
-        else:
-            # Keep entries without timestamps (they'll be updated with timestamps)
-            filtered_cache[text] = translation_data
-    
-    return filtered_cache
+    return {}
 
 
 def _save_translation_cache(cache: dict[str, dict[str, str]]) -> None:
@@ -163,45 +128,14 @@ def _save_translation_cache(cache: dict[str, dict[str, str]]) -> None:
     Args:
         cache: Dictionary mapping text to translation dict with 'translated_text' and 'timestamp' keys
     """
-    # For MySQL, save individual translations
-    if STORAGE_BACKEND == "mysql":
-        try:
-            from translation_cache import save_translation
-            for text, translation_data in cache.items():
-                translated_text = translation_data.get("translated_text")
-                save_translation(text, translated_text)
-            return
-        except Exception as e:
-            logger.warning(f"Failed to save translation cache to MySQL: {e}, falling back to filesystem")
-            # Fall through to filesystem
-    
-    # Filesystem implementation
-    # Filter out expired entries before saving
-    now = datetime.now()
-    expiry_threshold = now - timedelta(days=TRANSLATION_CACHE_EXPIRY_DAYS)
-    filtered_cache = {}
-    
-    for text, translation_data in cache.items():
-        timestamp_str = translation_data.get("timestamp")
-        if timestamp_str:
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                if timestamp >= expiry_threshold:
-                    filtered_cache[text] = translation_data
-            except (ValueError, TypeError):
-                # Skip entries with invalid timestamps
-                continue
-        else:
-            # Skip entries without timestamps
-            continue
-    
+    # Save individual translations to MySQL
     try:
-        # Ensure parent directory exists
-        TRANSLATIONS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(TRANSLATIONS_CACHE_PATH, "w", encoding="utf-8") as f:
-            json_lib.dump(filtered_cache, f, ensure_ascii=False, indent=2)
+        from translation_cache import save_translation
+        for text, translation_data in cache.items():
+            translated_text = translation_data.get("translated_text")
+            save_translation(text, translated_text)
     except Exception as e:
-        logger.warning(f"Failed to save translation cache: {e}")
+        logger.warning(f"Failed to save translation cache to MySQL: {e}")
 
 
 def register_conversation_actions_routes(agents_bp: Blueprint):
@@ -256,19 +190,13 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         text_to_message_ids[msg_text].append(msg_id)
                         message_id_to_text[msg_id] = msg_text
                         
-                        # Check for existing translation (MySQL or filesystem, depending on backend)
+                        # Check for existing translation in MySQL
                         translation = None
-                        if STORAGE_BACKEND == "mysql":
-                            # MySQL backend: check MySQL only, not filesystem
-                            try:
-                                from translation_cache import get_translation
-                                translation = get_translation(msg_text)
-                            except Exception:
-                                pass
-                        else:
-                            # Filesystem backend: check filesystem cache
-                            if msg_text in cache:
-                                translation = cache[msg_text].get("translated_text", "")
+                        try:
+                            from translation_cache import get_translation
+                            translation = get_translation(msg_text)
+                        except Exception:
+                            pass
                         
                         # If not found in cache, add to translation list
                         if translation is None:
@@ -288,19 +216,13 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         if not msg_text:
                             continue
                         
-                        # Check for cached translation (MySQL or filesystem, depending on backend)
+                        # Check for cached translation in MySQL
                         translated_text = None
-                        if STORAGE_BACKEND == "mysql":
-                            # MySQL backend: check MySQL only, not filesystem
-                            try:
-                                from translation_cache import get_translation
-                                translated_text = get_translation(msg_text)
-                            except Exception:
-                                pass
-                        else:
-                            # Filesystem backend: check filesystem cache
-                            if msg_text in cache:
-                                translated_text = cache[msg_text].get("translated_text", "")
+                        try:
+                            from translation_cache import get_translation
+                            translated_text = get_translation(msg_text)
+                        except Exception:
+                            pass
                         
                         if translated_text:
                             # Translation is already final HTML (tags restored)

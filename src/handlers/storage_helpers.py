@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from config import STORAGE_BACKEND
 from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
 from telegram_util import get_channel_name
@@ -58,12 +57,12 @@ async def process_property_entry_task(
         raw_created = task_params.pop("created", None)
         entry_id = task.id or f"{default_id_prefix}-{uuid.uuid4().hex[:8]}"
 
-        # Check if we should use MySQL or filesystem (needed for both create/update and delete)
-        use_mysql = (
-            STORAGE_BACKEND == "mysql"
-            and hasattr(agent, "agent_id")
-            and agent.agent_id is not None
-        )
+        # Verify agent has agent_id (required for MySQL storage)
+        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            raise ValueError(
+                f"[{agent.name}] Cannot process {entry_type_name} task: agent_id is None. "
+                "Agent must be authenticated before storage operations."
+            )
 
         # Prepare the new entry
         new_entry: dict[str, Any] | None = None
@@ -71,24 +70,10 @@ async def process_property_entry_task(
         
         if content_value is not None:
             # Load existing entries to check if we're updating
-            
-            if use_mysql:
-                # Load from MySQL
-                existing_entry = await _load_existing_entry_mysql(
-                    agent, channel_id, property_name, entry_id
-                )
-            else:
-                # Load from filesystem
-                entries, _ = load_property_entries(
-                    file_path,
-                    property_name,
-                    default_id_prefix=default_id_prefix,
-                )
-                existing_entry = None
-                for item in entries:
-                    if item.get("id") == entry_id:
-                        existing_entry = dict(item)
-                        break
+            # Always use MySQL now
+            existing_entry = await _load_existing_entry_mysql(
+                agent, channel_id, property_name, entry_id
+            )
 
             # Create new entry with content and task params
             new_entry = {
@@ -213,18 +198,10 @@ async def process_property_entry_task(
                     updated_entries = post_process(updated_entries, agent)
                 return updated_entries, updated_payload
 
-        # Save to MySQL or filesystem
-        if use_mysql:
-            await _save_entry_mysql(
-                agent, channel_id, property_name, entry_id, new_entry, content_value
-            )
-        else:
-            mutate_property_entries(
-                file_path,
-                property_name,
-                default_id_prefix=default_id_prefix,
-                mutator=mutator,
-            )
+        # Save to MySQL (always use MySQL now)
+        await _save_entry_mysql(
+            agent, channel_id, property_name, entry_id, new_entry, content_value
+        )
 
         if content_value is not None:
             logger.info(
@@ -251,65 +228,32 @@ def clear_plans_and_summaries(agent, channel_id: int):
         agent: The agent instance
         channel_id: The conversation ID
     """
-    use_mysql = (
-        STORAGE_BACKEND == "mysql"
-        and hasattr(agent, "agent_id")
-        and agent.agent_id is not None
-    )
+    # Verify agent has agent_id (required for MySQL storage)
+    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        raise ValueError(
+            f"[{agent.name}] Cannot clear plans and summaries: agent_id is None. "
+            "Agent must be authenticated before storage operations."
+        )
     
-    if use_mysql:
-        # Clear from MySQL
-        try:
-            from db import plans, summaries
-            
-            # Get all plans and summaries, then delete them
-            plans_list = plans.load_plans(agent.agent_id, channel_id)
-            for plan in plans_list:
-                plans.delete_plan(agent.agent_id, channel_id, plan.get("id"))
-            
-            summaries_list = summaries.load_summaries(agent.agent_id, channel_id)
-            for summary in summaries_list:
-                summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
-            
-            logger.info(
-                f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}] from MySQL"
-            )
-        except Exception as e:
-            logger.error(f"Failed to clear plans and summaries from MySQL: {e}")
-            raise
-    else:
-        # Clear from filesystem
-        from config import STATE_DIRECTORY
-        from pathlib import Path
+    # Clear from MySQL
+    try:
+        from db import plans, summaries
         
-        memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+        # Get all plans and summaries, then delete them
+        plans_list = plans.load_plans(agent.agent_id, channel_id)
+        for plan in plans_list:
+            plans.delete_plan(agent.agent_id, channel_id, plan.get("id"))
         
-        if not memory_file.exists():
-            return
-        
-        logger.info(
-            f"[{agent.name}] Clearing summaries and plans for channel [{channel_id}]"
-        )
-        
-        # Clear summaries
-        def clear_summaries(entries, payload):
-            return [], payload
-        
-        mutate_property_entries(
-            memory_file, "summary", default_id_prefix="summary", mutator=clear_summaries
-        )
-        
-        # Clear plans
-        def clear_plans(entries, payload):
-            return [], payload
-        
-        mutate_property_entries(
-            memory_file, "plan", default_id_prefix="plan", mutator=clear_plans
-        )
+        summaries_list = summaries.load_summaries(agent.agent_id, channel_id)
+        for summary in summaries_list:
+            summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
         
         logger.info(
             f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}]"
         )
+    except Exception as e:
+        logger.error(f"Failed to clear plans and summaries from MySQL: {e}")
+        raise
 
 
 async def _load_existing_entry_mysql(

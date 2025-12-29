@@ -9,12 +9,6 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY, STORAGE_BACKEND
-from memory_storage import (
-    MemoryStorageError,
-    load_property_entries,
-    mutate_property_entries,
-)
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -31,26 +25,17 @@ def register_intention_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if STORAGE_BACKEND == "mysql":
-                # Load from MySQL
-                from db.intentions import load_intentions
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                intentions = load_intentions(agent.agent_id)
-            else:
-                # Load from filesystem
-                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-                intentions, _ = load_property_entries(
-                    memory_file, "intention", default_id_prefix="intent"
-                )
+            # Load from MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.intentions import load_intentions
+            intentions = load_intentions(agent.agent_id)
 
             # Sort by created timestamp (newest first)
             intentions.sort(key=lambda x: x.get("created", ""), reverse=True)
 
             return jsonify({"intentions": intentions})
-        except MemoryStorageError as e:
-            logger.error(f"Error loading intentions for {agent_config_name}: {e}")
-            return jsonify({"error": str(e)}), 500
         except Exception as e:
             logger.error(f"Error getting intentions for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -66,38 +51,24 @@ def register_intention_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            if STORAGE_BACKEND == "mysql":
-                # Update in MySQL
-                from db.intentions import load_intentions, save_intention
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                # Load existing intention to preserve other fields
-                intentions = load_intentions(agent.agent_id)
-                intention = next((i for i in intentions if i.get("id") == intention_id), None)
-                if not intention:
-                    return jsonify({"error": "Intention not found"}), 404
-                # Update content and save
-                save_intention(
-                    agent_telegram_id=agent.agent_id,
-                    intention_id=intention_id,
-                    content=content,
-                    created=intention.get("created"),
-                    metadata={k: v for k, v in intention.items() if k not in {"id", "content", "created"}},
-                )
-            else:
-                # Update in filesystem
-                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-
-                def update_intention(entries, payload):
-                    for entry in entries:
-                        if entry.get("id") == intention_id:
-                            entry["content"] = content
-                            break
-                    return entries, payload
-
-                mutate_property_entries(
-                    memory_file, "intention", default_id_prefix="intent", mutator=update_intention
-                )
+            # Update in MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.intentions import load_intentions, save_intention
+            # Load existing intention to preserve other fields
+            intentions = load_intentions(agent.agent_id)
+            intention = next((i for i in intentions if i.get("id") == intention_id), None)
+            if not intention:
+                return jsonify({"error": "Intention not found"}), 404
+            # Update content and save
+            save_intention(
+                agent_telegram_id=agent.agent_id,
+                intention_id=intention_id,
+                content=content,
+                created=intention.get("created"),
+                metadata={k: v for k, v in intention.items() if k not in {"id", "content", "created"}},
+            )
 
             return jsonify({"success": True})
         except Exception as e:
@@ -112,23 +83,12 @@ def register_intention_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if STORAGE_BACKEND == "mysql":
-                # Delete from MySQL
-                from db.intentions import delete_intention
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                delete_intention(agent.agent_id, intention_id)
-            else:
-                # Delete from filesystem
-                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-
-                def delete_intention_func(entries, payload):
-                    entries = [e for e in entries if e.get("id") != intention_id]
-                    return entries, payload
-
-                mutate_property_entries(
-                    memory_file, "intention", default_id_prefix="intent", mutator=delete_intention_func
-                )
+            # Delete from MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.intentions import delete_intention
+            delete_intention(agent.agent_id, intention_id)
 
             return jsonify({"success": True})
         except Exception as e:
@@ -159,29 +119,18 @@ def register_intention_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
 
-            if STORAGE_BACKEND == "mysql":
-                # Save to MySQL
-                from db.intentions import save_intention
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                save_intention(
-                    agent_telegram_id=agent.agent_id,
-                    intention_id=intention_id,
-                    content=content,
-                    created=created_value,
-                    metadata={"origin": "puppetmaster"},
-                )
-            else:
-                # Save to filesystem
-                memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-
-                def create_intention(entries, payload):
-                    entries.append(new_entry)
-                    return entries, payload
-
-                mutate_property_entries(
-                    memory_file, "intention", default_id_prefix="intent", mutator=create_intention
-                )
+            # Save to MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.intentions import save_intention
+            save_intention(
+                agent_telegram_id=agent.agent_id,
+                intention_id=intention_id,
+                content=content,
+                created=created_value,
+                metadata={"origin": "puppetmaster"},
+            )
 
             return jsonify({"success": True, "intention": new_entry})
         except Exception as e:

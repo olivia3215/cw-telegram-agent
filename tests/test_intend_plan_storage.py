@@ -8,10 +8,11 @@ from task_graph import TaskNode
 
 
 class StubAgent:
-    def __init__(self, name="TestAgent"):
+    def __init__(self, name="TestAgent", agent_id=12345):
         self.name = name
         self.config_name = name  # config_name defaults to name, matching Agent class behavior
         self.timezone = ZoneInfo("UTC")
+        self.agent_id = agent_id  # Required for MySQL storage
 
     def get_current_time(self):
         return datetime(2025, 1, 1, 12, 0, tzinfo=ZoneInfo("UTC"))
@@ -26,7 +27,8 @@ async def test_process_intend_task_persists_entries(tmp_path, monkeypatch):
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(intend, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10001)
     channel_id = 42
 
     task = TaskNode(
@@ -37,14 +39,15 @@ async def test_process_intend_task_persists_entries(tmp_path, monkeypatch):
 
     await intend._process_intend_task(agent, channel_id, task)
 
-    memory_file = state_dir / agent.config_name / "memory.json"
-    payload = json.loads(memory_file.read_text())
-    assert "intention" in payload
-    assert len(payload["intention"]) == 1
-    entry = payload["intention"][0]
+    # Load from MySQL instead of filesystem
+    from db import intentions as db_intentions
+    intentions = db_intentions.load_intentions(agent.agent_id)
+    assert len(intentions) == 1
+    entry = intentions[0]
     assert entry["id"] == "intent-abc123"
     assert entry["content"] == "Check in with Wendy tomorrow morning."
-    assert entry["created"] == "2025-01-02T09:00:00+00:00"
+    # MySQL stores datetime without timezone, so compare without timezone suffix
+    assert entry["created"] == "2025-01-02T09:00:00"
     assert "creation_channel" not in entry
     assert "creation_channel_id" not in entry
     assert "creation_channel_username" not in entry
@@ -55,8 +58,8 @@ async def test_process_intend_task_persists_entries(tmp_path, monkeypatch):
         params={"content": ""},
     )
     await intend._process_intend_task(agent, channel_id, delete_task)
-    payload = json.loads(memory_file.read_text())
-    assert payload["intention"] == []
+    intentions = db_intentions.load_intentions(agent.agent_id)
+    assert intentions == []
 
 
 @pytest.mark.asyncio
@@ -66,7 +69,8 @@ async def test_process_intend_task_preserves_order_on_update(tmp_path, monkeypat
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(intend, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10002)
     channel_id = 42
 
     # Add three intentions in order
@@ -91,12 +95,13 @@ async def test_process_intend_task_preserves_order_on_update(tmp_path, monkeypat
     )
     await intend._process_intend_task(agent, channel_id, task3)
 
-    memory_file = state_dir / agent.config_name / "memory.json"
-    payload = json.loads(memory_file.read_text())
-    assert len(payload["intention"]) == 3
-    assert payload["intention"][0]["id"] == "intent-first"
-    assert payload["intention"][1]["id"] == "intent-second"
-    assert payload["intention"][2]["id"] == "intent-third"
+    # Load from MySQL instead of filesystem
+    from db import intentions as db_intentions
+    intentions = db_intentions.load_intentions(agent.agent_id)
+    assert len(intentions) == 3
+    assert intentions[0]["id"] == "intent-first"
+    assert intentions[1]["id"] == "intent-second"
+    assert intentions[2]["id"] == "intent-third"
 
     # Update the first intention - it should stay in position 0
     update_task = TaskNode(
@@ -106,13 +111,13 @@ async def test_process_intend_task_preserves_order_on_update(tmp_path, monkeypat
     )
     await intend._process_intend_task(agent, channel_id, update_task)
 
-    payload = json.loads(memory_file.read_text())
-    assert len(payload["intention"]) == 3
+    intentions = db_intentions.load_intentions(agent.agent_id)
+    assert len(intentions) == 3
     # The updated intention should still be in the first position
-    assert payload["intention"][0]["id"] == "intent-first"
-    assert payload["intention"][0]["content"] == "First intention (updated)"
-    assert payload["intention"][1]["id"] == "intent-second"
-    assert payload["intention"][2]["id"] == "intent-third"
+    assert intentions[0]["id"] == "intent-first"
+    assert intentions[0]["content"] == "First intention (updated)"
+    assert intentions[1]["id"] == "intent-second"
+    assert intentions[2]["id"] == "intent-third"
 
 
 @pytest.mark.asyncio
@@ -121,7 +126,8 @@ async def test_process_plan_task_persists_entries(tmp_path, monkeypatch):
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(plan, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10003)
     channel_id = 6002070069
 
     task = TaskNode(
@@ -132,14 +138,15 @@ async def test_process_plan_task_persists_entries(tmp_path, monkeypatch):
 
     await plan._process_plan_task(agent, channel_id, task)
 
-    plan_file = state_dir / agent.config_name / "memory" / f"{channel_id}.json"
-    payload = json.loads(plan_file.read_text())
-    assert "plan" in payload
-    assert len(payload["plan"]) == 1
-    entry = payload["plan"][0]
+    # Load from MySQL instead of filesystem
+    from db import plans as db_plans
+    plans = db_plans.load_plans(agent.agent_id, channel_id)
+    assert len(plans) == 1
+    entry = plans[0]
     assert entry["id"] == "plan-xyz789"
     assert entry["content"] == "Ask Srushti about her AIML module in two days."
-    assert entry["created"] == "2025-01-03T10:30:00+00:00"
+    # MySQL stores datetime without timezone, so compare without timezone suffix
+    assert entry["created"] == "2025-01-03T10:30:00"
     assert "creation_channel" not in entry
     assert "creation_channel_username" not in entry
     assert "creation_channel_id" not in entry
@@ -150,8 +157,8 @@ async def test_process_plan_task_persists_entries(tmp_path, monkeypatch):
         params={"content": ""},
     )
     await plan._process_plan_task(agent, channel_id, delete_task)
-    payload = json.loads(plan_file.read_text())
-    assert payload["plan"] == []
+    plans = db_plans.load_plans(agent.agent_id, channel_id)
+    assert plans == []
 
 
 @pytest.mark.asyncio
@@ -161,7 +168,8 @@ async def test_process_plan_task_preserves_order_on_update(tmp_path, monkeypatch
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(plan, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10004)
     channel_id = 6002070069
 
     # Add three plans in order
@@ -186,12 +194,13 @@ async def test_process_plan_task_preserves_order_on_update(tmp_path, monkeypatch
     )
     await plan._process_plan_task(agent, channel_id, task3)
 
-    plan_file = state_dir / agent.config_name / "memory" / f"{channel_id}.json"
-    payload = json.loads(plan_file.read_text())
-    assert len(payload["plan"]) == 3
-    assert payload["plan"][0]["id"] == "plan-first"
-    assert payload["plan"][1]["id"] == "plan-second"
-    assert payload["plan"][2]["id"] == "plan-third"
+    # Load from MySQL instead of filesystem
+    from db import plans as db_plans
+    plans = db_plans.load_plans(agent.agent_id, channel_id)
+    assert len(plans) == 3
+    assert plans[0]["id"] == "plan-first"
+    assert plans[1]["id"] == "plan-second"
+    assert plans[2]["id"] == "plan-third"
 
     # Update the first plan - it should stay in position 0
     update_task = TaskNode(
@@ -201,13 +210,13 @@ async def test_process_plan_task_preserves_order_on_update(tmp_path, monkeypatch
     )
     await plan._process_plan_task(agent, channel_id, update_task)
 
-    payload = json.loads(plan_file.read_text())
-    assert len(payload["plan"]) == 3
+    plans = db_plans.load_plans(agent.agent_id, channel_id)
+    assert len(plans) == 3
     # The updated plan should still be in the first position
-    assert payload["plan"][0]["id"] == "plan-first"
-    assert payload["plan"][0]["content"] == "First plan (updated)"
-    assert payload["plan"][1]["id"] == "plan-second"
-    assert payload["plan"][2]["id"] == "plan-third"
+    assert plans[0]["id"] == "plan-first"
+    assert plans[0]["content"] == "First plan (updated)"
+    assert plans[1]["id"] == "plan-second"
+    assert plans[2]["id"] == "plan-third"
 
 
 @pytest.mark.asyncio
@@ -218,7 +227,8 @@ async def test_process_remember_task_preserves_order_on_update(tmp_path, monkeyp
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(remember, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10005)
     channel_id = 42
 
     # Mock get_channel_name to return a channel name
@@ -247,20 +257,21 @@ async def test_process_remember_task_preserves_order_on_update(tmp_path, monkeyp
         )
         await remember._process_remember_task(agent, channel_id, task3)
 
-        memory_file = state_dir / agent.config_name / "memory.json"
-        payload = json.loads(memory_file.read_text())
-        assert len(payload["memory"]) == 3
+        # Load from MySQL instead of filesystem
+        from db import memories as db_memories
+        memories = db_memories.load_memories(agent.agent_id)
+        assert len(memories) == 3
         # After sorting, memories should be in chronological order
         # Find the first memory by ID to get its position
-        first_memory_idx = next(i for i, m in enumerate(payload["memory"]) if m["id"] == "memory-first")
-        second_memory_idx = next(i for i, m in enumerate(payload["memory"]) if m["id"] == "memory-second")
-        third_memory_idx = next(i for i, m in enumerate(payload["memory"]) if m["id"] == "memory-third")
+        first_memory_idx = next(i for i, m in enumerate(memories) if m["id"] == "memory-first")
+        second_memory_idx = next(i for i, m in enumerate(memories) if m["id"] == "memory-second")
+        third_memory_idx = next(i for i, m in enumerate(memories) if m["id"] == "memory-third")
         
         # Store original channel info and date from first memory (using its actual position)
         # Note: created time may be normalized, so we store the actual stored value
-        original_channel = payload["memory"][first_memory_idx].get("creation_channel")
-        original_channel_id = payload["memory"][first_memory_idx].get("creation_channel_id")
-        original_created = payload["memory"][first_memory_idx].get("created")
+        original_channel = memories[first_memory_idx].get("creation_channel")
+        original_channel_id = memories[first_memory_idx].get("creation_channel_id")
+        original_created = memories[first_memory_idx].get("created")
         assert original_created is not None, "Memory should have a created timestamp"
 
         # Update the first memory - it should stay in position 0 and preserve channel info/date
@@ -271,22 +282,22 @@ async def test_process_remember_task_preserves_order_on_update(tmp_path, monkeyp
         )
         await remember._process_remember_task(agent, channel_id, update_task)
 
-        payload = json.loads(memory_file.read_text())
-        assert len(payload["memory"]) == 3
+        memories = db_memories.load_memories(agent.agent_id)
+        assert len(memories) == 3
         
         # Find the updated memory by ID
-        updated_memory_idx = next(i for i, m in enumerate(payload["memory"]) if m["id"] == "memory-first")
+        updated_memory_idx = next(i for i, m in enumerate(memories) if m["id"] == "memory-first")
         
         # The updated memory should still be in the same position (after sorting)
         assert updated_memory_idx == first_memory_idx
-        assert payload["memory"][updated_memory_idx]["content"] == "First memory (updated)"
+        assert memories[updated_memory_idx]["content"] == "First memory (updated)"
         
         # Verify other memories are still present
-        assert any(m["id"] == "memory-second" for m in payload["memory"])
-        assert any(m["id"] == "memory-third" for m in payload["memory"])
+        assert any(m["id"] == "memory-second" for m in memories)
+        assert any(m["id"] == "memory-third" for m in memories)
         
         # Channel info and date should be preserved
-        updated_memory = payload["memory"][updated_memory_idx]
+        updated_memory = memories[updated_memory_idx]
         assert updated_memory.get("creation_channel") == original_channel
         assert updated_memory.get("creation_channel_id") == original_channel_id
         # The created timestamp should be preserved (may be normalized, but should match what was stored)
@@ -302,7 +313,8 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(remember, "STATE_DIRECTORY", str(state_dir))
-    agent = StubAgent()
+    # Use unique agent_id to avoid test interference
+    agent = StubAgent(agent_id=10006)
     original_channel_id = 42
     different_channel_id = 999
 
@@ -317,9 +329,10 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
         )
         await remember._process_remember_task(agent, original_channel_id, create_task)
 
-        memory_file = state_dir / agent.config_name / "memory.json"
-        payload = json.loads(memory_file.read_text())
-        original_memory = next(m for m in payload["memory"] if m["id"] == "memory-test")
+        # Load from MySQL instead of filesystem
+        from db import memories as db_memories
+        memories = db_memories.load_memories(agent.agent_id)
+        original_memory = next(m for m in memories if m["id"] == "memory-test")
         original_channel = original_memory.get("creation_channel")
         original_channel_id_stored = original_memory.get("creation_channel_id")
         original_created = original_memory.get("created")
@@ -338,8 +351,8 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
         )
         await remember._process_remember_task(agent, different_channel_id, update_task)
 
-        payload = json.loads(memory_file.read_text())
-        updated_memory = next(m for m in payload["memory"] if m["id"] == "memory-test")
+        memories = db_memories.load_memories(agent.agent_id)
+        updated_memory = next(m for m in memories if m["id"] == "memory-test")
         
         # Channel info should be preserved (from original channel, not the update channel)
         assert updated_memory.get("creation_channel") == original_channel
@@ -357,11 +370,12 @@ async def test_process_remember_task_preserves_channel_info_unless_provided(tmp_
         )
         await remember._process_remember_task(agent, different_channel_id, update_with_date_task)
 
-        payload = json.loads(memory_file.read_text())
-        updated_memory = next(m for m in payload["memory"] if m["id"] == "memory-test")
+        memories = db_memories.load_memories(agent.agent_id)
+        updated_memory = next(m for m in memories if m["id"] == "memory-test")
         
         # Date should be updated, but channel info should still be preserved
-        assert updated_memory.get("created") == new_date
+        # MySQL stores datetime without timezone, so compare without timezone suffix
+        assert updated_memory.get("created") == "2025-02-20T15:30:00"
         assert updated_memory.get("creation_channel") == original_channel
         assert updated_memory.get("creation_channel_id") == original_channel_id_stored
 
@@ -384,38 +398,43 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
         role_prompt_names=[],
         llm=DummyLLM(),
     )
+    # Set agent_id for MySQL storage (required for storage operations)
+    # Use unique agent_id to avoid test interference
+    agent_instance.agent_id = 10007
 
-    memory_dir = state_dir / agent_instance.config_name
-    memory_dir.mkdir(parents=True)
-
-    (memory_dir / "memory.json").write_text(
-        json.dumps(
-            {
-                "intention": [
-                    {"id": "intent-1", "content": "Prepare a weekly summary for Olivia."}
-                ],
-                "memory": [
-                    {"id": "memory-1", "content": "Olivia prefers concise updates."}
-                ],
-            },
-            ensure_ascii=False,
-        )
+    # Populate MySQL instead of filesystem files
+    from db import intentions as db_intentions, plans as db_plans, memories as db_memories
+    
+    # Save intention
+    db_intentions.save_intention(
+        agent_telegram_id=agent_instance.agent_id,
+        intention_id="intent-1",
+        content="Prepare a weekly summary for Olivia.",
+        created=None,
+        metadata=None,
     )
-
-    plan_dir = memory_dir / "memory"
-    plan_dir.mkdir()
-    (plan_dir / "12345.json").write_text(
-        json.dumps(
-            {
-                "plan": [
-                    {
-                        "id": "plan-1",
-                        "content": "Confirm the agenda with Olivia before Friday.",
-                    }
-                ]
-            },
-            ensure_ascii=False,
-        )
+    
+    # Save memory
+    db_memories.save_memory(
+        agent_telegram_id=agent_instance.agent_id,
+        memory_id="memory-1",
+        content="Olivia prefers concise updates.",
+        created=None,
+        creation_channel=None,
+        creation_channel_id=None,
+        creation_channel_username=None,
+        metadata=None,
+    )
+    
+    # Save plan
+    channel_id = 12345
+    db_plans.save_plan(
+        agent_telegram_id=agent_instance.agent_id,
+        channel_id=channel_id,
+        plan_id="plan-1",
+        content="Confirm the agenda with Olivia before Friday.",
+        created=None,
+        metadata=None,
     )
 
     intention_content = agent_instance._load_intention_content()

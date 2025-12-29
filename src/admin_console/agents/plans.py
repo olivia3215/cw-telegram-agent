@@ -9,12 +9,6 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY, STORAGE_BACKEND
-from memory_storage import (
-    MemoryStorageError,
-    load_property_entries,
-    mutate_property_entries,
-)
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -40,27 +34,18 @@ def register_plan_routes(agents_bp: Blueprint):
                 return error_response
             logger.info(f"Resolved user_id {user_id} to channel_id {channel_id} for agent {agent_config_name}")
 
-            if STORAGE_BACKEND == "mysql":
-                # Load from MySQL
+            # Load from MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                logger.warning(f"Agent {agent_config_name} has no Telegram ID, cannot load plans from MySQL")
+                return jsonify({"error": "Agent not authenticated. Please ensure the agent is logged in."}), 503
+            
+            try:
                 from db.plans import load_plans
-                if not agent.agent_id:
-                    logger.warning(f"Agent {agent_config_name} has no Telegram ID, cannot load plans from MySQL")
-                    return jsonify({"error": "Agent has no Telegram ID. Please ensure the agent is logged in."}), 400
-                try:
-                    plans = load_plans(agent.agent_id, channel_id)
-                    logger.debug(f"Loaded {len(plans)} plans from MySQL for agent {agent_config_name}, channel {channel_id}")
-                except Exception as e:
-                    logger.error(f"Error loading plans from MySQL for {agent_config_name}/{channel_id}: {e}")
-                    return jsonify({"error": f"Error loading plans from MySQL: {str(e)}"}), 500
-            else:
-                # Load from filesystem
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-                try:
-                    plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
-                    logger.debug(f"Loaded {len(plans)} plans from filesystem for agent {agent_config_name}, channel {channel_id}")
-                except Exception as e:
-                    logger.warning(f"Error loading plans from filesystem for {agent_config_name}/{channel_id}: {e}")
-                    plans = []
+                plans = load_plans(agent.agent_id, channel_id)
+                logger.debug(f"Loaded {len(plans)} plans from MySQL for agent {agent_config_name}, channel {channel_id}")
+            except Exception as e:
+                logger.error(f"Error loading plans from MySQL for {agent_config_name}/{channel_id}: {e}")
+                return jsonify({"error": f"Error loading plans from MySQL: {str(e)}"}), 500
 
             # Sort by created timestamp (newest first)
             # Handle case where plans might be None or empty
@@ -71,9 +56,6 @@ def register_plan_routes(agents_bp: Blueprint):
 
             logger.debug(f"Returning {len(plans)} plans for {agent_config_name}/{user_id} (channel_id: {channel_id})")
             return jsonify({"plans": plans})
-        except MemoryStorageError as e:
-            logger.error(f"Error loading plans for {agent_config_name}/{user_id}: {e}")
-            return jsonify({"error": str(e)}), 500
         except Exception as e:
             logger.error(f"Error getting plans for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -94,39 +76,25 @@ def register_plan_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            if STORAGE_BACKEND == "mysql":
-                # Update in MySQL
-                from db.plans import load_plans, save_plan
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                # Load existing plan to preserve other fields
-                plans = load_plans(agent.agent_id, channel_id)
-                plan = next((p for p in plans if p.get("id") == plan_id), None)
-                if not plan:
-                    return jsonify({"error": "Plan not found"}), 404
-                # Update content and save
-                save_plan(
-                    agent_telegram_id=agent.agent_id,
-                    channel_id=channel_id,
-                    plan_id=plan_id,
-                    content=content,
-                    created=plan.get("created"),
-                    metadata={k: v for k, v in plan.items() if k not in {"id", "content", "created"}},
-                )
-            else:
-                # Update in filesystem
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-
-                def update_plan(entries, payload):
-                    for entry in entries:
-                        if entry.get("id") == plan_id:
-                            entry["content"] = content
-                            break
-                    return entries, payload
-
-                mutate_property_entries(
-                    plan_file, "plan", default_id_prefix="plan", mutator=update_plan
-                )
+            # Update in MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import load_plans, save_plan
+            # Load existing plan to preserve other fields
+            plans = load_plans(agent.agent_id, channel_id)
+            plan = next((p for p in plans if p.get("id") == plan_id), None)
+            if not plan:
+                return jsonify({"error": "Plan not found"}), 404
+            # Update content and save
+            save_plan(
+                agent_telegram_id=agent.agent_id,
+                channel_id=channel_id,
+                plan_id=plan_id,
+                content=content,
+                created=plan.get("created"),
+                metadata={k: v for k, v in plan.items() if k not in {"id", "content", "created"}},
+            )
 
             return jsonify({"success": True})
         except Exception as e:
@@ -146,23 +114,12 @@ def register_plan_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            if STORAGE_BACKEND == "mysql":
-                # Delete from MySQL
-                from db.plans import delete_plan
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                delete_plan(agent.agent_id, channel_id, plan_id)
-            else:
-                # Delete from filesystem
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-
-                def delete_plan_func(entries, payload):
-                    entries = [e for e in entries if e.get("id") != plan_id]
-                    return entries, payload
-
-                mutate_property_entries(
-                    plan_file, "plan", default_id_prefix="plan", mutator=delete_plan_func
-                )
+            # Delete from MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import delete_plan
+            delete_plan(agent.agent_id, channel_id, plan_id)
 
             return jsonify({"success": True})
         except Exception as e:
@@ -198,30 +155,19 @@ def register_plan_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
 
-            if STORAGE_BACKEND == "mysql":
-                # Save to MySQL
-                from db.plans import save_plan
-                if not agent.agent_id:
-                    return jsonify({"error": "Agent has no Telegram ID"}), 400
-                save_plan(
-                    agent_telegram_id=agent.agent_id,
-                    channel_id=channel_id,
-                    plan_id=plan_id,
-                    content=content,
-                    created=created_value,
-                    metadata={"origin": "puppetmaster"},
-                )
-            else:
-                # Save to filesystem
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-
-                def create_plan(entries, payload):
-                    entries.append(new_entry)
-                    return entries, payload
-
-                mutate_property_entries(
-                    plan_file, "plan", default_id_prefix="plan", mutator=create_plan
-                )
+            # Save to MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import save_plan
+            save_plan(
+                agent_telegram_id=agent.agent_id,
+                channel_id=channel_id,
+                plan_id=plan_id,
+                content=content,
+                created=created_value,
+                metadata={"origin": "puppetmaster"},
+            )
 
             return jsonify({"success": True, "plan": new_entry})
         except Exception as e:

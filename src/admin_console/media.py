@@ -21,7 +21,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from clock import clock
-from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY, STORAGE_BACKEND
+from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY
 from datetime import UTC
 from admin_console.helpers import (
     find_media_file,
@@ -119,17 +119,22 @@ def api_media_list():
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
+        # Ensure media_dir is a Path object
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
         if not media_dir.exists():
             return jsonify({"error": "Directory not found"}), 404
 
-        # Check if this is the state/media directory and MySQL backend is enabled
-        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
-        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        # Check if this is the state/media directory (always use MySQL for state/media)
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        if not isinstance(state_media_path, Path):
+            state_media_path = Path(state_media_path)
+        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
 
         # Use MediaSource API to read media descriptions
-        # For state/media with MySQL, use the default chain (includes MySQLMediaSource)
+        # For state/media, use the default chain (includes MySQLMediaSource)
         # For other directories, use directory source only
-        if use_mysql:
+        if is_state_media:
             # Use the default media source chain which includes MySQL
             media_chain = get_default_media_source_chain()
             cache_source = None  # Not used when MySQL is enabled
@@ -152,9 +157,10 @@ def api_media_list():
         asyncio.set_event_loop(loop)
         
         try:
-            # Get unique IDs - from MySQL if enabled, otherwise from JSON files
+            # Get unique IDs - from MySQL for state/media, otherwise from JSON files
             unique_ids = []
-            if use_mysql:
+            use_mysql = is_state_media
+            if is_state_media:
                 # For MySQL, query the database directly to get all unique_ids
                 try:
                     from db.connection import get_db_connection
@@ -382,6 +388,9 @@ def api_media_file(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
+        # Ensure media_dir is a Path object
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
 
         # Find the media file
         media_file = find_media_file(media_dir, unique_id)
@@ -414,12 +423,18 @@ def api_update_description(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
+        # Ensure media_dir is a Path object
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
         
         # Check if this is the state/media directory and MySQL backend is enabled
-        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
-        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        # Always use MySQL for state/media
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        if not isinstance(state_media_path, Path):
+            state_media_path = Path(state_media_path)
+        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
         
-        if use_mysql:
+        if is_state_media:
             # Load from MySQL
             from db import media_metadata
             record = media_metadata.load_media_metadata(unique_id)
@@ -472,13 +487,15 @@ def api_refresh_from_ai(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
+        # Ensure media_dir is a Path object
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
         
-        # Check if this is the state/media directory and MySQL backend is enabled
-        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
-        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        # Always use MySQL for state/media
+        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media").resolve()
         
-        # Load the record - use MySQL if enabled, otherwise filesystem
-        if use_mysql:
+        # Load the record - use MySQL for state/media, otherwise filesystem
+        if is_state_media:
             from db import media_metadata
             data = media_metadata.load_media_metadata(unique_id)
         else:
@@ -499,7 +516,7 @@ def api_refresh_from_ai(unique_id: str):
         data["status"] = MediaStatus.TEMPORARY_FAILURE.value
         
         # Save the updated record using the appropriate backend
-        if use_mysql:
+        if is_state_media:
             from db import media_metadata
             media_metadata.save_media_metadata(data)
         else:
@@ -547,8 +564,8 @@ def api_refresh_from_ai(unique_id: str):
         ai_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the same chain structure as the main application
-        # Use MySQL cache source if MySQL backend is enabled and this is state/media
-        if use_mysql:
+        # Use MySQL cache source if this is state/media
+        if is_state_media:
             from media.mysql_media_source import MySQLMediaSource
             ai_cache_source = MySQLMediaSource()
         else:
@@ -702,12 +719,18 @@ def api_delete_media(unique_id: str):
             return jsonify({"error": "Missing directory parameter"}), 400
 
         media_dir = resolve_media_path(directory_path)
+        # Ensure media_dir is a Path object
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
         
         # Check if this is the state/media directory and MySQL backend is enabled
-        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media")
-        use_mysql = STORAGE_BACKEND == "mysql" and is_state_media
+        # Always use MySQL for state/media
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        if not isinstance(state_media_path, Path):
+            state_media_path = Path(state_media_path)
+        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
         
-        if use_mysql:
+        if is_state_media:
             # Delete from MySQL
             from db import media_metadata
             record = media_metadata.load_media_metadata(unique_id)

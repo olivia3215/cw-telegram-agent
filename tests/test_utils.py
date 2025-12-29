@@ -3,8 +3,14 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import os
 import pytest
 from fake_clock import FakeClock
+
+
+# Database safety checks are now handled in conftest.py pytest_configure hook
+# which runs before any imports. This fixture is kept for backwards compatibility
+# but the main check happens in pytest_configure.
 
 
 @pytest.fixture

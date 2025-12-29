@@ -112,35 +112,13 @@ def api_agents():
             
             # Check if agent has plans
             has_plans = False
-            from config import STORAGE_BACKEND, STATE_DIRECTORY
-            if STORAGE_BACKEND == "mysql":
-                # Check MySQL
-                if agent.agent_id:
-                    try:
-                        from db.plans import has_plans_for_agent
-                        has_plans = has_plans_for_agent(agent.agent_id)
-                    except Exception as e:
-                        logger.debug(f"Error checking plans in MySQL for agent {agent.config_name}: {e}")
-                        has_plans = False
-            else:
-                # Check filesystem
-                if agent.config_name:
-                    try:
-                        memory_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"
-                        if memory_dir.exists():
-                            # Check all JSON files in memory directory for plans
-                            for memory_file in memory_dir.glob("*.json"):
-                                try:
-                                    from memory_storage import load_property_entries
-                                    plans, _ = load_property_entries(memory_file, "plan", default_id_prefix="plan")
-                                    if plans and len(plans) > 0:
-                                        has_plans = True
-                                        break
-                                except Exception:
-                                    continue
-                    except Exception as e:
-                        logger.debug(f"Error checking plans in filesystem for agent {agent.config_name}: {e}")
-                        has_plans = False
+            if agent.agent_id:
+                try:
+                    from db.plans import has_plans_for_agent
+                    has_plans = has_plans_for_agent(agent.agent_id)
+                except Exception as e:
+                    logger.debug(f"Error checking plans in MySQL for agent {agent.config_name}: {e}")
+                    has_plans = False
             
             agent_list.append({
                 "name": agent.name,

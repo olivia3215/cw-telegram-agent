@@ -8,46 +8,25 @@ from pathlib import Path
 from flask import jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY, STORAGE_BACKEND
-from memory_storage import load_property_entries
 
 logger = logging.getLogger(__name__)
 
 
 def _has_conversation_content_local(agent_config_name: str, channel_id: int) -> bool:
     """
-    Check if a conversation has content by checking local files or MySQL (no Telegram API calls).
+    Check if a conversation has content by checking MySQL (no Telegram API calls).
     
-    Returns True if summaries exist or if the summary file exists (indicating conversation data).
+    Returns True if summaries exist in MySQL.
     """
     try:
-        from admin_console.helpers import get_agent_by_name
-        
         agent = get_agent_by_name(agent_config_name)
-        if not agent:
+        if not agent or not hasattr(agent, "agent_id") or agent.agent_id is None:
             return False
         
-        # Check if we should use MySQL or filesystem
-        use_mysql = (
-            STORAGE_BACKEND == "mysql"
-            and hasattr(agent, "agent_id")
-            and agent.agent_id is not None
-        )
-        
-        if use_mysql:
-            # Check MySQL
-            from db import summaries as db_summaries
-            summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
-            return len(summaries) > 0
-        else:
-            # Check filesystem
-            summary_file = Path(STATE_DIRECTORY) / agent_config_name / "memory" / f"{channel_id}.json"
-            if not summary_file.exists():
-                return False
-            
-            summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
-            # If summaries exist, there's conversation content
-            return len(summaries) > 0
+        # Check MySQL
+        from db import summaries as db_summaries
+        summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
+        return len(summaries) > 0
     except Exception:
         return False
 

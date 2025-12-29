@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 
 class AgentStorageMySQL:
     """
-    MySQL-based storage implementation.
+    MySQL-based storage implementation for agent data.
     
-    Implements the same interface as AgentStorage but uses MySQL for state data.
-    Config memory (curated memories) still uses filesystem.
+    Stores agent state data (memories, intentions, plans, summaries, schedules) in MySQL.
+    Config memory (curated memories) and channel metadata still use filesystem.
     """
 
     def __init__(

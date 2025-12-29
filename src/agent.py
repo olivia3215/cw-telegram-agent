@@ -117,7 +117,6 @@ class Agent(
         
         # Schedule cache (loaded on demand, invalidated on save)
         self._schedule_cache: dict | None = None
-        self._schedule_cache_mtime: float | None = None
 
     @property
     def llm(self):

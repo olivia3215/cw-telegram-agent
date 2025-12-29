@@ -55,6 +55,19 @@ def _init_connection_pool() -> None:
                 f"{'PASSWORD' if not MYSQL_PASSWORD else ''}"
             )
             return
+        
+        # Safety check: In test environment, ensure database name contains 'test'
+        # This prevents accidental use of production database in tests
+        import sys
+        if "pytest" in sys.modules and MYSQL_DATABASE:
+            db_lower = MYSQL_DATABASE.lower()
+            if "test" not in db_lower:
+                raise RuntimeError(
+                    f"SAFETY CHECK FAILED: Attempted to connect to database '{MYSQL_DATABASE}' "
+                    "during tests, but database name does not contain 'test'. "
+                    "Tests must use a test database. "
+                    "Set CINDY_AGENT_MYSQL_TEST_DATABASE to a database name containing 'test'."
+                )
 
         try:
             import pymysql

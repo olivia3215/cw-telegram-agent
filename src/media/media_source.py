@@ -1674,9 +1674,7 @@ def _create_default_chain() -> CompositeMediaSource:
             sources.append(get_directory_media_source(media_dir))
             logger.info(f"Added curated media directory: {media_dir}")
 
-    # Set up AI cache - use MySQL if configured, otherwise filesystem
-    from config import STORAGE_BACKEND
-    
+    # Set up AI cache - always use MySQL for metadata (media files stay on disk)
     # Always set up filesystem directory for AIGeneratingMediaSource (for debug saves)
     # Also always register it so it appears in the media editor directory list
     state_dir = Path(STATE_DIRECTORY)
@@ -1688,17 +1686,13 @@ def _create_default_chain() -> CompositeMediaSource:
     directory_source = get_directory_media_source(ai_cache_dir)
     logger.info(f"Registered AI cache directory: {ai_cache_dir}")
     
-    if STORAGE_BACKEND == "mysql":
-        try:
-            from media.mysql_media_source import MySQLMediaSource
-            ai_cache_source = MySQLMediaSource()
-            logger.info("Added MySQL media cache source")
-        except Exception as e:
-            logger.warning(f"Failed to initialize MySQL media cache, falling back to filesystem: {e}")
-            # Fall through to filesystem
-            ai_cache_source = directory_source
-    else:
-        # Filesystem cache
+    try:
+        from media.mysql_media_source import MySQLMediaSource
+        ai_cache_source = MySQLMediaSource()
+        logger.info("Added MySQL media cache source")
+    except Exception as e:
+        logger.warning(f"Failed to initialize MySQL media cache, falling back to filesystem: {e}")
+        # Fall through to filesystem
         ai_cache_source = directory_source
 
     # Add AI chain source that orchestrates unsupported/budget/AI generation

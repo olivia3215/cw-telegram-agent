@@ -10,7 +10,6 @@ MySQL-backed media source for cached AI-generated descriptions.
 import logging
 from typing import Any
 
-from config import STORAGE_BACKEND
 from media.media_source import MediaSource
 
 logger = logging.getLogger(__name__)
@@ -48,9 +47,6 @@ class MySQLMediaSource(MediaSource):
         Returns:
             The media record dict if found, else None.
         """
-        if STORAGE_BACKEND != "mysql":
-            return None
-        
         try:
             from db import media_metadata
             record = media_metadata.load_media_metadata(unique_id)
@@ -81,9 +77,6 @@ class MySQLMediaSource(MediaSource):
             media_bytes: Media file bytes (ignored - media files stay in filesystem)
             file_extension: File extension (ignored)
         """
-        if STORAGE_BACKEND != "mysql":
-            return
-        
         try:
             from db import media_metadata
             

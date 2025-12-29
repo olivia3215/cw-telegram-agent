@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent import Agent
-    from agent.storage_impl import AgentStorage
+    from agent.storage_mysql import AgentStorageMySQL
 
 
 class AgentStorageMixin:
@@ -26,15 +26,19 @@ class AgentStorageMixin:
 
     name: str
     config_directory: str | None
-    _storage_obj: "AgentStorage | None"
+    _storage_obj: "AgentStorageMySQL | None"
 
     @property
     def _storage(self):
         """
-        Get or create the AgentStorage for this agent.
+        Get or create the AgentStorageMySQL for this agent.
         
         Returns:
-            AgentStorage instance (filesystem or MySQL based on configuration)
+            AgentStorageMySQL instance
+        
+        Raises:
+            ValueError: If agent_telegram_id is None (agent not authenticated)
+            RuntimeError: If MySQL configuration is incomplete
         """
         if self._storage_obj is None:
             from config import STATE_DIRECTORY  # Import dynamically to allow patching in tests
@@ -80,56 +84,30 @@ class AgentStorageMixin:
 
     def _load_schedule(self) -> dict | None:
         """
-        Load agent's schedule from state directory with caching.
+        Load agent's schedule from MySQL with caching.
         
         The schedule is cached in memory and only reloaded if:
         - Cache is empty (first load)
-        - Schedule file modification time has changed
         - Cache was explicitly invalidated
         
         Returns a deep copy of the schedule to prevent cache mutation.
         If _save_schedule() fails, the cache remains unchanged and will be
-        reloaded from disk on the next access.
+        reloaded from MySQL on the next access.
         
         Returns:
             Deep copy of schedule dictionary or None if schedule doesn't exist
         """
-        from pathlib import Path
-        from config import STATE_DIRECTORY
-        
-        schedule_file = Path(STATE_DIRECTORY) / self.config_name / "schedule.json"
-        
-        # Check if file exists
-        if not schedule_file.exists():
-            self._schedule_cache = None
-            self._schedule_cache_mtime = None
-            return None
-        
-        # Get file modification time
-        try:
-            current_mtime = schedule_file.stat().st_mtime
-        except OSError:
-            # File doesn't exist or can't be accessed
-            self._schedule_cache = None
-            self._schedule_cache_mtime = None
-            return None
-        
         # Check if cache is valid
-        if (
-            self._schedule_cache is not None
-            and self._schedule_cache_mtime is not None
-            and self._schedule_cache_mtime == current_mtime
-        ):
+        if self._schedule_cache is not None:
             # Cache is valid, return a deep copy to prevent cache mutation
             # If _save_schedule() fails, the cache remains unchanged
             return copy.deepcopy(self._schedule_cache)
         
-        # Load from disk
+        # Load from MySQL
         schedule = self._storage.load_schedule()
         
         # Update cache
         self._schedule_cache = schedule
-        self._schedule_cache_mtime = current_mtime
         
         # Return a deep copy to prevent cache mutation
         # If _save_schedule() fails, the cache remains unchanged
@@ -137,7 +115,7 @@ class AgentStorageMixin:
 
     def _save_schedule(self, schedule: dict) -> None:
         """
-        Save agent's schedule to state directory and invalidate cache.
+        Save agent's schedule to MySQL and invalidate cache.
         
         Args:
             schedule: Schedule dictionary to save
@@ -146,4 +124,3 @@ class AgentStorageMixin:
         
         # Invalidate cache - it will be reloaded on next access
         self._schedule_cache = None
-        self._schedule_cache_mtime = None
