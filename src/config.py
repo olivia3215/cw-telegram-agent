@@ -76,13 +76,23 @@ FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes
 
 
 # MySQL configuration
-# When running under pytest, use test database variables (CINDY_AGENT_MYSQL_TEST_*)
+# When running under pytest or in CI, use test database variables (CINDY_AGENT_MYSQL_TEST_*)
 # Otherwise, use production database variables (CINDY_AGENT_MYSQL_*)
 # Note: We check sys.modules dynamically via a helper function to handle cases where
 # config.py is imported before pytest is added to sys.modules
 def _get_mysql_config():
-    """Get MySQL configuration, using test variables when running under pytest."""
-    if "pytest" in sys.modules:
+    """Get MySQL configuration, using test variables when running under pytest or in CI."""
+    # Check if we're in a test environment:
+    # 1. pytest is loaded (running tests)
+    # 2. CI environment variable is set (GitHub Actions, etc.)
+    # This prevents using test config locally when both test and prod vars are set in .env
+    use_test_config = (
+        "pytest" in sys.modules
+        or os.environ.get("CI") == "true"
+        or os.environ.get("GITHUB_ACTIONS") == "true"
+    )
+    
+    if use_test_config:
         return {
             "host": os.environ.get("CINDY_AGENT_MYSQL_TEST_HOST", os.environ.get("CINDY_AGENT_MYSQL_HOST", "localhost")),
             "port": int(os.environ.get("CINDY_AGENT_MYSQL_TEST_PORT", os.environ.get("CINDY_AGENT_MYSQL_PORT", "3306"))),

@@ -29,9 +29,9 @@ def main():
         if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
             logger.error("MySQL configuration incomplete.")
             logger.error("Please set the following environment variables:")
-            logger.error("  CINDY_AGENT_MYSQL_DATABASE")
-            logger.error("  CINDY_AGENT_MYSQL_USER")
-            logger.error("  CINDY_AGENT_MYSQL_PASSWORD")
+            logger.error("  CINDY_AGENT_MYSQL_DATABASE (or CINDY_AGENT_MYSQL_TEST_DATABASE for tests)")
+            logger.error("  CINDY_AGENT_MYSQL_USER (or CINDY_AGENT_MYSQL_TEST_USER for tests)")
+            logger.error("  CINDY_AGENT_MYSQL_PASSWORD (or CINDY_AGENT_MYSQL_TEST_PASSWORD for tests)")
             logger.error("")
             logger.error("You can also set these in your .env file.")
             return 1
