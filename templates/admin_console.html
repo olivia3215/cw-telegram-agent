@@ -4407,11 +4407,11 @@
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
-                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${escapeHtml(summary.first_message_date || '')}" 
+                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date ? escapeHtml(summary.first_message_date) : ''}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">to</span>
-                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${escapeHtml(summary.last_message_date || '')}" 
+                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date ? escapeHtml(summary.last_message_date) : ''}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>

@@ -183,16 +183,17 @@ class AgentStorageMySQL:
             )
         return ""
 
-    def load_summary_content(self, channel_id: int, json_format: bool = False) -> str:
+    def load_summary_content(self, channel_id: int, json_format: bool = False, include_metadata: bool = False) -> str:
         """
         Load channel-specific summary content from MySQL.
         
         Args:
             channel_id: The conversation ID
-            json_format: If True, return full JSON. If False, return only summary text content.
+            json_format: If True, return full JSON. If False, return formatted text.
+            include_metadata: If True and json_format=False, include full metadata (dates, message IDs, summary IDs) in formatted text.
         
         Returns:
-            Summary content as JSON string (if json_format=True) or concatenated text (if json_format=False)
+            Summary content as JSON string (if json_format=True) or formatted text (if json_format=False)
         """
         try:
             summaries_list = summaries.load_summaries(self.agent_telegram_id, channel_id)
@@ -200,13 +201,82 @@ class AgentStorageMySQL:
                 if json_format:
                     return json.dumps(summaries_list, indent=2, ensure_ascii=False)
                 else:
-                    # Return only the text content of summaries
-                    summary_texts = []
-                    for summary in summaries_list:
-                        content = summary.get("content", "").strip()
-                        if content:
-                            summary_texts.append(content)
-                    return "\n\n".join(summary_texts) if summary_texts else ""
+                    if include_metadata:
+                        # Format summaries with full metadata for Task-Summarize role
+                        summary_lines = []
+                        for summary in summaries_list:
+                            content = summary.get("content", "").strip()
+                            if not content:
+                                continue
+                            
+                            # Build metadata line
+                            min_id = summary.get("min_message_id")
+                            max_id = summary.get("max_message_id")
+                            first_date = summary.get("first_message_date", "")
+                            last_date = summary.get("last_message_date", "")
+                            summary_id = summary.get("id", "")
+                            
+                            # Format date range (MM/DD/YYYY format)
+                            date_range = ""
+                            if first_date or last_date:
+                                def format_date_for_prompt(date_str: str) -> str:
+                                    """Convert ISO date (YYYY-MM-DD) to MM/DD/YYYY format."""
+                                    if not date_str:
+                                        return "N/A"
+                                    # Extract date part (handle both ISO format and already formatted)
+                                    date_part = date_str.split("T")[0] if "T" in date_str else date_str.split(" ")[0]
+                                    try:
+                                        # Parse YYYY-MM-DD format
+                                        from datetime import datetime
+                                        dt = datetime.strptime(date_part, "%Y-%m-%d")
+                                        # Format as MM/DD/YYYY without leading zeros
+                                        month = str(dt.month)
+                                        day = str(dt.day)
+                                        return f"{month}/{day}/{dt.year}"
+                                    except (ValueError, AttributeError):
+                                        # If parsing fails, return as-is
+                                        return date_part
+                                
+                                first_date_str = format_date_for_prompt(first_date) if first_date else "N/A"
+                                last_date_str = format_date_for_prompt(last_date) if last_date else "N/A"
+                                date_range = f" from {first_date_str} - {last_date_str}"
+                            
+                            # Build message ID range
+                            msg_range = ""
+                            if min_id is not None and max_id is not None:
+                                msg_range = f"Messages {min_id} - {max_id}"
+                            elif min_id is not None:
+                                msg_range = f"Message {min_id}"
+                            elif max_id is not None:
+                                msg_range = f"Message {max_id}"
+                            
+                            # Format: "Summary of Messages X - Y from DATE1 - DATE2 (id "summary-123")\nContent"
+                            if msg_range and date_range:
+                                summary_lines.append(
+                                    f"Summary of {msg_range}{date_range} (id \"{summary_id}\")\n{content}"
+                                )
+                            elif msg_range:
+                                summary_lines.append(
+                                    f"Summary of {msg_range} (id \"{summary_id}\")\n{content}"
+                                )
+                            elif date_range:
+                                summary_lines.append(
+                                    f"Summary{date_range} (id \"{summary_id}\")\n{content}"
+                                )
+                            else:
+                                summary_lines.append(
+                                    f"Summary (id \"{summary_id}\")\n{content}"
+                                )
+                        
+                        return "\n\n".join(summary_lines) if summary_lines else ""
+                    else:
+                        # Return only the text content of summaries
+                        summary_texts = []
+                        for summary in summaries_list:
+                            content = summary.get("content", "").strip()
+                            if content:
+                                summary_texts.append(content)
+                        return "\n\n".join(summary_texts) if summary_texts else ""
         except Exception as exc:
             logger.warning(
                 f"[{self.agent_config_name}] Failed to load summary content from MySQL: {exc}"

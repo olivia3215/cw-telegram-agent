@@ -41,6 +41,14 @@ def normalize_datetime_for_mysql(dt_value: str | None | Any) -> str | None:
     if not dt_str:
         return None
     
+    # Handle date-only format (YYYY-MM-DD) from HTML date inputs
+    # Convert to DATETIME format by adding time component
+    date_only_pattern = r'^(\d{4}-\d{2}-\d{2})$'
+    match = re.match(date_only_pattern, dt_str)
+    if match:
+        # Return as DATETIME with 00:00:00 time
+        return f"{match.group(1)} 00:00:00"
+    
     # Try to parse common formats with timezone abbreviations
     # Pattern: YYYY-MM-DD HH:MM:SS TZ (e.g., "2025-10-23 09:18:36 PDT")
     tz_pattern = r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+[A-Z]{2,4}$'

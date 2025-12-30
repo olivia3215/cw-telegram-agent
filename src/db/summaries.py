@@ -53,10 +53,54 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
                     summary["min_message_id"] = row["min_message_id"]
                 if row["max_message_id"] is not None:
                     summary["max_message_id"] = row["max_message_id"]
-                if row["first_message_date"]:
-                    summary["first_message_date"] = row["first_message_date"].isoformat()
-                if row["last_message_date"]:
-                    summary["last_message_date"] = row["last_message_date"].isoformat()
+                
+                # Always include date fields, converting datetime objects to YYYY-MM-DD format
+                # HTML date inputs need YYYY-MM-DD format exactly
+                from datetime import datetime, date
+                
+                first_date = row["first_message_date"]
+                if first_date is None:
+                    summary["first_message_date"] = None
+                elif isinstance(first_date, datetime):
+                    # It's a datetime object - extract just the date part
+                    summary["first_message_date"] = first_date.date().isoformat()
+                elif isinstance(first_date, date):
+                    # It's a date object
+                    summary["first_message_date"] = first_date.isoformat()
+                else:
+                    # It's a string - try to extract date part
+                    date_str = str(first_date).strip()
+                    if not date_str:
+                        summary["first_message_date"] = None
+                    else:
+                        # Extract YYYY-MM-DD from various formats
+                        if "T" in date_str:
+                            date_str = date_str.split("T")[0]
+                        elif " " in date_str:
+                            date_str = date_str.split(" ")[0]
+                        summary["first_message_date"] = date_str
+                
+                last_date = row["last_message_date"]
+                if last_date is None:
+                    summary["last_message_date"] = None
+                elif isinstance(last_date, datetime):
+                    # It's a datetime object - extract just the date part
+                    summary["last_message_date"] = last_date.date().isoformat()
+                elif isinstance(last_date, date):
+                    # It's a date object
+                    summary["last_message_date"] = last_date.isoformat()
+                else:
+                    # It's a string - try to extract date part
+                    date_str = str(last_date).strip()
+                    if not date_str:
+                        summary["last_message_date"] = None
+                    else:
+                        # Extract YYYY-MM-DD from various formats
+                        if "T" in date_str:
+                            date_str = date_str.split("T")[0]
+                        elif " " in date_str:
+                            date_str = date_str.split(" ")[0]
+                        summary["last_message_date"] = date_str
                 if row["created"]:
                     summary["created"] = row["created"].isoformat()
                 

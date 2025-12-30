@@ -74,9 +74,9 @@ class AgentStorageMixin:
         """Load channel-specific plan content from state directory."""
         return self._storage.load_plan_content(channel_id)
 
-    async def _load_summary_content(self, channel_id: int, json_format: bool = False) -> str:
+    async def _load_summary_content(self, channel_id: int, json_format: bool = False, include_metadata: bool = False) -> str:
         """Load channel-specific summary content from state directory."""
-        return self._storage.load_summary_content(channel_id, json_format=json_format)
+        return self._storage.load_summary_content(channel_id, json_format=json_format, include_metadata=include_metadata)
 
     def get_channel_llm_model(self, channel_id: int) -> str | None:
         """Get the LLM model name for a specific channel from the channel memory file."""
