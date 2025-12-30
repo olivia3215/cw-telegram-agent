@@ -140,14 +140,14 @@ class MySQLMediaSource(MediaSource):
         Core fields kept:
         - unique_id
         - kind
-        - sticker_set_name (for stickers)
-        - sticker_name (for stickers)
+        - sticker_set_name (for stickers and animated_sticker)
+        - sticker_name (for stickers and animated_sticker)
         - description
         - status
         - duration
         - mime_type
-        - is_emoji_set (for stickers)
-        - sticker_set_title (for stickers)
+        - is_emoji_set (for stickers and animated_sticker)
+        - sticker_set_title (for stickers and animated_sticker)
         - media_file
         
         Fields removed:
@@ -174,7 +174,7 @@ class MySQLMediaSource(MediaSource):
             "agent_telegram_id",
         }
         
-        # Sticker-specific fields (only keep if kind is sticker)
+        # Sticker-specific fields (only keep if kind is sticker or animated_sticker)
         sticker_fields = {
             "sticker_set_name",
             "sticker_name",
@@ -184,7 +184,7 @@ class MySQLMediaSource(MediaSource):
         
         filtered = {}
         kind = record.get("kind")
-        is_sticker = kind == "sticker"
+        is_sticker = kind == "sticker" or kind == "animated_sticker"
         
         # Iterate over the record once to preserve original order
         for key, value in record.items():

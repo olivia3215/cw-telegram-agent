@@ -199,10 +199,36 @@ async def process_property_entry_task(
                     updated_entries = post_process(updated_entries, agent)
                 return updated_entries, updated_payload
 
-        # Save to MySQL (always use MySQL now)
-        await _save_entry_mysql(
-            agent, channel_id, property_name, entry_id, new_entry, content_value
-        )
+        # Load all entries and apply mutator (which calls post_process)
+        all_entries = await _load_all_entries_mysql(agent, channel_id, property_name)
+        updated_entries, _ = mutator(all_entries, None)
+        
+        # Save to MySQL using the mutator result
+        if content_value is not None:
+            # Extract the modified entry from the updated list (post-processed)
+            modified_entry = None
+            for entry in updated_entries:
+                if entry.get("id") == entry_id:
+                    modified_entry = entry
+                    break
+            
+            # modified_entry should always exist after mutator runs for add/update operations
+            if modified_entry is None:
+                # Fallback to new_entry if post_process removed it (shouldn't happen, but be safe)
+                logger.warning(
+                    f"[{agent.name}] Entry {entry_id} not found in post-processed entries, using original entry"
+                )
+                modified_entry = new_entry
+            
+            # Use the entry from the updated list (post-processed) instead of new_entry
+            await _save_entry_mysql(
+                agent, channel_id, property_name, entry_id, modified_entry, content_value
+            )
+        else:
+            # Delete entry
+            await _save_entry_mysql(
+                agent, channel_id, property_name, entry_id, None, None
+            )
 
         if content_value is not None:
             logger.info(
@@ -290,6 +316,32 @@ async def _load_existing_entry_mysql(
         logger.debug(f"Failed to load existing entry from MySQL: {e}")
     
     return None
+
+
+async def _load_all_entries_mysql(
+    agent, channel_id: int, property_name: str
+) -> list[dict[str, Any]]:
+    """Load all entries from MySQL for a property."""
+    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        return []
+    
+    try:
+        if property_name == "memory":
+            from db import memories
+            return memories.load_memories(agent.agent_id)
+        elif property_name == "intention":
+            from db import intentions
+            return intentions.load_intentions(agent.agent_id)
+        elif property_name == "plan":
+            from db import plans
+            return plans.load_plans(agent.agent_id, channel_id)
+        elif property_name == "summary":
+            from db import summaries
+            return summaries.load_summaries(agent.agent_id, channel_id)
+    except Exception as e:
+        logger.debug(f"Failed to load entries from MySQL: {e}")
+    
+    return []
 
 
 async def _save_entry_mysql(
