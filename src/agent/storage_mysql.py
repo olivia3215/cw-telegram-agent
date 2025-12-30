@@ -18,7 +18,7 @@ from db import memories
 from db import plans
 from db import schedules
 from db import summaries
-from memory_storage import MemoryStorageError, load_property_entries
+from memory_storage import load_property_entries
 
 logger = logging.getLogger(__name__)
 

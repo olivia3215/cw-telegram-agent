@@ -6,7 +6,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
+# MemoryStorageError no longer used - code migrated to MySQL backend
+# from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from utils import coerce_to_str, format_username, normalize_created_string
@@ -212,9 +213,6 @@ async def process_property_entry_task(
                 f"[{agent.name}] Removed {entry_type_name} {entry_id} for conversation {channel_id}"
             )
 
-    except MemoryStorageError as exc:
-        logger.exception(f"[{agent.name}] Failed to load {entry_type_name} storage: {exc}")
-        raise
     except Exception as exc:
         logger.exception(f"[{agent.name}] Failed to process {entry_type_name} task: {exc}")
         raise
