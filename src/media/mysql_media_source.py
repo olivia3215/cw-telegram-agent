@@ -95,25 +95,47 @@ class MySQLMediaSource(MediaSource):
         """
         # Write media file to disk if we have media_bytes and a directory_source
         # We write only the media file, not the JSON metadata (which goes to MySQL)
-        if media_bytes is not None and self.directory_source is not None and file_extension:
-            try:
-                media_dir = self.directory_source.directory
-                media_dir.mkdir(parents=True, exist_ok=True)
-                media_filename = f"{unique_id}{file_extension}"
-                media_file = media_dir / media_filename
-                temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
+        # If file_extension is not provided, try to determine it from media_bytes
+        media_filename = None
+        if media_bytes is not None and self.directory_source is not None:
+            # Determine file extension if not provided
+            if not file_extension:
                 try:
-                    temp_media_file.write_bytes(media_bytes)
-                    temp_media_file.replace(media_file)
-                    logger.debug(f"MySQLMediaSource: wrote media file {media_filename} to disk")
-                except Exception:
-                    # Clean up any temporary file and propagate the failure
-                    with contextlib.suppress(FileNotFoundError, PermissionError):
-                        temp_media_file.unlink()
-                    raise
-            except Exception as e:
-                logger.error(f"MySQLMediaSource: failed to write media file for {unique_id} to disk: {e}")
-                # Continue to store metadata even if file write fails
+                    from .mime_utils import get_file_extension_from_mime_or_bytes
+                    # Try to get extension from record's mime_type or from media_bytes
+                    mime_type = record.get("mime_type")
+                    file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+                    if not file_extension:
+                        logger.warning(
+                            f"MySQLMediaSource: could not determine file extension for {unique_id}, "
+                            "media file will not be written"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"MySQLMediaSource: failed to determine file extension for {unique_id}: {e}"
+                    )
+            
+            # Write file if we have a valid extension
+            if file_extension:
+                try:
+                    media_dir = self.directory_source.directory
+                    media_dir.mkdir(parents=True, exist_ok=True)
+                    media_filename = f"{unique_id}{file_extension}"
+                    media_file = media_dir / media_filename
+                    temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
+                    try:
+                        temp_media_file.write_bytes(media_bytes)
+                        temp_media_file.replace(media_file)
+                        logger.debug(f"MySQLMediaSource: wrote media file {media_filename} to disk")
+                    except Exception:
+                        # Clean up any temporary file and propagate the failure
+                        with contextlib.suppress(FileNotFoundError, PermissionError):
+                            temp_media_file.unlink()
+                        raise
+                except Exception as e:
+                    logger.error(f"MySQLMediaSource: failed to write media file for {unique_id} to disk: {e}")
+                    # Continue to store metadata even if file write fails
+                    media_filename = None
         
         # Store metadata in MySQL
         try:
@@ -124,8 +146,7 @@ class MySQLMediaSource(MediaSource):
             filtered_record["unique_id"] = unique_id
             
             # Update media_file in filtered_record if we wrote a media file
-            if media_bytes is not None and self.directory_source is not None and file_extension:
-                media_filename = f"{unique_id}{file_extension}"
+            if media_filename:
                 filtered_record["media_file"] = media_filename
             
             media_metadata.save_media_metadata(filtered_record)
