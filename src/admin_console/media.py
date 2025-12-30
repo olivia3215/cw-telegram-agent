@@ -501,7 +501,7 @@ def api_refresh_from_ai(unique_id: str):
             media_dir = Path(media_dir)
         
         # Always use MySQL for state/media
-        is_state_media = str(media_dir.resolve()) == str(Path(STATE_DIRECTORY) / "media").resolve()
+        is_state_media = str(media_dir.resolve()) == str((Path(STATE_DIRECTORY) / "media").resolve())
         
         # Load the record - use MySQL for state/media, otherwise filesystem
         if is_state_media:
