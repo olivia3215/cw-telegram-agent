@@ -765,8 +765,8 @@ class CompositeMediaSource(MediaSource):
                     if asyncio.iscoroutinefunction(put_method):
                         await put_method(unique_id, record, media_bytes, file_extension, agent)
                     else:
-                        # Sync method - call directly (await will just return the value)
-                        await put_method(unique_id, record, media_bytes, file_extension, agent)
+                        # Sync method - call directly without await
+                        put_method(unique_id, record, media_bytes, file_extension, agent)
                     logger.debug(
                         f"CompositeMediaSource: source {i} ({type(source).__name__}) stored {unique_id}"
                     )
