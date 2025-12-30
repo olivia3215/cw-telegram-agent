@@ -156,6 +156,17 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Create conversation_llm_overrides table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_llm_overrides (
+                    agent_telegram_id BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL,
+                    llm_model VARCHAR(255) NOT NULL,
+                    PRIMARY KEY (agent_telegram_id, channel_id),
+                    INDEX idx_agent_channel (agent_telegram_id, channel_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             conn.commit()
             logger.info("Database schema created successfully")
 

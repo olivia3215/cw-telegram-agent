@@ -19,7 +19,7 @@ def register_plan_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>", methods=["GET"])
     def api_get_plans(agent_config_name: str, user_id: str):
-        """Get plans for a conversation (from MySQL if enabled, otherwise from filesystem)."""
+        """Get plans for a conversation from MySQL."""
         try:
             logger.info(f"Loading plans for agent {agent_config_name}, user_id {user_id}")
             agent = get_agent_by_name(agent_config_name)

@@ -18,7 +18,6 @@ from db import memories
 from db import plans
 from db import schedules
 from db import summaries
-from memory_storage import load_property_entries
 
 logger = logging.getLogger(__name__)
 
@@ -254,11 +253,7 @@ class AgentStorageMySQL:
 
     def get_channel_llm_model(self, channel_id: int) -> str | None:
         """
-        Get the LLM model name for a specific channel.
-        
-        For MySQL storage, we need to check if there's a way to store this.
-        For now, we'll check the filesystem fallback location.
-        This could be enhanced to store in a channel_metadata table in the future.
+        Get the LLM model name for a specific channel from MySQL.
         
         Args:
             channel_id: The conversation ID (Telegram channel/user ID)
@@ -266,23 +261,17 @@ class AgentStorageMySQL:
         Returns:
             The LLM model name (e.g., "gemini-2.0-flash", "grok") or None if not set
         """
+        if not hasattr(self, "agent_id") or self.agent_id is None:
+            return None
+        
         try:
-            # For now, fallback to filesystem for channel-specific metadata
-            # This could be moved to a channel_metadata table in the future
-            memory_file = self.state_directory / self.agent_config_name / "memory" / f"{channel_id}.json"
-            if not memory_file.exists():
-                return None
-            # Load the file to get the payload (which contains top-level properties)
-            _, payload = load_property_entries(memory_file, "plan", default_id_prefix="plan")
-            if payload and isinstance(payload, dict):
-                llm_model = payload.get("llm_model")
-                if llm_model and isinstance(llm_model, str):
-                    return llm_model.strip()
+            from db import conversation_llm
+            return conversation_llm.get_conversation_llm(self.agent_id, channel_id)
         except Exception as exc:
             logger.debug(
-                f"[{self.agent_config_name}] Failed to load llm_model from {memory_file}: {exc}"
+                f"[{self.agent_config_name}] Failed to load llm_model from MySQL for channel {channel_id}: {exc}"
             )
-        return None
+            return None
 
     def load_schedule(self) -> dict | None:
         """

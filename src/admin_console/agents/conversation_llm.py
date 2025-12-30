@@ -3,13 +3,10 @@
 # Conversation-specific LLM management routes for the admin console.
 
 import logging
-from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_default_llm
-from config import STATE_DIRECTORY
-from memory_storage import load_property_entries, write_property_entries
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +28,18 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            conversation_llm = agent.get_channel_llm_model(channel_id)
+            # Ensure channel_id is an integer
+            try:
+                channel_id = int(channel_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid channel ID"}), 400
+
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+
+            # Get conversation LLM from MySQL directly (not through agent.get_channel_llm_model which might have caching issues)
+            from db import conversation_llm as db_conversation_llm
+            conversation_llm = db_conversation_llm.get_conversation_llm(agent.agent_id, channel_id)
             agent_default_llm = agent._llm_name or get_default_llm()
             available_llms = get_available_llms()
 
@@ -65,34 +73,35 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
+            # Ensure channel_id is an integer
+            try:
+                channel_id = int(channel_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid channel ID"}), 400
+
             data = request.json
             llm_name = data.get("llm_name", "").strip()
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+            # Update in MySQL
+            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
             agent_default_llm = agent._llm_name or get_default_llm()
+            
+            logger.info(
+                f"Updating conversation LLM for agent {agent_config_name} (agent_id={agent.agent_id}), "
+                f"channel {channel_id}: llm_name='{llm_name}', agent_default='{agent_default_llm}'"
+            )
 
-            # If setting to agent default, remove the conversation-specific LLM
+            # Set or remove the conversation-specific LLM
+            # set_conversation_llm will only store if different from default, and remove if matching default
+            from db import conversation_llm
+            conversation_llm.set_conversation_llm(agent.agent_id, channel_id, llm_name, agent_default_llm)
+            
             if llm_name == agent_default_llm or not llm_name:
-                if memory_file.exists():
-                    _, payload = load_property_entries(
-                        memory_file, "plan", default_id_prefix="plan"
-                    )
-                    if payload and isinstance(payload, dict):
-                        payload.pop("llm_model", None)
-                        write_property_entries(
-                            memory_file, "plan", payload.get("plan", []), payload=payload
-                        )
+                logger.info(f"Removed conversation LLM override (using agent default)")
             else:
-                # Set conversation-specific LLM
-                _, payload = load_property_entries(
-                    memory_file, "plan", default_id_prefix="plan"
-                )
-                if payload is None:
-                    payload = {}
-                payload["llm_model"] = llm_name
-                write_property_entries(
-                    memory_file, "plan", payload.get("plan", []), payload=payload
-                )
+                logger.info(f"Set conversation LLM override to '{llm_name}'")
 
             return jsonify({"success": True})
         except Exception as e:

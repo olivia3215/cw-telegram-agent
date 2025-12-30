@@ -20,7 +20,7 @@ def register_memory_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/memories", methods=["GET"])
     def api_get_memories(agent_config_name: str):
-        """Get memories for an agent (from MySQL if enabled, otherwise from state/AgentName/memory.json)."""
+        """Get memories for an agent from MySQL."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -378,52 +378,63 @@ def register_memory_routes(agents_bp: Blueprint):
 
             content_checks = {}
             
-            # Get agent default LLM for comparison
-            agent_default_llm = agent._llm_name or get_default_llm()
+            # Convert user_ids to channel_ids and separate valid/invalid ones
+            valid_channel_ids = []
+            invalid_user_ids = []
+            user_id_to_channel_id = {}
             
             for user_id_str in user_ids:
                 try:
                     channel_id = int(user_id_str)
+                    valid_channel_ids.append(channel_id)
+                    user_id_to_channel_id[user_id_str] = channel_id
                 except (ValueError, TypeError):
-                    content_checks[user_id_str] = {
-                        "curated_memories": False,
-                        "conversation_llm": False,
-                        "plans": False
-                    }
-                    continue
-                
-                checks = {}
+                    invalid_user_ids.append(user_id_str)
+            
+            # Initialize all checks to False
+            for user_id_str in user_ids:
+                content_checks[user_id_str] = {
+                    "curated_memories": False,
+                    "conversation_llm": False,
+                    "plans": False
+                }
+            
+            if not agent.agent_id:
+                return jsonify({"content_checks": content_checks})
+            
+            # Bulk check conversation LLM overrides (presence in table = override)
+            if valid_channel_ids:
+                try:
+                    from db import conversation_llm as db_conversation_llm
+                    channels_with_overrides = db_conversation_llm.channels_with_conversation_llm_overrides(
+                        agent.agent_id, valid_channel_ids
+                    )
+                    # Update content_checks for channels with overrides
+                    for user_id_str, channel_id in user_id_to_channel_id.items():
+                        if channel_id in channels_with_overrides:
+                            content_checks[user_id_str]["conversation_llm"] = True
+                except Exception as e:
+                    logger.warning(f"Error bulk checking conversation LLM overrides: {e}")
+            
+            # Check curated memories and plans for each channel
+            for user_id_str, channel_id in user_id_to_channel_id.items():
+                checks = content_checks[user_id_str]
                 
                 # Check curated memories
-                if agent.agent_id:
-                    try:
-                        from db import curated_memories as db_curated_memories
-                        memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
-                        checks["curated_memories"] = len(memories) > 0
-                    except Exception:
-                        checks["curated_memories"] = False
-                else:
+                try:
+                    from db import curated_memories as db_curated_memories
+                    memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+                    checks["curated_memories"] = len(memories) > 0
+                except Exception:
                     checks["curated_memories"] = False
                 
-                # Check conversation LLM (has override if different from agent default)
-                try:
-                    conversation_llm = agent.get_channel_llm_model(channel_id)
-                    checks["conversation_llm"] = conversation_llm is not None and conversation_llm != agent_default_llm
-                except Exception:
-                    checks["conversation_llm"] = False
-                
                 # Check plans
-                if agent.agent_id:
-                    try:
-                        from db.plans import load_plans
-                        plans = load_plans(agent.agent_id, channel_id)
-                        checks["plans"] = len(plans) > 0
-                    except Exception:
-                        checks["plans"] = False
-                else:
+                try:
+                    from db.plans import load_plans
+                    plans = load_plans(agent.agent_id, channel_id)
+                    checks["plans"] = len(plans) > 0
+                except Exception:
                     checks["plans"] = False
-                
-                content_checks[user_id_str] = checks
                 
             return jsonify({"content_checks": content_checks})
         except Exception as e:

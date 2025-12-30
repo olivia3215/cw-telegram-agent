@@ -19,7 +19,7 @@ def register_intention_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/intentions", methods=["GET"])
     def api_get_intentions(agent_config_name: str):
-        """Get intentions for an agent (from MySQL if enabled, otherwise from state/AgentName/memory.json)."""
+        """Get intentions for an agent from MySQL."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
