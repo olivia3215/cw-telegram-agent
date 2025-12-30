@@ -59,7 +59,7 @@ async def process_property_entry_task(
         entry_id = task.id or f"{default_id_prefix}-{uuid.uuid4().hex[:8]}"
 
         # Verify agent has agent_id (required for MySQL storage)
-        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        if not agent.is_authenticated:
             raise ValueError(
                 f"[{agent.name}] Cannot process {entry_type_name} task: agent_id is None. "
                 "Agent must be authenticated before storage operations."
@@ -253,7 +253,7 @@ def clear_plans_and_summaries(agent, channel_id: int):
         channel_id: The conversation ID
     """
     # Verify agent has agent_id (required for MySQL storage)
-    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+    if not agent.is_authenticated:
         raise ValueError(
             f"[{agent.name}] Cannot clear plans and summaries: agent_id is None. "
             "Agent must be authenticated before storage operations."
@@ -284,7 +284,7 @@ async def _load_existing_entry_mysql(
     agent, channel_id: int, property_name: str, entry_id: str
 ) -> dict[str, Any] | None:
     """Load an existing entry from MySQL."""
-    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+    if not agent.is_authenticated:
         return None
     
     try:
@@ -322,7 +322,7 @@ async def _load_all_entries_mysql(
     agent, channel_id: int, property_name: str
 ) -> list[dict[str, Any]]:
     """Load all entries from MySQL for a property."""
-    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+    if not agent.is_authenticated:
         return []
     
     try:
@@ -353,7 +353,7 @@ async def _save_entry_mysql(
     content_value: str | None,
 ) -> None:
     """Save an entry to MySQL."""
-    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+    if not agent.is_authenticated:
         raise ValueError("Agent must have agent_id for MySQL storage")
     
     try:

@@ -27,7 +27,7 @@ def register_memory_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Load from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.memories import load_memories
@@ -53,7 +53,7 @@ def register_memory_routes(agents_bp: Blueprint):
             content = data.get("content", "").strip()
 
             # Update in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.memories import load_memories, save_memory
@@ -87,7 +87,7 @@ def register_memory_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Delete from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.memories import delete_memory
@@ -123,7 +123,7 @@ def register_memory_routes(agents_bp: Blueprint):
             }
 
             # Save to MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.memories import save_memory
@@ -147,7 +147,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"curated_memories": []})
 
             from db import curated_memories as db_curated_memories
@@ -196,7 +196,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"memories": []})
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
@@ -224,7 +224,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
@@ -278,7 +278,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
@@ -304,7 +304,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             data = request.json or {}

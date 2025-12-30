@@ -32,7 +32,7 @@ def register_summary_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Invalid user ID"}), 400
 
             # Load from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db import summaries as db_summaries
@@ -69,7 +69,7 @@ def register_summary_routes(agents_bp: Blueprint):
             last_message_date = data.get("last_message_date")
 
             # Update in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db import summaries as db_summaries
@@ -129,7 +129,7 @@ def register_summary_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Invalid user ID"}), 400
 
             # Delete from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db import summaries as db_summaries
@@ -183,7 +183,7 @@ def register_summary_routes(agents_bp: Blueprint):
                 new_entry["last_message_date"] = last_message_date.strip()
 
             # Create in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db import summaries as db_summaries

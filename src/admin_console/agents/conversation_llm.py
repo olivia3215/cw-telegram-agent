@@ -34,7 +34,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             except (ValueError, TypeError):
                 return jsonify({"error": "Invalid channel ID"}), 400
 
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             # Get conversation LLM from MySQL directly (not through agent.get_channel_llm_model which might have caching issues)
@@ -83,7 +83,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             llm_name = data.get("llm_name", "").strip()
 
             # Update in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             agent_default_llm = agent._llm_name or get_default_llm()

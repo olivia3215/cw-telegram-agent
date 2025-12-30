@@ -79,6 +79,25 @@ def _sort_agents_by_name(agent_list: list[dict[str, Any]]) -> None:
     agent_list.sort(key=lambda x: x["name"].lower())
 
 
+def _build_agent_id_by_config_name(agent_config_names: list[str], agents: list) -> dict[str, int]:
+    """
+    Build a mapping from agent config names to agent IDs for authenticated agents.
+    
+    Args:
+        agent_config_names: List of agent config names to include in the mapping
+        agents: List of agent objects
+        
+    Returns:
+        Dictionary mapping config_name -> agent_id for authenticated agents
+        whose config_name is in the provided list
+    """
+    agent_id_by_config_name = {}
+    for agent in agents:
+        if agent.config_name in agent_config_names and agent.is_authenticated:
+            agent_id_by_config_name[agent.config_name] = agent.agent_id
+    return agent_id_by_config_name
+
+
 def _agents_with_curated_memories(agent_config_names: list[str], agents: list) -> set[str]:
     """
     Check which agents have curated memories using MySQL bulk query.
@@ -91,10 +110,7 @@ def _agents_with_curated_memories(agent_config_names: list[str], agents: list) -
         Set of agent config names that have curated memories
     """
     # Map agent config names to agent IDs
-    agent_id_by_config_name = {}
-    for agent in agents:
-        if agent.config_name in agent_config_names and agent.agent_id is not None:
-            agent_id_by_config_name[agent.config_name] = agent.agent_id
+    agent_id_by_config_name = _build_agent_id_by_config_name(agent_config_names, agents)
     
     if not agent_id_by_config_name:
         return set()
@@ -128,10 +144,7 @@ def _agents_with_conversation_llm_overrides(agent_config_names: list[str], agent
         Set of agent config names that have conversation LLM overrides
     """
     # Map agent config names to agent IDs
-    agent_id_by_config_name = {}
-    for agent in agents:
-        if agent.config_name in agent_config_names and agent.agent_id is not None:
-            agent_id_by_config_name[agent.config_name] = agent.agent_id
+    agent_id_by_config_name = _build_agent_id_by_config_name(agent_config_names, agents)
     
     if not agent_id_by_config_name:
         return set()

@@ -543,7 +543,7 @@ def _get_highest_summarized_message_id_for_api(agent_config_name: str, channel_i
         from admin_console.helpers import get_agent_by_name
         
         agent = get_agent_by_name(agent_config_name)
-        if not agent or not hasattr(agent, "agent_id") or agent.agent_id is None:
+        if not agent or not agent.is_authenticated:
             return None
         
         # Load from MySQL
@@ -583,7 +583,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             return error_response
 
         # Get summaries from MySQL
-        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        if not agent.is_authenticated:
             return jsonify({"error": "Agent not authenticated"}), 503
         
         from db import summaries as db_summaries

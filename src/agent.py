@@ -247,6 +247,11 @@ class Agent(
         """Get the Telegram client. Returns None if not authenticated."""
         return self._client
 
+    @property
+    def is_authenticated(self) -> bool:
+        """Check if the agent is authenticated (has a Telegram ID)."""
+        return hasattr(self, "agent_id") and self.agent_id is not None
+
     async def ensure_client_connected(self):
         """
         Ensure the Telegram client is connected. Attempts to reconnect if disconnected.

@@ -27,7 +27,7 @@ def get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
     """
     try:
         # Always use MySQL when agent_id is available
-        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        if not agent.is_authenticated:
             return None
         
         # Load from MySQL

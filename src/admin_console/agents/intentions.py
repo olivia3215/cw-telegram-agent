@@ -26,7 +26,7 @@ def register_intention_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Load from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.intentions import load_intentions
@@ -52,7 +52,7 @@ def register_intention_routes(agents_bp: Blueprint):
             content = data.get("content", "").strip()
 
             # Update in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.intentions import load_intentions, save_intention
@@ -83,7 +83,7 @@ def register_intention_routes(agents_bp: Blueprint):
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             # Delete from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.intentions import delete_intention
@@ -119,7 +119,7 @@ def register_intention_routes(agents_bp: Blueprint):
             }
 
             # Save to MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.intentions import save_intention

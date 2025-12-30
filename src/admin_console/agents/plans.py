@@ -35,7 +35,7 @@ def register_plan_routes(agents_bp: Blueprint):
             logger.info(f"Resolved user_id {user_id} to channel_id {channel_id} for agent {agent_config_name}")
 
             # Load from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 logger.warning(f"Agent {agent_config_name} has no Telegram ID, cannot load plans from MySQL")
                 return jsonify({"error": "Agent not authenticated. Please ensure the agent is logged in."}), 503
             
@@ -77,7 +77,7 @@ def register_plan_routes(agents_bp: Blueprint):
             content = data.get("content", "").strip()
 
             # Update in MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.plans import load_plans, save_plan
@@ -114,7 +114,7 @@ def register_plan_routes(agents_bp: Blueprint):
                 return error_response
 
             # Delete from MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.plans import delete_plan
@@ -155,7 +155,7 @@ def register_plan_routes(agents_bp: Blueprint):
             }
 
             # Save to MySQL
-            if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
             from db.plans import save_plan

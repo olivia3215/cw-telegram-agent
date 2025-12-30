@@ -31,7 +31,7 @@ def api_check_conversation_content_batch(agent_config_name: str):
             return jsonify({"error": "user_ids must be a list"}), 400
 
         # Check if agent is authenticated
-        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        if not agent.is_authenticated:
             # If agent not authenticated, return all False
             return jsonify({"content_checks": {user_id: False for user_id in user_ids}})
         
