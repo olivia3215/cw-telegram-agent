@@ -141,6 +141,21 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Create curated_memories table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS curated_memories (
+                    id VARCHAR(255) NOT NULL,
+                    agent_telegram_id BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL,
+                    content TEXT NOT NULL,
+                    created DATETIME,
+                    metadata JSON,
+                    PRIMARY KEY (id, agent_telegram_id, channel_id),
+                    INDEX idx_agent_channel (agent_telegram_id, channel_id),
+                    INDEX idx_created (created)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             conn.commit()
             logger.info("Database schema created successfully")
 

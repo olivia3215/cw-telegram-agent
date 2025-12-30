@@ -12,25 +12,6 @@ from admin_console.helpers import get_agent_by_name
 logger = logging.getLogger(__name__)
 
 
-def _has_conversation_content_local(agent_config_name: str, channel_id: int) -> bool:
-    """
-    Check if a conversation has content by checking MySQL (no Telegram API calls).
-    
-    Returns True if summaries exist in MySQL.
-    """
-    try:
-        agent = get_agent_by_name(agent_config_name)
-        if not agent or not hasattr(agent, "agent_id") or agent.agent_id is None:
-            return False
-        
-        # Check MySQL
-        from db import summaries as db_summaries
-        summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
-        return len(summaries) > 0
-    except Exception:
-        return False
-
-
 def api_check_conversation_content_batch(agent_config_name: str):
     """
     Batch check which partners have conversation content (local files only, no Telegram API calls).
@@ -49,13 +30,35 @@ def api_check_conversation_content_batch(agent_config_name: str):
         if not isinstance(user_ids, list):
             return jsonify({"error": "user_ids must be a list"}), 400
 
-        content_checks = {}
+        # Check if agent is authenticated
+        if not hasattr(agent, "agent_id") or agent.agent_id is None:
+            # If agent not authenticated, return all False
+            return jsonify({"content_checks": {user_id: False for user_id in user_ids}})
+        
+        # Parse all channel IDs first
+        channel_ids_by_user_id = {}
         for user_id_str in user_ids:
             try:
                 channel_id = int(user_id_str)
-                content_checks[user_id_str] = _has_conversation_content_local(agent.config_name, channel_id)
+                channel_ids_by_user_id[user_id_str] = channel_id
             except (ValueError, TypeError):
+                channel_ids_by_user_id[user_id_str] = None
+        
+        # Bulk query to check which channels have summaries
+        valid_channel_ids = [cid for cid in channel_ids_by_user_id.values() if cid is not None]
+        if valid_channel_ids:
+            from db import summaries as db_summaries
+            channels_with_summaries = db_summaries.has_summaries_for_channels(agent.agent_id, valid_channel_ids)
+        else:
+            channels_with_summaries = set()
+        
+        # Build response
+        content_checks = {}
+        for user_id_str, channel_id in channel_ids_by_user_id.items():
+            if channel_id is None:
                 content_checks[user_id_str] = False
+            else:
+                content_checks[user_id_str] = channel_id in channels_with_summaries
 
         return jsonify({"content_checks": content_checks})
     except Exception as e:

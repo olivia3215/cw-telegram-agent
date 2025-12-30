@@ -2688,10 +2688,28 @@
                 // Check content for each agent if we're on agents or conversations tab
                 const agentContentChecks = {};
                 if (subtabName) {
-                    // For 'plans' subtab, use the has_plans field from the agents list (already fetched)
+                    // For subtabs that have fields in the agents list, use those (already fetched)
                     if (subtabName === 'plans') {
                         agents.forEach(agent => {
                             agentContentChecks[agent.config_name] = agent.has_plans || false;
+                        });
+                    } else if (subtabName === 'memories') {
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_memories || false;
+                        });
+                    } else if (subtabName === 'intentions') {
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_intentions || false;
+                        });
+                    } else if (subtabName === 'curated-memories-conv') {
+                        // Conversations tab: Curated Memories subtab
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_curated_memories || false;
+                        });
+                    } else if (subtabName === 'conversation-llm') {
+                        // Conversations tab: Conversation LLM subtab
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_conversation_llm || false;
                         });
                     } else {
                         // For other subtabs, call agentHasContent

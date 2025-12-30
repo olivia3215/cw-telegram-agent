@@ -169,3 +169,35 @@ def delete_memory(agent_telegram_id: int, memory_id: str) -> None:
         finally:
             cursor.close()
 
+
+def agents_with_memories(agent_telegram_ids: list[int]) -> set[int]:
+    """
+    Check which agents have memories (bulk query).
+    
+    Args:
+        agent_telegram_ids: List of agent Telegram IDs to check
+        
+    Returns:
+        Set of agent Telegram IDs that have at least one memory
+    """
+    if not agent_telegram_ids:
+        return set()
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            # Use DISTINCT to get unique agent_telegram_ids, and IN clause for bulk query
+            placeholders = ','.join(['%s'] * len(agent_telegram_ids))
+            cursor.execute(
+                f"""
+                SELECT DISTINCT agent_telegram_id
+                FROM memories
+                WHERE agent_telegram_id IN ({placeholders})
+                """,
+                tuple(agent_telegram_ids),
+            )
+            rows = cursor.fetchall()
+            return {row["agent_telegram_id"] for row in rows}
+        finally:
+            cursor.close()
+

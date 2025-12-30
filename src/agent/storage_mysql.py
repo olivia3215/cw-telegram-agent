@@ -27,8 +27,8 @@ class AgentStorageMySQL:
     """
     MySQL-based storage implementation for agent data.
     
-    Stores agent state data (memories, intentions, plans, summaries, schedules) in MySQL.
-    Config memory (curated memories) and channel metadata still use filesystem.
+    Stores agent state data (memories, intentions, plans, summaries, schedules, curated memories) in MySQL.
+    Channel metadata still uses filesystem (for llm_model overrides).
     """
 
     def __init__(
@@ -106,51 +106,20 @@ class AgentStorageMySQL:
 
     def load_config_memory(self, user_id: int) -> str:
         """
-        Load curated memory from config directory for a specific user.
-        
-        This still uses filesystem as it's curated data.
+        Load curated memory from MySQL for a specific user.
         
         Returns:
             Pretty-printed JSON string of the memory array, or empty string if no memory exists.
         """
-        if not self.config_directory:
-            return ""
-
         try:
-            memory_file = (
-                self.config_directory
-                / "agents"
-                / self.agent_config_name
-                / "memory"
-                / f"{user_id}.json"
-            )
-            if memory_file.exists():
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        memories_list = loaded.get("memory", [])
-                    elif isinstance(loaded, list):
-                        memories_list = loaded
-                    else:
-                        logger.warning(
-                            f"[{self.agent_config_name}] Config memory file {memory_file} contains {type(loaded).__name__}, expected list or dict"
-                        )
-                        return ""
-                    if not isinstance(memories_list, list):
-                        logger.warning(
-                            f"[{self.agent_config_name}] Config memory file {memory_file} contains invalid 'memory' structure"
-                        )
-                        return ""
-                    return json.dumps(memories_list, indent=2, ensure_ascii=False)
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"[{self.agent_config_name}] Corrupted JSON in config memory file {memory_file}: {e}"
-            )
+            from db import curated_memories as db_curated_memories
+            memories_list = db_curated_memories.load_curated_memories(self.agent_telegram_id, user_id)
+            if memories_list:
+                return json.dumps(memories_list, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load config memory from {memory_file}: {e}"
+                f"[{self.agent_config_name}] Failed to load curated memory from MySQL for channel {user_id}: {e}"
             )
-
         return ""
 
     def load_state_memory(self) -> str:

@@ -79,6 +79,88 @@ def _sort_agents_by_name(agent_list: list[dict[str, Any]]) -> None:
     agent_list.sort(key=lambda x: x["name"].lower())
 
 
+def _agents_with_curated_memories(agent_config_names: list[str], agents: list) -> set[str]:
+    """
+    Check which agents have curated memories using MySQL bulk query.
+    
+    Args:
+        agent_config_names: List of agent config names to check
+        agents: List of agent objects (to map config_name to agent_id)
+        
+    Returns:
+        Set of agent config names that have curated memories
+    """
+    # Map agent config names to agent IDs
+    agent_id_by_config_name = {}
+    for agent in agents:
+        if agent.config_name in agent_config_names and agent.agent_id is not None:
+            agent_id_by_config_name[agent.config_name] = agent.agent_id
+    
+    if not agent_id_by_config_name:
+        return set()
+    
+    # Bulk query to check which agents have curated memories
+    try:
+        from db import curated_memories as db_curated_memories
+        agent_ids_with_memories = db_curated_memories.agents_with_curated_memories(list(agent_id_by_config_name.values()))
+        
+        # Map back to config names
+        config_names_with_memories = {
+            config_name
+            for config_name, agent_id in agent_id_by_config_name.items()
+            if agent_id in agent_ids_with_memories
+        }
+        return config_names_with_memories
+    except Exception as e:
+        logger.debug(f"Error checking curated memories in MySQL: {e}")
+        return set()
+
+
+def _agents_with_conversation_llm_overrides(agent_config_names: list[str]) -> set[str]:
+    """
+    Check which agents have conversation-specific LLM overrides by scanning state directories.
+    
+    Conversation LLM overrides are stored in {state_dir}/{agent_name}/memory/{channel_id}.json
+    with an 'llm_model' property in the payload.
+    
+    Args:
+        agent_config_names: List of agent config names to check
+        
+    Returns:
+        Set of agent config names that have conversation LLM overrides
+    """
+    from config import STATE_DIRECTORY
+    from memory_storage import load_property_entries
+    
+    agents_with_overrides = set()
+    agent_config_names_set = set(agent_config_names)
+    state_path = Path(STATE_DIRECTORY)
+    
+    if not state_path.exists():
+        return agents_with_overrides
+    
+    # Check each agent's memory directory
+    for agent_config_name in agent_config_names_set:
+        agent_memory_dir = state_path / agent_config_name / "memory"
+        if not agent_memory_dir.exists() or not agent_memory_dir.is_dir():
+            continue
+        
+        # Check memory files for llm_model property
+        for memory_file in agent_memory_dir.glob("*.json"):
+            try:
+                _, payload = load_property_entries(memory_file, "plan", default_id_prefix="plan")
+                if payload and isinstance(payload, dict):
+                    llm_model = payload.get("llm_model")
+                    if llm_model and isinstance(llm_model, str) and llm_model.strip():
+                        agents_with_overrides.add(agent_config_name)
+                        break  # Found one override, no need to check more files
+            except Exception:
+                # Skip files that can't be parsed
+                continue
+    
+    return agents_with_overrides
+
+
 @agents_bp.route("/api/agents", methods=["GET"])
 def api_agents():
     """Get list of all agents."""
@@ -88,8 +170,50 @@ def api_agents():
         
         register_all_agents()
         agents = list(get_all_agents(include_disabled=True))
-        agent_list = []
         
+        # Bulk queries to check which agents have plans, memories, and intentions
+        agent_ids_with_agent_id = [agent.agent_id for agent in agents if agent.agent_id is not None]
+        if agent_ids_with_agent_id:
+            try:
+                from db.plans import agents_with_plans
+                agents_with_plans_set = agents_with_plans(agent_ids_with_agent_id)
+            except Exception as e:
+                logger.debug(f"Error checking plans in MySQL: {e}")
+                agents_with_plans_set = set()
+            
+            try:
+                from db.memories import agents_with_memories
+                agents_with_memories_set = agents_with_memories(agent_ids_with_agent_id)
+            except Exception as e:
+                logger.debug(f"Error checking memories in MySQL: {e}")
+                agents_with_memories_set = set()
+            
+            try:
+                from db.intentions import agents_with_intentions
+                agents_with_intentions_set = agents_with_intentions(agent_ids_with_agent_id)
+            except Exception as e:
+                logger.debug(f"Error checking intentions in MySQL: {e}")
+                agents_with_intentions_set = set()
+        else:
+            agents_with_plans_set = set()
+            agents_with_memories_set = set()
+            agents_with_intentions_set = set()
+        
+        # Check which agents have curated memories (MySQL bulk query) and conversation LLM overrides (filesystem-based)
+        agent_config_names = [agent.config_name for agent in agents if agent.config_name]
+        try:
+            agents_with_curated_memories_set = _agents_with_curated_memories(agent_config_names, agents)
+        except Exception as e:
+            logger.debug(f"Error checking curated memories: {e}")
+            agents_with_curated_memories_set = set()
+        
+        try:
+            agents_with_conversation_llm_set = _agents_with_conversation_llm_overrides(agent_config_names)
+        except Exception as e:
+            logger.debug(f"Error checking conversation LLM overrides: {e}")
+            agents_with_conversation_llm_set = set()
+        
+        agent_list = []
         for agent in agents:
             # Check if agent has documents
             # Check all config directories for this agent's docs (agent can have docs in any config dir)
@@ -110,15 +234,14 @@ def api_agents():
                         logger.debug(f"Failed to check docs path for {agent.config_name} in {config_dir}: {e}")
                         continue
             
-            # Check if agent has plans
-            has_plans = False
-            if agent.agent_id:
-                try:
-                    from db.plans import has_plans_for_agent
-                    has_plans = has_plans_for_agent(agent.agent_id)
-                except Exception as e:
-                    logger.debug(f"Error checking plans in MySQL for agent {agent.config_name}: {e}")
-                    has_plans = False
+            # Check if agent has plans, memories, and intentions (from bulk queries)
+            has_plans = agent.agent_id is not None and agent.agent_id in agents_with_plans_set
+            has_memories = agent.agent_id is not None and agent.agent_id in agents_with_memories_set
+            has_intentions = agent.agent_id is not None and agent.agent_id in agents_with_intentions_set
+            
+            # Check if agent has curated memories and conversation LLM overrides (filesystem-based)
+            has_curated_memories = agent.config_name in agents_with_curated_memories_set
+            has_conversation_llm = agent.config_name in agents_with_conversation_llm_set
             
             agent_list.append({
                 "name": agent.name,
@@ -129,7 +252,11 @@ def api_agents():
                 "config_directory": agent.config_directory if agent.config_directory else None,
                 "is_disabled": agent.is_disabled,
                 "has_documents": has_documents,
-                "has_plans": has_plans
+                "has_plans": has_plans,
+                "has_memories": has_memories,
+                "has_intentions": has_intentions,
+                "has_curated_memories": has_curated_memories,
+                "has_conversation_llm": has_conversation_llm
             })
         
         _sort_agents_by_name(agent_list)
