@@ -1688,7 +1688,8 @@ def _create_default_chain() -> CompositeMediaSource:
     
     try:
         from media.mysql_media_source import MySQLMediaSource
-        ai_cache_source = MySQLMediaSource()
+        # Pass directory_source so MySQLMediaSource can write media files to disk
+        ai_cache_source = MySQLMediaSource(directory_source=directory_source)
         logger.info("Added MySQL media cache source")
     except Exception as e:
         logger.warning(f"Failed to initialize MySQL media cache, falling back to filesystem: {e}")

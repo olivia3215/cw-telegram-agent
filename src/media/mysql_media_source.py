@@ -7,7 +7,9 @@
 MySQL-backed media source for cached AI-generated descriptions.
 """
 
+import contextlib
 import logging
+from pathlib import Path
 from typing import Any
 
 from media.media_source import MediaSource
@@ -20,7 +22,19 @@ class MySQLMediaSource(MediaSource):
     Media source that reads from MySQL database.
     
     Only stores core/media-specific fields (excludes agent, channel, timestamps, etc.).
+    Media files are stored on disk via a DirectoryMediaSource.
     """
+
+    def __init__(self, directory_source=None):
+        """
+        Initialize MySQL media source.
+        
+        Args:
+            directory_source: Optional DirectoryMediaSource for storing media files on disk.
+                             If provided, media_bytes will be written to disk in its directory.
+                             The directory_source is used to get the target directory path.
+        """
+        self.directory_source = directory_source
 
     async def get(
         self,
@@ -67,22 +81,52 @@ class MySQLMediaSource(MediaSource):
         agent: Any = None,
     ) -> None:
         """
-        Store a media description record in MySQL.
+        Store a media description record in MySQL and optionally write media file to disk.
         
         Only stores core/media-specific fields. Filters out agent, channel, timestamps, etc.
+        Media files are written to disk via directory_source if provided.
         
         Args:
             unique_id: The Telegram file unique ID
             record: Media record dictionary
-            media_bytes: Media file bytes (ignored - media files stay in filesystem)
-            file_extension: File extension (ignored)
+            media_bytes: Media file bytes (written to disk via directory_source if provided)
+            file_extension: File extension (used when writing media file to disk)
+            agent: Agent instance (passed to directory_source if provided)
         """
+        # Write media file to disk if we have media_bytes and a directory_source
+        # We write only the media file, not the JSON metadata (which goes to MySQL)
+        if media_bytes is not None and self.directory_source is not None and file_extension:
+            try:
+                media_dir = self.directory_source.directory
+                media_dir.mkdir(parents=True, exist_ok=True)
+                media_filename = f"{unique_id}{file_extension}"
+                media_file = media_dir / media_filename
+                temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
+                try:
+                    temp_media_file.write_bytes(media_bytes)
+                    temp_media_file.replace(media_file)
+                    logger.debug(f"MySQLMediaSource: wrote media file {media_filename} to disk")
+                except Exception:
+                    # Clean up any temporary file and propagate the failure
+                    with contextlib.suppress(FileNotFoundError, PermissionError):
+                        temp_media_file.unlink()
+                    raise
+            except Exception as e:
+                logger.error(f"MySQLMediaSource: failed to write media file for {unique_id} to disk: {e}")
+                # Continue to store metadata even if file write fails
+        
+        # Store metadata in MySQL
         try:
             from db import media_metadata
             
             # Filter record to only include core/media-specific fields
             filtered_record = self._filter_core_fields(record)
             filtered_record["unique_id"] = unique_id
+            
+            # Update media_file in filtered_record if we wrote a media file
+            if media_bytes is not None and self.directory_source is not None and file_extension:
+                media_filename = f"{unique_id}{file_extension}"
+                filtered_record["media_file"] = media_filename
             
             media_metadata.save_media_metadata(filtered_record)
             logger.debug(f"MySQLMediaSource: cached {unique_id} to MySQL")
