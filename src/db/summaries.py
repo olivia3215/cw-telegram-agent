@@ -101,8 +101,20 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
                         elif " " in date_str:
                             date_str = date_str.split(" ")[0]
                         summary["last_message_date"] = date_str
-                if row["created"]:
-                    summary["created"] = row["created"].isoformat()
+                
+                # Always include created field, converting datetime objects to ISO format
+                created_value = row["created"]
+                if created_value is None:
+                    summary["created"] = None
+                elif isinstance(created_value, datetime):
+                    # It's a datetime object - convert to ISO format
+                    summary["created"] = created_value.isoformat()
+                elif isinstance(created_value, date):
+                    # It's a date object - convert to ISO format (with time component as midnight)
+                    summary["created"] = datetime.combine(created_value, datetime.min.time()).isoformat()
+                else:
+                    # It's already a string or other type - convert to string
+                    summary["created"] = str(created_value) if created_value else None
                 
                 # Merge metadata JSON into summary dict
                 if row["metadata"]:
@@ -241,6 +253,39 @@ def delete_summary(agent_telegram_id: int, channel_id: int, summary_id: str) -> 
             conn.rollback()
             logger.error(f"Failed to delete summary {summary_id}: {e}")
             raise
+        finally:
+            cursor.close()
+
+
+def has_summaries_for_channels(agent_telegram_id: int, channel_ids: list[int]) -> set[int]:
+    """
+    Check which channels have summaries for a given agent (bulk query).
+    
+    Args:
+        agent_telegram_id: The agent's Telegram ID
+        channel_ids: List of channel IDs to check
+        
+    Returns:
+        Set of channel IDs that have at least one summary
+    """
+    if not channel_ids:
+        return set()
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            # Use DISTINCT to get unique channel_ids, and IN clause for bulk query
+            placeholders = ','.join(['%s'] * len(channel_ids))
+            cursor.execute(
+                f"""
+                SELECT DISTINCT channel_id
+                FROM summaries
+                WHERE agent_telegram_id = %s AND channel_id IN ({placeholders})
+                """,
+                (agent_telegram_id, *channel_ids),
+            )
+            rows = cursor.fetchall()
+            return {row["channel_id"] for row in rows}
         finally:
             cursor.close()
 
