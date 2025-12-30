@@ -47,14 +47,20 @@ def _init_connection_pool() -> None:
         if _pool_initialized:
             return
 
+        # MySQL is required - fail fast if not configured
         if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
-            logger.warning(
-                "MySQL configuration incomplete. Missing: "
-                f"{'DATABASE' if not MYSQL_DATABASE else ''} "
-                f"{'USER' if not MYSQL_USER else ''} "
-                f"{'PASSWORD' if not MYSQL_PASSWORD else ''}"
+            missing = []
+            if not MYSQL_DATABASE:
+                missing.append("DATABASE")
+            if not MYSQL_USER:
+                missing.append("USER")
+            if not MYSQL_PASSWORD:
+                missing.append("PASSWORD")
+            raise RuntimeError(
+                f"MySQL configuration incomplete. Missing: {', '.join(missing)}. "
+                "Please set CINDY_AGENT_MYSQL_DATABASE, CINDY_AGENT_MYSQL_USER, and "
+                "CINDY_AGENT_MYSQL_PASSWORD. MySQL is required for this application."
             )
-            return
         
         # Safety check: In test environment, ensure database name contains 'test'
         # This prevents accidental use of production database in tests

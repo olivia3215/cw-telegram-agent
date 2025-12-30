@@ -391,9 +391,12 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     
                     # Store media file if we have an extension
                     if file_extension:
-                        # Get the shared DirectoryMediaSource instance for state/media/
+                        # MySQL is required - use MySQLMediaSource with directory_source for media files
                         state_media_dir = Path(STATE_DIRECTORY) / "media"
-                        cache_source = get_directory_media_source(state_media_dir)
+                        from media.mysql_media_source import MySQLMediaSource
+                        # Use MySQL for metadata, DirectoryMediaSource for media files on disk
+                        directory_source = get_directory_media_source(state_media_dir)
+                        cache_source = MySQLMediaSource(directory_source=directory_source)
                         
                         # Check if file already exists to avoid overwriting
                         media_filename = f"{unique_id}{file_extension}"

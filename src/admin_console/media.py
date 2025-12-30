@@ -576,7 +576,9 @@ def api_refresh_from_ai(unique_id: str):
         # Use MySQL cache source if this is state/media
         if is_state_media:
             from media.mysql_media_source import MySQLMediaSource
-            ai_cache_source = MySQLMediaSource()
+            # Create directory_source so MySQLMediaSource can write media files to disk
+            directory_source = get_directory_media_source(ai_cache_dir)
+            ai_cache_source = MySQLMediaSource(directory_source=directory_source)
         else:
             ai_cache_source = get_directory_media_source(ai_cache_dir)
         

@@ -585,7 +585,13 @@ class DirectoryMediaSource(MediaSource):
             )
             temp_path.replace(file_path)
 
-            logger.debug(f"DirectoryMediaSource: cached {unique_id} to disk")
+            # Log with stack trace to diagnose when JSON files are written to state/media
+            import traceback
+            stack_trace = "".join(traceback.format_stack())
+            logger.info(
+                f"DirectoryMediaSource: cached {unique_id} to disk at {file_path}\n"
+                f"Stack trace:\n{stack_trace}"
+            )
 
             # Update the in-memory cache
             self._mem_cache[unique_id] = record
@@ -1686,15 +1692,19 @@ def _create_default_chain() -> CompositeMediaSource:
     directory_source = get_directory_media_source(ai_cache_dir)
     logger.info(f"Registered AI cache directory: {ai_cache_dir}")
     
-    try:
-        from media.mysql_media_source import MySQLMediaSource
-        # Pass directory_source so MySQLMediaSource can write media files to disk
-        ai_cache_source = MySQLMediaSource(directory_source=directory_source)
-        logger.info("Added MySQL media cache source")
-    except Exception as e:
-        logger.warning(f"Failed to initialize MySQL media cache, falling back to filesystem: {e}")
-        # Fall through to filesystem
-        ai_cache_source = directory_source
+    # MySQL is required - verify configuration at startup
+    from config import MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
+    if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
+        raise RuntimeError(
+            "MySQL configuration incomplete. "
+            "Please set CINDY_AGENT_MYSQL_DATABASE, CINDY_AGENT_MYSQL_USER, and CINDY_AGENT_MYSQL_PASSWORD. "
+            "MySQL is required for media metadata storage."
+        )
+    
+    from media.mysql_media_source import MySQLMediaSource
+    # Pass directory_source so MySQLMediaSource can write media files to disk
+    ai_cache_source = MySQLMediaSource(directory_source=directory_source)
+    logger.info("Added MySQL media cache source")
 
     # Add AI chain source that orchestrates unsupported/budget/AI generation
     sources.append(

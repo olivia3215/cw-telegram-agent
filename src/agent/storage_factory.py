@@ -37,7 +37,7 @@ def create_storage(
     
     Raises:
         ValueError: If agent_telegram_id is None or invalid
-        RuntimeError: If MySQL configuration is incomplete
+        RuntimeError: If MySQL configuration is incomplete (checked at startup in db.connection)
     """
     if agent_telegram_id is None:
         raise ValueError(
@@ -47,15 +47,8 @@ def create_storage(
     
     try:
         from agent.storage_mysql import AgentStorageMySQL
-        from config import MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
         
-        # Verify MySQL is configured
-        if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
-            raise RuntimeError(
-                f"[{agent_config_name}] MySQL configuration incomplete. "
-                "Please set CINDY_AGENT_MYSQL_DATABASE, CINDY_AGENT_MYSQL_USER, and CINDY_AGENT_MYSQL_PASSWORD."
-            )
-        
+        # MySQL configuration is checked at startup in db.connection._init_connection_pool()
         return AgentStorageMySQL(
             agent_config_name=agent_config_name,
             agent_telegram_id=agent_telegram_id,
