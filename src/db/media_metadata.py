@@ -7,7 +7,6 @@
 Database operations for media metadata.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -33,7 +32,7 @@ def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
                 """
                 SELECT unique_id, kind, description, status, duration, mime_type,
                        media_file, sticker_set_name, sticker_name, is_emoji_set,
-                       sticker_set_title, metadata
+                       sticker_set_title
                 FROM media_metadata
                 WHERE unique_id = %s
                 """,
@@ -69,15 +68,6 @@ def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
             if row["sticker_set_title"]:
                 record["sticker_set_title"] = row["sticker_set_title"]
             
-            # Merge metadata JSON into record
-            if row["metadata"]:
-                try:
-                    metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
-                    if isinstance(metadata, dict):
-                        record.update(metadata)
-                except Exception as e:
-                    logger.warning(f"Failed to parse metadata JSON for media {row['unique_id']}: {e}")
-            
             return record
         finally:
             cursor.close()
@@ -94,19 +84,6 @@ def save_media_metadata(record: dict[str, Any]) -> None:
     if not unique_id or not str(unique_id).strip():
         raise ValueError("unique_id is required and cannot be empty")
     
-    # Extract core fields
-    core_fields = {
-        "unique_id", "kind", "description", "status", "duration", "mime_type",
-        "media_file", "sticker_set_name", "sticker_name", "is_emoji_set", "sticker_set_title"
-    }
-    
-    metadata_dict = {}
-    for key, value in record.items():
-        if key not in core_fields:
-            metadata_dict[key] = value
-    
-    metadata_json = json.dumps(metadata_dict, ensure_ascii=False) if metadata_dict else None
-    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -115,8 +92,8 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                 INSERT INTO media_metadata (
                     unique_id, kind, description, status, duration, mime_type,
                     media_file, sticker_set_name, sticker_name, is_emoji_set,
-                    sticker_set_title, metadata
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    sticker_set_title
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     kind = VALUES(kind),
                     description = VALUES(description),
@@ -127,8 +104,7 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                     sticker_set_name = VALUES(sticker_set_name),
                     sticker_name = VALUES(sticker_name),
                     is_emoji_set = VALUES(is_emoji_set),
-                    sticker_set_title = VALUES(sticker_set_title),
-                    metadata = VALUES(metadata)
+                    sticker_set_title = VALUES(sticker_set_title)
                 """,
                 (
                     unique_id,
@@ -142,7 +118,6 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                     record.get("sticker_name"),
                     record.get("is_emoji_set"),
                     record.get("sticker_set_title"),
-                    metadata_json,
                 ),
             )
             conn.commit()

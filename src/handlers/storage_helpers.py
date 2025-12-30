@@ -369,7 +369,6 @@ async def _save_entry_mysql(
                     creation_channel=new_entry.get("creation_channel"),
                     creation_channel_id=new_entry.get("creation_channel_id"),
                     creation_channel_username=new_entry.get("creation_channel_username"),
-                    metadata=new_entry,
                 )
             elif property_name == "intention":
                 from db import intentions
@@ -378,7 +377,6 @@ async def _save_entry_mysql(
                     intention_id=entry_id,
                     content=content_value,
                     created=new_entry.get("created"),
-                    metadata=new_entry,
                 )
             elif property_name == "plan":
                 from db import plans
@@ -388,7 +386,6 @@ async def _save_entry_mysql(
                     plan_id=entry_id,
                     content=content_value,
                     created=new_entry.get("created"),
-                    metadata=new_entry,
                 )
             elif property_name == "summary":
                 from db import summaries
@@ -402,7 +399,6 @@ async def _save_entry_mysql(
                     first_message_date=new_entry.get("first_message_date"),
                     last_message_date=new_entry.get("last_message_date"),
                     created=new_entry.get("created"),
-                    metadata=new_entry,
                 )
         else:
             # Delete entry

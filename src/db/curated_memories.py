@@ -7,7 +7,6 @@
 Database operations for curated memories.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -33,7 +32,7 @@ def load_curated_memories(agent_telegram_id: int, channel_id: int) -> list[dict[
         try:
             cursor.execute(
                 """
-                SELECT id, content, created, metadata
+                SELECT id, content, created
                 FROM curated_memories
                 WHERE agent_telegram_id = %s AND channel_id = %s
                 ORDER BY created ASC
@@ -51,15 +50,6 @@ def load_curated_memories(agent_telegram_id: int, channel_id: int) -> list[dict[
                 if row["created"]:
                     memory["created"] = row["created"].isoformat()
                 
-                # Merge metadata JSON into memory dict
-                if row["metadata"]:
-                    try:
-                        metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
-                        if isinstance(metadata, dict):
-                            memory.update(metadata)
-                    except Exception as e:
-                        logger.warning(f"Failed to parse metadata JSON for curated memory {row['id']}: {e}")
-                
                 memories.append(memory)
             
             return memories
@@ -73,7 +63,6 @@ def save_curated_memory(
     memory_id: str,
     content: str,
     created: str | None = None,
-    metadata: dict[str, Any] | None = None,
 ) -> None:
     """
     Save or update a curated memory.
@@ -84,33 +73,21 @@ def save_curated_memory(
         memory_id: Unique memory ID
         content: Memory content
         created: Creation timestamp (ISO format string)
-        metadata: Additional metadata to store as JSON
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
-            # Extract core fields from metadata
-            core_fields = {"id", "content", "created"}
-            metadata_dict = {}
-            if metadata:
-                for key, value in metadata.items():
-                    if key not in core_fields:
-                        metadata_dict[key] = value
-            
-            metadata_json = json.dumps(metadata_dict, ensure_ascii=False) if metadata_dict else None
-            
             # Normalize datetime for MySQL
             created_normalized = normalize_datetime_for_mysql(created)
             
             cursor.execute(
                 """
                 INSERT INTO curated_memories (
-                    id, agent_telegram_id, channel_id, content, created, metadata
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    id, agent_telegram_id, channel_id, content, created
+                ) VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
-                    created = VALUES(created),
-                    metadata = VALUES(metadata)
+                    created = VALUES(created)
                 """,
                 (
                     memory_id,
@@ -118,7 +95,6 @@ def save_curated_memory(
                     channel_id,
                     content,
                     created_normalized,
-                    metadata_json,
                 ),
             )
             conn.commit()

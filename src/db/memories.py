@@ -7,7 +7,6 @@
 Database operations for memories.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -33,7 +32,7 @@ def load_memories(agent_telegram_id: int) -> list[dict[str, Any]]:
             cursor.execute(
                 """
                 SELECT id, content, created, creation_channel, creation_channel_id,
-                       creation_channel_username, metadata
+                       creation_channel_username
                 FROM memories
                 WHERE agent_telegram_id = %s
                 ORDER BY created ASC
@@ -57,15 +56,6 @@ def load_memories(agent_telegram_id: int) -> list[dict[str, Any]]:
                 if row["creation_channel_username"]:
                     memory["creation_channel_username"] = row["creation_channel_username"]
                 
-                # Merge metadata JSON into memory dict
-                if row["metadata"]:
-                    try:
-                        metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
-                        if isinstance(metadata, dict):
-                            memory.update(metadata)
-                    except Exception as e:
-                        logger.warning(f"Failed to parse metadata JSON for memory {row['id']}: {e}")
-                
                 memories.append(memory)
             
             return memories
@@ -81,7 +71,6 @@ def save_memory(
     creation_channel: str | None = None,
     creation_channel_id: int | None = None,
     creation_channel_username: str | None = None,
-    metadata: dict[str, Any] | None = None,
 ) -> None:
     """
     Save or update a memory.
@@ -94,21 +83,10 @@ def save_memory(
         creation_channel: Channel name where memory was created
         creation_channel_id: Channel ID where memory was created
         creation_channel_username: Channel username where memory was created
-        metadata: Additional metadata to store as JSON
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
-            # Extract core fields from metadata
-            core_fields = {"id", "content", "created", "creation_channel", "creation_channel_id", "creation_channel_username"}
-            metadata_dict = {}
-            if metadata:
-                for key, value in metadata.items():
-                    if key not in core_fields:
-                        metadata_dict[key] = value
-            
-            metadata_json = json.dumps(metadata_dict, ensure_ascii=False) if metadata_dict else None
-            
             # Normalize datetime for MySQL
             created_normalized = normalize_datetime_for_mysql(created)
             
@@ -116,15 +94,14 @@ def save_memory(
                 """
                 INSERT INTO memories (
                     id, agent_telegram_id, content, created, creation_channel,
-                    creation_channel_id, creation_channel_username, metadata
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    creation_channel_id, creation_channel_username
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
                     created = VALUES(created),
                     creation_channel = VALUES(creation_channel),
                     creation_channel_id = VALUES(creation_channel_id),
-                    creation_channel_username = VALUES(creation_channel_username),
-                    metadata = VALUES(metadata)
+                    creation_channel_username = VALUES(creation_channel_username)
                 """,
                 (
                     memory_id,
@@ -134,7 +111,6 @@ def save_memory(
                     creation_channel,
                     creation_channel_id,
                     creation_channel_username,
-                    metadata_json,
                 ),
             )
             conn.commit()

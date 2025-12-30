@@ -71,7 +71,6 @@ def register_memory_routes(agents_bp: Blueprint):
                 creation_channel=memory.get("creation_channel"),
                 creation_channel_id=memory.get("creation_channel_id"),
                 creation_channel_username=memory.get("creation_channel_username"),
-                metadata={k: v for k, v in memory.items() if k not in {"id", "content", "created", "creation_channel", "creation_channel_id", "creation_channel_username"}},
             )
 
             return jsonify({"success": True})
@@ -133,7 +132,6 @@ def register_memory_routes(agents_bp: Blueprint):
                 memory_id=memory_id,
                 content=content,
                 created=created_value,
-                metadata={"origin": "puppetmaster"},
             )
 
             return jsonify({"success": True, "memory": new_entry})
@@ -263,7 +261,6 @@ def register_memory_routes(agents_bp: Blueprint):
                 memory_id,
                 content,
                 created=created,
-                metadata=metadata,
             )
 
             return jsonify({"success": True})
@@ -338,7 +335,6 @@ def register_memory_routes(agents_bp: Blueprint):
                 memory_id,
                 content,
                 created=created_value,
-                metadata={"origin": "puppetmaster"},
             )
 
             return jsonify({"success": True, "memory": new_entry})

@@ -93,7 +93,6 @@ def register_plan_routes(agents_bp: Blueprint):
                 plan_id=plan_id,
                 content=content,
                 created=plan.get("created"),
-                metadata={k: v for k, v in plan.items() if k not in {"id", "content", "created"}},
             )
 
             return jsonify({"success": True})
@@ -166,7 +165,6 @@ def register_plan_routes(agents_bp: Blueprint):
                 plan_id=plan_id,
                 content=content,
                 created=created_value,
-                metadata={"origin": "puppetmaster"},
             )
 
             return jsonify({"success": True, "plan": new_entry})

@@ -30,7 +30,6 @@ def create_schema() -> None:
                     creation_channel VARCHAR(255),
                     creation_channel_id BIGINT,
                     creation_channel_username VARCHAR(255),
-                    metadata JSON,
                     PRIMARY KEY (id, agent_telegram_id),
                     INDEX idx_agent (agent_telegram_id),
                     INDEX idx_created (created)
@@ -44,7 +43,6 @@ def create_schema() -> None:
                     agent_telegram_id BIGINT NOT NULL,
                     content TEXT NOT NULL,
                     created DATETIME,
-                    metadata JSON,
                     PRIMARY KEY (id, agent_telegram_id),
                     INDEX idx_agent (agent_telegram_id),
                     INDEX idx_created (created)
@@ -59,7 +57,6 @@ def create_schema() -> None:
                     channel_id BIGINT NOT NULL,
                     content TEXT NOT NULL,
                     created DATETIME,
-                    metadata JSON,
                     PRIMARY KEY (id, agent_telegram_id, channel_id),
                     INDEX idx_agent_channel (agent_telegram_id, channel_id),
                     INDEX idx_created (created)
@@ -78,7 +75,6 @@ def create_schema() -> None:
                     first_message_date DATETIME,
                     last_message_date DATETIME,
                     created DATETIME,
-                    metadata JSON,
                     PRIMARY KEY (id, agent_telegram_id, channel_id),
                     INDEX idx_agent_channel (agent_telegram_id, channel_id),
                     INDEX idx_message_range (agent_telegram_id, channel_id, min_message_id, max_message_id),
@@ -122,7 +118,6 @@ def create_schema() -> None:
                     sticker_name VARCHAR(255),
                     is_emoji_set BOOLEAN,
                     sticker_set_title VARCHAR(255),
-                    metadata JSON,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_kind (kind),
                     INDEX idx_sticker_set (sticker_set_name)
@@ -149,7 +144,6 @@ def create_schema() -> None:
                     channel_id BIGINT NOT NULL,
                     content TEXT NOT NULL,
                     created DATETIME,
-                    metadata JSON,
                     PRIMARY KEY (id, agent_telegram_id, channel_id),
                     INDEX idx_agent_channel (agent_telegram_id, channel_id),
                     INDEX idx_created (created)

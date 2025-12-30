@@ -34,7 +34,7 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
             cursor.execute(
                 """
                 SELECT id, content, min_message_id, max_message_id,
-                       first_message_date, last_message_date, created, metadata
+                       first_message_date, last_message_date, created
                 FROM summaries
                 WHERE agent_telegram_id = %s AND channel_id = %s
                 ORDER BY min_message_id ASC, max_message_id ASC
@@ -116,15 +116,6 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
                     # It's already a string or other type - convert to string
                     summary["created"] = str(created_value) if created_value else None
                 
-                # Merge metadata JSON into summary dict
-                if row["metadata"]:
-                    try:
-                        metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
-                        if isinstance(metadata, dict):
-                            summary.update(metadata)
-                    except Exception as e:
-                        logger.warning(f"Failed to parse metadata JSON for summary {row['id']}: {e}")
-                
                 summaries.append(summary)
             
             return summaries
@@ -142,7 +133,6 @@ def save_summary(
     first_message_date: str | None = None,
     last_message_date: str | None = None,
     created: str | None = None,
-    metadata: dict[str, Any] | None = None,
 ) -> None:
     """
     Save or update a summary.
@@ -157,24 +147,10 @@ def save_summary(
         first_message_date: First message date (ISO format string)
         last_message_date: Last message date (ISO format string)
         created: Creation timestamp (ISO format string)
-        metadata: Additional metadata to store as JSON
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
-            # Extract core fields from metadata
-            core_fields = {
-                "id", "content", "min_message_id", "max_message_id",
-                "first_message_date", "last_message_date", "created"
-            }
-            metadata_dict = {}
-            if metadata:
-                for key, value in metadata.items():
-                    if key not in core_fields:
-                        metadata_dict[key] = value
-            
-            metadata_json = json.dumps(metadata_dict, ensure_ascii=False) if metadata_dict else None
-            
             # Normalize datetimes for MySQL
             first_message_date_normalized = normalize_datetime_for_mysql(first_message_date)
             last_message_date_normalized = normalize_datetime_for_mysql(last_message_date)
@@ -192,16 +168,15 @@ def save_summary(
                 INSERT INTO summaries (
                     id, agent_telegram_id, channel_id, content,
                     min_message_id, max_message_id, first_message_date,
-                    last_message_date, created, metadata
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    last_message_date, created
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
                     min_message_id = VALUES(min_message_id),
                     max_message_id = VALUES(max_message_id),
                     first_message_date = VALUES(first_message_date),
                     last_message_date = VALUES(last_message_date),
-                    created = VALUES(created),
-                    metadata = VALUES(metadata)
+                    created = VALUES(created)
                 """,
                 (
                     summary_id,
@@ -213,7 +188,6 @@ def save_summary(
                     first_message_date_normalized,
                     last_message_date_normalized,
                     created_normalized,
-                    metadata_json,
                 ),
             )
             conn.commit()

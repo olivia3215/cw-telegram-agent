@@ -67,7 +67,6 @@ def register_intention_routes(agents_bp: Blueprint):
                 intention_id=intention_id,
                 content=content,
                 created=intention.get("created"),
-                metadata={k: v for k, v in intention.items() if k not in {"id", "content", "created"}},
             )
 
             return jsonify({"success": True})
@@ -129,7 +128,6 @@ def register_intention_routes(agents_bp: Blueprint):
                 intention_id=intention_id,
                 content=content,
                 created=created_value,
-                metadata={"origin": "puppetmaster"},
             )
 
             return jsonify({"success": True, "intention": new_entry})

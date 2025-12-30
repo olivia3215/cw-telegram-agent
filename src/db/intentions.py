@@ -7,7 +7,6 @@
 Database operations for intentions.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -32,7 +31,7 @@ def load_intentions(agent_telegram_id: int) -> list[dict[str, Any]]:
         try:
             cursor.execute(
                 """
-                SELECT id, content, created, metadata
+                SELECT id, content, created
                 FROM intentions
                 WHERE agent_telegram_id = %s
                 ORDER BY created ASC
@@ -50,15 +49,6 @@ def load_intentions(agent_telegram_id: int) -> list[dict[str, Any]]:
                 if row["created"]:
                     intention["created"] = row["created"].isoformat()
                 
-                # Merge metadata JSON into intention dict
-                if row["metadata"]:
-                    try:
-                        metadata = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
-                        if isinstance(metadata, dict):
-                            intention.update(metadata)
-                    except Exception as e:
-                        logger.warning(f"Failed to parse metadata JSON for intention {row['id']}: {e}")
-                
                 intentions.append(intention)
             
             return intentions
@@ -71,7 +61,6 @@ def save_intention(
     intention_id: str,
     content: str,
     created: str | None = None,
-    metadata: dict[str, Any] | None = None,
 ) -> None:
     """
     Save or update an intention.
@@ -81,34 +70,22 @@ def save_intention(
         intention_id: Unique intention ID
         content: Intention content
         created: Creation timestamp (ISO format string)
-        metadata: Additional metadata to store as JSON
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
-            # Extract core fields from metadata
-            core_fields = {"id", "content", "created"}
-            metadata_dict = {}
-            if metadata:
-                for key, value in metadata.items():
-                    if key not in core_fields:
-                        metadata_dict[key] = value
-            
-            metadata_json = json.dumps(metadata_dict, ensure_ascii=False) if metadata_dict else None
-            
             # Normalize datetime for MySQL
             created_normalized = normalize_datetime_for_mysql(created)
             
             cursor.execute(
                 """
-                INSERT INTO intentions (id, agent_telegram_id, content, created, metadata)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO intentions (id, agent_telegram_id, content, created)
+                VALUES (%s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     content = VALUES(content),
-                    created = VALUES(created),
-                    metadata = VALUES(metadata)
+                    created = VALUES(created)
                 """,
-                (intention_id, agent_telegram_id, content, created_normalized, metadata_json),
+                (intention_id, agent_telegram_id, content, created_normalized),
             )
             conn.commit()
         except Exception as e:

@@ -411,7 +411,6 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
         intention_id="intent-1",
         content="Prepare a weekly summary for Olivia.",
         created=None,
-        metadata=None,
     )
     
     # Save memory
@@ -423,7 +422,6 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
         creation_channel=None,
         creation_channel_id=None,
         creation_channel_username=None,
-        metadata=None,
     )
     
     # Save plan
@@ -434,7 +432,6 @@ def test_agent_includes_intentions_and_plan_in_prompts(tmp_path, monkeypatch):
         plan_id="plan-1",
         content="Confirm the agenda with Olivia before Friday.",
         created=None,
-        metadata=None,
     )
 
     intention_content = agent_instance._load_intention_content()

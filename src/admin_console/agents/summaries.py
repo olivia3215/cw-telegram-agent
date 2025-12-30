@@ -84,12 +84,6 @@ def register_summary_routes(agents_bp: Blueprint):
             if not existing_summary:
                 return jsonify({"error": "Summary not found"}), 404
             
-            # Extract metadata (fields that are not core fields)
-            # load_summaries() merges metadata directly into the summary dict, so we need to extract
-            # all fields that are not core fields
-            core_fields = {"id", "content", "min_message_id", "max_message_id", "first_message_date", "last_message_date", "created"}
-            metadata = {k: v for k, v in existing_summary.items() if k not in core_fields}
-            
             # Handle date fields - strip whitespace if provided
             updated_first_message_date = existing_summary.get("first_message_date")
             if first_message_date is not None:
@@ -114,7 +108,6 @@ def register_summary_routes(agents_bp: Blueprint):
                 first_message_date=updated_first_message_date,
                 last_message_date=updated_last_message_date,
                 created=existing_summary.get("created"),
-                metadata=metadata,
             )
 
             return jsonify({"success": True})
@@ -204,7 +197,6 @@ def register_summary_routes(agents_bp: Blueprint):
                 first_message_date=new_entry.get("first_message_date"),
                 last_message_date=new_entry.get("last_message_date"),
                 created=created_value,
-                metadata={"origin": "puppetmaster"},
             )
 
             return jsonify({"success": True, "summary": new_entry})
