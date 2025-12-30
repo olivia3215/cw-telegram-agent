@@ -22,6 +22,20 @@ jobs:
         # python-version: ["3.12", "3.13"]
         python-version: ["3.13"]
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: test_cindy_agent
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,10 +55,58 @@ jobs:
       - name: Prepare state dir
         run: mkdir -p state/media
 
+      - name: Set up MySQL test database
+        env:
+          CINDY_AGENT_MYSQL_TEST_HOST: 127.0.0.1
+          CINDY_AGENT_MYSQL_TEST_PORT: 3306
+          CINDY_AGENT_MYSQL_TEST_DATABASE: test_cindy_agent
+          CINDY_AGENT_MYSQL_TEST_USER: root
+          CINDY_AGENT_MYSQL_TEST_PASSWORD: rootpassword
+        run: |
+          # Wait for MySQL to be ready using Python
+          python - <<'PY'
+          import time
+          import pymysql
+          max_attempts = 30
+          for i in range(max_attempts):
+              try:
+                  # First try connecting without database (MySQL service might still be initializing)
+                  conn = pymysql.connect(
+                      host='127.0.0.1',
+                      port=3306,
+                      user='root',
+                      password='rootpassword'
+                  )
+                  conn.close()
+                  # Then try with database
+                  conn = pymysql.connect(
+                      host='127.0.0.1',
+                      port=3306,
+                      user='root',
+                      password='rootpassword',
+                      database='test_cindy_agent'
+                  )
+                  conn.close()
+                  print("MySQL is ready!")
+                  break
+              except Exception as e:
+                  if i == max_attempts - 1:
+                      raise RuntimeError(f"MySQL not ready after {max_attempts} attempts: {e}")
+                  print(f"Waiting for MySQL... (attempt {i+1}/{max_attempts})")
+                  time.sleep(2)
+          PY
+          # Create schema
+          PYTHONPATH=src python scripts/create_mysql_schema.py
+
       - name: Run tests (with coverage)
         env:
           PYTHONPATH: .
           CINDY_AGENT_STATE_DIR: state
+          CINDY_AGENT_MYSQL_TEST_HOST: 127.0.0.1
+          CINDY_AGENT_MYSQL_TEST_PORT: 3306
+          CINDY_AGENT_MYSQL_TEST_DATABASE: test_cindy_agent
+          CINDY_AGENT_MYSQL_TEST_USER: root
+          CINDY_AGENT_MYSQL_TEST_PASSWORD: rootpassword
         run: |
           pytest -vv -s --cov=. --cov-report=term-missing:skip-covered --cov-report=xml
 
