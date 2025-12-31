@@ -39,6 +39,7 @@ from media.media_source import (
     BudgetExhaustedMediaSource,
     CompositeMediaSource,
     MediaStatus,
+    MEDIA_FILE_EXTENSIONS,
     UnsupportedFormatMediaSource,
     get_default_media_source_chain,
     get_emoji_unicode_name,
@@ -742,11 +743,29 @@ def api_delete_media(unique_id: str):
         is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
         
         if is_state_media:
-            # Delete from MySQL
+            # Delete from MySQL and also delete the media file from disk
             from db import media_metadata
             record = media_metadata.load_media_metadata(unique_id)
             if not record:
                 return jsonify({"error": "Media record not found"}), 404
+            
+            # Delete the media file from disk (similar to DirectoryMediaSource.delete_record)
+            media_file_name = record.get("media_file")
+            if media_file_name:
+                media_path = state_media_path / media_file_name
+                if media_path.exists():
+                    media_path.unlink()
+                    logger.debug(f"Deleted media file {media_file_name} from {state_media_path}")
+            else:
+                # Try common extensions if media_file field is not set
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    media_path = state_media_path / f"{unique_id}{ext}"
+                    if media_path.exists():
+                        media_path.unlink()
+                        logger.debug(f"Deleted media file {unique_id}{ext} from {state_media_path}")
+                        break
+            
+            # Delete metadata from MySQL
             media_metadata.delete_media_metadata(unique_id)
         else:
             # Delete from filesystem

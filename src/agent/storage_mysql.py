@@ -261,12 +261,9 @@ class AgentStorageMySQL:
         Returns:
             The LLM model name (e.g., "gemini-2.0-flash", "grok") or None if not set
         """
-        if not hasattr(self, "agent_id") or self.agent_id is None:
-            return None
-        
         try:
             from db import conversation_llm
-            return conversation_llm.get_conversation_llm(self.agent_id, channel_id)
+            return conversation_llm.get_conversation_llm(self.agent_telegram_id, channel_id)
         except Exception as exc:
             logger.debug(
                 f"[{self.agent_config_name}] Failed to load llm_model from MySQL for channel {channel_id}: {exc}"
