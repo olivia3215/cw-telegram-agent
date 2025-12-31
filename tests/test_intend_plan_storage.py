@@ -14,6 +14,11 @@ class StubAgent:
         self.timezone = ZoneInfo("UTC")
         self.agent_id = agent_id  # Required for MySQL storage
 
+    @property
+    def is_authenticated(self) -> bool:
+        """Check if the agent is authenticated (has a Telegram ID)."""
+        return hasattr(self, "agent_id") and self.agent_id is not None
+
     def get_current_time(self):
         return datetime(2025, 1, 1, 12, 0, tzinfo=ZoneInfo("UTC"))
 

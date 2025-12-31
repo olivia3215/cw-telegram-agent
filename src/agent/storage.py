@@ -84,43 +84,22 @@ class AgentStorageMixin:
 
     def _load_schedule(self) -> dict | None:
         """
-        Load agent's schedule from MySQL with caching.
+        Load agent's schedule from MySQL.
         
-        The schedule is cached in memory and only reloaded if:
-        - Cache is empty (first load)
-        - Cache was explicitly invalidated
-        
-        Returns a deep copy of the schedule to prevent cache mutation.
-        If _save_schedule() fails, the cache remains unchanged and will be
-        reloaded from MySQL on the next access.
+        Returns a deep copy of the schedule to prevent accidental mutation.
         
         Returns:
             Deep copy of schedule dictionary or None if schedule doesn't exist
         """
-        # Check if cache is valid
-        if self._schedule_cache is not None:
-            # Cache is valid, return a deep copy to prevent cache mutation
-            # If _save_schedule() fails, the cache remains unchanged
-            return copy.deepcopy(self._schedule_cache)
-        
-        # Load from MySQL
         schedule = self._storage.load_schedule()
-        
-        # Update cache
-        self._schedule_cache = schedule
-        
-        # Return a deep copy to prevent cache mutation
-        # If _save_schedule() fails, the cache remains unchanged
+        # Return a deep copy to prevent accidental mutation
         return copy.deepcopy(schedule) if schedule is not None else None
 
     def _save_schedule(self, schedule: dict) -> None:
         """
-        Save agent's schedule to MySQL and invalidate cache.
+        Save agent's schedule to MySQL.
         
         Args:
             schedule: Schedule dictionary to save
         """
         self._storage.save_schedule(schedule)
-        
-        # Invalidate cache - it will be reloaded on next access
-        self._schedule_cache = None

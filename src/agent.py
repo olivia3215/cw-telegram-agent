@@ -114,9 +114,6 @@ class Agent(
         
         # Daily schedule configuration
         self.daily_schedule_description = daily_schedule_description  # str | None
-        
-        # Schedule cache (loaded on demand, invalidated on save)
-        self._schedule_cache: dict | None = None
 
     @property
     def llm(self):
