@@ -26,15 +26,16 @@ def get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
         Highest message ID covered by summaries, or None if no summaries exist
     """
     try:
-        from memory_storage import load_property_entries
-        from pathlib import Path
-        from config import STATE_DIRECTORY
+        # Always use MySQL when agent_id is available
+        if not agent.is_authenticated:
+            return None
         
-        summary_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-        summaries, _ = load_property_entries(summary_file, "summary", default_id_prefix="summary")
+        # Load from MySQL
+        from db import summaries as db_summaries
+        summaries_list = db_summaries.load_summaries(agent.agent_id, channel_id)
         
         highest_max_id = None
-        for summary in summaries:
+        for summary in summaries_list:
             max_id = summary.get("max_message_id")
             if max_id is not None:
                 try:

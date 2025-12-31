@@ -67,6 +67,8 @@ class AgentTelegramMixin:
         disable, or reconnection) to ensure cache objects don't retain stale client references.
         
         Also clears the executor to prevent it from holding references to stale event loops.
+        Also clears storage object to ensure it is recreated with the correct backend
+        (filesystem vs MySQL) based on the current agent_id after authentication.
         """
         self._client = None
         self._loop = None  # Clear cached loop
@@ -74,6 +76,8 @@ class AgentTelegramMixin:
         # Clear cache objects that hold references to the old client
         self._api_cache_obj = None
         self._entity_cache_obj = None
+        # Clear storage object so it is recreated with correct backend after authentication
+        self._storage_obj = None
 
     async def is_muted(self, peer_id: int) -> bool:
         """

@@ -4,13 +4,11 @@
 
 import asyncio
 import copy
-import fcntl
 import html
 import json as json_lib
 import logging
 import os
 import re
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -41,14 +39,6 @@ logger = logging.getLogger(__name__)
 # Import the centralized helper function
 from admin_console.helpers import resolve_user_id_to_channel_id as _resolve_user_id_to_channel_id
 
-
-# Translation cache file path
-TRANSLATIONS_CACHE_PATH = Path(STATE_DIRECTORY) / "translations.json"
-# Translation cache lock file path (for file-level locking)
-TRANSLATIONS_CACHE_LOCK_PATH = Path(STATE_DIRECTORY) / "translations.json.lock"
-# Cache expiration: 10 days
-TRANSLATION_CACHE_EXPIRY_DAYS = 10
-
 # Translation JSON schema for message translation
 _TRANSLATION_SCHEMA = {
     "type": "object",
@@ -75,113 +65,6 @@ _TRANSLATION_SCHEMA = {
     "required": ["translations"],
     "additionalProperties": False
 }
-
-
-@contextmanager
-def _translation_cache_lock():
-    """
-    Context manager for file-level locking of translation cache.
-    Ensures atomic read-modify-write operations across concurrent requests.
-    
-    Yields:
-        None (lock is held during context)
-    """
-    # Ensure parent directory exists
-    TRANSLATIONS_CACHE_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Open lock file in append mode (create if doesn't exist)
-    lock_file = open(TRANSLATIONS_CACHE_LOCK_PATH, "a")
-    try:
-        # Acquire exclusive lock (blocks until available)
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            # Release lock
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-    finally:
-        lock_file.close()
-
-
-def _load_translation_cache() -> dict[str, dict[str, str]]:
-    """
-    Load translation cache from disk, removing expired entries (older than 10 days).
-    
-    NOTE: This function does NOT acquire a lock. Use _translation_cache_lock() context manager
-    when loading and saving to ensure atomic read-modify-write operations.
-    
-    Returns:
-        Dictionary mapping text to translation dict with 'translated_text' and 'timestamp' keys
-    """
-    if not TRANSLATIONS_CACHE_PATH.exists():
-        return {}
-    
-    try:
-        with open(TRANSLATIONS_CACHE_PATH, "r", encoding="utf-8") as f:
-            cache = json_lib.load(f)
-    except Exception as e:
-        logger.warning(f"Failed to load translation cache: {e}")
-        return {}
-    
-    # Filter out expired entries (older than 10 days)
-    now = datetime.now()
-    expiry_threshold = now - timedelta(days=TRANSLATION_CACHE_EXPIRY_DAYS)
-    filtered_cache = {}
-    
-    for text, translation_data in cache.items():
-        timestamp_str = translation_data.get("timestamp")
-        if timestamp_str:
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                if timestamp >= expiry_threshold:
-                    filtered_cache[text] = translation_data
-            except (ValueError, TypeError) as e:
-                logger.debug(f"Invalid timestamp in cache entry: {e}")
-                # Keep entries with invalid timestamps (they'll be overwritten)
-                filtered_cache[text] = translation_data
-        else:
-            # Keep entries without timestamps (they'll be updated with timestamps)
-            filtered_cache[text] = translation_data
-    
-    return filtered_cache
-
-
-def _save_translation_cache(cache: dict[str, dict[str, str]]) -> None:
-    """
-    Save translation cache to disk, removing expired entries (older than 10 days).
-    
-    NOTE: This function does NOT acquire a lock. Use _translation_cache_lock() context manager
-    when loading and saving to ensure atomic read-modify-write operations.
-    
-    Args:
-        cache: Dictionary mapping text to translation dict with 'translated_text' and 'timestamp' keys
-    """
-    # Filter out expired entries before saving
-    now = datetime.now()
-    expiry_threshold = now - timedelta(days=TRANSLATION_CACHE_EXPIRY_DAYS)
-    filtered_cache = {}
-    
-    for text, translation_data in cache.items():
-        timestamp_str = translation_data.get("timestamp")
-        if timestamp_str:
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                if timestamp >= expiry_threshold:
-                    filtered_cache[text] = translation_data
-            except (ValueError, TypeError):
-                # Skip entries with invalid timestamps
-                continue
-        else:
-            # Skip entries without timestamps
-            continue
-    
-    try:
-        # Ensure parent directory exists
-        TRANSLATIONS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(TRANSLATIONS_CACHE_PATH, "w", encoding="utf-8") as f:
-            json_lib.dump(filtered_cache, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to save translation cache: {e}")
 
 
 def register_conversation_actions_routes(agents_bp: Blueprint):
@@ -213,10 +96,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             def generate_translations():
                 """Generator function that yields SSE events for translations."""
                 try:
-                    # Load translation cache with lock (for reading cached translations)
-                    with _translation_cache_lock():
-                        cache = _load_translation_cache()
-                    
                     # Build mapping from text to message_id(s) - same text can appear in multiple messages
                     # Also build list of messages that need translation
                     text_to_message_ids: dict[str, list[str]] = {}
@@ -236,8 +115,16 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                         text_to_message_ids[msg_text].append(msg_id)
                         message_id_to_text[msg_id] = msg_text
                         
-                        # If not in cache, add to translation list (only once per unique text)
-                        if msg_text not in cache:
+                        # Check for existing translation in MySQL
+                        translation = None
+                        try:
+                            from translation_cache import get_translation
+                            translation = get_translation(msg_text)
+                        except Exception:
+                            pass
+                        
+                        # If not found in cache, add to translation list
+                        if translation is None:
                             # Only add if we haven't already added this text
                             if not any(m["text"] == msg_text for m in messages_to_translate):
                                 messages_to_translate.append({
@@ -251,11 +138,20 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
                         msg_text = msg.get("text", "")  # HTML text (already XSS-protected)
-                        if msg_text and msg_text in cache:
-                            translated_text = cache[msg_text].get("translated_text", "")
-                            if translated_text:
-                                # Translation is already final HTML (tags restored)
-                                cached_translations[msg_id] = translated_text
+                        if not msg_text:
+                            continue
+                        
+                        # Check for cached translation in MySQL
+                        translated_text = None
+                        try:
+                            from translation_cache import get_translation
+                            translated_text = get_translation(msg_text)
+                        except Exception:
+                            pass
+                        
+                        if translated_text:
+                            # Translation is already final HTML (tags restored)
+                            cached_translations[msg_id] = translated_text
 
                     # Send cached translations immediately as first event
                     if cached_translations:
@@ -432,8 +328,21 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                             try:
                                 batch_translations = agent.execute(_translate_batch(batch), timeout=60.0)
                                 
-                                # Collect translations for this batch (don't modify cache yet)
+                                # Collect translations for this batch
                                 batch_translation_dict: dict[str, str] = {}
+                                
+                                # Save translations to MySQL immediately as they are received
+                                try:
+                                    from translation_cache import save_translation
+                                    for translation in batch_translations:
+                                        message_id = translation.get("message_id")
+                                        translated_text = translation.get("translated_text", "")
+                                        if message_id and translated_text:
+                                            original_text = message_id_to_text.get(message_id)
+                                            if original_text:
+                                                save_translation(original_text, translated_text)
+                                except Exception as save_error:
+                                    logger.warning(f"Failed to save translations to MySQL for batch {batch_idx + 1}: {save_error}")
                                 
                                 for translation in batch_translations:
                                     message_id = translation.get("message_id")
@@ -458,24 +367,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                 if "not authenticated" in error_msg or "not running" in error_msg:
                                     # Critical error - agent is not available, send error event and stop
                                     logger.warning(f"Agent {agent_config_name} client loop issue: {e}")
-                                    # Still save any translations we've collected so far (with lock)
-                                    if all_new_translations:
-                                        with _translation_cache_lock():
-                                            # Reload cache to merge with any concurrent changes
-                                            cache = _load_translation_cache()
-                                            now_iso = datetime.now().isoformat()
-                                            for translation in all_new_translations:
-                                                message_id = translation.get("message_id")
-                                                translated_text = translation.get("translated_text", "")
-                                                if message_id and translated_text:
-                                                    original_text = message_id_to_text.get(message_id)
-                                                    if original_text:
-                                                        # Store final translated HTML (tags already restored)
-                                                        cache[original_text] = {
-                                                            "translated_text": translated_text,
-                                                            "timestamp": now_iso
-                                                        }
-                                            _save_translation_cache(cache)
+                                    # Translations are already saved incrementally as batches are processed
                                     yield f"data: {json_lib.dumps({'type': 'error', 'error': 'Agent client loop is not available'})}\n\n"
                                     return
                                 else:
@@ -494,26 +386,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                 logger.error(error_msg_str)
                                 batch_errors.append(error_msg_str)
                         
-                        # Save updated cache to disk (all batches processed) with lock
-                        # Reload cache first to merge with any concurrent changes from other requests
-                        if all_new_translations:
-                            with _translation_cache_lock():
-                                # Reload cache to merge with any concurrent changes
-                                cache = _load_translation_cache()
-                                now_iso = datetime.now().isoformat()
-                                for translation in all_new_translations:
-                                    message_id = translation.get("message_id")
-                                    translated_text = translation.get("translated_text", "")
-                                    if message_id and translated_text:
-                                        original_text = message_id_to_text.get(message_id)
-                                        if original_text:
-                                            # Store final translated HTML (tags already restored)
-                                            cache[original_text] = {
-                                                "translated_text": translated_text,
-                                                "timestamp": now_iso
-                                            }
-                                _save_translation_cache(cache)
-                        
+                        # Translations are saved incrementally as batches are processed
                         # Log warning if some batches failed (but we still saved successful translations)
                         if batch_errors:
                             logger.warning(

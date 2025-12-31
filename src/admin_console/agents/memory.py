@@ -10,12 +10,6 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_default_llm
-from config import STATE_DIRECTORY
-from memory_storage import (
-    MemoryStorageError,
-    load_property_entries,
-    mutate_property_entries,
-)
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -26,24 +20,23 @@ def register_memory_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/memories", methods=["GET"])
     def api_get_memories(agent_config_name: str):
-        """Get memories for an agent (from state/AgentName/memory.json)."""
+        """Get memories for an agent from MySQL."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-            memories, _ = load_property_entries(
-                memory_file, "memory", default_id_prefix="memory"
-            )
+            # Load from MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.memories import load_memories
+            memories = load_memories(agent.agent_id)
 
             # Sort by created timestamp (newest first)
             memories.sort(key=lambda x: x.get("created", ""), reverse=True)
 
             return jsonify({"memories": memories})
-        except MemoryStorageError as e:
-            logger.error(f"Error loading memories for {agent_config_name}: {e}")
-            return jsonify({"error": str(e)}), 500
         except Exception as e:
             logger.error(f"Error getting memories for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -59,17 +52,25 @@ def register_memory_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-
-            def update_memory(entries, payload):
-                for entry in entries:
-                    if entry.get("id") == memory_id:
-                        entry["content"] = content
-                        break
-                return entries, payload
-
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=update_memory
+            # Update in MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.memories import load_memories, save_memory
+            # Load existing memory to preserve other fields
+            memories = load_memories(agent.agent_id)
+            memory = next((m for m in memories if m.get("id") == memory_id), None)
+            if not memory:
+                return jsonify({"error": "Memory not found"}), 404
+            # Update content and save
+            save_memory(
+                agent_telegram_id=agent.agent_id,
+                memory_id=memory_id,
+                content=content,
+                created=memory.get("created"),
+                creation_channel=memory.get("creation_channel"),
+                creation_channel_id=memory.get("creation_channel_id"),
+                creation_channel_username=memory.get("creation_channel_username"),
             )
 
             return jsonify({"success": True})
@@ -85,15 +86,12 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-
-            def delete_memory(entries, payload):
-                entries = [e for e in entries if e.get("id") != memory_id]
-                return entries, payload
-
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=delete_memory
-            )
+            # Delete from MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.memories import delete_memory
+            delete_memory(agent.agent_id, memory_id)
 
             return jsonify({"success": True})
         except Exception as e:
@@ -114,8 +112,6 @@ def register_memory_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
-            memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory.json"
-            
             memory_id = f"memory-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
             
@@ -126,12 +122,16 @@ def register_memory_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
 
-            def create_memory(entries, payload):
-                entries.append(new_entry)
-                return entries, payload
-
-            mutate_property_entries(
-                memory_file, "memory", default_id_prefix="memory", mutator=create_memory
+            # Save to MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.memories import save_memory
+            save_memory(
+                agent_telegram_id=agent.agent_id,
+                memory_id=memory_id,
+                content=content,
+                created=created_value,
             )
 
             return jsonify({"success": True, "memory": new_entry})
@@ -141,48 +141,47 @@ def register_memory_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/curated-memories", methods=["GET"])
     def api_get_curated_memories(agent_config_name: str):
-        """Get curated memories for an agent (from configdir/agents/AgentName/memory/UserID.json)."""
+        """Get curated memories for an agent (from MySQL)."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not agent.config_directory:
+            if not agent.is_authenticated:
                 return jsonify({"curated_memories": []})
 
-            memory_dir = (
-                Path(agent.config_directory) / "agents" / agent.config_name / "memory"
-            )
-            if not memory_dir.exists():
-                return jsonify({"curated_memories": []})
+            from db import curated_memories as db_curated_memories
+            
+            # Get all channels that have curated memories for this agent
+            # We need to query distinct channel_ids
+            from db.connection import get_db_connection
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                try:
+                    cursor.execute(
+                        """
+                        SELECT DISTINCT channel_id
+                        FROM curated_memories
+                        WHERE agent_telegram_id = %s
+                        """,
+                        (agent.agent_id,),
+                    )
+                    channel_rows = cursor.fetchall()
+                    channel_ids = [row["channel_id"] for row in channel_rows]
+                finally:
+                    cursor.close()
 
             curated_memories = []
-            for memory_file in memory_dir.glob("*.json"):
-                user_id = memory_file.stem
-                try:
-                    with open(memory_file, "r", encoding="utf-8") as f:
-                        loaded = json.load(f)
-                        if isinstance(loaded, dict):
-                            memories = loaded.get("memory", [])
-                        elif isinstance(loaded, list):
-                            memories = loaded
-                        else:
-                            continue
-
-                        # Sort by created timestamp (newest first)
-                        memories.sort(
-                            key=lambda x: x.get("created", ""), reverse=True
-                        )
-
-                        curated_memories.append(
-                            {
-                                "user_id": user_id,
-                                "memories": memories,
-                            }
-                        )
-                except Exception as e:
-                    logger.warning(f"Error loading curated memory file {memory_file}: {e}")
-                    continue
+            for channel_id in channel_ids:
+                memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+                # Sort by created timestamp (newest first)
+                memories.sort(key=lambda x: x.get("created", ""), reverse=True)
+                curated_memories.append(
+                    {
+                        "user_id": str(channel_id),
+                        "memories": memories,
+                    }
+                )
 
             return jsonify({"curated_memories": curated_memories})
         except Exception as e:
@@ -197,43 +196,20 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
+            if not agent.is_authenticated:
+                return jsonify({"memories": []})
+
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
                 return error_response
-            resolved_user_id = str(channel_id)
 
-            if not agent.config_directory:
-                return jsonify({"memories": []})
+            from db import curated_memories as db_curated_memories
+            memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+            # Sort by created timestamp (newest first)
+            memories.sort(key=lambda x: x.get("created", ""), reverse=True)
 
-            memory_file = (
-                Path(agent.config_directory)
-                / "agents"
-                / agent.config_name
-                / "memory"
-                / f"{resolved_user_id}.json"
-            )
-
-            if not memory_file.exists():
-                return jsonify({"memories": []})
-
-            try:
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        memories = loaded.get("memory", [])
-                    elif isinstance(loaded, list):
-                        memories = loaded
-                    else:
-                        memories = []
-
-                    # Sort by created timestamp (newest first)
-                    memories.sort(key=lambda x: x.get("created", ""), reverse=True)
-
-                    return jsonify({"memories": memories})
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parsing curated memory file {memory_file}: {e}")
-                return jsonify({"error": f"Corrupted JSON file: {e}"}), 500
+            return jsonify({"memories": memories})
         except Exception as e:
             logger.error(
                 f"Error getting curated memories for {agent_config_name}/{user_id}: {e}"
@@ -248,58 +224,44 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not agent.config_directory:
-                return jsonify({"error": "Agent has no config directory"}), 400
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
                 return error_response
-            resolved_user_id = str(channel_id)
 
             data = request.json
             content = data.get("content", "").strip()
 
-            memory_file = (
-                Path(agent.config_directory)
-                / "agents"
-                / agent.config_name
-                / "memory"
-                / f"{resolved_user_id}.json"
-            )
-
-            # Load existing data
-            if memory_file.exists():
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        memories = loaded.get("memory", [])
-                        payload = {k: v for k, v in loaded.items() if k != "memory"}
-                    elif isinstance(loaded, list):
-                        memories = loaded
-                        payload = None
-                    else:
-                        memories = []
-                        payload = None
-            else:
-                memories = []
-                payload = None
-
-            # Update the memory entry
+            # Load existing memory to preserve created timestamp and metadata
+            from db import curated_memories as db_curated_memories
+            memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+            
+            # Find the memory entry
+            memory_entry = None
             for entry in memories:
                 if entry.get("id") == memory_id:
-                    entry["content"] = content
+                    memory_entry = entry
                     break
+            
+            if not memory_entry:
+                return jsonify({"error": "Memory not found"}), 404
 
-            # Save back
-            memory_file.parent.mkdir(parents=True, exist_ok=True)
-            if payload is not None:
-                payload["memory"] = memories
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2, ensure_ascii=False)
-            else:
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(memories, f, indent=2, ensure_ascii=False)
+            # Update content, preserve created and other metadata
+            created = memory_entry.get("created")
+            # Extract metadata (everything except id, content, created)
+            metadata = {k: v for k, v in memory_entry.items() if k not in {"id", "content", "created"}}
+            
+            # Save updated memory
+            db_curated_memories.save_curated_memory(
+                agent.agent_id,
+                channel_id,
+                memory_id,
+                content,
+                created=created,
+            )
 
             return jsonify({"success": True})
         except Exception as e:
@@ -316,49 +278,16 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not agent.config_directory:
-                return jsonify({"error": "Agent has no config directory"}), 400
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
                 return error_response
-            resolved_user_id = str(channel_id)
 
-            memory_file = (
-                Path(agent.config_directory)
-                / "agents"
-                / agent.config_name
-                / "memory"
-                / f"{resolved_user_id}.json"
-            )
-
-            if not memory_file.exists():
-                return jsonify({"error": "Memory file not found"}), 404
-
-            # Load existing data
-            with open(memory_file, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    memories = loaded.get("memory", [])
-                    payload = {k: v for k, v in loaded.items() if k != "memory"}
-                elif isinstance(loaded, list):
-                    memories = loaded
-                    payload = None
-                else:
-                    return jsonify({"error": "Invalid file format"}), 500
-
-            # Remove the memory entry
-            memories = [e for e in memories if e.get("id") != memory_id]
-
-            # Save back
-            if payload is not None:
-                payload["memory"] = memories
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2, ensure_ascii=False)
-            else:
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(memories, f, indent=2, ensure_ascii=False)
+            from db import curated_memories as db_curated_memories
+            db_curated_memories.delete_curated_memory(agent.agent_id, channel_id, memory_id)
 
             return jsonify({"success": True})
         except Exception as e:
@@ -375,8 +304,8 @@ def register_memory_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            if not agent.config_directory:
-                return jsonify({"error": "Agent has no config directory"}), 400
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
 
             data = request.json or {}
             content = data.get("content", "").strip()
@@ -388,32 +317,6 @@ def register_memory_routes(agents_bp: Blueprint):
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
                 return error_response
-            resolved_user_id = str(channel_id)
-
-            memory_file = (
-                Path(agent.config_directory)
-                / "agents"
-                / agent.config_name
-                / "memory"
-                / f"{resolved_user_id}.json"
-            )
-
-            # Load existing data
-            if memory_file.exists():
-                with open(memory_file, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        memories = loaded.get("memory", [])
-                        payload = {k: v for k, v in loaded.items() if k != "memory"}
-                    elif isinstance(loaded, list):
-                        memories = loaded
-                        payload = None
-                    else:
-                        memories = []
-                        payload = None
-            else:
-                memories = []
-                payload = None
 
             memory_id = f"memory-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
@@ -425,17 +328,14 @@ def register_memory_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
             
-            memories.append(new_entry)
-
-            # Save back
-            memory_file.parent.mkdir(parents=True, exist_ok=True)
-            if payload is not None:
-                payload["memory"] = memories
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2, ensure_ascii=False)
-            else:
-                with open(memory_file, "w", encoding="utf-8") as f:
-                    json.dump(memories, f, indent=2, ensure_ascii=False)
+            from db import curated_memories as db_curated_memories
+            db_curated_memories.save_curated_memory(
+                agent.agent_id,
+                channel_id,
+                memory_id,
+                content,
+                created=created_value,
+            )
 
             return jsonify({"success": True, "memory": new_entry})
         except Exception as e:
@@ -474,68 +374,63 @@ def register_memory_routes(agents_bp: Blueprint):
 
             content_checks = {}
             
-            # Get agent default LLM for comparison
-            agent_default_llm = agent._llm_name or get_default_llm()
+            # Convert user_ids to channel_ids and separate valid/invalid ones
+            valid_channel_ids = []
+            invalid_user_ids = []
+            user_id_to_channel_id = {}
             
             for user_id_str in user_ids:
                 try:
                     channel_id = int(user_id_str)
+                    valid_channel_ids.append(channel_id)
+                    user_id_to_channel_id[user_id_str] = channel_id
                 except (ValueError, TypeError):
-                    content_checks[user_id_str] = {
-                        "curated_memories": False,
-                        "conversation_llm": False,
-                        "plans": False
-                    }
-                    continue
-                
-                checks = {}
+                    invalid_user_ids.append(user_id_str)
+            
+            # Initialize all checks to False
+            for user_id_str in user_ids:
+                content_checks[user_id_str] = {
+                    "curated_memories": False,
+                    "conversation_llm": False,
+                    "plans": False
+                }
+            
+            if not agent.agent_id:
+                return jsonify({"content_checks": content_checks})
+            
+            # Bulk check conversation LLM overrides (presence in table = override)
+            if valid_channel_ids:
+                try:
+                    from db import conversation_llm as db_conversation_llm
+                    channels_with_overrides = db_conversation_llm.channels_with_conversation_llm_overrides(
+                        agent.agent_id, valid_channel_ids
+                    )
+                    # Update content_checks for channels with overrides
+                    for user_id_str, channel_id in user_id_to_channel_id.items():
+                        if channel_id in channels_with_overrides:
+                            content_checks[user_id_str]["conversation_llm"] = True
+                except Exception as e:
+                    logger.warning(f"Error bulk checking conversation LLM overrides: {e}")
+            
+            # Check curated memories and plans for each channel
+            for user_id_str, channel_id in user_id_to_channel_id.items():
+                checks = content_checks[user_id_str]
                 
                 # Check curated memories
-                if agent.config_directory:
-                    memory_file = (
-                        Path(agent.config_directory)
-                        / "agents"
-                        / agent.config_name
-                        / "memory"
-                        / f"{user_id_str}.json"
-                    )
-                    if memory_file.exists():
-                        try:
-                            with open(memory_file, "r", encoding="utf-8") as f:
-                                loaded = json.load(f)
-                                if isinstance(loaded, dict):
-                                    memories = loaded.get("memory", [])
-                                elif isinstance(loaded, list):
-                                    memories = loaded
-                                else:
-                                    memories = []
-                                checks["curated_memories"] = len(memories) > 0
-                        except Exception:
-                            checks["curated_memories"] = False
-                    else:
-                        checks["curated_memories"] = False
-                else:
+                try:
+                    from db import curated_memories as db_curated_memories
+                    memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+                    checks["curated_memories"] = len(memories) > 0
+                except Exception:
                     checks["curated_memories"] = False
                 
-                # Check conversation LLM (has override if different from agent default)
-                try:
-                    conversation_llm = agent.get_channel_llm_model(channel_id)
-                    checks["conversation_llm"] = conversation_llm is not None and conversation_llm != agent_default_llm
-                except Exception:
-                    checks["conversation_llm"] = False
-                
                 # Check plans
-                plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-                if plan_file.exists():
-                    try:
-                        plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
-                        checks["plans"] = len(plans) > 0
-                    except Exception:
-                        checks["plans"] = False
-                else:
+                try:
+                    from db.plans import load_plans
+                    plans = load_plans(agent.agent_id, channel_id)
+                    checks["plans"] = len(plans) > 0
+                except Exception:
                     checks["plans"] = False
-                
-                content_checks[user_id_str] = checks
                 
             return jsonify({"content_checks": content_checks})
         except Exception as e:

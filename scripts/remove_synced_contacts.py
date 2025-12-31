@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from telethon.tl.functions.contacts import ResetSavedRequest  # pyright: ignore[reportMissingImports]
 
-from agent import all_agents
+from agent import Agent, all_agents
 from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
 from telegram_util import get_puppet_master_client, get_telegram_client
@@ -28,19 +28,41 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
-async def remove_synced_contacts_for_agent(agent_name: str, phone: str) -> bool:
+async def remove_synced_contacts_for_agent(agent: Agent) -> bool:
     """
     Remove all synced phone contacts for a specific agent.
     
     This removes contacts who don't have Telegram accounts from the synced contact list,
     preventing notifications when they sign up for Telegram.
     
+    Uses agent.config_name for the state directory (same as main server).
+    
     Returns True if successful, False otherwise.
     """
-    client = get_telegram_client(agent_name, phone)
+    # Use agent.config_name for state directory (same as main server's authenticate_agent)
+    client = get_telegram_client(agent.config_name, agent.phone)
+    agent_name = agent.name  # Use name for logging
     
     try:
-        await client.connect()
+        # Use start() instead of connect() to properly load the session file
+        # Handle "database is locked" error gracefully - it usually means the session
+        # file is in use by another process
+        try:
+            await client.start()
+        except Exception as start_error:
+            error_msg = str(start_error).lower()
+            if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
+                logger.warning(
+                    f"[{agent_name}] Session file is locked. "
+                    "This usually means another process is using the session. "
+                    "Skipping this agent."
+                )
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                return False
+            raise
         
         if not await client.is_user_authorized():
             logger.error(f"[{agent_name}] Not authenticated. Please run './telegram_login.sh' first.")
@@ -116,7 +138,7 @@ async def async_main(args: argparse.Namespace) -> int:
             logger.error(f"Agent '{args.agent}' not found.")
             return 1
         
-        success = await remove_synced_contacts_for_agent(agent.name, agent.phone)
+        success = await remove_synced_contacts_for_agent(agent)
         return 0 if success else 1
     
     # Default: process all agents
@@ -131,7 +153,7 @@ async def async_main(args: argparse.Namespace) -> int:
     
     results = []
     for agent in agents:
-        success = await remove_synced_contacts_for_agent(agent.name, agent.phone)
+        success = await remove_synced_contacts_for_agent(agent)
         results.append(success)
     
     all_success = all(results)

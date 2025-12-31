@@ -315,11 +315,14 @@ async def build_complete_system_prompt(
         system_prompt += f"\n\n{channel_details}"
 
     # Add conversation summary immediately before the conversation history
-    summary_content = await agent._load_summary_content(channel_id, json_format=False)
+    # Check if Task-Summarize role is present - if so, include full metadata
+    has_task_summarize = "Task-Summarize" in getattr(agent, "role_prompt_names", [])
+    summary_content = await agent._load_summary_content(channel_id, json_format=False, include_metadata=has_task_summarize)
     if summary_content:
-        system_prompt += f"\n\n# Conversation Summary\n\n{summary_content}\n"
+        system_prompt += f"\n\n# Summary of earlier conversation\n\n{summary_content}\n"
         logger.info(
-            f"[{agent.name}] Added conversation summary to system prompt for channel {channel_id}"
+            f"[{agent.name}] Added conversation summary to system prompt for channel {channel_id} "
+            f"(with metadata: {has_task_summarize})"
         )
 
     # Repeat specific instructions at the end, after the conversation summary

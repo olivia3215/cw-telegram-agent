@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import os
+import sys
 
 # Configuration constants loaded from environment variables
 
@@ -72,3 +73,51 @@ MEDIA_DESC_BUDGET_PER_TICK: int = _parse_media_budget()
 
 # Fetched resource lifetime in seconds (how long to keep fetched web resources alive)
 FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes
+
+
+# MySQL configuration
+# When running under pytest or in CI, use test database variables (CINDY_AGENT_MYSQL_TEST_*)
+# Otherwise, use production database variables (CINDY_AGENT_MYSQL_*)
+# Note: We check sys.modules dynamically via a helper function to handle cases where
+# config.py is imported before pytest is added to sys.modules
+def _get_mysql_config():
+    """Get MySQL configuration, using test variables when running under pytest or in CI."""
+    # Check if we're in a test environment:
+    # 1. pytest is loaded (running tests)
+    # 2. CI environment variable is set (GitHub Actions, etc.)
+    # This prevents using test config locally when both test and prod vars are set in .env
+    use_test_config = (
+        "pytest" in sys.modules
+        or os.environ.get("CI") == "true"
+        or os.environ.get("GITHUB_ACTIONS") == "true"
+    )
+    
+    if use_test_config:
+        return {
+            "host": os.environ.get("CINDY_AGENT_MYSQL_TEST_HOST", os.environ.get("CINDY_AGENT_MYSQL_HOST", "localhost")),
+            "port": int(os.environ.get("CINDY_AGENT_MYSQL_TEST_PORT", os.environ.get("CINDY_AGENT_MYSQL_PORT", "3306"))),
+            "database": os.environ.get("CINDY_AGENT_MYSQL_TEST_DATABASE"),
+            "user": os.environ.get("CINDY_AGENT_MYSQL_TEST_USER"),
+            "password": os.environ.get("CINDY_AGENT_MYSQL_TEST_PASSWORD"),
+            "pool_size": int(os.environ.get("CINDY_AGENT_MYSQL_TEST_POOL_SIZE", os.environ.get("CINDY_AGENT_MYSQL_POOL_SIZE", "5"))),
+            "pool_timeout": int(os.environ.get("CINDY_AGENT_MYSQL_TEST_POOL_TIMEOUT", os.environ.get("CINDY_AGENT_MYSQL_POOL_TIMEOUT", "30"))),
+        }
+    else:
+        return {
+            "host": os.environ.get("CINDY_AGENT_MYSQL_HOST", "localhost"),
+            "port": int(os.environ.get("CINDY_AGENT_MYSQL_PORT", "3306")),
+            "database": os.environ.get("CINDY_AGENT_MYSQL_DATABASE"),
+            "user": os.environ.get("CINDY_AGENT_MYSQL_USER"),
+            "password": os.environ.get("CINDY_AGENT_MYSQL_PASSWORD"),
+            "pool_size": int(os.environ.get("CINDY_AGENT_MYSQL_POOL_SIZE", "5")),
+            "pool_timeout": int(os.environ.get("CINDY_AGENT_MYSQL_POOL_TIMEOUT", "30")),
+        }
+
+_mysql_config = _get_mysql_config()
+MYSQL_HOST: str = _mysql_config["host"]
+MYSQL_PORT: int = _mysql_config["port"]
+MYSQL_DATABASE: str | None = _mysql_config["database"]
+MYSQL_USER: str | None = _mysql_config["user"]
+MYSQL_PASSWORD: str | None = _mysql_config["password"]
+MYSQL_POOL_SIZE: int = _mysql_config["pool_size"]
+MYSQL_POOL_TIMEOUT: int = _mysql_config["pool_timeout"]

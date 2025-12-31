@@ -52,6 +52,9 @@ def test_agent_multiple_role_prompts():
                 role_prompt_names=["Role1", "Role2"],
                 llm=MockLLM(),
             )
+            # Set agent_id for MySQL storage (required for storage operations)
+            # Use unique agent_id to avoid test interference
+            agent.agent_id = 10008
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(
@@ -127,6 +130,9 @@ def test_agent_single_role_prompt():
                 role_prompt_names=["SingleRole"],
                 llm=MockLLM(),
             )
+            # Set agent_id for MySQL storage (required for storage operations)
+            # Use unique agent_id to avoid test interference
+            agent.agent_id = 10008
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(
@@ -164,6 +170,9 @@ def test_agent_no_role_prompts():
                 role_prompt_names=[],
                 llm=MockLLM(),
             )
+            # Set agent_id for MySQL storage (required for storage operations)
+            # Use unique agent_id to avoid test interference
+            agent.agent_id = 10008
 
             # Get the system prompt
             system_prompt = agent.get_system_prompt(

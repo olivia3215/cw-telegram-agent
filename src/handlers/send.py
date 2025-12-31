@@ -65,6 +65,17 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
             )
         else:
             await client.send_message(entity, message, parse_mode="Markdown")
+        
+        # Track successful send (exclude telepathic messages)
+        # Check if this is a telepathic message by checking if it's from xsend
+        is_telepathic = task.params.get("xsend_intent") is not None
+        if not is_telepathic:
+            try:
+                from db import agent_activity
+                agent_activity.update_agent_activity(agent_id, channel_id_int)
+            except Exception as e:
+                # Don't fail the send if activity tracking fails
+                logger.debug(f"Failed to update agent activity: {e}")
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to send reply to message {reply_to_int}: {e}"

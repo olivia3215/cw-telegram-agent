@@ -114,10 +114,6 @@ class Agent(
         
         # Daily schedule configuration
         self.daily_schedule_description = daily_schedule_description  # str | None
-        
-        # Schedule cache (loaded on demand, invalidated on save)
-        self._schedule_cache: dict | None = None
-        self._schedule_cache_mtime: float | None = None
 
     @property
     def llm(self):
@@ -247,6 +243,11 @@ class Agent(
     def client(self):
         """Get the Telegram client. Returns None if not authenticated."""
         return self._client
+
+    @property
+    def is_authenticated(self) -> bool:
+        """Check if the agent is authenticated (has a Telegram ID)."""
+        return hasattr(self, "agent_id") and self.agent_id is not None
 
     async def ensure_client_connected(self):
         """

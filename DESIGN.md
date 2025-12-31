@@ -519,8 +519,9 @@ The system prompt is built in `handlers/received_helpers/prompt_builder.py` via 
        - Loaded from `configdir/agents/{AgentName}/memory/{user_id}.json`
        - Manually curated memories for the specific user
        - Formatted as JSON code block
+       - Filesystem only (not stored in MySQL)
      - **Global Memories** (`# Global Memories`)
-       - Loaded from `state/{AgentName}/memory.json`
+       - Loaded from MySQL `memories` table
        - Agent-specific global episodic memories (visible across all conversations)
        - Formatted as JSON code block
    - **Note:** Channel plans are no longer included in memory content. They are now part of the intentions section (step 2b) and appear before intentions.
@@ -560,8 +561,7 @@ After the system prompt, the conversation history is added (processed messages i
 **Answer:** Plan task contents are stored in channel memory files and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
 
 **Storage Location:**
-- **File:** `state/{AgentName}/memory/{channel_id}.json`
-- **Property:** `plan` (array of plan entries)
+- **MySQL:** `plans` table (columns: `id`, `agent_telegram_id`, `channel_id`, `content`, `created`, `metadata`)
 - **Storage:** Via `handlers/plan.py` → `_process_plan_task()` → `process_property_entry_task()` with `property_name="plan"`
 
 **Processing Flow:**
@@ -570,7 +570,7 @@ After the system prompt, the conversation history is added (processed messages i
 3. `handle_immediate_plan()` (registered as immediate task handler) processes it:
    - Sends telepathic message with prefix `⟦plan⟧` (if appropriate)
    - Calls `_process_plan_task()` to persist the plan entry
-4. Plan entry is stored in `state/{AgentName}/memory/{channel_id}.json` under the `plan` property
+4. Plan entry is stored in MySQL `plans` table
 5. On subsequent system prompt builds, `_build_system_prompt()` calls `_load_plan_content()` which loads plans from the file
 6. Plans are formatted as JSON and included in the intentions section under `# Channel Plan`, positioned before `# Intentions`
 
@@ -638,7 +638,7 @@ The system routes LLM requests based on the `LLM` field in agent configuration:
 
 Agents can override the default LLM model for specific channels using the `llm_model` property in channel memory files.
 
-**Location:** `{statedir}/{agent_name}/memory/{channel_id}.json`
+**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
 
 **Configuration:**
 - The `llm_model` property specifies which LLM model to use for that specific channel
@@ -834,35 +834,38 @@ configdir/
 
 state/
 ├── AgentName/
-│   ├── memory.json             # Global episodic memories (automatically created)
+│   ├── memory.json             # Global episodic memories (filesystem only)
 │   └── memory/
-│       └── {channel_id}.json   # Channel-specific plans and LLM overrides
+│       └── {channel_id}.json   # Channel-specific plans and LLM overrides (filesystem only)
 └── ...
 ```
 
-- **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand
-- **State memories** (`state/AgentName/memory.json`): Global episodic memories automatically created from agent conversations
-- **Channel memory files** (`state/AgentName/memory/{channel_id}.json`): Channel-specific plans, LLM model overrides, and metadata
+**Storage Backend:**
+The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
+
+- **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand (filesystem only)
+- **State memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations
+- **Channel memory files** (`state/AgentName/memory/{channel_id}.json`): Used only for LLM model overrides (filesystem only)
+- **Plans and summaries** (MySQL `plans` and `summaries` tables): Channel-specific plans and summaries
 
 **Global Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
-- Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner.
-- Memories produced by the agent are stored in `state/AgentName/memory.json` and are visible by the agent during all conversations.
+- Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner (filesystem only).
+- Memories produced by the agent are stored in the MySQL `memories` table and are visible by the agent during all conversations.
 
 **Channel Memory Files:**
-- Store channel-specific plans (via `plan` tasks)
-- Store channel-specific LLM model overrides (via `llm_model` property)
-- Automatically store metadata: `agent_name`, `channel_name`, `channel_id`, `channel_username`
-- Located at `{statedir}/{agent_name}/memory/{channel_id}.json`
+- Store channel-specific LLM model overrides (via `llm_model` property) - filesystem only
+- Filesystem location: `{statedir}/{agent_name}/memory/{channel_id}.json`
+- Plans and summaries are stored in MySQL (`plans` and `summaries` tables)
 
 ### Remember Task Processing
 
 The `remember` task is processed immediately during LLM response parsing and does not go through the task graph:
 
 1. **Immediate processing**: `remember` tasks are handled in `parse_llm_reply_from_json()`
-2. **File writing**: Content is added to the JSON array in the state memory file with timestamp
+2. **Storage**: Content is saved to MySQL `memories` table with timestamp
 3. **No task graph**: These tasks are not added to the task graph, avoiding delays
-4. **Error handling**: File write failures are logged but don't block conversation
+4. **Error handling**: Storage failures are logged but don't block conversation
 
 ### Memory Integration in Prompts
 
@@ -883,8 +886,8 @@ The memory content section includes:
 ### Memory Loading and Caching
 
 - **Dynamic loading**: System prompts are built fresh each time when memory is involved
-- **No caching**: Memory content is loaded from disk on each prompt construction
-- **Performance**: Acceptable since memory files are small and reads are infrequent
+- **No caching**: Memory content is loaded from MySQL on each prompt construction
+- **Performance**: Acceptable since memory data is small and reads are infrequent
 - **Freshness**: Ensures new memories appear immediately in subsequent conversations
 
 ### Memory File Format

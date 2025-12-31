@@ -6,7 +6,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
+# MemoryStorageError no longer used - code migrated to MySQL backend
+# from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from utils import coerce_to_str, format_username, normalize_created_string
@@ -57,21 +58,23 @@ async def process_property_entry_task(
         raw_created = task_params.pop("created", None)
         entry_id = task.id or f"{default_id_prefix}-{uuid.uuid4().hex[:8]}"
 
+        # Verify agent has agent_id (required for MySQL storage)
+        if not agent.is_authenticated:
+            raise ValueError(
+                f"[{agent.name}] Cannot process {entry_type_name} task: agent_id is None. "
+                "Agent must be authenticated before storage operations."
+            )
+
         # Prepare the new entry
         new_entry: dict[str, Any] | None = None
         existing_entry: dict[str, Any] | None = None
         
         if content_value is not None:
             # Load existing entries to check if we're updating
-            entries, _ = load_property_entries(
-                file_path,
-                property_name,
-                default_id_prefix=default_id_prefix,
+            # Always use MySQL now
+            existing_entry = await _load_existing_entry_mysql(
+                agent, channel_id, property_name, entry_id
             )
-            for item in entries:
-                if item.get("id") == entry_id:
-                    existing_entry = dict(item)
-                    break
 
             # Create new entry with content and task params
             new_entry = {
@@ -196,12 +199,36 @@ async def process_property_entry_task(
                     updated_entries = post_process(updated_entries, agent)
                 return updated_entries, updated_payload
 
-        mutate_property_entries(
-            file_path,
-            property_name,
-            default_id_prefix=default_id_prefix,
-            mutator=mutator,
-        )
+        # Load all entries and apply mutator (which calls post_process)
+        all_entries = await _load_all_entries_mysql(agent, channel_id, property_name)
+        updated_entries, _ = mutator(all_entries, None)
+        
+        # Save to MySQL using the mutator result
+        if content_value is not None:
+            # Extract the modified entry from the updated list (post-processed)
+            modified_entry = None
+            for entry in updated_entries:
+                if entry.get("id") == entry_id:
+                    modified_entry = entry
+                    break
+            
+            # modified_entry should always exist after mutator runs for add/update operations
+            if modified_entry is None:
+                # Fallback to new_entry if post_process removed it (shouldn't happen, but be safe)
+                logger.warning(
+                    f"[{agent.name}] Entry {entry_id} not found in post-processed entries, using original entry"
+                )
+                modified_entry = new_entry
+            
+            # Use the entry from the updated list (post-processed) instead of new_entry
+            await _save_entry_mysql(
+                agent, channel_id, property_name, entry_id, modified_entry, content_value
+            )
+        else:
+            # Delete entry
+            await _save_entry_mysql(
+                agent, channel_id, property_name, entry_id, None, None
+            )
 
         if content_value is not None:
             logger.info(
@@ -212,9 +239,6 @@ async def process_property_entry_task(
                 f"[{agent.name}] Removed {entry_type_name} {entry_id} for conversation {channel_id}"
             )
 
-    except MemoryStorageError as exc:
-        logger.exception(f"[{agent.name}] Failed to load {entry_type_name} storage: {exc}")
-        raise
     except Exception as exc:
         logger.exception(f"[{agent.name}] Failed to process {entry_type_name} task: {exc}")
         raise
@@ -228,34 +252,168 @@ def clear_plans_and_summaries(agent, channel_id: int):
         agent: The agent instance
         channel_id: The conversation ID
     """
-    from config import STATE_DIRECTORY
-    from pathlib import Path
+    # Verify agent has agent_id (required for MySQL storage)
+    if not agent.is_authenticated:
+        raise ValueError(
+            f"[{agent.name}] Cannot clear plans and summaries: agent_id is None. "
+            "Agent must be authenticated before storage operations."
+        )
     
-    memory_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
+    # Clear from MySQL
+    try:
+        from db import plans, summaries
+        
+        # Get all plans and summaries, then delete them
+        plans_list = plans.load_plans(agent.agent_id, channel_id)
+        for plan in plans_list:
+            plans.delete_plan(agent.agent_id, channel_id, plan.get("id"))
+        
+        summaries_list = summaries.load_summaries(agent.agent_id, channel_id)
+        for summary in summaries_list:
+            summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
+        
+        logger.info(
+            f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}]"
+        )
+    except Exception as e:
+        logger.error(f"Failed to clear plans and summaries from MySQL: {e}")
+        raise
+
+
+async def _load_existing_entry_mysql(
+    agent, channel_id: int, property_name: str, entry_id: str
+) -> dict[str, Any] | None:
+    """Load an existing entry from MySQL."""
+    if not agent.is_authenticated:
+        return None
     
-    if not memory_file.exists():
-        return
+    try:
+        if property_name == "memory":
+            from db import memories
+            entries = memories.load_memories(agent.agent_id)
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    return entry
+        elif property_name == "intention":
+            from db import intentions
+            entries = intentions.load_intentions(agent.agent_id)
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    return entry
+        elif property_name == "plan":
+            from db import plans
+            entries = plans.load_plans(agent.agent_id, channel_id)
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    return entry
+        elif property_name == "summary":
+            from db import summaries
+            entries = summaries.load_summaries(agent.agent_id, channel_id)
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    return entry
+    except Exception as e:
+        logger.debug(f"Failed to load existing entry from MySQL: {e}")
     
-    logger.info(
-        f"[{agent.name}] Clearing summaries and plans for channel [{channel_id}]"
-    )
+    return None
+
+
+async def _load_all_entries_mysql(
+    agent, channel_id: int, property_name: str
+) -> list[dict[str, Any]]:
+    """Load all entries from MySQL for a property."""
+    if not agent.is_authenticated:
+        return []
     
-    # Clear summaries
-    def clear_summaries(entries, payload):
-        return [], payload
+    try:
+        if property_name == "memory":
+            from db import memories
+            return memories.load_memories(agent.agent_id)
+        elif property_name == "intention":
+            from db import intentions
+            return intentions.load_intentions(agent.agent_id)
+        elif property_name == "plan":
+            from db import plans
+            return plans.load_plans(agent.agent_id, channel_id)
+        elif property_name == "summary":
+            from db import summaries
+            return summaries.load_summaries(agent.agent_id, channel_id)
+    except Exception as e:
+        logger.debug(f"Failed to load entries from MySQL: {e}")
     
-    mutate_property_entries(
-        memory_file, "summary", default_id_prefix="summary", mutator=clear_summaries
-    )
+    return []
+
+
+async def _save_entry_mysql(
+    agent,
+    channel_id: int,
+    property_name: str,
+    entry_id: str,
+    new_entry: dict[str, Any] | None,
+    content_value: str | None,
+) -> None:
+    """Save an entry to MySQL."""
+    if not agent.is_authenticated:
+        raise ValueError("Agent must have agent_id for MySQL storage")
     
-    # Clear plans
-    def clear_plans(entries, payload):
-        return [], payload
-    
-    mutate_property_entries(
-        memory_file, "plan", default_id_prefix="plan", mutator=clear_plans
-    )
-    
-    logger.info(
-        f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}]"
-    )
+    try:
+        if content_value is not None:
+            # Save or update entry
+            if property_name == "memory":
+                from db import memories
+                memories.save_memory(
+                    agent_telegram_id=agent.agent_id,
+                    memory_id=entry_id,
+                    content=content_value,
+                    created=new_entry.get("created"),
+                    creation_channel=new_entry.get("creation_channel"),
+                    creation_channel_id=new_entry.get("creation_channel_id"),
+                    creation_channel_username=new_entry.get("creation_channel_username"),
+                )
+            elif property_name == "intention":
+                from db import intentions
+                intentions.save_intention(
+                    agent_telegram_id=agent.agent_id,
+                    intention_id=entry_id,
+                    content=content_value,
+                    created=new_entry.get("created"),
+                )
+            elif property_name == "plan":
+                from db import plans
+                plans.save_plan(
+                    agent_telegram_id=agent.agent_id,
+                    channel_id=channel_id,
+                    plan_id=entry_id,
+                    content=content_value,
+                    created=new_entry.get("created"),
+                )
+            elif property_name == "summary":
+                from db import summaries
+                summaries.save_summary(
+                    agent_telegram_id=agent.agent_id,
+                    channel_id=channel_id,
+                    summary_id=entry_id,
+                    content=content_value,
+                    min_message_id=new_entry.get("min_message_id"),
+                    max_message_id=new_entry.get("max_message_id"),
+                    first_message_date=new_entry.get("first_message_date"),
+                    last_message_date=new_entry.get("last_message_date"),
+                    created=new_entry.get("created"),
+                )
+        else:
+            # Delete entry
+            if property_name == "memory":
+                from db import memories
+                memories.delete_memory(agent.agent_id, entry_id)
+            elif property_name == "intention":
+                from db import intentions
+                intentions.delete_intention(agent.agent_id, entry_id)
+            elif property_name == "plan":
+                from db import plans
+                plans.delete_plan(agent.agent_id, channel_id, entry_id)
+            elif property_name == "summary":
+                from db import summaries
+                summaries.delete_summary(agent.agent_id, channel_id, entry_id)
+    except Exception as e:
+        logger.error(f"Failed to save entry to MySQL: {e}")
+        raise

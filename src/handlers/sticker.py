@@ -92,6 +92,16 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         else:
             # Unknown: keep current behavior (plain text echo); diagnostics are in logs.
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
+        
+        # Track successful sticker send (exclude telepathic messages)
+        is_telepathic = task.params.get("xsend_intent") is not None
+        if not is_telepathic:
+            try:
+                from db import agent_activity
+                agent_activity.update_agent_activity(agent_id, channel_id_int)
+            except Exception as e:
+                # Don't fail the sticker send if activity tracking fails
+                logger.debug(f"Failed to update agent activity: {e}")
     except PremiumAccountRequiredError:
         # Premium stickers require a premium account to send
         # Send the sticker name as text instead (which shows as animated emoji)
@@ -100,6 +110,16 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         )
         try:
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
+            
+            # Track successful sticker send (fallback case)
+            is_telepathic = task.params.get("xsend_intent") is not None
+            if not is_telepathic:
+                try:
+                    from db import agent_activity
+                    agent_activity.update_agent_activity(agent_id, channel_id_int)
+                except Exception as e:
+                    # Don't fail the sticker send if activity tracking fails
+                    logger.debug(f"Failed to update agent activity: {e}")
         except Exception as e:
             logger.exception(
                 f"[{agent.name}] Failed to send fallback text message: {e}"

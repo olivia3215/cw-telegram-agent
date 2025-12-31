@@ -2167,11 +2167,16 @@
             }
             
             // Load data when switching to main tabs
+            // Always reload agents dropdown when switching to Agents or Conversations tabs
+            if (tabName === 'agents' || tabName === 'conversations') {
+                loadAgents();
+            }
+            
             if (tabName === 'agents') {
-                // Show first subtab (which will call loadAgents)
+                // Show first subtab (which will also call loadAgents)
                 switchSubtab('parameters');
             } else if (tabName === 'conversations') {
-                // Show first subtab (which will call loadAgents)
+                // Show first subtab (which will also call loadAgents)
                 switchSubtab('curated-memories-conv');
                 // If an agent is already selected, load conversation partners
                 const conversationsAgentSelect = document.getElementById('conversations-agent-select');
@@ -2255,10 +2260,13 @@
             });
             
             // Load data for the subtab
-            if (mainTabName === 'agents') {
-                // Reload agents dropdown to update asterisks for new subtab
+            // Always reload agents dropdown when switching subtabs in Agents or Conversations tabs
+            // This ensures asterisks are updated for the current subtab
+            if (mainTabName === 'agents' || mainTabName === 'conversations') {
                 loadAgents();
-                
+            }
+            
+            if (mainTabName === 'agents') {
                 const agentSelect = document.getElementById('agents-agent-select');
                 const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
                 if (agentName) {
@@ -2372,6 +2380,22 @@
                     const data = await response.json();
                     if (data.error) return false;
                     return data.intentions && data.intentions.length > 0;
+                } else if (subtabName === 'documents-agent') {
+                    // Check if agent has documents using the has_documents field from agents list
+                    // This is more efficient than making a separate API call
+                    const response = await fetchWithAuth(`${API_BASE}/agents`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    const agent = data.agents?.find(a => a.config_name === agentName);
+                    return agent?.has_documents || false;
+                } else if (subtabName === 'plans') {
+                    // Check if agent has plans using the has_plans field from agents list
+                    // This is more efficient than checking all conversations
+                    const response = await fetchWithAuth(`${API_BASE}/agents`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    const agent = data.agents?.find(a => a.config_name === agentName);
+                    return agent?.has_plans || false;
                 }
             } catch (error) {
                 if (error && error.message === 'unauthorized') {
@@ -2651,14 +2675,48 @@
                 
                 // Determine which subtab to check content for
                 const agentsTabActive = document.querySelector('.tab-panel[data-tab-panel="agents"]')?.classList.contains('active');
-                const subtabName = agentsTabActive ? getCurrentAgentsSubtab() : null;
+                const conversationsTabActive = document.querySelector('.tab-panel[data-tab-panel="conversations"]')?.classList.contains('active');
                 
-                // Check content for each agent if we're on agents tab
+                // Get subtab name for the active tab
+                let subtabName = null;
+                if (agentsTabActive) {
+                    subtabName = getCurrentAgentsSubtab();
+                } else if (conversationsTabActive) {
+                    subtabName = getCurrentConversationsSubtab();
+                }
+                
+                // Check content for each agent if we're on agents or conversations tab
                 const agentContentChecks = {};
                 if (subtabName) {
-                    await Promise.all(agents.map(async (agent) => {
-                        agentContentChecks[agent.config_name] = await agentHasContent(agent.config_name, subtabName);
-                    }));
+                    // For subtabs that have fields in the agents list, use those (already fetched)
+                    if (subtabName === 'plans') {
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_plans || false;
+                        });
+                    } else if (subtabName === 'memories') {
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_memories || false;
+                        });
+                    } else if (subtabName === 'intentions') {
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_intentions || false;
+                        });
+                    } else if (subtabName === 'curated-memories-conv') {
+                        // Conversations tab: Curated Memories subtab
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_curated_memories || false;
+                        });
+                    } else if (subtabName === 'conversation-llm') {
+                        // Conversations tab: Conversation LLM subtab
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_conversation_llm || false;
+                        });
+                    } else {
+                        // For other subtabs, call agentHasContent
+                        await Promise.all(agents.map(async (agent) => {
+                            agentContentChecks[agent.config_name] = await agentHasContent(agent.config_name, subtabName);
+                        }));
+                    }
                 }
                 
                 // Fetch config directories once for the "New Agent" options
@@ -2717,9 +2775,14 @@
                                 option.style.fontStyle = 'italic';
                             }
 
-                            // Add asterisk if agent has content for current subtab (only in agents tab)
-                            if (selectId === 'agents-agent-select' && subtabName && agentContentChecks[agent.config_name]) {
-                                displayName += ' *';
+                            // Add asterisk if agent has content for current subtab
+                            // For agents tab: only show asterisk in agents-agent-select
+                            // For conversations tab: only show asterisk in conversations-agent-select
+                            if (subtabName && agentContentChecks[agent.config_name]) {
+                                if ((selectId === 'agents-agent-select' && agentsTabActive) ||
+                                    (selectId === 'conversations-agent-select' && conversationsTabActive)) {
+                                    displayName += ' *';
+                                }
                             }
                             option.textContent = displayName;
                             select.appendChild(option);
@@ -4362,11 +4425,11 @@
                         <div style="margin-bottom: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <span style="font-weight: bold; font-size: 12px; white-space: nowrap;">Dates:</span>
-                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${escapeHtml(summary.first_message_date || '')}" 
+                                <input type="date" id="summary-first-date-${userId}-${summary.id}" value="${summary.first_message_date ? escapeHtml(summary.first_message_date) : ''}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                                 <span style="color: #666; font-size: 12px;">to</span>
-                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${escapeHtml(summary.last_message_date || '')}" 
+                                <input type="date" id="summary-last-date-${userId}-${summary.id}" value="${summary.last_message_date ? escapeHtml(summary.last_message_date) : ''}" 
                                     oninput="scheduleSummaryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(summary.id)}')"
                                     style="width: 150px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 12px;">
                             </div>

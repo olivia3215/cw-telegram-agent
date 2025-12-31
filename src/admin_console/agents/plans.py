@@ -9,12 +9,6 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY
-from memory_storage import (
-    MemoryStorageError,
-    load_property_entries,
-    mutate_property_entries,
-)
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -25,27 +19,43 @@ def register_plan_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/plans/<user_id>", methods=["GET"])
     def api_get_plans(agent_config_name: str, user_id: str):
-        """Get plans for a conversation."""
+        """Get plans for a conversation from MySQL."""
         try:
+            logger.info(f"Loading plans for agent {agent_config_name}, user_id {user_id}")
             agent = get_agent_by_name(agent_config_name)
             if not agent:
+                logger.warning(f"Agent {agent_config_name} not found")
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
+                logger.warning(f"Error resolving user_id {user_id} for agent {agent_config_name}: {error_response[0].get_json()}")
                 return error_response
+            logger.info(f"Resolved user_id {user_id} to channel_id {channel_id} for agent {agent_config_name}")
 
-            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-            plans, _ = load_property_entries(plan_file, "plan", default_id_prefix="plan")
+            # Load from MySQL
+            if not agent.is_authenticated:
+                logger.warning(f"Agent {agent_config_name} has no Telegram ID, cannot load plans from MySQL")
+                return jsonify({"error": "Agent not authenticated. Please ensure the agent is logged in."}), 503
+            
+            try:
+                from db.plans import load_plans
+                plans = load_plans(agent.agent_id, channel_id)
+                logger.debug(f"Loaded {len(plans)} plans from MySQL for agent {agent_config_name}, channel {channel_id}")
+            except Exception as e:
+                logger.error(f"Error loading plans from MySQL for {agent_config_name}/{channel_id}: {e}")
+                return jsonify({"error": f"Error loading plans from MySQL: {str(e)}"}), 500
 
             # Sort by created timestamp (newest first)
-            plans.sort(key=lambda x: x.get("created", ""), reverse=True)
+            # Handle case where plans might be None or empty
+            if not plans:
+                plans = []
+            else:
+                plans.sort(key=lambda x: x.get("created", "") or "", reverse=True)
 
+            logger.debug(f"Returning {len(plans)} plans for {agent_config_name}/{user_id} (channel_id: {channel_id})")
             return jsonify({"plans": plans})
-        except MemoryStorageError as e:
-            logger.error(f"Error loading plans for {agent_config_name}/{user_id}: {e}")
-            return jsonify({"error": str(e)}), 500
         except Exception as e:
             logger.error(f"Error getting plans for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -66,17 +76,23 @@ def register_plan_routes(agents_bp: Blueprint):
             data = request.json
             content = data.get("content", "").strip()
 
-            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-
-            def update_plan(entries, payload):
-                for entry in entries:
-                    if entry.get("id") == plan_id:
-                        entry["content"] = content
-                        break
-                return entries, payload
-
-            mutate_property_entries(
-                plan_file, "plan", default_id_prefix="plan", mutator=update_plan
+            # Update in MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import load_plans, save_plan
+            # Load existing plan to preserve other fields
+            plans = load_plans(agent.agent_id, channel_id)
+            plan = next((p for p in plans if p.get("id") == plan_id), None)
+            if not plan:
+                return jsonify({"error": "Plan not found"}), 404
+            # Update content and save
+            save_plan(
+                agent_telegram_id=agent.agent_id,
+                channel_id=channel_id,
+                plan_id=plan_id,
+                content=content,
+                created=plan.get("created"),
             )
 
             return jsonify({"success": True})
@@ -97,15 +113,12 @@ def register_plan_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-
-            def delete_plan(entries, payload):
-                entries = [e for e in entries if e.get("id") != plan_id]
-                return entries, payload
-
-            mutate_property_entries(
-                plan_file, "plan", default_id_prefix="plan", mutator=delete_plan
-            )
+            # Delete from MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import delete_plan
+            delete_plan(agent.agent_id, channel_id, plan_id)
 
             return jsonify({"success": True})
         except Exception as e:
@@ -131,8 +144,6 @@ def register_plan_routes(agents_bp: Blueprint):
             if not content:
                 return jsonify({"error": "Content is required"}), 400
 
-            plan_file = Path(STATE_DIRECTORY) / agent.config_name / "memory" / f"{channel_id}.json"
-            
             plan_id = f"plan-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
             
@@ -143,12 +154,17 @@ def register_plan_routes(agents_bp: Blueprint):
                 "origin": "puppetmaster"
             }
 
-            def create_plan(entries, payload):
-                entries.append(new_entry)
-                return entries, payload
-
-            mutate_property_entries(
-                plan_file, "plan", default_id_prefix="plan", mutator=create_plan
+            # Save to MySQL
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+            
+            from db.plans import save_plan
+            save_plan(
+                agent_telegram_id=agent.agent_id,
+                channel_id=channel_id,
+                plan_id=plan_id,
+                content=content,
+                created=created_value,
             )
 
             return jsonify({"success": True, "plan": new_entry})

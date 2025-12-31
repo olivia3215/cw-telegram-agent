@@ -585,7 +585,13 @@ class DirectoryMediaSource(MediaSource):
             )
             temp_path.replace(file_path)
 
-            logger.debug(f"DirectoryMediaSource: cached {unique_id} to disk")
+            # Log with stack trace to diagnose when JSON files are written to state/media
+            import traceback
+            stack_trace = "".join(traceback.format_stack())
+            logger.info(
+                f"DirectoryMediaSource: cached {unique_id} to disk at {file_path}\n"
+                f"Stack trace:\n{stack_trace}"
+            )
 
             # Update the in-memory cache
             self._mem_cache[unique_id] = record
@@ -741,6 +747,41 @@ class CompositeMediaSource(MediaSource):
 
         # All sources returned None
         return None
+
+    async def put(
+        self,
+        unique_id: str,
+        record: dict[str, Any],
+        media_bytes: bytes = None,
+        file_extension: str = None,
+        agent: Any = None,
+    ) -> None:
+        """
+        Store a media description by calling put on all sources that support it.
+        
+        Sources are called in order. If a source doesn't have a put method, it's skipped.
+        """
+        import asyncio
+        for i, source in enumerate(self.sources):
+            try:
+                # Check if source has a put method
+                if hasattr(source, "put"):
+                    # Call put - handle both async and sync put methods
+                    put_method = getattr(source, "put")
+                    if asyncio.iscoroutinefunction(put_method):
+                        await put_method(unique_id, record, media_bytes, file_extension, agent)
+                    else:
+                        # Sync method - call directly without await
+                        put_method(unique_id, record, media_bytes, file_extension, agent)
+                    logger.debug(
+                        f"CompositeMediaSource: source {i} ({type(source).__name__}) stored {unique_id}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"CompositeMediaSource: source {i} ({type(source).__name__}) failed to store {unique_id}: {e}"
+                )
+                # Continue to next source even if one fails
+                continue
 
     def refresh_cache(self) -> None:
         """Refresh cache for all sources that support it."""
@@ -1528,11 +1569,24 @@ class AIChainMediaSource(MediaSource):
         # Check if we need to download and store the media file
         # Always check if media file exists on disk, even for cached records
         # (records might have _on_disk=True but no actual media file)
+        # Note: Media files are always stored on disk, even when MySQL is used for metadata
         media_file_exists = False
+        
+        # Determine the cache directory to check
+        cache_dir = None
         if isinstance(self.cache_source, DirectoryMediaSource):
+            cache_dir = self.cache_source.directory
+        else:
+            # For MySQLMediaSource or other sources, check the default AI cache directory
+            # (media files are always stored on disk, not in MySQL)
+            from config import STATE_DIRECTORY
+            from pathlib import Path
+            cache_dir = Path(STATE_DIRECTORY) / "media"
+        
+        if cache_dir:
             # Check if media file already exists
             for ext in MEDIA_FILE_EXTENSIONS:
-                media_file = self.cache_source.directory / f"{unique_id}{ext}"
+                media_file = cache_dir / f"{unique_id}{ext}"
                 if media_file.exists():
                     media_file_exists = True
                     break
@@ -1578,7 +1632,12 @@ class AIChainMediaSource(MediaSource):
             if should_store:
                 # Store record with optional media file
                 # If we have media_bytes, this will add media_file to the record
-                self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                # Handle both sync and async put methods
+                import inspect
+                if inspect.iscoroutinefunction(self.cache_source.put):
+                    await self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                else:
+                    self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
 
         return record
 
@@ -1621,12 +1680,31 @@ def _create_default_chain() -> CompositeMediaSource:
             sources.append(get_directory_media_source(media_dir))
             logger.info(f"Added curated media directory: {media_dir}")
 
-    # Set up AI cache directory
+    # Set up AI cache - always use MySQL for metadata (media files stay on disk)
+    # Always set up filesystem directory for AIGeneratingMediaSource (for debug saves)
+    # Also always register it so it appears in the media editor directory list
     state_dir = Path(STATE_DIRECTORY)
     ai_cache_dir = state_dir / "media"
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
-    ai_cache_source = get_directory_media_source(ai_cache_dir)
-    logger.info(f"Added AI cache directory: {ai_cache_dir}")
+    
+    # Always register the directory source so it appears in scan_media_directories()
+    # Media files are always stored on disk, even when MySQL is used for metadata
+    directory_source = get_directory_media_source(ai_cache_dir)
+    logger.info(f"Registered AI cache directory: {ai_cache_dir}")
+    
+    # MySQL is required - verify configuration at startup
+    from config import MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
+    if not all([MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD]):
+        raise RuntimeError(
+            "MySQL configuration incomplete. "
+            "Please set CINDY_AGENT_MYSQL_DATABASE, CINDY_AGENT_MYSQL_USER, and CINDY_AGENT_MYSQL_PASSWORD. "
+            "MySQL is required for media metadata storage."
+        )
+    
+    from media.mysql_media_source import MySQLMediaSource
+    # Pass directory_source so MySQLMediaSource can write media files to disk
+    ai_cache_source = MySQLMediaSource(directory_source=directory_source)
+    logger.info("Added MySQL media cache source")
 
     # Add AI chain source that orchestrates unsupported/budget/AI generation
     sources.append(
