@@ -295,17 +295,8 @@ def api_recent_conversations():
     """Get list of 20 most recent conversations from agent_activity table."""
     try:
         from db import agent_activity
-        from admin_console.helpers import get_agent_by_name
+        from agent import get_agent_for_id
         from telegram_util import get_channel_name
-        
-        register_all_agents()
-        agents = list(get_all_agents(include_disabled=True))
-        
-        # Build mapping from agent_telegram_id to agent config_name
-        agent_id_to_config_name = {}
-        for agent in agents:
-            if agent.agent_id is not None and agent.config_name:
-                agent_id_to_config_name[agent.agent_id] = agent.config_name
         
         # Get recent activities from database
         activities = agent_activity.get_recent_activity(limit=20)
@@ -316,16 +307,16 @@ def api_recent_conversations():
             channel_telegram_id = activity["channel_telegram_id"]
             last_send_time = activity["last_send_time"]
             
-            # Skip if we can't map agent_telegram_id to config_name
-            if agent_telegram_id not in agent_id_to_config_name:
-                continue
-            
-            agent_config_name = agent_id_to_config_name[agent_telegram_id]
-            
-            # Get agent instance to resolve channel name
-            agent = get_agent_by_name(agent_config_name)
+            # Get agent instance directly by telegram ID (more reliable than config_name)
+            agent = get_agent_for_id(agent_telegram_id)
             if not agent or not agent.is_authenticated or not agent.client:
                 # Skip if agent not available or not authenticated
+                continue
+            
+            # Get config_name from the agent instance
+            agent_config_name = agent.config_name
+            if not agent_config_name:
+                # Skip if agent doesn't have a config_name
                 continue
             
             # Get channel name (requires async, so use agent.execute)
@@ -348,7 +339,7 @@ def api_recent_conversations():
                         "last_send_time": last_send_time,
                     })
             except Exception as e:
-                logger.debug(f"Error resolving channel name for agent {agent_config_name}, channel {channel_telegram_id}: {e}")
+                logger.debug(f"Error resolving channel name for agent {agent_telegram_id}, channel {channel_telegram_id}: {e}")
                 # Skip this conversation if we can't get the channel name
                 continue
         
