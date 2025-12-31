@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -61,14 +61,18 @@ async def test_schedule_tasks_defaults_delay_when_text_missing():
 
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
-    await hr._schedule_tasks(
-        [send_task],
-        received_task=received_task,
-        graph=graph,
-        is_callout=False,
-        is_group=False,
-        agent=mock_agent,
-    )
+    
+    # Patch START_TYPING_DELAY in config module to ensure test uses expected default value of 2
+    # The config is imported inside _schedule_tasks, so we patch it at the source
+    with patch("config.START_TYPING_DELAY", 2.0):
+        await hr._schedule_tasks(
+            [send_task],
+            received_task=received_task,
+            graph=graph,
+            is_callout=False,
+            is_group=False,
+            agent=mock_agent,
+        )
 
     wait_tasks = [t for t in graph.tasks if t.type == "wait" and t.params.get("typing")]
     assert len(wait_tasks) == 1
