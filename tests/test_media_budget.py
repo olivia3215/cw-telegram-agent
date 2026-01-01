@@ -376,7 +376,8 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
         download_calls.append(doc)
         return b"\x89PNG..."
 
-    monkeypatch.setattr("telegram_download.download_media_bytes", _fake_download_media_bytes, raising=True
+    monkeypatch.setattr(
+        "telegram_download.download_media_bytes", _fake_download_media_bytes
     )
 
     # Create AI cache directory and sources
@@ -475,7 +476,8 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
         download_calls.append((client, doc))
         return b"downloaded content (should not be called)"
     
-    monkeypatch.setattr("telegram_download.download_media_bytes", _fake_download_media_bytes, raising=True
+    monkeypatch.setattr(
+        "telegram_download.download_media_bytes", _fake_download_media_bytes
     )
     
     # Create AIGeneratingMediaSource with the cache directory
