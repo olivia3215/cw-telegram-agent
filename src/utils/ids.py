@@ -5,6 +5,28 @@
 from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetStickerSetRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissingImports]
 
+
+def ensure_int_id(value: str | int) -> int:
+    """
+    Convert ID to int, handling both string and int inputs.
+    
+    This is a defensive utility that converts IDs to integers when possible.
+    If conversion fails, returns the value as-is (for compatibility with code
+    that handles both types).
+    
+    Args:
+        value: ID value (string or int)
+        
+    Returns:
+        Integer ID if conversion succeeds, original value if conversion fails
+    """
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return value  # Return as-is if conversion fails (defensive)
+
 def normalize_peer_id(value):
     """
     Normalize Telegram peer/channel/user IDs:

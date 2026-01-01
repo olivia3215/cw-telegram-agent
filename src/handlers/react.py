@@ -8,6 +8,7 @@ from handlers.registry import register_task_handler
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from utils import coerce_to_int
+from utils.ids import ensure_int_id
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,7 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
     channel_name = await get_channel_name(agent, channel_id)
 
     # Convert channel_id to integer and resolve entity
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        channel_id_int = channel_id
+    channel_id_int = ensure_int_id(channel_id)
 
     # Get the entity first to ensure it's resolved (important for channels)
     entity = await agent.get_cached_entity(channel_id_int)

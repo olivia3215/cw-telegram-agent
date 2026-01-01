@@ -19,7 +19,7 @@ from media.media_source import get_default_media_source_chain
 from telegram_util import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
-# Import markdown_to_html - use importlib to avoid relative import issues when loaded via importlib
+# Import markdown_to_html - use importlib since this module is loaded dynamically by conversation_content.py
 import importlib.util
 from pathlib import Path
 _conversation_path = Path(__file__).parent / "conversation.py"

@@ -7,6 +7,7 @@ import logging
 
 from agent import get_agent_for_id
 from utils import coerce_to_int
+from utils.ids import ensure_int_id
 from task_graph import TaskNode
 from telegram_util import get_channel_name
 from handlers.registry import register_task_handler
@@ -46,10 +47,7 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
         raise RuntimeError(f"No Telegram client registered for agent_id {agent_id}")
 
     # Convert channel_id to integer and resolve entity
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        channel_id_int = channel_id  # Keep as-is if conversion fails
+    channel_id_int = ensure_int_id(channel_id)
     
     # Get the entity first to ensure it's resolved
     entity = await agent.get_cached_entity(channel_id_int)

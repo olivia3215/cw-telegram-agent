@@ -20,6 +20,7 @@ from utils import (
     get_dialog_name,
     is_group_or_channel,
 )
+from utils.ids import ensure_int_id
 from handlers.received_helpers.message_processing import (
     process_message_history,
 )
@@ -47,6 +48,7 @@ from handlers.received_helpers.url_fetching import (
     is_challenge_page,
     is_captcha_page,
     fetch_url_with_playwright,
+    format_error_html,
 )
 from media.media_injector import (
     inject_media_descriptions,
@@ -228,7 +230,10 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
             # Return original url for deduplication, not final_url
             return (
                 url,
-                "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
+                format_error_html(
+                    "CAPTCHA Required",
+                    "This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms"
+                ),
             )
         
         # Normal response - truncate and return
@@ -241,19 +246,19 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     except httpx.TimeoutException:
         return (
             url,
-            "<html><body><h1>Error: Request Timeout</h1><p>The request timed out after 10 seconds.</p></body></html>",
+            format_error_html("Request Timeout", "The request timed out after 10 seconds."),
         )
     except httpx.TooManyRedirects:
         return (
             url,
-            "<html><body><h1>Error: Too Many Redirects</h1><p>The request resulted in too many redirects.</p></body></html>",
+            format_error_html("Too Many Redirects", "The request resulted in too many redirects."),
         )
     except httpx.HTTPError as e:
         # Generic HTTP exception - return error HTML
         error_type = type(e).__name__
         return (
             url,
-            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+            format_error_html(error_type, str(e)),
         )
     except Exception as e:
         # Unexpected exception
@@ -261,37 +266,11 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         logger.exception(f"Unexpected error fetching URL {url}: {e}")
         return (
             url,
-            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+            format_error_html(error_type, str(e)),
         )
 
 
 # ProcessedMessage and message processing functions moved to handlers.received_helpers.message_processing
-
-
-def is_retryable_llm_error(error: Exception) -> bool:
-    """
-    Determine if an LLM error is temporary and should be retried.
-    Returns True for temporary errors (503, rate limits, timeouts), False for permanent errors.
-    """
-    error_str = str(error).lower()
-
-    # Temporary errors that should be retried
-    retryable_indicators = [
-        "503",  # Service Unavailable
-        "overloaded",  # Model overloaded
-        "try again later",  # Generic retry message
-        "rate limit",  # Rate limiting
-        "quota exceeded",  # Quota issues
-        "timeout",  # Timeout errors
-        "connection",  # Connection issues
-        "temporary",  # Generic temporary error
-        "prohibited content",  # Content safety filter - treat as retryable
-        "retrieval",  # Retrieval augmentation - treat as retryable
-    ]
-
-    return any(indicator in error_str for indicator in retryable_indicators)
-
-
 
 
 # Task parsing functions moved to handlers.received_helpers.task_parsing
@@ -584,10 +563,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             logger.debug(f"[{agent.name}] Failed to check/extend schedule: {e}")
 
     # Convert channel_id to integer if it's a string
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        channel_id_int = channel_id  # Keep as-is if conversion fails
+    channel_id_int = ensure_int_id(channel_id)
 
     # Get appropriate LLM instance
     llm = get_channel_llm(agent, channel_id_int)
@@ -732,7 +708,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         graph,
         parse_llm_reply_fn=parse_llm_reply,
         process_retrieve_tasks_fn=process_retrieve_with_fetch,
-        is_retryable_llm_error_fn=is_retryable_llm_error,
     )
 
     # Schedule output tasks
