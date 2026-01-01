@@ -589,7 +589,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tm
 
 
 @pytest.mark.asyncio
-async def test_ai_generating_source_calls_describe_image_for_photos():
+async def test_ai_generating_source_calls_describe_image_for_photos(tmp_path):
     """Test that AIGeneratingMediaSource still uses describe_image for photos."""
     source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
@@ -632,7 +632,7 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
 
 
 @pytest.mark.asyncio
-async def test_ai_generating_source_handles_video_too_long_error():
+async def test_ai_generating_source_handles_video_too_long_error(tmp_path):
     """Test that AIGeneratingMediaSource handles 'too long' ValueError correctly."""
     source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
@@ -867,7 +867,7 @@ async def test_tgs_cleanup_on_llm_value_error(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ai_generating_source_empty_description_gets_fallback_for_sticker():
+async def test_ai_generating_source_empty_description_gets_fallback_for_sticker(tmp_path):
     """Test that when LLM returns empty description for sticker, it gets fallback description."""
     source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
