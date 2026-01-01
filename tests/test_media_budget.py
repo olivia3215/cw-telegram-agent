@@ -376,11 +376,6 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
         download_calls.append(doc)
         return b"\x89PNG..."
 
-    # Patch where download_media_bytes is actually used
-    monkeypatch.setattr(
-        "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
-    )
-
     # Create AI cache directory and sources
     ai_cache_dir = tmp_path / "media"
     ai_cache_dir.mkdir()
@@ -399,8 +394,10 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
     # Budget = 0 (exhausted)
     reset_description_budget(0)
 
-    # Mock get_media_llm to return our fake LLM
-    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
+    # Mock get_media_llm and download_media_bytes (used in both ai_chain and ai_generating)
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), \
+         patch("media.sources.ai_chain.download_media_bytes", side_effect=_fake_download_media_bytes), \
+         patch("media.sources.ai_generating.download_media_bytes", side_effect=_fake_download_media_bytes):
         # Act: Try to get description when budget is exhausted
         doc = SimpleNamespace(uid="budget-exhausted-uid", mime_type="image/png")
         result = await ai_chain.get(
