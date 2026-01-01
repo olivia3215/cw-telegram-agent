@@ -204,7 +204,7 @@ async def test_gemini_describe_video_success():
         ]
     }
 
-    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -262,7 +262,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
         ]
     }
 
-    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -291,7 +291,7 @@ async def test_gemini_describe_video_no_duration():
         ]
     }
 
-    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -326,7 +326,7 @@ async def test_gemini_describe_video_timeout():
     """Test handling of timeout errors."""
     llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -356,8 +356,14 @@ async def test_unsupported_format_source_rejects_long_video():
     llm.is_mime_type_supported_by_llm.return_value = True
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     doc.mime_type = "video/mp4"
 
     # Test with video longer than 10 seconds
@@ -386,8 +392,11 @@ async def test_unsupported_format_source_accepts_short_video():
     llm.is_mime_type_supported_by_llm.return_value = True
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     doc.mime_type = "video/mp4"
 
     # Test with video 8 seconds - should return None (pass through to next source)
@@ -411,8 +420,11 @@ async def test_unsupported_format_source_rejects_long_animated_sticker():
     agent = MagicMock()
     agent.llm = MagicMock()
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     doc.mime_type = "application/gzip"
 
     # Test with animated sticker longer than 10 seconds
@@ -441,8 +453,11 @@ async def test_unsupported_format_source_accepts_short_animated_sticker():
     llm.is_mime_type_supported_by_llm.return_value = True
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     doc.mime_type = "application/gzip"
 
     # Test with animated sticker 3 seconds - should get fallback description
@@ -464,9 +479,9 @@ async def test_unsupported_format_source_accepts_short_animated_sticker():
 
 
 @pytest.mark.asyncio
-async def test_ai_generating_source_calls_describe_video():
+async def test_ai_generating_source_calls_describe_video(tmp_path):
     """Test that AIGeneratingMediaSource uses describe_video for videos."""
-    source = AIGeneratingMediaSource(cache_directory="/tmp/test_cache")
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
     # Create mock agent
     agent = MagicMock()
@@ -476,15 +491,18 @@ async def test_ai_generating_source_calls_describe_video():
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
-    # Mock download_media_bytes
+    # Mock download_media_bytes and ensure cache directory is empty
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_video_bytes_12345"
 
         # Mock detect_mime_type_from_bytes
-    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
+        with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
             # Mock get_media_llm to return our mock LLM
@@ -509,9 +527,9 @@ async def test_ai_generating_source_calls_describe_video():
 
 
 @pytest.mark.asyncio
-async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
+async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tmp_path):
     """Test that AIGeneratingMediaSource uses describe_video for animated stickers."""
-    source = AIGeneratingMediaSource(cache_directory="/tmp/test_cache")
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
     # Create mock agent
     agent = MagicMock()
@@ -521,8 +539,11 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
@@ -570,7 +591,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
 @pytest.mark.asyncio
 async def test_ai_generating_source_calls_describe_image_for_photos():
     """Test that AIGeneratingMediaSource still uses describe_image for photos."""
-    source = AIGeneratingMediaSource(cache_directory="/tmp/test_cache")
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
     # Create mock agent
     agent = MagicMock()
@@ -580,8 +601,11 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_image_bytes"
@@ -610,7 +634,7 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
 @pytest.mark.asyncio
 async def test_ai_generating_source_handles_video_too_long_error():
     """Test that AIGeneratingMediaSource handles 'too long' ValueError correctly."""
-    source = AIGeneratingMediaSource(cache_directory="/tmp/test_cache")
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
     # Create mock agent
     agent = MagicMock()
@@ -622,8 +646,11 @@ async def test_ai_generating_source_handles_video_too_long_error():
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_long_video"
@@ -662,8 +689,11 @@ async def test_tgs_cleanup_on_llm_timeout(tmp_path):
     agent.client = client
     agent.llm = llm
     
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     
     # Create actual temporary files to verify cleanup
     # The actual code will create tgs_path via get_scratch_file, then convert_tgs_to_video
@@ -725,8 +755,11 @@ async def test_tgs_cleanup_on_llm_runtime_error(tmp_path):
     agent.client = client
     agent.llm = llm
     
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     
     # Create actual temporary files to verify cleanup
     tgs_path = get_scratch_file("test_tgs_runtime.tgs")
@@ -786,8 +819,11 @@ async def test_tgs_cleanup_on_llm_value_error(tmp_path):
     agent.client = client
     agent.llm = llm
     
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
     
     # Create actual temporary files to verify cleanup
     tgs_path = get_scratch_file("test_tgs_value.tgs")
@@ -833,7 +869,7 @@ async def test_tgs_cleanup_on_llm_value_error(tmp_path):
 @pytest.mark.asyncio
 async def test_ai_generating_source_empty_description_gets_fallback_for_sticker():
     """Test that when LLM returns empty description for sticker, it gets fallback description."""
-    source = AIGeneratingMediaSource(cache_directory="/tmp/test_cache")
+    source = AIGeneratingMediaSource(cache_directory=tmp_path / "cache")
 
     # Create mock agent
     agent = MagicMock()
@@ -844,8 +880,11 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_sticker(
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_image_bytes"
@@ -893,8 +932,11 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_animated
     agent.client = client
     agent.llm = llm
 
-    # Mock document
+    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
     doc = MagicMock()
+    # Remove Path-like attributes so doc is not treated as a Path
+    del doc.suffix
+    del doc.read_bytes
 
     # Create actual temporary files for TGS conversion
     tgs_path = get_scratch_file("test_empty_animated_sticker.tgs")
