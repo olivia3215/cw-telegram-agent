@@ -688,6 +688,12 @@
                 <button class="tab-button" data-subtab="xsend">XSend</button>
             </nav>
             <div class="controls">
+                <div class="directory-selector" style="margin-bottom: 16px;">
+                    <label for="recent-conversations-select">Recent Conversations:</label><br>
+                    <select id="recent-conversations-select">
+                        <option value="">Select a recent conversation...</option>
+                    </select>
+                </div>
                 <div class="directory-selector">
                     <label for="conversations-agent-select">Select Agent:</label><br>
                     <select id="conversations-agent-select">
@@ -2188,6 +2194,8 @@
             } else if (tabName === 'conversations') {
                 // Show first subtab (which will also call loadAgents)
                 switchSubtab('curated-memories-conv');
+                // Load recent conversations
+                loadRecentConversations();
                 // If an agent is already selected, load conversation partners
                 const conversationsAgentSelect = document.getElementById('conversations-agent-select');
                 const agentName = conversationsAgentSelect?.value;
@@ -2854,6 +2862,51 @@
                         loadAgentDocs(agentName);
                     }
                 }
+            }
+        });
+
+        document.getElementById('recent-conversations-select')?.addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (!value) {
+                return;
+            }
+            
+            try {
+                const convData = JSON.parse(value);
+                const agentConfigName = convData.agent_config_name;
+                const channelId = convData.channel_id;
+                
+                // Set agent select
+                const agentSelect = document.getElementById('conversations-agent-select');
+                if (agentSelect) {
+                    agentSelect.value = agentConfigName;
+                }
+                
+                // Synchronize with agents agent select
+                const agentsSelect = document.getElementById('agents-agent-select');
+                if (agentsSelect) {
+                    agentsSelect.value = agentConfigName;
+                }
+                
+                // Set channel ID in user-id input (clearing partner select)
+                const userIdInput = document.getElementById('conversations-user-id');
+                const partnerSelect = document.getElementById('conversations-partner-select');
+                if (userIdInput) {
+                    userIdInput.value = channelId;
+                }
+                if (partnerSelect) {
+                    partnerSelect.value = '';
+                }
+                
+                // Load conversation partners (this will populate the dropdown)
+                if (agentConfigName) {
+                    loadConversationPartners(agentConfigName, 'conversations');
+                }
+                
+                // Load the conversation data
+                loadConversationData();
+            } catch (error) {
+                console.error('Error parsing recent conversation selection:', error);
             }
         });
 
@@ -3746,6 +3799,48 @@
             }, 1000);
         }
 
+        // Load recent conversations dropdown
+        async function loadRecentConversations() {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/recent-conversations`);
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error loading recent conversations:', data.error);
+                    return;
+                }
+                
+                const conversations = data.conversations || [];
+                const select = document.getElementById('recent-conversations-select');
+                if (!select) {
+                    return;
+                }
+                
+                // Clear existing options except the first one
+                select.innerHTML = '<option value="">Select a recent conversation...</option>';
+                
+                conversations.forEach(conv => {
+                    const option = document.createElement('option');
+                    // Format: "Agent Name / Channel Name (date)"
+                    const date = conv.last_send_time ? new Date(conv.last_send_time).toLocaleDateString() : '';
+                    const displayText = date 
+                        ? `${conv.agent_name} / ${conv.channel_name} (${date})`
+                        : `${conv.agent_name} / ${conv.channel_name}`;
+                    option.textContent = displayText;
+                    // Store data in value as JSON
+                    option.value = JSON.stringify({
+                        agent_config_name: conv.agent_config_name,
+                        channel_id: conv.channel_id
+                    });
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                console.error('Error loading recent conversations:', error);
+            }
+        }
+        
         // Load conversation partners
         async function loadConversationPartners(agentName, subtab, forceRefresh = false) {
             try {

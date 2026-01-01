@@ -288,3 +288,62 @@ def api_agents():
 
 
 # Conversation routes moved to admin_console/agents/conversation.py
+
+
+@agents_bp.route("/api/agents/recent-conversations", methods=["GET"])
+def api_recent_conversations():
+    """Get list of 20 most recent conversations from agent_activity table."""
+    try:
+        from db import agent_activity
+        from agent import get_agent_for_id
+        from telegram_util import get_channel_name
+        
+        # Get recent activities from database
+        activities = agent_activity.get_recent_activity(limit=20)
+        
+        recent_conversations = []
+        for activity in activities:
+            agent_telegram_id = activity["agent_telegram_id"]
+            channel_telegram_id = activity["channel_telegram_id"]
+            last_send_time = activity["last_send_time"]
+            
+            # Get agent instance directly by telegram ID (more reliable than config_name)
+            agent = get_agent_for_id(agent_telegram_id)
+            if not agent or not agent.is_authenticated or not agent.client:
+                # Skip if agent not available or not authenticated
+                continue
+            
+            # Get config_name from the agent instance
+            agent_config_name = agent.config_name
+            if not agent_config_name:
+                # Skip if agent doesn't have a config_name
+                continue
+            
+            # Get channel name (requires async, so use agent.execute)
+            try:
+                async def _get_channel_name():
+                    try:
+                        return await get_channel_name(agent, channel_telegram_id)
+                    except Exception as e:
+                        logger.debug(f"Error getting channel name for {channel_telegram_id}: {e}")
+                        return None
+                
+                channel_name = agent.execute(_get_channel_name(), timeout=5.0)
+                
+                if channel_name:
+                    recent_conversations.append({
+                        "agent_config_name": agent_config_name,
+                        "agent_name": agent.name,
+                        "channel_id": str(channel_telegram_id),
+                        "channel_name": channel_name,
+                        "last_send_time": last_send_time,
+                    })
+            except Exception as e:
+                logger.debug(f"Error resolving channel name for agent {agent_telegram_id}, channel {channel_telegram_id}: {e}")
+                # Skip this conversation if we can't get the channel name
+                continue
+        
+        return jsonify({"conversations": recent_conversations})
+    except Exception as e:
+        logger.error(f"Error getting recent conversations: {e}")
+        return jsonify({"error": str(e)}), 500
