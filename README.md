@@ -2,6 +2,27 @@
 
 Conversational Telegram agents powered by an LLM. This README covers how to **set up**, **configure**, and **run** the server. For architecture, internals, and developer workflows, see [DESIGN.md](DESIGN.md) and [DEVELOPER.md](DEVELOPER.md).
 
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+  - [1) Create and activate a virtual environment](#1-create-and-activate-a-virtual-environment)
+  - [2) Install dependencies](#2-install-dependencies)
+  - [3) Configure environment](#3-configure-environment)
+  - [Optional tuning](#optional-tuning)
+  - [4) Set up MySQL database (optional, for MySQL storage backend)](#4-set-up-mysql-database-optional-for-mysql-storage-backend)
+  - [5) Set up test database (for running tests)](#5-set-up-test-database-for-running-tests)
+  - [6) Log in Telegram sessions](#6-log-in-telegram-sessions)
+  - [7) Start the agent loop](#7-start-the-agent-loop)
+- [Personas (Configuration Directories)](#personas-configuration-directories)
+  - [Role Prompts](#role-prompts)
+- [Configuration Directory Structure](#configuration-directory-structure)
+- [Media descriptions (high level)](#media-descriptions-high-level)
+  - [Curated media descriptions (optional)](#curated-media-descriptions-optional)
+  - [Admin Console](#admin-console)
+- [Troubleshooting](#troubleshooting)
+- [More docs](#more-docs)
+
 ---
 
 ## Requirements

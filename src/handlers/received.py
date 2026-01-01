@@ -3,6 +3,26 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+"""
+Handler for processing received messages from Telegram.
+
+This module handles inbound 'received' events, which are triggered when the agent
+receives a new message. The main handler function `handle_received()` orchestrates:
+
+1. Responsiveness delay management (based on agent schedule)
+2. Message fetching and media description injection
+3. Conversation summarization (if needed)
+4. System prompt building with all context
+5. LLM query with retrieval augmentation loop
+6. Task parsing and scheduling
+7. Read acknowledgment and online status management
+
+The module also provides helper functions for:
+- URL fetching (with Playwright fallback for JavaScript challenges)
+- Responsiveness delay calculation and application
+- Retrieval loop processing
+- Task scheduling with typing delays
+"""
 import json
 import logging
 from datetime import UTC, timedelta

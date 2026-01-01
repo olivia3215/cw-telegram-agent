@@ -3,6 +3,20 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+"""
+Main entry point for the Telegram agent server.
+
+This module sets up and runs the Telegram agent event loop, handling:
+- Agent registration and authentication
+- Telegram event handlers (messages, reactions, typing indicators)
+- Work queue loading and processing
+- Message scanning and task creation
+- Admin console integration
+- Graceful shutdown handling
+
+The main event loop processes Telegram updates and dispatches them to appropriate
+handlers, which create tasks in the task graph for agent responses.
+"""
 import asyncio
 import hashlib
 import logging
