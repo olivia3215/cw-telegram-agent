@@ -96,7 +96,7 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     reset_description_budget(1)
 
     # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("llm.media_helper.get_media_llm", return_value=llm):
         # Act
         result1 = await media_chain.get(
             unique_id="uid-1", agent=agent, doc=SimpleNamespace(uid="uid-1"), kind="photo"
@@ -333,7 +333,7 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     reset_description_budget(1)
 
     # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("llm.media_helper.get_media_llm", return_value=llm):
         # Act: Generate a description through the AI chain
         result = await ai_chain.get(
             unique_id="test-uid-123",
@@ -401,7 +401,7 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
     reset_description_budget(0)
 
     # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("llm.media_helper.get_media_llm", return_value=llm):
         # Act: Try to get description when budget is exhausted
         doc = SimpleNamespace(uid="budget-exhausted-uid", mime_type="image/png")
         result = await ai_chain.get(
@@ -491,7 +491,7 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
     doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
     
     # Mock get_media_llm to return our tracking LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("llm.media_helper.get_media_llm", return_value=llm):
         with patch("media.media_source.detect_mime_type_from_bytes", return_value="image/png"):
             # Act: Request description - should use cached file, not download
             result = await source.get(
