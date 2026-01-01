@@ -204,7 +204,7 @@ async def test_gemini_describe_video_success():
         ]
     }
 
-    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -262,7 +262,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
         ]
     }
 
-    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -291,7 +291,7 @@ async def test_gemini_describe_video_no_duration():
         ]
     }
 
-    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -326,7 +326,7 @@ async def test_gemini_describe_video_timeout():
     """Test handling of timeout errors."""
     llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    with patch("llm.media_helper.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -480,15 +480,15 @@ async def test_ai_generating_source_calls_describe_video():
     doc = MagicMock()
 
     # Mock download_media_bytes
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_video_bytes_12345"
 
         # Mock detect_mime_type_from_bytes
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
             # Mock get_media_llm to return our mock LLM
-            with patch("media.media_source.get_media_llm", return_value=llm):
+            with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                 result = await source.get(
                     unique_id="test_video_123",
                     agent=agent,
@@ -524,10 +524,10 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
 
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
 
             # Mock the TGS converter to return a fake video
@@ -542,7 +542,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker():
                 mock_converter.return_value = mock_path
 
                 # Mock get_media_llm to return our mock LLM
-                with patch("media.media_source.get_media_llm", return_value=llm):
+                with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                     result = await source.get(
                         unique_id="test_animated_sticker_456",
                         agent=agent,
@@ -583,14 +583,14 @@ async def test_ai_generating_source_calls_describe_image_for_photos():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_image_bytes"
 
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "image/jpeg"
 
             # Mock get_media_llm to return our mock LLM
-            with patch("media.media_source.get_media_llm", return_value=llm):
+            with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                 result = await source.get(
                     unique_id="test_photo_789",
                     agent=agent,
@@ -625,14 +625,14 @@ async def test_ai_generating_source_handles_video_too_long_error():
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_long_video"
 
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "video/mp4"
 
             # Mock get_media_llm to return our mock LLM
-            with patch("media.media_source.get_media_llm", return_value=llm):
+            with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                 result = await source.get(
                     unique_id="test_long_video_999",
                     agent=agent,
@@ -673,10 +673,10 @@ async def test_tgs_cleanup_on_llm_timeout(tmp_path):
     tgs_path.write_bytes(b"fake_tgs_data")
     video_path.write_bytes(b"fake_video_data")
     
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
         
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
             
             # Mock the TGS converter to return our test video path
@@ -684,11 +684,11 @@ async def test_tgs_cleanup_on_llm_timeout(tmp_path):
                 mock_converter.return_value = video_path
                 
                 # Mock get_scratch_file to return our test TGS path
-                with patch("media.media_source.get_scratch_file") as mock_scratch:
+            with patch("media.media_scratch.get_scratch_file") as mock_scratch:
                     mock_scratch.return_value = tgs_path
                     
                     # Mock get_media_llm to return our mock LLM
-                    with patch("media.media_source.get_media_llm", return_value=llm):
+                    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                         result = await source.get(
                             unique_id="test_tgs_timeout",
                             agent=agent,
@@ -734,10 +734,10 @@ async def test_tgs_cleanup_on_llm_runtime_error(tmp_path):
     tgs_path.write_bytes(b"fake_tgs_data")
     video_path.write_bytes(b"fake_video_data")
     
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
         
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
             
             # Mock the TGS converter to return our test video path
@@ -745,11 +745,11 @@ async def test_tgs_cleanup_on_llm_runtime_error(tmp_path):
                 mock_converter.return_value = video_path
                 
                 # Mock get_scratch_file to return our test TGS path
-                with patch("media.media_source.get_scratch_file") as mock_scratch:
+            with patch("media.media_scratch.get_scratch_file") as mock_scratch:
                     mock_scratch.return_value = tgs_path
                     
                     # Mock get_media_llm to return our mock LLM
-                    with patch("media.media_source.get_media_llm", return_value=llm):
+                    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                         result = await source.get(
                             unique_id="test_tgs_runtime",
                             agent=agent,
@@ -795,10 +795,10 @@ async def test_tgs_cleanup_on_llm_value_error(tmp_path):
     tgs_path.write_bytes(b"fake_tgs_data")
     video_path.write_bytes(b"fake_video_data")
     
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
         
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
             
             # Mock the TGS converter to return our test video path
@@ -806,11 +806,11 @@ async def test_tgs_cleanup_on_llm_value_error(tmp_path):
                 mock_converter.return_value = video_path
                 
                 # Mock get_scratch_file to return our test TGS path
-                with patch("media.media_source.get_scratch_file") as mock_scratch:
+            with patch("media.media_scratch.get_scratch_file") as mock_scratch:
                     mock_scratch.return_value = tgs_path
                     
                     # Mock get_media_llm to return our mock LLM
-                    with patch("media.media_source.get_media_llm", return_value=llm):
+                    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                         result = await source.get(
                             unique_id="test_tgs_value",
                             agent=agent,
@@ -847,14 +847,14 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_sticker(
     # Mock document
     doc = MagicMock()
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_image_bytes"
 
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "image/webp"
 
             # Mock get_media_llm to return our mock LLM
-            with patch("media.media_source.get_media_llm", return_value=llm):
+            with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                 result = await source.get(
                     unique_id="test_sticker_empty_desc",
                     agent=agent,
@@ -902,10 +902,10 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_animated
     tgs_path.write_bytes(b"fake_tgs_data")
     video_path.write_bytes(b"fake_video_data")
 
-    with patch("media.media_source.download_media_bytes") as mock_download:
+    with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
 
-        with patch("media.media_source.detect_mime_type_from_bytes") as mock_detect:
+    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
 
             # Mock the TGS converter to return our test video path
@@ -913,11 +913,11 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_animated
                 mock_converter.return_value = video_path
 
                 # Mock get_scratch_file to return our test TGS path
-                with patch("media.media_source.get_scratch_file") as mock_scratch:
+            with patch("media.media_scratch.get_scratch_file") as mock_scratch:
                     mock_scratch.return_value = tgs_path
 
                     # Mock get_media_llm to return our mock LLM
-                    with patch("media.media_source.get_media_llm", return_value=llm):
+                    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
                         result = await source.get(
                             unique_id="test_animated_sticker_empty_desc",
                             agent=agent,
