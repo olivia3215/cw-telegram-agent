@@ -50,7 +50,7 @@ async def test_concurrent_budget_consumption(tmp_path):
     # Budget = 1
     reset_description_budget(1)
 
-    with patch("telegram_download.download_media_bytes", side_effect=fake_download), \
+    with patch("media.sources.ai_generating.download_media_bytes", side_effect=fake_download), \
          patch("media.sources.ai_generating.get_media_llm", return_value=llm):
         
         # Run 3 requests concurrently
