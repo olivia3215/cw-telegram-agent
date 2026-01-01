@@ -68,6 +68,12 @@ This document describes the high-level architecture of the Telegram agent, with 
   - [Config Directory Tracking](#config-directory-tracking)
   - [Memory Guidelines for Agents](#memory-guidelines-for-agents)
   - [Privacy and Security Considerations](#privacy-and-security-considerations)
+- [Schedule System Architecture](#schedule-system-architecture)
+  - [Overview](#overview-1)
+  - [Schedule Structure](#schedule-structure)
+  - [Responsiveness and Delays](#responsiveness-and-delays)
+  - [Schedule Extension](#schedule-extension)
+  - [Integration with Message Processing](#integration-with-message-processing)
 - [Admin Console & Puppet Master](#admin-console--puppet-master)
   - [Login and configuration flow](#login-and-configuration-flow)
   - [OTP / verification model](#otp--verification-model)
@@ -1033,6 +1039,94 @@ The Memory role prompt teaches agents what to remember and what to avoid:
 - **Selective memory**: Agents are instructed to be selective about what they remember to respect privacy
 - **Manual curation**: Config memories allow manual review and editing of important information
 - **Global persistence**: Memories persist across all conversations with the same user, enabling better relationship building
+
+## Schedule System Architecture
+
+The schedule system enables agents to have realistic daily routines with varying responsiveness levels throughout the day. This creates more natural conversation patterns where agents respond quickly during active hours and more slowly (or not at all) during sleep or low-activity periods.
+
+### Overview
+
+Agents can be configured with a `daily_schedule_description` that describes their typical daily routine. The system:
+
+1. **Maintains a schedule** of activities with start/end times and responsiveness levels
+2. **Calculates delays** based on current activity's responsiveness
+3. **Extends schedules** automatically when they run low (less than 2 days remaining)
+4. **Integrates with message processing** to apply delays before responding
+
+The schedule is stored in MySQL (via `agent.storage`) and can be extended by the LLM using the `schedule` task type.
+
+### Schedule Structure
+
+A schedule consists of a list of activities, each with:
+
+- **`id`**: Unique identifier for the activity
+- **`start_time`** / **`end_time`**: Timezone-aware datetime boundaries
+- **`activity_name`**: Human-readable name (e.g., "Sleep", "Work", "Lunch")
+- **`responsiveness`**: Integer 0-100 indicating how quickly the agent should respond
+  - `100`: Maximum responsiveness (minimal delay)
+  - `1`: Minimum responsiveness (maximum delay)
+  - `0`: Asleep (delays until wake time)
+- **`description`**: Detailed description including context (foods, work details, location, etc.)
+
+Schedules are timezone-aware and activities must not overlap. The system finds the current activity by checking if the current time falls between an activity's start and end times.
+
+### Responsiveness and Delays
+
+When processing a `received` task, the system calculates a responsiveness-based delay:
+
+1. **Get current activity**: Finds the activity that matches the current time
+2. **Calculate delay**:
+   - If `responsiveness <= 0` and there's a wake time: delay until wake time
+   - Otherwise: linear interpolation between 4 seconds (responsiveness 100) and 120 seconds (responsiveness 1)
+3. **Create wait task**: A `wait` task is created with the calculated delay
+4. **Block processing**: The `received` task depends on the wait task, preventing message processing until the delay completes
+
+**Delay Formula:**
+```
+delay = 4 + (100 - responsiveness) * 116 / 99
+```
+
+This ensures:
+- Highly responsive activities (100) → 4 second delay
+- Low responsiveness activities (1) → 120 second (2 minute) delay
+- Asleep (0) → delay until next activity with responsiveness > 0
+
+**Important behaviors:**
+- `xsend` tasks bypass responsiveness delays (immediate sending)
+- If the agent was already online, responsiveness delays are skipped
+- Messages are not marked as read until after the responsiveness delay completes
+
+### Schedule Extension
+
+Schedules are automatically extended when they have less than 2 days remaining:
+
+1. **Trigger**: During `received` task processing, if `days_remaining(schedule) < 2`
+2. **LLM query**: Uses `Instructions-Schedule.md` prompt template with:
+   - Agent's typical schedule description
+   - Recent activities (last 3 days) for context
+   - Start date (end of existing schedule or now)
+   - End date (midnight of day after next, ensuring at least 1 full day of coverage)
+3. **Task execution**: LLM returns `schedule` tasks (and optional `think` tasks)
+4. **Storage**: Schedule tasks update the agent's schedule in MySQL
+5. **Logging**: System logs how many days remain after extension
+
+The extension process uses the same task parsing and execution system as regular message processing, ensuring consistency.
+
+### Integration with Message Processing
+
+The schedule system integrates with the `received` task handler:
+
+1. **Before processing**: Check if responsiveness delay is needed
+   - If delay task exists but isn't complete → reset task to PENDING and return early
+   - If no delay task and delay is needed → create wait task and return early
+2. **After processing**: Check if schedule extension is needed
+   - If `days_remaining < 2` → trigger extension (async, doesn't block)
+3. **Read acknowledgment**: Only mark messages as read after responsiveness delay completes
+
+This ensures that:
+- Agents don't appear to respond instantly during low-responsiveness periods
+- Schedule extension happens in the background without blocking message processing
+- The system maintains realistic timing based on the agent's current activity
 
 ## Admin Console & Puppet Master
 
