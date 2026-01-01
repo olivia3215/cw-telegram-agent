@@ -6,7 +6,7 @@ from telethon.tl.types import ReactionEmoji
 from agent import get_agent_for_id
 from handlers.registry import register_task_handler
 from task_graph import TaskNode
-from telegram_util import get_channel_name
+from utils.telegram import get_channel_name
 from utils import coerce_to_int
 from utils.ids import ensure_int_id
 

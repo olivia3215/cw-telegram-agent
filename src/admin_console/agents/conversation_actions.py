@@ -598,7 +598,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                 entity_from_agent = await agent_client.get_entity(resolved_channel_id)
                 
                 # Import is_dm to check if this is a DM
-                from telegram_util import is_dm
+                from utils.telegram import is_dm
                 
                 is_direct_message = is_dm(entity_from_agent)
                 return is_direct_message, entity_from_agent

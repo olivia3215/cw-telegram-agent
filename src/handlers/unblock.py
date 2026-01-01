@@ -9,7 +9,7 @@ from telethon.tl.functions.contacts import UnblockRequest  # pyright: ignore[rep
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode
-from telegram_util import is_group_or_channel
+from utils.telegram import is_group_or_channel
 from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)

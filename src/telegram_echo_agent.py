@@ -12,7 +12,7 @@ import os
 
 from telethon import events
 
-from telegram_util import get_telegram_client
+from telegram.client_factory import get_telegram_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

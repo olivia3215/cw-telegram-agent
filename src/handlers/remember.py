@@ -10,7 +10,7 @@ from handlers.registry import register_immediate_task_handler
 from handlers.storage_helpers import process_property_entry_task
 import handlers.telepathic as telepathic
 from task_graph import TaskNode
-from telegram_util import get_channel_name
+from utils.telegram import get_channel_name
 from utils import format_username, memory_sort_key
 
 logger = logging.getLogger(__name__)

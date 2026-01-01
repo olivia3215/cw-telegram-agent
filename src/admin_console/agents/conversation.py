@@ -31,7 +31,7 @@ from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telegram_download import download_media_bytes
 from telegram_media import iter_media_parts
-from telegram_util import get_channel_name
+from utils.telegram import get_channel_name
 from telepathic import TELEPATHIC_PREFIXES
 
 logger = logging.getLogger(__name__)

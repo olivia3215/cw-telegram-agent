@@ -16,7 +16,7 @@ from handlers.received_helpers.message_processing import format_message_reaction
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
-from telegram_util import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
+from utils.telegram import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
 # Import markdown_to_html - use importlib since this module is loaded dynamically by conversation_content.py

@@ -49,7 +49,7 @@ from media.media_sources import get_directory_media_source
 from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
-from telegram_util import get_telegram_client
+from telegram.client_factory import get_telegram_client
 
 logger = logging.getLogger(__name__)
 

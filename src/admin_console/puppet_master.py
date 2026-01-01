@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Optional
 from telethon import TelegramClient  # type: ignore[import]
 
 from config import PUPPET_MASTER_PHONE
-from telegram_util import get_puppet_master_client
+from telegram.client_factory import get_puppet_master_client
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent import Agent

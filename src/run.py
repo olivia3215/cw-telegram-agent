@@ -51,7 +51,8 @@ from admin_console.puppet_master import (
     get_puppet_master_manager,
 )
 from media.media_scratch import init_media_scratch
-from telegram_util import can_agent_send_to_channel, get_channel_name, get_telegram_client, is_dm
+from telegram.client_factory import get_telegram_client
+from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES

@@ -10,7 +10,7 @@ from typing import Dict
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
-from telegram_util import get_channel_name, is_group_or_channel
+from utils.telegram import get_channel_name, is_group_or_channel
 from utils.ids import ensure_int_id
 
 logger = logging.getLogger(__name__)
