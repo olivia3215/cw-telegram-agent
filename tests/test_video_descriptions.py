@@ -548,7 +548,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tm
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
 
-    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
+        with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
 
             # Mock the TGS converter to return a fake video
@@ -947,7 +947,7 @@ async def test_ai_generating_source_empty_description_gets_fallback_for_animated
     with patch("media.sources.ai_generating.download_media_bytes") as mock_download:
         mock_download.return_value = b"fake_tgs_bytes"
 
-    with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
+        with patch("media.mime_utils.detect_mime_type_from_bytes") as mock_detect:
             mock_detect.return_value = "application/gzip"
 
             # Mock the TGS converter to return our test video path
