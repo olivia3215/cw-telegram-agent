@@ -164,12 +164,14 @@ async def run_llm_with_retrieval(
             timeout_s=None,
         )
     except Exception as e:
-        if is_retryable_llm_error_fn(e):
+        # Use module-level function if not provided
+        check_retryable = is_retryable_llm_error_fn if is_retryable_llm_error_fn is not None else is_retryable_llm_error
+        if check_retryable(e):
             logger.warning(f"[{agent.name}] LLM temporary failure, will retry: {e}")
             several = 15
             wait_task = task.insert_delay(graph, several)
             logger.info(
-            f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
+                f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
             )
             raise
         else:
