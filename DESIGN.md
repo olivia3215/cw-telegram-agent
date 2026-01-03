@@ -562,7 +562,7 @@ The system prompt is built in `handlers/received_helpers/prompt_builder.py` via 
      - **2b. Intentions Section** (combines Channel Plan + Intentions):
        - **Channel Plan** (`# Channel Plan`) - comes first
          - This is where `plan` task contents go
-         - Loaded from `state/{AgentName}/memory/{channel_id}.json` (property: `plan`)
+         - Loaded from MySQL `plans` table
          - Contains plan entries created via `plan` tasks
          - Processed by `handlers/plan.py` → stored via `process_property_entry_task()` with `property_name="plan"`
          - Formatted as JSON code block
@@ -636,11 +636,12 @@ After the system prompt, the conversation history is added (processed messages i
 
 **Question:** Where do the contents of `plan` tasks go?
 
-**Answer:** Plan task contents are stored in channel memory files and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
+**Answer:** Plan task contents are stored in MySQL and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
 
 **Storage Location:**
 - **MySQL:** `plans` table (columns: `id`, `agent_telegram_id`, `channel_id`, `content`, `created`, `metadata`)
 - **Storage:** Via `handlers/plan.py` → `_process_plan_task()` → `process_property_entry_task()` with `property_name="plan"`
+- Plans persist across agent restarts (stored in MySQL)
 
 **Processing Flow:**
 1. LLM generates a `plan` task in its response
@@ -662,7 +663,6 @@ Each plan entry typically contains:
 **Access:**
 - Plans can be viewed/edited via the admin console (`/api/agents/{agent_name}/plans/{user_id}`)
 - Plans are automatically included in every system prompt for that channel
-- Plans persist across agent restarts (stored in JSON files)
 
 ### Role Prompts Architecture
 
@@ -714,17 +714,18 @@ The system routes LLM requests based on the `LLM` field in agent configuration:
 
 ### Channel-Specific LLM Model Override
 
-Agents can override the default LLM model for specific channels using the `llm_model` property in channel memory files.
+Agents can override the default LLM model for specific channels using the `llm_model` property stored in MySQL.
 
-**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
+**Location:** Stored in MySQL `conversation_llm_overrides` table.
 
 **Configuration:**
 - The `llm_model` property specifies which LLM model to use for that specific channel
 - Can be a provider name (`"gemini"`, `"grok"`) or a specific model name
 - Overrides the agent's default LLM when processing `received` tasks for that channel
+- Can be set via the admin console or programmatically
 
 **Precedence:**
-1. Channel-specific LLM model (from channel memory file)
+1. Channel-specific LLM model (from MySQL `conversation_llm_overrides` table)
 2. Agent's default LLM (from agent configuration)
 
 **Use cases:**
@@ -919,22 +920,17 @@ state/
 ```
 
 **Storage Backend:**
-The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
+The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity, curated memories, channel metadata). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
 
-- **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand (filesystem only)
-- **State memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations
-- **Channel memory files** (`state/AgentName/memory/{channel_id}.json`): Used only for LLM model overrides (filesystem only)
+- **Curated memories** (MySQL `curated_memories` table): Manually curated memories that are visible only when chatting with a given user. Can be created and edited via the admin console.
+- **Global memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations, visible during all conversations.
+- **Channel metadata** (MySQL `conversation_llm_overrides` table): Channel-specific LLM model overrides
 - **Plans and summaries** (MySQL `plans` and `summaries` tables): Channel-specific plans and summaries
 
-**Global Memory Design:**
+**Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
-- Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner (filesystem only).
+- Curated memories that are visible only when chatting with a given user are stored in MySQL `curated_memories` table and can be managed via the admin console.
 - Memories produced by the agent are stored in the MySQL `memories` table and are visible by the agent during all conversations.
-
-**Channel Memory Files:**
-- Store channel-specific LLM model overrides (via `llm_model` property) - filesystem only
-- Filesystem location: `{statedir}/{agent_name}/memory/{channel_id}.json`
-- Plans and summaries are stored in MySQL (`plans` and `summaries` tables)
 
 ### Remember Task Processing
 

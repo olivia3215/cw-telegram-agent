@@ -212,48 +212,33 @@ At startup, the agent performs a check to ensure `Instructions.md` is available 
 
 ### Channel-Specific LLM Model Override
 
-Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property in channel memory files.
+Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property stored in MySQL.
 
-**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
+**Location:** Stored in MySQL `conversation_llm_overrides` table.
 
 **Configuration:**
 
-The `llm_model` property in the channel memory file specifies which LLM model to use for that channel:
-
-```json
-{
-  "llm_model": "grok-4-0709",
-  "plan": [
-    {
-      "id": "plan-example",
-      "content": "...",
-      "created": "2025-01-15T10:00:00-08:00"
-    }
-  ]
-}
-```
+The `llm_model` value specifies which LLM model to use for that channel. Can be set via the admin console or programmatically.
 
 **Supported values:**
 - `"gemini"` or `"grok"` - Uses the default model from `GEMINI_MODEL` or `GROK_MODEL` environment variable
 - Specific model names like `"gemini-2.0-flash"` or `"grok-4-fast-non-reasoning"`
 
 **Behavior:**
-- When processing `received` tasks for a channel, the system checks for `llm_model` in the channel memory file
+- When processing `received` tasks for a channel, the system checks for `llm_model` in MySQL
 - If present, creates an LLM instance with that model (overriding the agent's default LLM)
 - If the specified model is invalid or unavailable, falls back to the agent's default LLM
 - The override affects both message history fetching (uses channel LLM's `history_size`) and LLM queries
 
 **Implementation:**
-- `Agent.get_channel_llm_model()` reads the `llm_model` property from the channel memory file
+- `Agent.get_channel_llm_model()` reads the `llm_model` value from MySQL `conversation_llm_overrides` table
 - `handlers/received.py` uses this to select the appropriate LLM for each channel
 - Logs indicate when a channel-specific LLM is being used
 
 **Example usage:**
-1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json`
-2. Add or update the `llm_model` property
+1. Use the admin console to set the LLM model override for a specific channel
+2. Or use `db.conversation_llm.set_conversation_llm()` programmatically
 3. The next `received` task for that channel will use the specified model
-
-**Note:** LLM model overrides are stored in channel memory files in the filesystem. These files are used only for the `llm_model` property override; other data (summaries, plans) is stored in MySQL.
 
 ## Agent Architecture
 
@@ -505,12 +490,11 @@ The system uses a storage abstraction to support both filesystem and MySQL backe
 - `agent/storage_factory.py` creates the appropriate storage backend
 
 **Current Implementation:**
-- **MySQL**: Used for all agent data (memories, intentions, plans, summaries, schedules, curated memories, media metadata, agent activity)
+- **MySQL**: Used for all agent data (memories, intentions, plans, summaries, schedules, curated memories, media metadata, agent activity, channel metadata)
 - **Filesystem**: Used for:
   - Media files (always on disk)
   - Telegram session files
   - Work queue state
-  - Channel metadata files (for `llm_model` overrides)
 
 ### Data Storage Locations
 
@@ -523,11 +507,11 @@ The system uses a storage abstraction to support both filesystem and MySQL backe
 - `curated_memories` - Curated memories from config directories
 - `media_metadata` - Media description metadata
 - `agent_activity` - Agent activity logs
+- `conversation_llm_overrides` - Channel-specific LLM model overrides
 
 **Filesystem:**
 - `state/media/` - Media cache files (JSON + media files)
 - `state/{agent_name}/telegram.session` - Telegram session
-- `state/{agent_name}/memory/{channel_id}.json` - Channel metadata (llm_model only)
 - `state/work_queue.json` - Task queue state
 
 ### Storage Factory
@@ -571,15 +555,9 @@ The mixin delegates to the underlying storage backend (`AgentStorageMySQL`), whi
 ### Migration Notes
 
 **From Filesystem to MySQL:**
-- Agent data (memories, plans, summaries) migrated to MySQL
+- All agent data (memories, plans, summaries, channel metadata) migrated to MySQL
 - Media files remain on filesystem
-- Channel metadata files still used for `llm_model` overrides
 - See `README.md` for MySQL setup instructions
-
-**Backward Compatibility:**
-- Filesystem paths still exist for media and session files
-- Channel metadata files still read for `llm_model` overrides
-- No breaking changes to agent API
 
 ## Tests you'll care about
 
