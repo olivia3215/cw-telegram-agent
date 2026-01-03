@@ -10,22 +10,27 @@ def ensure_int_id(value: str | int) -> int:
     """
     Convert ID to int, handling both string and int inputs.
     
-    This is a defensive utility that converts IDs to integers when possible.
-    If conversion fails, returns the value as-is (for compatibility with code
-    that handles both types).
+    Ensures the value is converted to an integer. Raises ValueError if
+    conversion fails, as callers expect integer IDs.
     
     Args:
         value: ID value (string or int)
         
     Returns:
-        Integer ID if conversion succeeds, original value if conversion fails
+        Integer ID
+        
+    Raises:
+        ValueError: If value cannot be converted to an integer
+        TypeError: If value is not a string or int
     """
     if isinstance(value, int):
         return value
+    if not isinstance(value, str):
+        raise TypeError(f"Expected str or int, got {type(value).__name__}: {value!r}")
     try:
         return int(value)
-    except (ValueError, TypeError):
-        return value  # Return as-is if conversion fails (defensive)
+    except ValueError as e:
+        raise ValueError(f"Cannot convert ID to integer: {value!r}") from e
 
 def normalize_peer_id(value):
     """
