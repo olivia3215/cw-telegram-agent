@@ -212,50 +212,354 @@ At startup, the agent performs a check to ensure `Instructions.md` is available 
 
 ### Channel-Specific LLM Model Override
 
-Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property in channel memory files.
+Agents can override the default LLM model for specific channels (conversations) using the `llm_model` property stored in MySQL.
 
-**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
+**Location:** Stored in MySQL `conversation_llm_overrides` table.
 
 **Configuration:**
 
-The `llm_model` property in the channel memory file specifies which LLM model to use for that channel:
-
-```json
-{
-  "llm_model": "grok-4-0709",
-  "plan": [
-    {
-      "id": "plan-example",
-      "content": "...",
-      "created": "2025-01-15T10:00:00-08:00"
-    }
-  ]
-}
-```
+The `llm_model` value specifies which LLM model to use for that channel. Can be set via the admin console or programmatically.
 
 **Supported values:**
 - `"gemini"` or `"grok"` - Uses the default model from `GEMINI_MODEL` or `GROK_MODEL` environment variable
 - Specific model names like `"gemini-2.0-flash"` or `"grok-4-fast-non-reasoning"`
 
 **Behavior:**
-- When processing `received` tasks for a channel, the system checks for `llm_model` in the channel memory file
+- When processing `received` tasks for a channel, the system checks for `llm_model` in MySQL
 - If present, creates an LLM instance with that model (overriding the agent's default LLM)
 - If the specified model is invalid or unavailable, falls back to the agent's default LLM
 - The override affects both message history fetching (uses channel LLM's `history_size`) and LLM queries
 
 **Implementation:**
-- `Agent.get_channel_llm_model()` reads the `llm_model` property from the channel memory file
+- `Agent.get_channel_llm_model()` reads the `llm_model` value from MySQL `conversation_llm_overrides` table
 - `handlers/received.py` uses this to select the appropriate LLM for each channel
 - Logs indicate when a channel-specific LLM is being used
 
 **Example usage:**
-1. Manually edit the channel memory file: `state/Olivia/memory/6754281260.json`
-2. Add or update the `llm_model` property
+1. Use the admin console to set the LLM model override for a specific channel
+2. Or use `db.conversation_llm.set_conversation_llm()` programmatically
 3. The next `received` task for that channel will use the specified model
 
-**Note:** LLM model overrides are stored in channel memory files in the filesystem. These files are used only for the `llm_model` property override; other data (summaries, plans) is stored in MySQL.
+## Agent Architecture
 
-## Tests you’ll care about
+### Mixin-Based Design
+
+The `Agent` class uses a mixin architecture to organize functionality into logical modules. This design separates concerns and makes the codebase more maintainable.
+
+**Structure:**
+
+The `Agent` class (in `src/agent.py`) inherits from four mixins:
+
+```python
+class Agent(
+    AgentExecutionMixin,    # Task execution and scheduling
+    AgentPromptMixin,       # Prompt building and role management
+    AgentStorageMixin,      # Memory and data storage
+    AgentTelegramMixin,     # Telegram client management
+):
+    ...
+```
+
+**Mixin Responsibilities:**
+
+1. **`AgentExecutionMixin`** (`agent/execution.py`)
+   - Task graph execution
+   - Work queue management
+   - Task scheduling and dependencies
+
+2. **`AgentPromptMixin`** (`agent/prompts.py`)
+   - System prompt building
+   - Role prompt loading and management
+   - Prompt template rendering
+
+3. **`AgentStorageMixin`** (`agent/storage.py`)
+   - Memory loading (global and channel-specific)
+   - Plan and summary content loading
+   - Intention content loading
+   - Schedule loading
+   - Delegates to storage backend (MySQL)
+
+4. **`AgentTelegramMixin`** (`agent/telegram.py`)
+   - Telegram client creation and management
+   - Entity caching and resolution
+   - Channel name resolution
+
+**Benefits:**
+
+- **Separation of concerns**: Each mixin handles a specific domain
+- **Testability**: Mixins can be tested independently
+- **Maintainability**: Changes to one area don't affect others
+- **Extensibility**: New functionality can be added via new mixins
+
+**Adding New Mixin Functionality:**
+
+To add new functionality to a mixin:
+
+1. Identify which mixin the functionality belongs to
+2. Add methods to the appropriate mixin class
+3. Methods automatically become available on `Agent` instances
+4. Update tests to cover the new functionality
+
+## Handler Registration System
+
+The system uses a decorator-based registration pattern for task handlers. This allows handlers to be defined in separate modules and automatically registered when imported.
+
+### Task Handler Types
+
+**Regular Task Handlers:**
+- Execute as part of the task graph
+- Can have dependencies and delays
+- Signature: `async def handle_X(task: TaskNode, graph: TaskGraph, work_queue=None)`
+
+**Immediate Task Handlers:**
+- Execute immediately during task parsing (before graph scheduling)
+- Used for tasks that need instant execution (e.g., `think`, `remember`)
+- Signature: `async def handle_X(task: TaskNode, *, agent, channel_id: int) -> bool`
+
+### Registration
+
+Handlers are registered using decorators:
+
+```python
+from handlers.registry import register_task_handler
+
+@register_task_handler("send")
+async def handle_send(task: TaskNode, graph: TaskGraph, work_queue=None):
+    # Handler implementation
+    ...
+```
+
+For immediate tasks:
+
+```python
+from handlers.registry import register_immediate_task_handler
+
+@register_immediate_task_handler("think")
+async def handle_think(task: TaskNode, *, agent, channel_id: int) -> bool:
+    # Immediate handler implementation
+    return True
+```
+
+### Handler Discovery
+
+Handlers are automatically discovered when their modules are imported. The `handlers/__init__.py` file imports all handler modules to ensure registration:
+
+```python
+from . import (
+    send,      # Registers "send" handler
+    received,  # Registers "received" handler
+    sticker,   # Registers "sticker" handler
+    ...
+)
+```
+
+### Task Dispatch
+
+Tasks are dispatched via `handlers.registry.dispatch_task()`:
+
+```python
+from handlers.registry import dispatch_task
+
+# Dispatch a regular task
+await dispatch_task(task.type, task, graph, work_queue)
+```
+
+Immediate tasks are dispatched via `dispatch_immediate_task()`:
+
+```python
+from handlers.registry import dispatch_immediate_task
+
+# Dispatch an immediate task
+result = await dispatch_immediate_task(task, agent=agent, channel_id=channel_id)
+```
+
+## Adding New Task Types
+
+To add a new task type to the system:
+
+### 1. Define the Task Handler
+
+Create a handler function in the appropriate module (or create a new one):
+
+```python
+# handlers/my_task.py
+
+from handlers.registry import register_task_handler
+from task_graph import TaskNode, TaskGraph
+
+@register_task_handler("my_task")
+async def handle_my_task(task: TaskNode, graph: TaskGraph, work_queue=None):
+    """
+    Handle my_task type.
+    
+    Args:
+        task: The task node containing parameters
+        graph: The task graph for dependency management
+        work_queue: Work queue (deprecated, kept for compatibility)
+    """
+    # Extract parameters
+    param1 = task.params.get("param1")
+    param2 = task.params.get("param2")
+    
+    # Get agent and channel from graph context
+    agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
+    agent = get_agent_for_id(agent_id)
+    
+    # Implement task logic
+    # ...
+    
+    # Task completes automatically when function returns
+```
+
+### 2. Register the Handler Module
+
+Add the import to `handlers/__init__.py`:
+
+```python
+from . import (
+    # ... existing handlers
+    my_task,  # Registers "my_task" handler
+)
+```
+
+### 3. Update Task Parsing (if needed)
+
+If the task needs special parsing logic, update `handlers/received_helpers/task_parsing.py`:
+
+```python
+def parse_my_task(task_dict: dict, ...) -> TaskNode:
+    """Parse my_task from LLM response."""
+    task = TaskNode(
+        type="my_task",
+        params={
+            "param1": task_dict.get("param1"),
+            "param2": task_dict.get("param2"),
+        }
+    )
+    return task
+```
+
+### 4. Add Tests
+
+Create tests in `tests/test_my_task.py`:
+
+```python
+@pytest.mark.asyncio
+async def test_handle_my_task():
+    # Test implementation
+    ...
+```
+
+### 5. Update Documentation
+
+- Add task type to `DESIGN.md` if it's a major feature
+- Update `samples/README.md` if it affects agent configuration
+- Add examples to relevant documentation
+
+### Immediate Tasks
+
+For tasks that need immediate execution (e.g., `think`, `remember`):
+
+```python
+from handlers.registry import register_immediate_task_handler
+
+@register_immediate_task_handler("my_immediate_task")
+async def handle_my_immediate_task(task: TaskNode, *, agent, channel_id: int) -> bool:
+    """
+    Handle immediate task execution.
+    
+    Returns:
+        True if task was handled, False otherwise
+    """
+    # Immediate execution logic
+    return True
+```
+
+Immediate tasks are executed during task parsing, before graph scheduling.
+
+## Storage Backend Abstraction
+
+The system uses a storage abstraction to support both filesystem and MySQL backends. The abstraction is implemented through the `AgentStorageMixin` and storage factory pattern.
+
+### Architecture
+
+**Storage Interface:**
+- `AgentStorageMixin` provides the interface for storage operations
+- `AgentStorageMySQL` implements MySQL-based storage
+- `agent/storage_factory.py` creates the appropriate storage backend
+
+**Current Implementation:**
+- **MySQL**: Used for all agent data (memories, intentions, plans, summaries, schedules, curated memories, media metadata, agent activity, channel metadata)
+- **Filesystem**: Used for:
+  - Media files (always on disk)
+  - Telegram session files
+  - Work queue state
+
+### Data Storage Locations
+
+**MySQL Tables:**
+- `memories` - Global and channel-specific memories
+- `intentions` - Agent intentions
+- `plans` - Channel-specific plans
+- `summaries` - Conversation summaries
+- `schedules` - Agent schedules
+- `curated_memories` - Curated memories from config directories
+- `media_metadata` - Media description metadata
+- `agent_activity` - Agent activity logs
+- `conversation_llm_overrides` - Channel-specific LLM model overrides
+
+**Filesystem:**
+- `state/media/` - Media cache files (JSON + media files)
+- `state/{agent_name}/telegram.session` - Telegram session
+- `state/work_queue.json` - Task queue state
+
+### Storage Factory
+
+The storage factory (`agent/storage_factory.py`) creates the appropriate storage backend:
+
+```python
+from agent.storage_factory import create_storage
+
+storage = create_storage(
+    agent_config_name="MyAgent",
+    agent_telegram_id=12345,
+    config_directory=Path("/path/to/config"),
+    state_directory=Path("/path/to/state"),
+)
+```
+
+**Requirements:**
+- `agent_telegram_id` must be set (agent must be authenticated)
+- MySQL configuration must be complete (checked at startup)
+
+### Storage Operations
+
+All storage operations go through `AgentStorageMixin`:
+
+```python
+# Memory operations
+memory_content = agent._load_memory_content(channel_id)
+intention_content = agent._load_intention_content()
+
+# Plan and summary operations
+plan_content = agent._load_plan_content(channel_id)
+summary_content = await agent._load_summary_content(channel_id)
+
+# Schedule operations
+schedule = agent._load_schedule()
+```
+
+The mixin delegates to the underlying storage backend (`AgentStorageMySQL`), which handles MySQL queries.
+
+### Migration Notes
+
+**From Filesystem to MySQL:**
+- All agent data (memories, plans, summaries, channel metadata) migrated to MySQL
+- Media files remain on filesystem
+- See `README.md` for MySQL setup instructions
+
+## Tests you'll care about
 
 * `tests/test_llm_builder_parts.py` — core coverage for the structured builder.
 * `tests/test_prompt_sticker_descriptions.py` — ensures sticker descriptions are included.

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from handlers.received import is_retryable_llm_error
+from handlers.received_helpers.llm_query import is_retryable_llm_error
 
 
 def test_is_retryable_llm_error_retryable_cases():

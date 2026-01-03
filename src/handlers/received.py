@@ -3,6 +3,26 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+"""
+Handler for processing received messages from Telegram.
+
+This module handles inbound 'received' events, which are triggered when the agent
+receives a new message. The main handler function `handle_received()` orchestrates:
+
+1. Responsiveness delay management (based on agent schedule)
+2. Message fetching and media description injection
+3. Conversation summarization (if needed)
+4. System prompt building with all context
+5. LLM query with retrieval augmentation loop
+6. Task parsing and scheduling
+7. Read acknowledgment and online status management
+
+The module also provides helper functions for:
+- URL fetching (with Playwright fallback for JavaScript challenges)
+- Responsiveness delay calculation and application
+- Retrieval loop processing
+- Task scheduling with typing delays
+"""
 import json
 import logging
 from datetime import UTC, timedelta
@@ -20,6 +40,7 @@ from utils import (
     get_dialog_name,
     is_group_or_channel,
 )
+from utils.ids import ensure_int_id
 from handlers.received_helpers.message_processing import (
     process_message_history,
 )
@@ -47,6 +68,7 @@ from handlers.received_helpers.url_fetching import (
     is_challenge_page,
     is_captcha_page,
     fetch_url_with_playwright,
+    format_error_html,
 )
 from media.media_injector import (
     inject_media_descriptions,
@@ -228,7 +250,10 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
             # Return original url for deduplication, not final_url
             return (
                 url,
-                "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
+                format_error_html(
+                    "CAPTCHA Required",
+                    "This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms"
+                ),
             )
         
         # Normal response - truncate and return
@@ -241,19 +266,19 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     except httpx.TimeoutException:
         return (
             url,
-            "<html><body><h1>Error: Request Timeout</h1><p>The request timed out after 10 seconds.</p></body></html>",
+            format_error_html("Request Timeout", "The request timed out after 10 seconds."),
         )
     except httpx.TooManyRedirects:
         return (
             url,
-            "<html><body><h1>Error: Too Many Redirects</h1><p>The request resulted in too many redirects.</p></body></html>",
+            format_error_html("Too Many Redirects", "The request resulted in too many redirects."),
         )
     except httpx.HTTPError as e:
         # Generic HTTP exception - return error HTML
         error_type = type(e).__name__
         return (
             url,
-            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+            format_error_html(error_type, str(e)),
         )
     except Exception as e:
         # Unexpected exception
@@ -261,37 +286,11 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         logger.exception(f"Unexpected error fetching URL {url}: {e}")
         return (
             url,
-            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+            format_error_html(error_type, str(e)),
         )
 
 
 # ProcessedMessage and message processing functions moved to handlers.received_helpers.message_processing
-
-
-def is_retryable_llm_error(error: Exception) -> bool:
-    """
-    Determine if an LLM error is temporary and should be retried.
-    Returns True for temporary errors (503, rate limits, timeouts), False for permanent errors.
-    """
-    error_str = str(error).lower()
-
-    # Temporary errors that should be retried
-    retryable_indicators = [
-        "503",  # Service Unavailable
-        "overloaded",  # Model overloaded
-        "try again later",  # Generic retry message
-        "rate limit",  # Rate limiting
-        "quota exceeded",  # Quota issues
-        "timeout",  # Timeout errors
-        "connection",  # Connection issues
-        "temporary",  # Generic temporary error
-        "prohibited content",  # Content safety filter - treat as retryable
-        "retrieval",  # Retrieval augmentation - treat as retryable
-    ]
-
-    return any(indicator in error_str for indicator in retryable_indicators)
-
-
 
 
 # Task parsing functions moved to handlers.received_helpers.task_parsing
@@ -338,6 +337,168 @@ def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
         f"[{agent.name}] Agent responsiveness {responsiveness}, delaying {delay_seconds}s"
     )
     return delay_seconds
+
+
+async def _apply_responsiveness_delay(
+    task: TaskNode,
+    graph: TaskGraph,
+    agent,
+    was_already_online: bool,
+) -> tuple[bool, bool]:
+    """
+    Apply responsiveness-based delay to a received task.
+    
+    This function:
+    1. Checks if a responsiveness delay task is already in progress and not complete
+    2. Creates a new responsiveness delay wait task if needed
+    3. Sets up dependencies and task parameters
+    
+    Args:
+        task: The received task node
+        graph: The task graph
+        agent: Agent instance
+        was_already_online: Whether the agent was already online (skips delay if True)
+        
+    Returns:
+        Tuple of (should_return_early, has_responsiveness_delay):
+        - should_return_early: True if the handler should return early (delay task created or not complete)
+        - has_responsiveness_delay: True if there was/is a responsiveness delay task
+    """
+    # Check if we're waiting for a responsiveness delay task to complete
+    # This must be checked FIRST before any processing, so the task isn't marked as DONE
+    # Use completed_ids to match the selection logic used by is_unblocked
+    responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
+    has_responsiveness_delay = False
+    
+    if responsiveness_delay_task_id:
+        completed_ids = graph.completed_ids()
+        if responsiveness_delay_task_id not in completed_ids:
+            # Delay task not complete yet - reset status to PENDING so task isn't marked as DONE
+            # The task already depends on the delay task, so it shouldn't be selected again until
+            # the delay completes (via is_ready check). If it was selected, there's a bug in is_unblocked.
+            # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant to delay
+            # marking messages as read until after the delay completes
+            task.status = TaskStatus.PENDING
+            logger.warning(
+                f"[{agent.name}] Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
+                f"is not complete (completed_ids: {completed_ids}, depends_on: {task.depends_on}). "
+                f"Resetting to PENDING. This suggests is_unblocked is not working correctly."
+            )
+            return (True, True)  # should_return_early=True, has_responsiveness_delay=True
+        else:
+            # Responsiveness delay has completed
+            has_responsiveness_delay = True
+    
+    # Apply responsiveness-based delay (unless this is an xsend task or agent was already online)
+    # xsend tasks bypass schedule delays
+    # If agent was already online, skip responsiveness delay
+    # Delays are handled by creating wait tasks, not by blocking the handler
+    is_xsend = bool(task.params.get("xsend_intent"))
+    
+    # Create responsiveness delay wait task if needed
+    # Only create if we don't already have one (either pending or completed)
+    if not is_xsend and not was_already_online and agent.daily_schedule_description:
+        # Check if we already have a responsiveness delay task
+        existing_delay_task_id = task.params.get("responsiveness_delay_task_id")
+        if not existing_delay_task_id:
+            # No existing delay task, create one if needed
+            try:
+                schedule = agent._load_schedule()
+                if schedule:
+                    delay_seconds = _calculate_responsiveness_delay(agent, schedule)
+                    
+                    if delay_seconds > 0:
+                        # Create a wait task for the responsiveness delay
+                        responsiveness_delay_task = make_wait_task(delay_seconds=delay_seconds)
+                        graph.add_task(responsiveness_delay_task)
+                        # Make the received task depend on the delay task
+                        task.depends_on.append(responsiveness_delay_task.id)
+                        # Store the delay task ID so we can check it on next handler call
+                        task.params["responsiveness_delay_task_id"] = responsiveness_delay_task.id
+                        logger.debug(
+                            f"[{agent.name}] Created responsiveness delay wait task {responsiveness_delay_task.id} ({delay_seconds}s)"
+                        )
+                        # Reset status to PENDING and return early - task won't be marked as DONE
+                        # It will remain PENDING and be re-selected when the delay task completes
+                        # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant
+                        # to delay marking messages as read until after the delay completes
+                        task.status = TaskStatus.PENDING
+                        return (True, True)  # should_return_early=True, has_responsiveness_delay=True
+            except Exception as e:
+                logger.warning(f"[{agent.name}] Failed to apply schedule delay: {e}")
+    
+    return (False, has_responsiveness_delay)  # should_return_early=False, has_responsiveness_delay
+
+
+async def _process_retrieval_loop(
+    agent,
+    system_prompt: str,
+    messages_for_history: list,
+    media_chain,
+    now_iso: str,
+    chat_type: str,
+    agent_id,
+    channel_id,
+    task: TaskNode,
+    graph: TaskGraph,
+    parse_llm_reply_fn,
+) -> list[TaskNode]:
+    """
+    Process the LLM retrieval loop with message history and retrieval augmentation.
+    
+    This function:
+    1. Processes message history for the LLM
+    2. Sets up the retrieval task processor with fetch_url
+    3. Runs the LLM with retrieval augmentation
+    
+    Args:
+        agent: Agent instance
+        system_prompt: Complete system prompt for the LLM
+        messages_for_history: List of unsummarized messages for history
+        media_chain: Media source chain for injecting descriptions
+        now_iso: Current time in ISO format
+        chat_type: "group" or "direct"
+        agent_id: Agent ID
+        channel_id: Channel ID
+        task: The received task node
+        graph: The task graph
+        parse_llm_reply_fn: Function to parse LLM reply into tasks
+        
+    Returns:
+        List of TaskNode objects generated by the LLM
+    """
+    # Process message history (only unsummarized messages)
+    history_items = await process_message_history(messages_for_history, agent, media_chain)
+
+    # Create a simple wrapper that injects fetch_url from closure
+    async def process_retrieve_with_fetch(tasks, *, agent, channel_id, graph, retrieved_urls, retrieved_contents, fetch_url_fn):
+        # Always use fetch_url from closure (fetch_url_fn parameter is for testability only)
+        return await process_retrieve_tasks(
+            tasks,
+            agent=agent,
+            channel_id=channel_id,
+            graph=graph,
+            retrieved_urls=retrieved_urls,
+            retrieved_contents=retrieved_contents,
+            fetch_url_fn=fetch_url,
+        )
+    
+    # Run LLM with retrieval augmentation
+    tasks = await run_llm_with_retrieval(
+        agent,
+        system_prompt,
+        history_items,
+        now_iso,
+        chat_type,
+        agent_id,
+        channel_id,
+        task,
+        graph,
+        parse_llm_reply_fn=parse_llm_reply_fn,
+        process_retrieve_tasks_fn=process_retrieve_with_fetch,
+    )
+    
+    return tasks
 
 
 async def _schedule_tasks(
@@ -459,31 +620,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     if not channel_id or not agent_id or not client:
         raise RuntimeError("Missing context or Telegram client")
 
-    # Check if we're waiting for a responsiveness delay task to complete
-    # This must be checked FIRST before any processing, so the task isn't marked as DONE
-    # Use completed_ids to match the selection logic used by is_unblocked
-    responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
-    responsiveness_delay_task = None  # Initialize to avoid UnboundLocalError
-    has_responsiveness_delay = False
-    if responsiveness_delay_task_id:
-        completed_ids = graph.completed_ids()
-        if responsiveness_delay_task_id not in completed_ids:
-            # Delay task not complete yet - reset status to PENDING so task isn't marked as DONE
-            # The task already depends on the delay task, so it shouldn't be selected again until
-            # the delay completes (via is_ready check). If it was selected, there's a bug in is_unblocked.
-            # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant to delay
-            # marking messages as read until after the delay completes
-            task.status = TaskStatus.PENDING
-            logger.warning(
-                f"[{agent.name}] Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
-                f"is not complete (completed_ids: {completed_ids}, depends_on: {task.depends_on}). "
-                f"Resetting to PENDING. This suggests is_unblocked is not working correctly."
-            )
-            return
-        else:
-            # Responsiveness delay has completed
-            has_responsiveness_delay = True
-    
     # Check if agent was already online (before we create any new tasks)
     # Look for an existing online wait task in the conversation (must be pending)
     online_wait_task = None
@@ -499,48 +635,18 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Check if agent was already online BEFORE we create/extend the task
     was_already_online = online_wait_task is not None
 
-    # Apply responsiveness-based delay (unless this is an xsend task or agent was already online)
-    # xsend tasks bypass schedule delays
-    # If agent was already online, skip responsiveness delay
-    # Delays are handled by creating wait tasks, not by blocking the handler
-    is_xsend = bool(task.params.get("xsend_intent"))
-    
-    # Create responsiveness delay wait task if needed
-    # Only create if we don't already have one (either pending or completed)
-    if not is_xsend and not was_already_online and agent.daily_schedule_description:
-        # Check if we already have a responsiveness delay task
-        existing_delay_task_id = task.params.get("responsiveness_delay_task_id")
-        if not existing_delay_task_id:
-            # No existing delay task, create one if needed
-            try:
-                schedule = agent._load_schedule()
-                if schedule:
-                    delay_seconds = _calculate_responsiveness_delay(agent, schedule)
-                    
-                    if delay_seconds > 0:
-                        # Create a wait task for the responsiveness delay
-                        responsiveness_delay_task = make_wait_task(delay_seconds=delay_seconds)
-                        graph.add_task(responsiveness_delay_task)
-                        # Make the received task depend on the delay task
-                        task.depends_on.append(responsiveness_delay_task.id)
-                        # Store the delay task ID so we can check it on next handler call
-                        task.params["responsiveness_delay_task_id"] = responsiveness_delay_task.id
-                        logger.debug(
-                            f"[{agent.name}] Created responsiveness delay wait task {responsiveness_delay_task.id} ({delay_seconds}s)"
-                        )
-                        # Reset status to PENDING and return early - task won't be marked as DONE
-                        # It will remain PENDING and be re-selected when the delay task completes
-                        # IMPORTANT: Don't mark messages as read yet - the responsiveness delay is meant
-                        # to delay marking messages as read until after the delay completes
-                        task.status = TaskStatus.PENDING
-                        return
-            except Exception as e:
-                logger.warning(f"[{agent.name}] Failed to apply schedule delay: {e}")
+    # Apply responsiveness-based delay
+    should_return_early, has_responsiveness_delay = await _apply_responsiveness_delay(
+        task, graph, agent, was_already_online
+    )
+    if should_return_early:
+        return
 
     # Handle online wait task AFTER responsiveness delay is handled
     # If there was a responsiveness delay, we'll create the online wait task after read acknowledge
     # (so it only appears online after the delay completes)
     # If there was no responsiveness delay, create/extend it now
+    responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
     if not responsiveness_delay_task_id:
         # No responsiveness delay, so we can create/extend online wait task now
         if online_wait_task:
@@ -584,10 +690,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             logger.debug(f"[{agent.name}] Failed to check/extend schedule: {e}")
 
     # Convert channel_id to integer if it's a string
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        channel_id_int = channel_id  # Keep as-is if conversion fails
+    channel_id_int = ensure_int_id(channel_id)
 
     # Get appropriate LLM instance
     llm = get_channel_llm(agent, channel_id_int)
@@ -700,30 +803,15 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         highest_summarized_id=highest_summarized_id,
     )
 
-    # Process message history (only unsummarized messages)
-    history_items = await process_message_history(messages_for_history, agent, media_chain)
-
     # Run LLM with retrieval augmentation
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
-
-    # Create a simple wrapper that injects fetch_url from closure
-    async def process_retrieve_with_fetch(tasks, *, agent, channel_id, graph, retrieved_urls, retrieved_contents, fetch_url_fn):
-        # Always use fetch_url from closure (fetch_url_fn parameter is for testability only)
-        return await process_retrieve_tasks(
-            tasks,
-            agent=agent,
-            channel_id=channel_id,
-            graph=graph,
-            retrieved_urls=retrieved_urls,
-            retrieved_contents=retrieved_contents,
-            fetch_url_fn=fetch_url,
-        )
     
-    tasks = await run_llm_with_retrieval(
+    tasks = await _process_retrieval_loop(
         agent,
         system_prompt,
-        history_items,
+        messages_for_history,
+        media_chain,
         now_iso,
         chat_type,
         agent_id,
@@ -731,8 +819,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         task,
         graph,
         parse_llm_reply_fn=parse_llm_reply,
-        process_retrieve_tasks_fn=process_retrieve_with_fetch,
-        is_retryable_llm_error_fn=is_retryable_llm_error,
     )
 
     # Schedule output tasks

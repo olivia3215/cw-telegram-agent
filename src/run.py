@@ -3,6 +3,20 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+"""
+Main entry point for the Telegram agent server.
+
+This module sets up and runs the Telegram agent event loop, handling:
+- Agent registration and authentication
+- Telegram event handlers (messages, reactions, typing indicators)
+- Work queue loading and processing
+- Message scanning and task creation
+- Admin console integration
+- Graceful shutdown handling
+
+The main event loop processes Telegram updates and dispatches them to appropriate
+handlers, which create tasks in the task graph for agent responses.
+"""
 import asyncio
 import hashlib
 import logging
@@ -37,7 +51,8 @@ from admin_console.puppet_master import (
     get_puppet_master_manager,
 )
 from media.media_scratch import init_media_scratch
-from telegram_util import can_agent_send_to_channel, get_channel_name, get_telegram_client, is_dm
+from telegram.client_factory import get_telegram_client
+from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES

@@ -14,6 +14,20 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def format_error_html(error_type: str, message: str) -> str:
+    """
+    Format an error as HTML for retrieval responses.
+    
+    Args:
+        error_type: Type/name of the error (e.g., "Request Timeout", "HTTPError")
+        message: Error message or description
+        
+    Returns:
+        HTML-formatted error message
+    """
+    return f"<html><body><h1>Error: {error_type}</h1><p>{message}</p></body></html>"
+
+
 def is_challenge_page(content: str) -> bool:
     """
     Detect if the response is a JavaScript challenge page (e.g., Fastly Shield).
@@ -88,7 +102,10 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
     if not PLAYWRIGHT_AVAILABLE:
         return (
             url,
-            "<html><body><h1>Error: Playwright not available</h1><p>Playwright is required to handle JavaScript challenges but is not installed. Please install with: pip install playwright && playwright install chromium</p></body></html>",
+            format_error_html(
+                "Playwright not available",
+                "Playwright is required to handle JavaScript challenges but is not installed. Please install with: pip install playwright && playwright install chromium"
+            ),
         )
     
     browser = None
@@ -135,7 +152,7 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             )
             
             if response is None:
-                return (url, "<html><body><h1>Error: No response received</h1></body></html>")
+                return (url, format_error_html("No response received", ""))
             
             # Check if we got a challenge page
             try:
@@ -182,7 +199,7 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
                     # Return original url for deduplication, not final_url
                     return (
                         url,
-                        f"<html><body><h1>Error: {error_type}</h1><p>{str(e2)}</p></body></html>",
+                        format_error_html(error_type, str(e2)),
                     )
             
             # Check if we got a CAPTCHA page despite using Playwright
@@ -191,7 +208,10 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
                 # Return original url for deduplication, not final_url
                 return (
                     url,
-                    "<html><body><h1>Error: CAPTCHA Required</h1><p>This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms</p></body></html>",
+                    format_error_html(
+                        "CAPTCHA Required",
+                        "This page requires human interaction to solve a CAPTCHA challenge, which cannot be automated. For search results, consider using DuckDuckGo HTML: https://html.duckduckgo.com/html/?q=your+search+terms"
+                    ),
                 )
             
             # Truncate to 40k characters (matching current fetch_url behavior)
@@ -230,6 +250,6 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
                 pass  # Ignore errors if already closed
         return (
             url,
-            f"<html><body><h1>Error: {error_type}</h1><p>{str(e)}</p></body></html>",
+            format_error_html(error_type, str(e)),
         )
 

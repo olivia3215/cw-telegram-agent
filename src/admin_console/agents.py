@@ -296,7 +296,7 @@ def api_recent_conversations():
     try:
         from db import agent_activity
         from agent import get_agent_for_id
-        from telegram_util import get_channel_name
+        from utils.telegram import get_channel_name
         
         # Get recent activities from database
         activities = agent_activity.get_recent_activity(limit=20)

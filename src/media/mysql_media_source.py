@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from media.media_source import MediaSource
+from media.sources.base import MediaSource
 
 logger = logging.getLogger(__name__)
 

@@ -2,6 +2,84 @@
 
 This document describes the high-level architecture of the Telegram agent, with specific attention to how we build prompts for Gemini and how message/Media context flows through the system.
 
+## Table of Contents
+
+- [High-level data flow](#high-level-data-flow)
+- [Prompt structure (Gemini)](#prompt-structure-gemini)
+  - [History ordering and target message](#history-ordering-and-target-message)
+  - [Parts model (per message)](#parts-model-per-message)
+  - [Speaker & trace metadata](#speaker--trace-metadata)
+- [Task Graph Lifecycle](#task-graph-lifecycle)
+  - [Replanning Semantics](#replanning-semantics)
+  - [Callout vs Regular Tasks](#callout-vs-regular-tasks)
+  - [Task Dependencies and Failure Handling](#task-dependencies-and-failure-handling)
+  - [Task Types and Special Handling](#task-types-and-special-handling)
+- [Retrieval Augmentation Architecture](#retrieval-augmentation-architecture)
+  - [Overview](#overview)
+  - [Retrieve Task Processing](#retrieve-task-processing)
+  - [Retrieval Loop](#retrieval-loop)
+  - [URL Fetching](#url-fetching)
+  - [Loop Control](#loop-control)
+  - [Retrieve.md Prompt](#retrievemd-prompt)
+  - [Security Considerations](#security-considerations)
+  - [Integration with LLM Loop](#integration-with-llm-loop)
+- [Media Description Architecture](#media-description-architecture)
+  - [MediaSource Abstraction](#mediasource-abstraction)
+  - [Core Source Types](#core-source-types)
+  - [Chain Structure](#chain-structure)
+  - [Directory Hierarchy](#directory-hierarchy)
+  - [Budget System](#budget-system)
+  - [Curated Descriptions](#curated-descriptions)
+  - [Known Issues](#known-issues)
+- [Sticker System Architecture](#sticker-system-architecture)
+  - [Multi-Set Configuration](#multi-set-configuration)
+  - [Resolution Strategy](#resolution-strategy)
+- [Caching Strategy](#caching-strategy)
+  - [Cache Types and TTLs](#cache-types-and-ttls)
+- [Error Recovery](#error-recovery)
+  - [Retry Logic](#retry-logic)
+  - [Failure Scenarios](#failure-scenarios)
+- [Concurrency Model](#concurrency-model)
+  - [Architecture](#architecture)
+  - [Coordination](#coordination)
+- [LLM Integration Details](#llm-integration-details)
+  - [System Instruction Handling](#system-instruction-handling)
+  - [System Prompt Assembly Order](#system-prompt-assembly-order)
+  - [Plan Task Processing Flow](#plan-task-processing-flow)
+  - [Role Prompts Architecture](#role-prompts-architecture)
+  - [LLM Routing](#llm-routing)
+  - [Channel-Specific LLM Model Override](#channel-specific-llm-model-override)
+  - [Role Mapping](#role-mapping)
+  - [API Compatibility](#api-compatibility)
+- [Script Management System](#script-management-system)
+  - [Architecture](#architecture-1)
+  - [Shared Library (`scripts/lib.sh`)](#shared-library-scriptslibsh)
+  - [Callback System](#callback-system)
+  - [Service Script Pattern](#service-script-pattern)
+  - [Wrapper Scripts](#wrapper-scripts)
+  - [Benefits](#benefits)
+  - [Adding New Services](#adding-new-services)
+- [Memory System Architecture](#memory-system-architecture)
+  - [Memory File Structure](#memory-file-structure)
+  - [Remember Task Processing](#remember-task-processing)
+  - [Memory Integration in Prompts](#memory-integration-in-prompts)
+  - [Memory Loading and Caching](#memory-loading-and-caching)
+  - [Memory File Format](#memory-file-format)
+  - [Config Directory Tracking](#config-directory-tracking)
+  - [Memory Guidelines for Agents](#memory-guidelines-for-agents)
+  - [Privacy and Security Considerations](#privacy-and-security-considerations)
+- [Schedule System Architecture](#schedule-system-architecture)
+  - [Overview](#overview-1)
+  - [Schedule Structure](#schedule-structure)
+  - [Responsiveness and Delays](#responsiveness-and-delays)
+  - [Schedule Extension](#schedule-extension)
+  - [Integration with Message Processing](#integration-with-message-processing)
+- [Admin Console & Puppet Master](#admin-console--puppet-master)
+  - [Login and configuration flow](#login-and-configuration-flow)
+  - [OTP / verification model](#otp--verification-model)
+
+---
+
 ## High-level data flow
 
 1. **Inbound message (Telegram)** → `handlers/received.py`
@@ -484,7 +562,7 @@ The system prompt is built in `handlers/received_helpers/prompt_builder.py` via 
      - **2b. Intentions Section** (combines Channel Plan + Intentions):
        - **Channel Plan** (`# Channel Plan`) - comes first
          - This is where `plan` task contents go
-         - Loaded from `state/{AgentName}/memory/{channel_id}.json` (property: `plan`)
+         - Loaded from MySQL `plans` table
          - Contains plan entries created via `plan` tasks
          - Processed by `handlers/plan.py` → stored via `process_property_entry_task()` with `property_name="plan"`
          - Formatted as JSON code block
@@ -558,11 +636,12 @@ After the system prompt, the conversation history is added (processed messages i
 
 **Question:** Where do the contents of `plan` tasks go?
 
-**Answer:** Plan task contents are stored in channel memory files and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
+**Answer:** Plan task contents are stored in MySQL and included in the **Intentions Section** (step 2b) of the system prompt, specifically under the `# Channel Plan` subsection, which appears **before** the `# Intentions` subsection.
 
 **Storage Location:**
 - **MySQL:** `plans` table (columns: `id`, `agent_telegram_id`, `channel_id`, `content`, `created`, `metadata`)
 - **Storage:** Via `handlers/plan.py` → `_process_plan_task()` → `process_property_entry_task()` with `property_name="plan"`
+- Plans persist across agent restarts (stored in MySQL)
 
 **Processing Flow:**
 1. LLM generates a `plan` task in its response
@@ -584,7 +663,6 @@ Each plan entry typically contains:
 **Access:**
 - Plans can be viewed/edited via the admin console (`/api/agents/{agent_name}/plans/{user_id}`)
 - Plans are automatically included in every system prompt for that channel
-- Plans persist across agent restarts (stored in JSON files)
 
 ### Role Prompts Architecture
 
@@ -636,17 +714,18 @@ The system routes LLM requests based on the `LLM` field in agent configuration:
 
 ### Channel-Specific LLM Model Override
 
-Agents can override the default LLM model for specific channels using the `llm_model` property in channel memory files.
+Agents can override the default LLM model for specific channels using the `llm_model` property stored in MySQL.
 
-**Location:** Stored in MySQL. Channel memory files in `{statedir}/{agent_name}/memory/{channel_id}.json` are used for `llm_model` overrides only.
+**Location:** Stored in MySQL `conversation_llm_overrides` table.
 
 **Configuration:**
 - The `llm_model` property specifies which LLM model to use for that specific channel
 - Can be a provider name (`"gemini"`, `"grok"`) or a specific model name
 - Overrides the agent's default LLM when processing `received` tasks for that channel
+- Can be set via the admin console or programmatically
 
 **Precedence:**
-1. Channel-specific LLM model (from channel memory file)
+1. Channel-specific LLM model (from MySQL `conversation_llm_overrides` table)
 2. Agent's default LLM (from agent configuration)
 
 **Use cases:**
@@ -841,22 +920,17 @@ state/
 ```
 
 **Storage Backend:**
-The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
+The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity, curated memories, channel metadata). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
 
-- **Config memories** (`configdir/agents/AgentName/memory/UserID.json`): Manually curated memories that can be created and edited by hand (filesystem only)
-- **State memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations
-- **Channel memory files** (`state/AgentName/memory/{channel_id}.json`): Used only for LLM model overrides (filesystem only)
+- **Curated memories** (MySQL `curated_memories` table): Manually curated memories that are visible only when chatting with a given user. Can be created and edited via the admin console.
+- **Global memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations, visible during all conversations.
+- **Channel metadata** (MySQL `conversation_llm_overrides` table): Channel-specific LLM model overrides
 - **Plans and summaries** (MySQL `plans` and `summaries` tables): Channel-specific plans and summaries
 
-**Global Memory Design:**
+**Memory Design:**
 - Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
-- Curated memories that are visible only when chatting with a given user are in the manually created memory files `configdir/agents/AgentName/memory/UserID.json` where UserID is the unique ID assigned by Telegram to the conversation partner (filesystem only).
+- Curated memories that are visible only when chatting with a given user are stored in MySQL `curated_memories` table and can be managed via the admin console.
 - Memories produced by the agent are stored in the MySQL `memories` table and are visible by the agent during all conversations.
-
-**Channel Memory Files:**
-- Store channel-specific LLM model overrides (via `llm_model` property) - filesystem only
-- Filesystem location: `{statedir}/{agent_name}/memory/{channel_id}.json`
-- Plans and summaries are stored in MySQL (`plans` and `summaries` tables)
 
 ### Remember Task Processing
 
@@ -961,6 +1035,94 @@ The Memory role prompt teaches agents what to remember and what to avoid:
 - **Selective memory**: Agents are instructed to be selective about what they remember to respect privacy
 - **Manual curation**: Config memories allow manual review and editing of important information
 - **Global persistence**: Memories persist across all conversations with the same user, enabling better relationship building
+
+## Schedule System Architecture
+
+The schedule system enables agents to have realistic daily routines with varying responsiveness levels throughout the day. This creates more natural conversation patterns where agents respond quickly during active hours and more slowly (or not at all) during sleep or low-activity periods.
+
+### Overview
+
+Agents can be configured with a `daily_schedule_description` that describes their typical daily routine. The system:
+
+1. **Maintains a schedule** of activities with start/end times and responsiveness levels
+2. **Calculates delays** based on current activity's responsiveness
+3. **Extends schedules** automatically when they run low (less than 2 days remaining)
+4. **Integrates with message processing** to apply delays before responding
+
+The schedule is stored in MySQL (via `agent.storage`) and can be extended by the LLM using the `schedule` task type.
+
+### Schedule Structure
+
+A schedule consists of a list of activities, each with:
+
+- **`id`**: Unique identifier for the activity
+- **`start_time`** / **`end_time`**: Timezone-aware datetime boundaries
+- **`activity_name`**: Human-readable name (e.g., "Sleep", "Work", "Lunch")
+- **`responsiveness`**: Integer 0-100 indicating how quickly the agent should respond
+  - `100`: Maximum responsiveness (minimal delay)
+  - `1`: Minimum responsiveness (maximum delay)
+  - `0`: Asleep (delays until wake time)
+- **`description`**: Detailed description including context (foods, work details, location, etc.)
+
+Schedules are timezone-aware and activities must not overlap. The system finds the current activity by checking if the current time falls between an activity's start and end times.
+
+### Responsiveness and Delays
+
+When processing a `received` task, the system calculates a responsiveness-based delay:
+
+1. **Get current activity**: Finds the activity that matches the current time
+2. **Calculate delay**:
+   - If `responsiveness <= 0` and there's a wake time: delay until wake time
+   - Otherwise: linear interpolation between 4 seconds (responsiveness 100) and 120 seconds (responsiveness 1)
+3. **Create wait task**: A `wait` task is created with the calculated delay
+4. **Block processing**: The `received` task depends on the wait task, preventing message processing until the delay completes
+
+**Delay Formula:**
+```
+delay = 4 + (100 - responsiveness) * 116 / 99
+```
+
+This ensures:
+- Highly responsive activities (100) → 4 second delay
+- Low responsiveness activities (1) → 120 second (2 minute) delay
+- Asleep (0) → delay until next activity with responsiveness > 0
+
+**Important behaviors:**
+- `xsend` tasks bypass responsiveness delays (immediate sending)
+- If the agent was already online, responsiveness delays are skipped
+- Messages are not marked as read until after the responsiveness delay completes
+
+### Schedule Extension
+
+Schedules are automatically extended when they have less than 2 days remaining:
+
+1. **Trigger**: During `received` task processing, if `days_remaining(schedule) < 2`
+2. **LLM query**: Uses `Instructions-Schedule.md` prompt template with:
+   - Agent's typical schedule description
+   - Recent activities (last 3 days) for context
+   - Start date (end of existing schedule or now)
+   - End date (midnight of day after next, ensuring at least 1 full day of coverage)
+3. **Task execution**: LLM returns `schedule` tasks (and optional `think` tasks)
+4. **Storage**: Schedule tasks update the agent's schedule in MySQL
+5. **Logging**: System logs how many days remain after extension
+
+The extension process uses the same task parsing and execution system as regular message processing, ensuring consistency.
+
+### Integration with Message Processing
+
+The schedule system integrates with the `received` task handler:
+
+1. **Before processing**: Check if responsiveness delay is needed
+   - If delay task exists but isn't complete → reset task to PENDING and return early
+   - If no delay task and delay is needed → create wait task and return early
+2. **After processing**: Check if schedule extension is needed
+   - If `days_remaining < 2` → trigger extension (async, doesn't block)
+3. **Read acknowledgment**: Only mark messages as read after responsiveness delay completes
+
+This ensures that:
+- Agents don't appear to respond instantly during low-responsiveness periods
+- Schedule extension happens in the background without blocking message processing
+- The system maintains realistic timing based on the agent's current activity
 
 ## Admin Console & Puppet Master
 

@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 from typing import Dict, Tuple
 
-from .media_source import DirectoryMediaSource
+from .sources.directory import DirectoryMediaSource
 
 _registry_lock = threading.RLock()
 _directory_sources: Dict[Path, DirectoryMediaSource] = {}

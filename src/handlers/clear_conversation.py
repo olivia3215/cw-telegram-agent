@@ -12,7 +12,7 @@ from agent import Agent, get_agent_for_id
 from config import STATE_DIRECTORY
 from memory_storage import mutate_property_entries
 from task_graph import TaskGraph, TaskNode
-from telegram_util import get_channel_name, is_dm
+from utils.telegram import get_channel_name, is_dm
 from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)

@@ -506,13 +506,13 @@ Agents automatically remember important details about people they chat with usin
 
 ### Creating Curated Memories
 
-You can manually create curated memories that are only remembered when the agent is in a direct chat with specific users by creating memory files in your agent's config directory. These memories are included along with automatically created ones and are perfect for important information you want to ensure the agent always remembers.
+You can create curated memories that are only remembered when the agent is in a direct chat with specific users. These memories are stored in MySQL and can be managed via the admin console. They are included along with automatically created ones and are perfect for important information you want to ensure the agent always remembers.
 
-**Location**: `configdir/agents/AgentName/memory/UserID.json`
+**Location**: Stored in MySQL `curated_memories` table.
 
-**Example**: See `samples/agents/Heidi/memory/6754281260.json` for a sample curated memory file.
+**Management**: Use the admin console to create, edit, and delete curated memories for specific users.
 
-**Format**: Provide a JSON array of memory objects. At minimum each object needs a `content` field; other properties are optional.
+**Format**: Each memory object needs a `content` field; other properties (like `created`, `notes`) are optional.
 
 ```json
 [

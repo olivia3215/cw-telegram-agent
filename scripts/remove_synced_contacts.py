@@ -22,7 +22,7 @@ from telethon.tl.functions.contacts import ResetSavedRequest  # pyright: ignore[
 from agent import Agent, all_agents
 from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
-from telegram_util import get_puppet_master_client, get_telegram_client
+from telegram.client_factory import get_puppet_master_client, get_telegram_client
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

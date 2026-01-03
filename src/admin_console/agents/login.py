@@ -11,7 +11,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 
 from admin_console.helpers import get_agent_by_name
-from telegram_util import get_telegram_client
+from telegram.client_factory import get_telegram_client
 
 logger = logging.getLogger(__name__)
 

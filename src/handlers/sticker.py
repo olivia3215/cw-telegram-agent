@@ -11,6 +11,7 @@ from telethon.tl.types import InputStickerSetShortName
 
 from agent import Agent, get_agent_for_id
 from utils import coerce_to_int
+from utils.ids import ensure_int_id
 from task_graph import TaskGraph, TaskNode
 from handlers.registry import register_task_handler
 
@@ -72,10 +73,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         file = await _resolve_sticker_doc_in_set(client, set_short, sticker_name)
 
     # Convert channel_id to integer and resolve entity
-    try:
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        channel_id_int = channel_id
+    channel_id_int = ensure_int_id(channel_id)
 
     # Get the entity first to ensure it's resolved (important for channels)
     entity = await agent.get_cached_entity(channel_id_int)

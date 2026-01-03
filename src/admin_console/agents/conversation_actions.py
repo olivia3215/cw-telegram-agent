@@ -23,8 +23,10 @@ from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
 from telepathic import TELEPATHIC_PREFIXES
 
-# Import markdown_to_html and placeholder functions from conversation module - use importlib to avoid relative import issues when loaded via importlib
+# Import markdown_to_html and placeholder functions from conversation module
+# Use importlib since this module is loaded dynamically by conversation.py
 import importlib.util
+from pathlib import Path
 _conversation_path = Path(__file__).parent / "conversation.py"
 _conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
 _conversation_mod = importlib.util.module_from_spec(_conversation_spec)
@@ -596,7 +598,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                 entity_from_agent = await agent_client.get_entity(resolved_channel_id)
                 
                 # Import is_dm to check if this is a DM
-                from telegram_util import is_dm
+                from utils.telegram import is_dm
                 
                 is_direct_message = is_dm(entity_from_agent)
                 return is_direct_message, entity_from_agent

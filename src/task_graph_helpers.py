@@ -10,7 +10,8 @@ from typing import Dict
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
-from telegram_util import get_channel_name, is_group_or_channel
+from utils.telegram import get_channel_name, is_group_or_channel
+from utils.ids import ensure_int_id
 
 logger = logging.getLogger(__name__)
 
@@ -139,13 +140,8 @@ async def insert_received_task_for_conversation(
     preserved_tasks = []
     # Find the existing graph for this conversation
     # Convert to ints for comparison (graph_for_conversation expects ints)
-    try:
-        agent_id_int = int(recipient_id)
-        channel_id_int = int(channel_id)
-    except (ValueError, TypeError):
-        # If conversion fails, use as-is (shouldn't happen, but be defensive)
-        agent_id_int = recipient_id
-        channel_id_int = channel_id
+    agent_id_int = ensure_int_id(recipient_id)
+    channel_id_int = ensure_int_id(channel_id)
 
     lock = await _get_lock_for_conversation(agent_id_int, channel_id_int)
     async with lock:

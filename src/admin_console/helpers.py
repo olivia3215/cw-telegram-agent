@@ -367,7 +367,7 @@ async def _populate_user_cache_from_groups(agent: Agent) -> None:
         agent: The agent instance
     """
     from clock import clock
-    from telegram_util import is_group_or_channel
+    from utils.telegram import is_group_or_channel
     
     agent_name = agent.name
     now = clock.now(UTC)

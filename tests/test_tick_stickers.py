@@ -59,7 +59,7 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     )
 
     # Build a graph context like runtime does
-    graph = TaskGraph(id="g1", context={"agent_id": "agent-1", "channel_id": "chat-1"})
+    graph = TaskGraph(id="g1", context={"agent_id": "agent-1", "channel_id": 123})
 
     # Task explicitly specifies a non-canonical set
     task = TaskNode(
@@ -72,5 +72,5 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     await handle_sticker.handle_sticker(task, graph)
 
     # Assert: we sent a sticker file (from CINDYAI via resolver), not a fallback text
-    assert agent.client.sent_files == [("chat-1", fake_doc, "sticker", None)]
+    assert agent.client.sent_files == [(123, fake_doc, "sticker", None)]
     assert agent.client.sent_messages == []

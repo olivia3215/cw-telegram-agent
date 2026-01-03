@@ -75,12 +75,10 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."
 
-    # Import the module where download_media_bytes is actually used
-    import media.media_source as media_source
-
-    monkeypatch.setattr(
-        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
-    )
+        # Patch download_media_bytes where it's used (in ai_generating module)
+        monkeypatch.setattr(
+            "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
+        )
 
     # Create a media source chain with budget management
     ai_cache_dir = tmp_path / "media"
@@ -98,7 +96,7 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     reset_description_budget(1)
 
     # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
         # Act
         result1 = await media_chain.get(
             unique_id="uid-1", agent=agent, doc=SimpleNamespace(uid="uid-1"), kind="photo"
@@ -311,12 +309,10 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."
 
-    # Import the module where download_media_bytes is actually used
-    import media.media_source as media_source
-
-    monkeypatch.setattr(
-        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
-    )
+        # Patch download_media_bytes where it's used (in ai_generating module)
+        monkeypatch.setattr(
+            "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
+        )
 
     # Create AI cache directory and sources
     ai_cache_dir = tmp_path / "media"
@@ -337,7 +333,7 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     reset_description_budget(1)
 
     # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
         # Act: Generate a description through the AI chain
         result = await ai_chain.get(
             unique_id="test-uid-123",
@@ -380,12 +376,6 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
         download_calls.append(doc)
         return b"\x89PNG..."
 
-    import media.media_source as media_source
-
-    monkeypatch.setattr(
-        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
-    )
-
     # Create AI cache directory and sources
     ai_cache_dir = tmp_path / "media"
     ai_cache_dir.mkdir()
@@ -404,8 +394,10 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
     # Budget = 0 (exhausted)
     reset_description_budget(0)
 
-    # Mock get_media_llm to return our fake LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
+    # Mock get_media_llm and download_media_bytes (used in both ai_chain and ai_generating)
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), \
+         patch("media.sources.ai_chain.download_media_bytes", side_effect=_fake_download_media_bytes), \
+         patch("media.sources.ai_generating.download_media_bytes", side_effect=_fake_download_media_bytes):
         # Act: Try to get description when budget is exhausted
         doc = SimpleNamespace(uid="budget-exhausted-uid", mime_type="image/png")
         result = await ai_chain.get(
@@ -482,10 +474,9 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
         download_calls.append((client, doc))
         return b"downloaded content (should not be called)"
     
-    import media.media_source as media_source
-    
+    # Patch where download_media_bytes is actually used
     monkeypatch.setattr(
-        media_source, "download_media_bytes", _fake_download_media_bytes, raising=True
+        "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
     )
     
     # Create AIGeneratingMediaSource with the cache directory
@@ -495,8 +486,8 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
     doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
     
     # Mock get_media_llm to return our tracking LLM
-    with patch("media.media_source.get_media_llm", return_value=llm):
-        with patch("media.media_source.detect_mime_type_from_bytes", return_value="image/png"):
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm):
+        with patch("media.mime_utils.detect_mime_type_from_bytes", return_value="image/png"):
             # Act: Request description - should use cached file, not download
             result = await source.get(
                 unique_id=unique_id,

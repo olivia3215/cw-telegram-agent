@@ -12,6 +12,37 @@ from task_graph import TaskGraph, TaskNode
 logger = logging.getLogger(__name__)
 
 
+def is_retryable_llm_error(error: Exception) -> bool:
+    """
+    Determine if an LLM error is temporary and should be retried.
+    
+    Returns True for temporary errors (503, rate limits, timeouts), False for permanent errors.
+    
+    Args:
+        error: Exception raised by LLM call
+        
+    Returns:
+        True if error is retryable, False otherwise
+    """
+    error_str = str(error).lower()
+
+    # Temporary errors that should be retried
+    retryable_indicators = [
+        "503",  # Service Unavailable
+        "overloaded",  # Model overloaded
+        "try again later",  # Generic retry message
+        "rate limit",  # Rate limiting
+        "quota exceeded",  # Quota issues
+        "timeout",  # Timeout errors
+        "connection",  # Connection issues
+        "temporary",  # Generic temporary error
+        "prohibited content",  # Content safety filter - treat as retryable
+        "retrieval",  # Retrieval augmentation - treat as retryable
+    ]
+
+    return any(indicator in error_str for indicator in retryable_indicators)
+
+
 def get_channel_llm(agent, channel_id: int):
     """
     Get the appropriate LLM instance for a channel, using channel-specific override if available.
@@ -52,7 +83,7 @@ async def run_llm_with_retrieval(
     graph: TaskGraph,
     parse_llm_reply_fn,  # Function to parse LLM reply: async def parse_llm_reply(...) -> list[TaskNode]
     process_retrieve_tasks_fn,  # Function to process retrieve tasks
-    is_retryable_llm_error_fn,  # Function to check if error is retryable
+    is_retryable_llm_error_fn=None,  # Function to check if error is retryable (defaults to module function)
 ) -> list[TaskNode]:
     """
     Run LLM query with retrieval augmentation support.
@@ -69,7 +100,7 @@ async def run_llm_with_retrieval(
         graph: Task graph for error handling
         parse_llm_reply_fn: Function to parse LLM reply
         process_retrieve_tasks_fn: Function to process retrieve tasks
-        is_retryable_llm_error_fn: Function to check if error is retryable
+        is_retryable_llm_error_fn: Optional function to check if error is retryable (defaults to module function)
     
     Returns:
         List of TaskNode objects parsed from the LLM response.
@@ -133,12 +164,14 @@ async def run_llm_with_retrieval(
             timeout_s=None,
         )
     except Exception as e:
-        if is_retryable_llm_error_fn(e):
+        # Use module-level function if not provided
+        check_retryable = is_retryable_llm_error_fn if is_retryable_llm_error_fn is not None else is_retryable_llm_error
+        if check_retryable(e):
             logger.warning(f"[{agent.name}] LLM temporary failure, will retry: {e}")
             several = 15
             wait_task = task.insert_delay(graph, several)
             logger.info(
-            f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
+                f"[{agent.name}] Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
             )
             raise
         else:
