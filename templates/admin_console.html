@@ -2913,6 +2913,54 @@
         document.getElementById('conversations-agent-select')?.addEventListener('change', (e) => {
             const agentName = stripAsterisk(e.target.value);
             
+            // Clear all conversation content containers when agent changes
+            const conversationContainer = document.getElementById('conversation-container');
+            if (conversationContainer) {
+                conversationContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+            }
+            
+            const curatedMemoriesContainer = document.getElementById('curated-memories-conv-container');
+            if (curatedMemoriesContainer) {
+                curatedMemoriesContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+            }
+            
+            const conversationLLMContainer = document.getElementById('conversation-llm-container');
+            if (conversationLLMContainer) {
+                conversationLLMContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+            }
+            
+            const plansContainer = document.getElementById('plans-container');
+            if (plansContainer) {
+                plansContainer.innerHTML = '';
+            }
+            
+            const xsendContainer = document.getElementById('xsend-container');
+            if (xsendContainer) {
+                // Reset xsend container to initial state: show loading, hide content
+                const loadingDiv = xsendContainer.querySelector('.loading');
+                if (loadingDiv) {
+                    loadingDiv.style.display = 'block';
+                    const xsendContent = document.getElementById('xsend-content');
+                    if (xsendContent) {
+                        xsendContent.style.display = 'none';
+                    }
+                } else {
+                    // If loading div doesn't exist (edge case), restore initial structure
+                    xsendContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div><div style="margin-top: 16px; display: none;" id="xsend-content"><div class="directory-selector"><label for="xsend-intent-textarea">Intent:</label><br><textarea id="xsend-intent-textarea" placeholder="Enter the intent message..." style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea></div><div style="margin-top: 16px;"><button onclick="sendXSend()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">XSend</button><div id="xsend-status" style="margin-top: 8px; font-size: 14px;"></div></div></div>';
+                }
+            }
+            
+            // Clear partner select and user ID input
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            if (partnerSelect) {
+                partnerSelect.innerHTML = '<option value="">Choose a partner...</option>';
+            }
+            
+            const userIdInput = document.getElementById('conversations-user-id');
+            if (userIdInput) {
+                userIdInput.value = '';
+            }
+            
             // Synchronize with agents agent select
             const agentsSelect = document.getElementById('agents-agent-select');
             const agentsValue = agentsSelect ? stripAsterisk(agentsSelect.value) : '';
