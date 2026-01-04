@@ -2970,6 +2970,12 @@
                 userIdInput.value = '';
             }
             
+            // Clear recent conversations select
+            const recentConversationsSelect = document.getElementById('recent-conversations-select');
+            if (recentConversationsSelect) {
+                recentConversationsSelect.innerHTML = '<option value="">Select a recent conversation...</option>';
+            }
+            
             // Synchronize with agents agent select
             const agentsSelect = document.getElementById('agents-agent-select');
             const agentsValue = agentsSelect ? stripAsterisk(agentsSelect.value) : '';
