@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingIm
 from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import STATE_DIRECTORY
+from config import STATE_DIRECTORY, TELEGRAM_SYSTEM_USER_ID
 from utils import normalize_peer_id
 
 logger = logging.getLogger(__name__)
@@ -323,8 +323,16 @@ def register_partner_routes(agents_bp: Blueprint):
                         }
 
             # Convert to list, keeping datetime objects for sorting
+            # Filter out Telegram system user (777000) - should never be shown as a conversation partner
             partner_list_with_dates = []
             for user_id, info in partners_dict.items():
+                # Skip Telegram system user ID
+                try:
+                    user_id_int = int(user_id)
+                    if user_id_int == TELEGRAM_SYSTEM_USER_ID:
+                        continue
+                except (ValueError, TypeError):
+                    pass  # If user_id can't be parsed as int, include it (shouldn't happen, but be safe)
                 partner_list_with_dates.append({
                     "user_id": user_id,
                     "name": info["name"],

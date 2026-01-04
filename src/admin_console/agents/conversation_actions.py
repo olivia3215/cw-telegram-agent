@@ -432,6 +432,11 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                 channel_id = int(user_id)
             except ValueError:
                 return jsonify({"error": "Invalid user ID"}), 400
+            
+            # Reject Telegram system user ID (777000) - should never be used as a conversation partner
+            from config import TELEGRAM_SYSTEM_USER_ID
+            if channel_id == TELEGRAM_SYSTEM_USER_ID:
+                return jsonify({"error": f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner"}), 400
 
             data = request.json
             intent = data.get("intent", "").strip()
