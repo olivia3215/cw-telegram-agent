@@ -324,17 +324,21 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     # Try to parse as integer (user ID or group/channel ID)
     # Telegram IDs can be positive (users) or negative (groups/channels)
     # Check if it's a valid integer (with optional minus sign) and not a phone number
+    parsed_id = None
     try:
         # If it starts with +, it's a phone number, not an ID
         if not user_id.startswith('+'):
             # Try to parse as integer - this handles both positive and negative IDs
             parsed_id = int(user_id)
-            # Also check the parsed ID in case it was entered with leading zeros or spaces
-            if parsed_id == TELEGRAM_SYSTEM_USER_ID:
-                raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
-            return parsed_id
     except (ValueError, AttributeError):
         pass
+    
+    # Check parsed ID for Telegram system user (outside try-except to prevent catching)
+    # This catches cases with leading zeros like "0777000" that parse to 777000
+    if parsed_id is not None:
+        if parsed_id == TELEGRAM_SYSTEM_USER_ID:
+            raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+        return parsed_id
     
     # If it's a phone number (starts with +) or username, we need the async function
     # This requires the Telegram client, so we need to check event loop
@@ -593,17 +597,21 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     # Try to parse as integer (user ID or group/channel ID)
     # Telegram IDs can be positive (users) or negative (groups/channels)
     # Check if it's a valid integer (with optional minus sign) and not a phone number
+    parsed_id = None
     try:
         # If it starts with +, it's a phone number, not an ID
         if not user_id.startswith('+'):
             # Try to parse as integer - this handles both positive and negative IDs
             parsed_id = int(user_id)
-            # Also check the parsed ID in case it was entered with leading zeros or spaces
-            if parsed_id == TELEGRAM_SYSTEM_USER_ID:
-                raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
-            return parsed_id
     except (ValueError, AttributeError):
         pass
+    
+    # Check parsed ID for Telegram system user (outside try-except to prevent catching)
+    # This catches cases with leading zeros like "0777000" that parse to 777000
+    if parsed_id is not None:
+        if parsed_id == TELEGRAM_SYSTEM_USER_ID:
+            raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+        return parsed_id
     
     # Check if it's a phone number (starts with + and the rest is all digits)
     if user_id.startswith('+') and user_id[1:].isdigit():

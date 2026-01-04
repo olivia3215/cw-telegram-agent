@@ -350,4 +350,24 @@ def test_resolve_user_id_rejects_telegram_system_user():
         resolve_user_id_to_channel_id_sync(mock_agent, str(TELEGRAM_SYSTEM_USER_ID))
 
 
+def test_resolve_user_id_rejects_telegram_system_user_with_leading_zeros():
+    """Test that resolve_user_id_to_channel_id_sync rejects user ID 777000 even with leading zeros."""
+    from unittest.mock import MagicMock
+    from admin_console.helpers import resolve_user_id_to_channel_id_sync
+    from config import TELEGRAM_SYSTEM_USER_ID
+    import pytest
+    
+    # Create a mock agent
+    mock_agent = MagicMock()
+    
+    # Should raise ValueError when trying to resolve with leading zeros (e.g., "0777000")
+    # This tests that the check happens after parsing, outside the try-except block
+    with pytest.raises(ValueError, match=f"User ID {TELEGRAM_SYSTEM_USER_ID}.*not allowed"):
+        resolve_user_id_to_channel_id_sync(mock_agent, "0777000")
+    
+    # Also test with multiple leading zeros
+    with pytest.raises(ValueError, match=f"User ID {TELEGRAM_SYSTEM_USER_ID}.*not allowed"):
+        resolve_user_id_to_channel_id_sync(mock_agent, "000777000")
+
+
 
