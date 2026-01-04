@@ -6,7 +6,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import pytest
+import pytest  # pyright: ignore[reportMissingImports]
 
 from task_graph import TaskGraph, TaskNode
 
