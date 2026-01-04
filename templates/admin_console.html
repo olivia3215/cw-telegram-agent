@@ -2840,11 +2840,8 @@
             const conversationsValue = conversationsSelect ? stripAsterisk(conversationsSelect.value) : '';
             if (conversationsSelect && conversationsValue !== agentName) {
                 conversationsSelect.value = agentName;
-                // If conversations tab is active, load conversation partners
-                const conversationsTab = document.querySelector('.tab-panel[data-tab-panel="conversations"]');
-                if (conversationsTab && conversationsTab.classList.contains('active') && agentName) {
-                    loadConversationPartners(agentName, 'conversations');
-                }
+                // Dispatch change event to trigger the change handler, which will clear containers and load partners
+                conversationsSelect.dispatchEvent(new Event('change'));
             }
             
             if (agentName) {
