@@ -151,14 +151,21 @@ def register_login_routes(agents_bp: Blueprint):
         try:
             status = _run_in_login_loop(submit_code())
             if status == "authenticated":
-                _run_in_login_loop(client.disconnect())
+                async def disconnect():
+                    await client.disconnect()
+                _run_in_login_loop(disconnect())
                 del _pending_logins[agent_config_name]
             else:
                 login_data['status'] = status
             return jsonify({"status": status})
         except Exception as e:
             logger.error(f"Error during sign-in for {agent_config_name}: {e}")
-            _run_in_login_loop(client.disconnect())
+            async def disconnect():
+                await client.disconnect()
+            try:
+                _run_in_login_loop(disconnect())
+            except Exception:
+                pass  # Ignore disconnect errors during error handling
             del _pending_logins[agent_config_name]
             return jsonify({"error": str(e)}), 500
 
@@ -182,14 +189,20 @@ def register_login_routes(agents_bp: Blueprint):
         async def submit_password():
             await client.sign_in(password=password)
 
+        async def disconnect():
+            await client.disconnect()
+        
         try:
             _run_in_login_loop(submit_password())
-            _run_in_login_loop(client.disconnect())
+            _run_in_login_loop(disconnect())
             del _pending_logins[agent_config_name]
             return jsonify({"status": "authenticated"})
         except Exception as e:
             logger.error(f"Error during password sign-in for {agent_config_name}: {e}")
-            _run_in_login_loop(client.disconnect())
+            try:
+                _run_in_login_loop(disconnect())
+            except Exception:
+                pass  # Ignore disconnect errors during error handling
             del _pending_logins[agent_config_name]
             return jsonify({"error": str(e)}), 500
 
@@ -198,6 +211,11 @@ def register_login_routes(agents_bp: Blueprint):
         """Cancel pending login."""
         if agent_config_name in _pending_logins:
             client = _pending_logins[agent_config_name]['client']
-            _run_in_login_loop(client.disconnect())
+            async def disconnect():
+                await client.disconnect()
+            try:
+                _run_in_login_loop(disconnect())
+            except Exception:
+                pass  # Ignore disconnect errors when canceling
             del _pending_logins[agent_config_name]
         return jsonify({"success": True})

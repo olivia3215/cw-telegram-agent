@@ -381,7 +381,20 @@ async def authenticate_agent(agent: Agent):
         # Handle "database is locked" error gracefully - it usually means the agent
         # is already authenticated or the session file is in use by another process
         try:
-            await client.start()
+            await client.start(phone=agent.phone)
+        except EOFError:
+            # EOFError occurs when client.start() tries to prompt for input in a non-interactive environment
+            # This is expected when the agent hasn't been authenticated yet - user should use admin console login
+            logger.debug(
+                f"[{agent.name}] Agent is not authenticated (no session file). "
+                "Use the admin console login flow to authenticate this agent."
+            )
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            agent.clear_client_and_caches()
+            return False
         except Exception as start_error:
             error_msg = str(start_error).lower()
             if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
@@ -480,8 +493,14 @@ async def run_telegram_loop(agent: Agent):
             # Need to authenticate - either first time or after disconnection
             auth_success = await authenticate_agent(agent)
             if not auth_success:
-                logger.error(f"[{agent.name}] Authentication failed, exiting.")
-                break
+                # Authentication failed - this is expected if the agent hasn't been authenticated yet
+                # Wait a bit and retry - the user might authenticate through the admin console
+                logger.debug(
+                    f"[{agent.name}] Authentication failed (agent may not be authenticated yet). "
+                    "Will retry in 30 seconds. Use the admin console login flow to authenticate this agent."
+                )
+                await clock.sleep(30)
+                continue  # Retry authentication instead of exiting
         else:
             # Client exists - ensure the loop is cached correctly
             # This is important if the client was authenticated in a temporary loop (e.g., via asyncio.run)
@@ -620,7 +639,16 @@ async def periodic_scan(agents, interval_sec):
     while True:
         logger.info("Scanning for changes...")
         for agent in agents:
-            if agent.client:  # Only scan if the client is connected
+            # Only scan if the client exists and is connected
+            if agent.client:
+                try:
+                    # Check if client is actually connected before scanning
+                    if not agent.client.is_connected():
+                        continue
+                except Exception:
+                    # If is_connected() raises an exception, the client is in a bad state - skip it
+                    continue
+                
                 try:
                     # Stagger scans between agents to avoid simultaneous GetHistoryRequest calls
                     # Use agent config name hash to create consistent but distributed delays

@@ -485,7 +485,13 @@ def register_configuration_routes(agents_bp: Blueprint):
                             except Exception as e:
                                 logger.warning(f"Error disconnecting client for disabled agent {agent_config_name}: {e}")
                         
-                        main_loop.call_soon_threadsafe(lambda: asyncio.create_task(disconnect_client()))
+                        def schedule_disconnect():
+                            try:
+                                main_loop.create_task(disconnect_client())
+                            except Exception as e:
+                                logger.warning(f"Error scheduling client disconnection for disabled agent {agent_config_name}: {e}")
+                        
+                        main_loop.call_soon_threadsafe(schedule_disconnect)
                         logger.info(f"Scheduled client disconnection for disabled agent {agent_config_name}")
                     else:
                         # No main loop found - run_telegram_loop will handle disconnection when it sees is_disabled
@@ -512,7 +518,9 @@ def register_configuration_routes(agents_bp: Blueprint):
                             # This avoids "database is locked" errors if client was created elsewhere
                             if not agent.client:
                                 try:
-                                    asyncio.create_task(run_telegram_loop(agent))
+                                    # Use loop.create_task() instead of asyncio.create_task()
+                                    # because we're in a synchronous callback scheduled on the loop
+                                    main_loop.create_task(run_telegram_loop(agent))
                                     logger.info(f"Scheduled run_telegram_loop for {agent_config_name}")
                                 except Exception as e:
                                     error_msg = str(e).lower()
