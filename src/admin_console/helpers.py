@@ -28,7 +28,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
-from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
+from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY, TELEGRAM_SYSTEM_USER_ID
 from media.media_sources import iter_directory_media_sources
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
@@ -316,6 +316,11 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
     user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
+    # Reject Telegram system user ID (777000) - should never be used as a conversation partner
+    # Check this early before any parsing
+    if user_id == str(TELEGRAM_SYSTEM_USER_ID):
+        raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+    
     # Try to parse as integer (user ID or group/channel ID)
     # Telegram IDs can be positive (users) or negative (groups/channels)
     # Check if it's a valid integer (with optional minus sign) and not a phone number
@@ -323,7 +328,11 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
         # If it starts with +, it's a phone number, not an ID
         if not user_id.startswith('+'):
             # Try to parse as integer - this handles both positive and negative IDs
-            return int(user_id)
+            parsed_id = int(user_id)
+            # Also check the parsed ID in case it was entered with leading zeros or spaces
+            if parsed_id == TELEGRAM_SYSTEM_USER_ID:
+                raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+            return parsed_id
     except (ValueError, AttributeError):
         pass
     
@@ -576,6 +585,11 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     # This allows inputs like "  123456789  " or "+1 234 567 890" to work correctly
     user_id = user_id.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
     
+    # Reject Telegram system user ID (777000) - should never be used as a conversation partner
+    # Check this early before any parsing
+    if user_id == str(TELEGRAM_SYSTEM_USER_ID):
+        raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+    
     # Try to parse as integer (user ID or group/channel ID)
     # Telegram IDs can be positive (users) or negative (groups/channels)
     # Check if it's a valid integer (with optional minus sign) and not a phone number
@@ -584,6 +598,9 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         if not user_id.startswith('+'):
             # Try to parse as integer - this handles both positive and negative IDs
             parsed_id = int(user_id)
+            # Also check the parsed ID in case it was entered with leading zeros or spaces
+            if parsed_id == TELEGRAM_SYSTEM_USER_ID:
+                raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
             return parsed_id
     except (ValueError, AttributeError):
         pass
@@ -605,6 +622,9 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         channel_id = getattr(entity, 'id', None)
         if channel_id is None:
             raise ValueError(f"Could not resolve phone number '{user_id}' to user ID")
+        # Reject Telegram system user ID (777000) - should never be used as a conversation partner
+        if channel_id == TELEGRAM_SYSTEM_USER_ID:
+            raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
         return channel_id
     
     # Not a numeric ID or phone number - try to resolve as username
@@ -620,6 +640,9 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     channel_id = getattr(entity, 'id', None)
     if channel_id is None:
         raise ValueError(f"Could not resolve username '{username}' to user ID")
+    # Reject Telegram system user ID (777000) - should never be used as a conversation partner
+    if channel_id == TELEGRAM_SYSTEM_USER_ID:
+        raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
     return channel_id
 
 

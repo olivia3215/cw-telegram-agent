@@ -117,6 +117,10 @@ SELECT_STICKER_DELAY: float = _parse_select_sticker_delay()
 DEFAULT_AGENT_LLM: str = os.environ.get("DEFAULT_AGENT_LLM", "gemini")
 
 
+# Telegram system user IDs (these should never be allowed as conversation partners)
+TELEGRAM_SYSTEM_USER_ID: int = 777000  # Telegram's official account (used for verification codes)
+
+
 # Fetched resource lifetime in seconds (how long to keep fetched web resources alive)
 FETCHED_RESOURCE_LIFETIME_SECONDS: int = 300  # 5 minutes
 
