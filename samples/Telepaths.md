@@ -10,7 +10,7 @@ Users generally seem to have positive IDs
 - 6754281260
 
 Groups generally seem to have negative IDs
-// - -1002100080800
+- -1002373207906
 
 ## How it works
 
@@ -19,6 +19,7 @@ When an agent is in a telepathic channel:
 * **Think tasks** are sent as `⟦think⟧` messages visible to all participants
 * **Remember tasks** are sent as `⟦remember⟧` messages visible to all participants  
 * **Retrieve tasks** are sent as `⟦retrieve⟧` messages visible to all participants
+* Other tasks, like `xsend`, `plan`, and `intend` are treated similarly
 * The agent cannot see its own telepathic messages, maintaining the illusion of telepathy
 
 ## Configuration
