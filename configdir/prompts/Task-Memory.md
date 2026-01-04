@@ -80,61 +80,8 @@ Good memory entries:
 ]
 ```
 
-```json
-[
-  {
-    "kind": "remember",
-    "content": "User is learning Spanish and wants to visit Mexico next year"
-  }
-]
-```
-
-```json
-[
-  {
-    "kind": "remember",
-    "content": "User has a golden retriever named Max who is 3 years old"
-  }
-]
-```
-
 ### Handling duplicates and consolidation
 
 If you detect that two memories carry the same information, delete the duplicate by reusing its `id` with an empty `content`:
 
-```json
-[
-  {
-    "kind": "remember",
-    "id": "memory-1234abcd",
-    "content": ""
-  }
-]
-```
-
 For consolidation, first remove the all but one of the fragments, then replace the final fragment with a richer entry:
-
-```json
-[
-  {
-    "kind": "remember",
-    "id": "memory-1234abcd",
-    "content": ""
-  },
-  {
-    "kind": "remember",
-    "id": "memory-5679efgh",
-    "content": ""
-  },
-  {
-    "kind": "remember",
-    "id": "memory-0123ijkl",
-    "content": ""
-  },
-  {
-    "kind": "remember",
-    "id": "memory-8432fhdn",
-    "content": "User's name is Jerry. He is 35 years old and lives on the west coast of the USA."
-  }
-]
-```

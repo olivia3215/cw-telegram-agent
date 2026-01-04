@@ -52,40 +52,11 @@ Plans are scoped to a specific channel (chat). Use them to coordinate multi-step
 
 ### Adding or updating a plan
 
-```json
-[
-  {
-    "kind": "plan",
-    "content": "Ask Srushti for an update on her AIML diploma progress after she finishes the current module."
-  }
-]
-```
-
 You can edit an existing plan by reusing its `id`:
-
-```json
-[
-  {
-    "kind": "plan",
-    "id": "plan-b6c9f1e0",
-    "content": "Confirm Wendy received the funding resources I promised and schedule a follow-up call."
-  }
-]
-```
 
 ### Removing a plan
 
-Use an empty `content` with the plan's `id`:
-
-```json
-[
-  {
-    "kind": "plan",
-    "id": "plan-b6c9f1e0",
-    "content": ""
-  }
-]
-```
+Use an empty `content` with the plan's `id` to delete that plan:
 
 ## Best Practices
 

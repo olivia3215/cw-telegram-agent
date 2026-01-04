@@ -8,13 +8,13 @@ import logging
 import os
 from datetime import UTC, datetime, timezone
 
-from telethon.errors.rpcerrorlist import (
+from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
     ChatWriteForbiddenError,
     PeerIdInvalidError,
     UserBannedInChannelError,
 )
-from telethon.tl.functions.messages import SetTypingRequest
-from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction
+from telethon.tl.functions.messages import SetTypingRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from clock import clock
@@ -228,6 +228,7 @@ async def run_tick_loop(
     tick_fn=run_one_tick,
 ):
     n = 0
+    logger.info("Tick loop started.")
     while True:
         try:
             n += 1
