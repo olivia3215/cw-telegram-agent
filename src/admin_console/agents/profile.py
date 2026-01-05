@@ -224,11 +224,7 @@ def register_profile_routes(agents_bp: Blueprint):
                     birthday_data = data["birthday"]
                     if birthday_data is None:
                         # Remove birthday - explicitly set to null
-                        try:
-                            await agent.client(UpdateBirthdayRequest(birthday=None))
-                        except Exception as e:
-                            logger.warning(f"Failed to remove birthday: {e}")
-                            # Don't fail the whole request if birthday removal fails
+                        await agent.client(UpdateBirthdayRequest(birthday=None))
                     elif isinstance(birthday_data, dict):
                         # Update birthday with provided data
                         day = birthday_data.get("day")
@@ -236,13 +232,9 @@ def register_profile_routes(agents_bp: Blueprint):
                         year = birthday_data.get("year")  # Can be None
                         
                         if day and month:
-                            try:
-                                await agent.client(UpdateBirthdayRequest(
-                                    birthday=Birthday(day=day, month=month, year=year)
-                                ))
-                            except Exception as e:
-                                logger.warning(f"Failed to update birthday: {e}")
-                                # Don't fail the whole request if birthday update fails
+                            await agent.client(UpdateBirthdayRequest(
+                                birthday=Birthday(day=day, month=month, year=year)
+                            ))
                 
                 # Return updated profile
                 me = await agent.client.get_me()
