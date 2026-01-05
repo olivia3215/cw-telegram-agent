@@ -216,10 +216,17 @@ def register_profile_routes(agents_bp: Blueprint):
                         pass
                 
                 # Update birthday if provided
-                birthday_data = data.get("birthday")
-                if birthday_data is not None:
-                    # birthday_data should be {day, month, year?} or null
-                    if isinstance(birthday_data, dict):
+                if "birthday" in data:
+                    birthday_data = data["birthday"]
+                    if birthday_data is None:
+                        # Remove birthday - explicitly set to null
+                        try:
+                            await agent.client(UpdateBirthdayRequest(birthday=None))
+                        except Exception as e:
+                            logger.warning(f"Failed to remove birthday: {e}")
+                            # Don't fail the whole request if birthday removal fails
+                    elif isinstance(birthday_data, dict):
+                        # Update birthday with provided data
                         day = birthday_data.get("day")
                         month = birthday_data.get("month")
                         year = birthday_data.get("year")  # Can be None
@@ -232,9 +239,6 @@ def register_profile_routes(agents_bp: Blueprint):
                             except Exception as e:
                                 logger.warning(f"Failed to update birthday: {e}")
                                 # Don't fail the whole request if birthday update fails
-                    elif birthday_data is None or birthday_data == "":
-                        # Remove birthday - this may not be supported by Telegram
-                        pass
                 
                 # Return updated profile
                 me = await agent.client.get_me()
