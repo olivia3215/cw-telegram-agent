@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import logging
+import math
 import threading
 from pathlib import Path
 
@@ -151,17 +152,21 @@ def parse_agent_markdown(path):
         # Parse LLM (optional field)
         llm_name = _norm_set(fields.get("LLM"))
 
-        # Parse Start Typing Delay (optional field - float, must be >= 0)
+        # Parse Start Typing Delay (optional field - float, must be between 1 and 3600)
         start_typing_delay = None
         start_typing_delay_str = _norm_set(fields.get("Start Typing Delay"))
         if start_typing_delay_str:
             try:
                 start_typing_delay_value = float(start_typing_delay_str)
-                if start_typing_delay_value >= 0:
+                if not math.isfinite(start_typing_delay_value):
+                    logger.warning(
+                        f"Agent config '{path.name}': Start Typing Delay must be a finite number (got {start_typing_delay_value}), ignoring"
+                    )
+                elif 1 <= start_typing_delay_value <= 3600:
                     start_typing_delay = start_typing_delay_value
                 else:
                     logger.warning(
-                        f"Agent config '{path.name}': Start Typing Delay must be >= 0 (got {start_typing_delay_value}), ignoring"
+                        f"Agent config '{path.name}': Start Typing Delay must be between 1 and 3600 seconds (got {start_typing_delay_value}), ignoring"
                     )
             except ValueError:
                 logger.warning(
@@ -174,11 +179,15 @@ def parse_agent_markdown(path):
         if typing_speed_str:
             try:
                 typing_speed_value = float(typing_speed_str)
-                if typing_speed_value >= 1:
+                if not math.isfinite(typing_speed_value):
+                    logger.warning(
+                        f"Agent config '{path.name}': Typing Speed must be a finite number (got {typing_speed_value}), ignoring"
+                    )
+                elif 1 <= typing_speed_value <= 1000:
                     typing_speed = typing_speed_value
                 else:
                     logger.warning(
-                        f"Agent config '{path.name}': Typing Speed must be >= 1 (got {typing_speed_value}), ignoring"
+                        f"Agent config '{path.name}': Typing Speed must be between 1 and 1000 characters per second (got {typing_speed_value}), ignoring"
                     )
             except ValueError:
                 logger.warning(

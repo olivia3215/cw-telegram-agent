@@ -154,11 +154,58 @@ You are a test agent.
     parsed = parse_agent_markdown(path)
     assert parsed is not None
     assert parsed.get("start_typing_delay") is None
-    assert "Start Typing Delay must be >= 0" in caplog.text
+    assert "must be between 1 and 3600 seconds" in caplog.text
 
 
-def test_parse_agent_with_start_typing_delay_zero(tmp_path: Path):
-    """Test that Start Typing Delay of 0 is accepted (minimum valid value)."""
+def test_parse_agent_with_start_typing_delay_over_limit(tmp_path: Path, caplog):
+    """Test that Start Typing Delay values over 3600 are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+3601
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("start_typing_delay") is None
+    assert "must be between 1 and 3600 seconds" in caplog.text
+
+
+def test_parse_agent_with_start_typing_delay_at_limit(tmp_path: Path):
+    """Test that Start Typing Delay of 3600 (maximum) is accepted."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+3600
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["start_typing_delay"] == 3600.0
+
+
+def test_parse_agent_with_start_typing_delay_zero(tmp_path: Path, caplog):
+    """Test that Start Typing Delay of 0 is rejected (minimum valid value is 1)."""
     md = """# Agent Name
 TestAgent
 
@@ -177,7 +224,31 @@ You are a test agent.
     path = _write(tmp_path, "agent.md", md)
     parsed = parse_agent_markdown(path)
     assert parsed is not None
-    assert parsed["start_typing_delay"] == 0.0
+    assert parsed.get("start_typing_delay") is None
+    assert "must be between 1 and 3600 seconds" in caplog.text
+
+
+def test_parse_agent_with_start_typing_delay_one(tmp_path: Path):
+    """Test that Start Typing Delay of 1 is accepted (minimum valid value)."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+1
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["start_typing_delay"] == 1.0
 
 
 def test_parse_agent_with_invalid_typing_speed_less_than_one(tmp_path: Path, caplog):
@@ -201,7 +272,7 @@ You are a test agent.
     parsed = parse_agent_markdown(path)
     assert parsed is not None
     assert parsed.get("typing_speed") is None
-    assert "Typing Speed must be >= 1" in caplog.text
+    assert "must be between 1 and 1000 characters per second" in caplog.text
 
 
 def test_parse_agent_with_typing_speed_zero(tmp_path: Path, caplog):
@@ -225,7 +296,7 @@ You are a test agent.
     parsed = parse_agent_markdown(path)
     assert parsed is not None
     assert parsed.get("typing_speed") is None
-    assert "Typing Speed must be >= 1" in caplog.text
+    assert "must be between 1 and 1000 characters per second" in caplog.text
 
 
 def test_parse_agent_with_typing_speed_one(tmp_path: Path):
@@ -249,6 +320,53 @@ You are a test agent.
     parsed = parse_agent_markdown(path)
     assert parsed is not None
     assert parsed["typing_speed"] == 1.0
+
+
+def test_parse_agent_with_typing_speed_over_limit(tmp_path: Path, caplog):
+    """Test that Typing Speed values over 1000 are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Typing Speed
+1001
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("typing_speed") is None
+    assert "must be between 1 and 1000 characters per second" in caplog.text
+
+
+def test_parse_agent_with_typing_speed_at_limit(tmp_path: Path):
+    """Test that Typing Speed of 1000 (maximum) is accepted."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Typing Speed
+1000
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["typing_speed"] == 1000.0
 
 
 def test_parse_agent_with_invalid_typing_speed_string(tmp_path: Path, caplog):
@@ -351,4 +469,100 @@ You are a test agent.
     # Empty fields should be normalized to None
     assert parsed.get("start_typing_delay") is None
     assert parsed.get("typing_speed") is None
+
+
+def test_parse_agent_with_infinity_start_typing_delay(tmp_path: Path, caplog):
+    """Test that infinity Start Typing Delay values are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+inf
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("start_typing_delay") is None
+    assert "must be a finite number" in caplog.text
+
+
+def test_parse_agent_with_nan_start_typing_delay(tmp_path: Path, caplog):
+    """Test that NaN Start Typing Delay values are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+nan
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("start_typing_delay") is None
+    assert "must be a finite number" in caplog.text
+
+
+def test_parse_agent_with_infinity_typing_speed(tmp_path: Path, caplog):
+    """Test that infinity Typing Speed values are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Typing Speed
+inf
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("typing_speed") is None
+    assert "must be a finite number" in caplog.text
+
+
+def test_parse_agent_with_nan_typing_speed(tmp_path: Path, caplog):
+    """Test that NaN Typing Speed values are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Typing Speed
+nan
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("typing_speed") is None
+    assert "must be a finite number" in caplog.text
 

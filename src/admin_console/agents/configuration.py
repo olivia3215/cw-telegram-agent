@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import math
 import shutil
 from pathlib import Path
 
@@ -463,8 +464,10 @@ def register_configuration_routes(agents_bp: Blueprint):
                 # Validate value
                 try:
                     start_typing_delay_value = float(start_typing_delay_str)
-                    if start_typing_delay_value < 0:
-                        return jsonify({"error": "Start Typing Delay must be >= 0"}), 400
+                    if not math.isfinite(start_typing_delay_value):
+                        return jsonify({"error": "Start Typing Delay must be a finite number (NaN and infinity are not allowed)"}), 400
+                    if start_typing_delay_value < 1 or start_typing_delay_value > 3600:
+                        return jsonify({"error": "Start Typing Delay must be between 1 and 3600 seconds"}), 400
                     fields["Start Typing Delay"] = str(start_typing_delay_value)
                 except ValueError:
                     return jsonify({"error": "Invalid Start Typing Delay value (must be a number)"}), 400
@@ -512,8 +515,10 @@ def register_configuration_routes(agents_bp: Blueprint):
                 # Validate value
                 try:
                     typing_speed_value = float(typing_speed_str)
-                    if typing_speed_value < 1:
-                        return jsonify({"error": "Typing Speed must be >= 1"}), 400
+                    if not math.isfinite(typing_speed_value):
+                        return jsonify({"error": "Typing Speed must be a finite number (NaN and infinity are not allowed)"}), 400
+                    if typing_speed_value < 1 or typing_speed_value > 1000:
+                        return jsonify({"error": "Typing Speed must be between 1 and 1000 characters per second"}), 400
                     fields["Typing Speed"] = str(typing_speed_value)
                 except ValueError:
                     return jsonify({"error": "Invalid Typing Speed value (must be a number)"}), 400
