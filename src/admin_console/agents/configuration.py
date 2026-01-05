@@ -82,6 +82,10 @@ def register_configuration_routes(agents_bp: Blueprint):
             # For explicit stickers, we want a list of "SET :: STICKER" strings
             formatted_explicit_stickers = [f"{s} :: {n}" for s, n in agent.explicit_stickers]
 
+            # Get typing behavior overrides (raw values, can be None)
+            start_typing_delay = agent._start_typing_delay if hasattr(agent, '_start_typing_delay') else None
+            typing_speed = agent._typing_speed if hasattr(agent, '_typing_speed') else None
+
             return jsonify({
                 "name": agent.name,
                 "phone": agent.phone,
@@ -97,6 +101,8 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "daily_schedule_description": agent.daily_schedule_description if hasattr(agent, 'daily_schedule_description') else None,
                 "reset_context_on_first_message": agent.reset_context_on_first_message,
                 "is_disabled": agent.is_disabled,
+                "start_typing_delay": start_typing_delay,
+                "typing_speed": typing_speed,
             })
         except Exception as e:
             logger.error(f"Error getting configuration for {agent_config_name}: {e}")
@@ -422,6 +428,104 @@ def register_configuration_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating reset context for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/start-typing-delay", methods=["PUT"])
+    def api_update_agent_start_typing_delay(agent_config_name: str):
+        """Update agent start typing delay override."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.config_directory:
+                return jsonify({"error": "Agent has no config directory"}), 400
+
+            data = request.json
+            start_typing_delay_str = data.get("start_typing_delay", "").strip()
+
+            # Find agent's markdown file
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            if not agent_file.exists():
+                return jsonify({"error": "Agent configuration file not found"}), 404
+
+            # Read and parse the markdown file
+            content = agent_file.read_text(encoding="utf-8")
+            from register_agents import extract_fields_from_markdown
+            fields = extract_fields_from_markdown(content)
+
+            # Update Start Typing Delay field
+            if not start_typing_delay_str or start_typing_delay_str == "None":
+                if "Start Typing Delay" in fields:
+                    del fields["Start Typing Delay"]
+                start_typing_delay_value = None
+            else:
+                # Validate value
+                try:
+                    start_typing_delay_value = float(start_typing_delay_str)
+                    if start_typing_delay_value < 0:
+                        return jsonify({"error": "Start Typing Delay must be >= 0"}), 400
+                    fields["Start Typing Delay"] = str(start_typing_delay_value)
+                except ValueError:
+                    return jsonify({"error": "Invalid Start Typing Delay value (must be a number)"}), 400
+
+            _write_agent_markdown(agent, fields)
+
+            # Update agent's start typing delay in place
+            agent._start_typing_delay = start_typing_delay_value
+
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating start typing delay for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/typing-speed", methods=["PUT"])
+    def api_update_agent_typing_speed(agent_config_name: str):
+        """Update agent typing speed override."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.config_directory:
+                return jsonify({"error": "Agent has no config directory"}), 400
+
+            data = request.json
+            typing_speed_str = data.get("typing_speed", "").strip()
+
+            # Find agent's markdown file
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            if not agent_file.exists():
+                return jsonify({"error": "Agent configuration file not found"}), 404
+
+            # Read and parse the markdown file
+            content = agent_file.read_text(encoding="utf-8")
+            from register_agents import extract_fields_from_markdown
+            fields = extract_fields_from_markdown(content)
+
+            # Update Typing Speed field
+            if not typing_speed_str or typing_speed_str == "None":
+                if "Typing Speed" in fields:
+                    del fields["Typing Speed"]
+                typing_speed_value = None
+            else:
+                # Validate value
+                try:
+                    typing_speed_value = float(typing_speed_str)
+                    if typing_speed_value < 1:
+                        return jsonify({"error": "Typing Speed must be >= 1"}), 400
+                    fields["Typing Speed"] = str(typing_speed_value)
+                except ValueError:
+                    return jsonify({"error": "Invalid Typing Speed value (must be a number)"}), 400
+
+            _write_agent_markdown(agent, fields)
+
+            # Update agent's typing speed in place
+            agent._typing_speed = typing_speed_value
+
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating typing speed for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/disabled", methods=["PUT"])
