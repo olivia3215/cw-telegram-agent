@@ -2967,10 +2967,10 @@
                 userIdInput.value = '';
             }
             
-            // Clear recent conversations select
+            // Reset recent conversations select to ensure consistency (selection may point to different agent)
             const recentConversationsSelect = document.getElementById('recent-conversations-select');
             if (recentConversationsSelect) {
-                recentConversationsSelect.innerHTML = '<option value="">Select a recent conversation...</option>';
+                recentConversationsSelect.value = '';
             }
             
             // Synchronize with agents agent select
