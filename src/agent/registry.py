@@ -37,6 +37,8 @@ class AgentRegistry:
         daily_schedule_description=None,
         reset_context_on_first_message=False,
         is_disabled=False,
+        start_typing_delay=None,
+        typing_speed=None,
     ):
         if name == "":
             raise RuntimeError("No agent name provided")
@@ -91,6 +93,8 @@ class AgentRegistry:
             daily_schedule_description=daily_schedule_description,
             reset_context_on_first_message=reset_context_on_first_message,
             is_disabled=is_disabled,
+            start_typing_delay=start_typing_delay,
+            typing_speed=typing_speed,
         )
         
         # Store by config_name (the key used for state directories and lookups)
