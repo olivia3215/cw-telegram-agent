@@ -88,9 +88,6 @@ def register_profile_routes(agents_bp: Blueprint):
                     birthday_obj = getattr(full_user_response, "birthday", None)
                     is_premium_from_full = getattr(full_user_response, "premium", False)
                     
-                    # Log for debugging
-                    logger.debug(f"Profile GET - Direct access: bio={bio}, birthday={birthday_obj}, hasattr full_user={hasattr(full_user_response, 'full_user')}")
-                    
                     # If not found, try nested access (UserFull.full_user.about)
                     if bio is None and hasattr(full_user_response, "full_user"):
                         full_user = getattr(full_user_response, "full_user")
@@ -98,7 +95,6 @@ def register_profile_routes(agents_bp: Blueprint):
                             bio = getattr(full_user, "about", None)
                             if birthday_obj is None:
                                 birthday_obj = getattr(full_user, "birthday", None)
-                            logger.debug(f"Profile GET - Nested access: bio={bio}, birthday={birthday_obj}")
                     
                     # Also check if there's a .user attribute
                     if bio is None and hasattr(full_user_response, "user"):
@@ -107,7 +103,6 @@ def register_profile_routes(agents_bp: Blueprint):
                             bio = getattr(user, "about", None)
                             if birthday_obj is None:
                                 birthday_obj = getattr(user, "birthday", None)
-                            logger.debug(f"Profile GET - User attribute access: bio={bio}, birthday={birthday_obj}")
                 
                 # Parse birthday
                 birthday = None

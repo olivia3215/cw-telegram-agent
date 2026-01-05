@@ -3563,14 +3563,6 @@
                 currentAgentProfile = data;
                 bioLimit = data.bio_limit || 70;
                 
-                // Debug logging
-                console.log('Profile data received:', {
-                    bio: data.bio,
-                    birthday: data.birthday,
-                    first_name: data.first_name,
-                    last_name: data.last_name
-                });
-                
                 // Populate form fields
                 document.getElementById('agent-profile-first-name').value = data.first_name || '';
                 document.getElementById('agent-profile-last-name').value = data.last_name || '';
