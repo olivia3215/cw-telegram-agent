@@ -53,6 +53,11 @@ PARAMETER_METADATA = {
         "comment": "The default LLM to use for an agent that doesn't specify one",
         "default": "gemini",
     },
+    "MEDIA_DESC_BUDGET_PER_TICK": {
+        "type": "int",
+        "comment": "The max number of media descriptions produced per tick",
+        "default": "8",
+    },
 }
 
 
@@ -119,6 +124,11 @@ def update_runtime_config(parameter_name: str, value: str) -> None:
             config.SELECT_STICKER_DELAY = 4.0
     elif parameter_name == "DEFAULT_AGENT_LLM":
         config.DEFAULT_AGENT_LLM = value
+    elif parameter_name == "MEDIA_DESC_BUDGET_PER_TICK":
+        try:
+            config.MEDIA_DESC_BUDGET_PER_TICK = int(value)
+        except ValueError:
+            config.MEDIA_DESC_BUDGET_PER_TICK = 8
 
 
 def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str | None]:
@@ -157,6 +167,16 @@ def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str
         if parameter_name in ("START_TYPING_DELAY", "SELECT_STICKER_DELAY"):
             if float_value < 0:
                 return False, f"{parameter_name} must be non-negative (got {float_value})"
+    elif param_type == "int":
+        try:
+            int_value = int(value_str)
+        except ValueError:
+            return False, f"Invalid value for {parameter_name}: must be an integer"
+        
+        # Validate MEDIA_DESC_BUDGET_PER_TICK must be positive
+        if parameter_name == "MEDIA_DESC_BUDGET_PER_TICK":
+            if int_value <= 0:
+                return False, f"{parameter_name} must be positive (got {int_value})"
     
     # Special validation for DEFAULT_AGENT_LLM
     if parameter_name == "DEFAULT_AGENT_LLM":
@@ -167,7 +187,7 @@ def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str
     return True, None
 
 
-def get_current_parameter_values() -> dict[str, str | float]:
+def get_current_parameter_values() -> dict[str, str | float | int]:
     """Get current values of all global parameters."""
     return {
         "MEDIA_MODEL": config.MEDIA_MODEL or "",
@@ -176,6 +196,7 @@ def get_current_parameter_values() -> dict[str, str | float]:
         "TYPING_SPEED": config.TYPING_SPEED,
         "SELECT_STICKER_DELAY": config.SELECT_STICKER_DELAY,
         "DEFAULT_AGENT_LLM": config.DEFAULT_AGENT_LLM,
+        "MEDIA_DESC_BUDGET_PER_TICK": config.MEDIA_DESC_BUDGET_PER_TICK,
     }
 
 

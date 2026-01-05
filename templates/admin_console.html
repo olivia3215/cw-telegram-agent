@@ -6886,8 +6886,8 @@
                         <h3 style="margin-top: 0;">Global Parameters</h3>
                         <div class="agent-param-grid">
                             ${parameters.map(param => {
-                                const inputType = param.type === 'float' ? 'number' : 'text';
-                                const stepAttr = param.type === 'float' ? 'step="0.1"' : '';
+                                const inputType = (param.type === 'float' || param.type === 'int') ? 'number' : 'text';
+                                const stepAttr = param.type === 'float' ? 'step="0.1"' : (param.type === 'int' ? 'step="1"' : '');
                                 return `
                                     <div class="agent-param-section">
                                         <h3>${escapeHtml(param.name)}</h3>
