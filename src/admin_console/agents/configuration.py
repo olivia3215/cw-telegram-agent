@@ -442,7 +442,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent has no config directory"}), 400
 
             data = request.json
-            start_typing_delay_str = data.get("start_typing_delay", "").strip()
+            start_typing_delay_str = (data.get("start_typing_delay") or "").strip()
 
             # Find agent's markdown file
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
@@ -491,7 +491,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent has no config directory"}), 400
 
             data = request.json
-            typing_speed_str = data.get("typing_speed", "").strip()
+            typing_speed_str = (data.get("typing_speed") or "").strip()
 
             # Find agent's markdown file
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
