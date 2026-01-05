@@ -152,6 +152,17 @@ def api_media_list():
                 ]
             )
 
+        # Get optional limit parameter
+        limit_str = request.args.get("limit", "").strip()
+        limit = None
+        if limit_str:
+            try:
+                limit = int(limit_str)
+                if limit < 1:
+                    limit = None
+            except ValueError:
+                limit = None
+
         media_files = []
 
         # Create a single event loop for all async operations in this request
@@ -340,6 +351,14 @@ def api_media_list():
                     # Determine json_file path (for display purposes)
                     json_file_path = media_dir / f"{unique_id}.json" if not use_mysql else None
                     
+                    # Get file creation time for sorting (by media file creation date)
+                    file_creation_time = None
+                    if media_file_path and media_file_path.exists():
+                        try:
+                            file_creation_time = media_file_path.stat().st_mtime
+                        except Exception as e:
+                            logger.debug(f"Failed to get file creation time for {media_file_path}: {e}")
+                    
                     media_files.append(
                         {
                             "unique_id": unique_id,
@@ -355,6 +374,7 @@ def api_media_list():
                             "status": record.get("status", "unknown"),
                             "failure_reason": record.get("failure_reason"),
                             "mime_type": mime_type,
+                            "_file_creation_time": file_creation_time,  # Internal field for sorting
                         }
                     )
 
@@ -363,6 +383,21 @@ def api_media_list():
                     continue
         finally:
             loop.close()
+
+        # Apply limit if specified and directory is state/media
+        if limit is not None and is_state_media:
+            # Sort by file creation time (most recent first), then filter to limit
+            # Items without file_creation_time go to the end
+            media_files.sort(
+                key=lambda x: x.get("_file_creation_time") or 0,
+                reverse=True
+            )
+            # Take only the first 'limit' items
+            media_files = media_files[:limit]
+
+        # Remove internal sorting field before returning
+        for media in media_files:
+            media.pop("_file_creation_time", None)
 
         # Group by sticker set
         grouped_media = {}
