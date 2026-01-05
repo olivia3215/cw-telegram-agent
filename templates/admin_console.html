@@ -519,6 +519,11 @@
                             </select>
                         </div>
 
+                        <div class="directory-selector" id="media-limit-container" style="display: none; margin-top: 12px;">
+                            <label for="media-limit">Limit to most recent media (leave empty for all):</label><br>
+                            <input type="number" id="media-limit" min="1" placeholder="e.g., 100" style="width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                        </div>
+
                         <div class="import-section">
                             <h3>Import Sticker Set</h3>
                             <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
@@ -865,10 +870,21 @@
             // The event delegation is set up below in the script
 
             const directorySelect = document.getElementById('directory-select');
+            const mediaLimitContainer = document.getElementById('media-limit-container');
+            const mediaLimitInput = document.getElementById('media-limit');
+            
             if (directorySelect) {
                 directorySelect.addEventListener('change', (event) => {
                     currentDirectory = event.target.value;
                     if (currentDirectory) {
+                        // Show limit field only for state/media directory
+                        const isStateMedia = currentDirectory.includes('state/media') || currentDirectory.endsWith('state/media');
+                        if (mediaLimitContainer) {
+                            mediaLimitContainer.style.display = isStateMedia ? 'block' : 'none';
+                        }
+                        if (mediaLimitInput && !isStateMedia) {
+                            mediaLimitInput.value = ''; // Clear limit when switching away from state/media
+                        }
                         loadMediaFiles(currentDirectory);
                     } else {
                         // Clear everything when directory is deselected
@@ -882,10 +898,31 @@
                         updatePaginationControls(0);
                         populatePageSelect(0);
                         populateStickerSetSelect();
+                        // Hide limit field
+                        if (mediaLimitContainer) {
+                            mediaLimitContainer.style.display = 'none';
+                        }
+                        if (mediaLimitInput) {
+                            mediaLimitInput.value = '';
+                        }
                     }
                 });
 
                 fetchDirectories(directorySelect);
+            }
+            
+            // Add event listener to limit field to reload media when it changes
+            if (mediaLimitInput) {
+                let limitTimeout;
+                mediaLimitInput.addEventListener('input', () => {
+                    // Debounce the reload to avoid excessive API calls
+                    clearTimeout(limitTimeout);
+                    limitTimeout = setTimeout(() => {
+                        if (currentDirectory) {
+                            loadMediaFiles(currentDirectory);
+                        }
+                    }, 500); // Wait 500ms after user stops typing
+                });
             }
 
             setupPaginationControls();
@@ -1125,7 +1162,11 @@
             const savedPage = currentPage; // Save current page
 
             const encodedPath = encodeURIComponent(directoryPath);
-            fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}`)
+            // Get limit value if set
+            const mediaLimitInput = document.getElementById('media-limit');
+            const limit = mediaLimitInput && mediaLimitInput.value.trim() ? mediaLimitInput.value.trim() : '';
+            const limitParam = limit ? `&limit=${encodeURIComponent(limit)}` : '';
+            fetchWithAuth(`${API_BASE}/media?directory=${encodedPath}${limitParam}`)
                 .then(response => response.json())
                 .then(data => {
                         if (data.error) {
