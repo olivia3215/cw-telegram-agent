@@ -184,6 +184,10 @@ def register_profile_routes(agents_bp: Blueprint):
                 last_name = data.get("last_name", "")
                 about = data.get("bio", "")
                 
+                # Validate first_name is not empty (Telegram requires a first name)
+                if not first_name.strip():
+                    raise ValueError("First name cannot be empty")
+                
                 # Only update if changed
                 current_first = getattr(me, "first_name", None) or ""
                 current_last = getattr(me, "last_name", None) or ""
@@ -191,9 +195,9 @@ def register_profile_routes(agents_bp: Blueprint):
                 
                 if first_name != current_first or last_name != current_last or about != current_about:
                     await agent.client(UpdateProfileRequest(
-                        first_name=first_name or None,
-                        last_name=last_name or None,
-                        about=about or None
+                        first_name=first_name,
+                        last_name=last_name,
+                        about=about
                     ))
                 
                 # Update username if provided and changed
