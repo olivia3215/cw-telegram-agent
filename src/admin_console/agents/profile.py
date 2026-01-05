@@ -204,19 +204,15 @@ def register_profile_routes(agents_bp: Blueprint):
                 username = data.get("username", "").strip().lstrip("@")
                 current_username = getattr(me, "username", None) or ""
                 if username != current_username:
-                    if username:
-                        try:
-                            await agent.client(UpdateUsernameRequest(username=username))
-                        except UsernameOccupiedError:
-                            raise ValueError(f"Username '{username}' is already taken")
-                        except UsernameInvalidError:
-                            raise ValueError(f"Username '{username}' is invalid")
-                        except UsernameNotModifiedError:
-                            # Username didn't change, that's fine
-                            pass
-                    else:
-                        # Empty username means removing it - but Telethon doesn't support this directly
-                        # We'll just skip username update if empty
+                    try:
+                        # UpdateUsernameRequest accepts empty string to remove username
+                        await agent.client(UpdateUsernameRequest(username=username))
+                    except UsernameOccupiedError:
+                        raise ValueError(f"Username '{username}' is already taken")
+                    except UsernameInvalidError:
+                        raise ValueError(f"Username '{username}' is invalid")
+                    except UsernameNotModifiedError:
+                        # Username didn't change, that's fine
                         pass
                 
                 # Update birthday if provided
