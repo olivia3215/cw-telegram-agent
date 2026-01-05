@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import logging
+import math
 import threading
 from pathlib import Path
 
@@ -151,6 +152,48 @@ def parse_agent_markdown(path):
         # Parse LLM (optional field)
         llm_name = _norm_set(fields.get("LLM"))
 
+        # Parse Start Typing Delay (optional field - float, must be between 1 and 3600)
+        start_typing_delay = None
+        start_typing_delay_str = _norm_set(fields.get("Start Typing Delay"))
+        if start_typing_delay_str:
+            try:
+                start_typing_delay_value = float(start_typing_delay_str)
+                if not math.isfinite(start_typing_delay_value):
+                    logger.warning(
+                        f"Agent config '{path.name}': Start Typing Delay must be a finite number (got {start_typing_delay_value}), ignoring"
+                    )
+                elif 1 <= start_typing_delay_value <= 3600:
+                    start_typing_delay = start_typing_delay_value
+                else:
+                    logger.warning(
+                        f"Agent config '{path.name}': Start Typing Delay must be between 1 and 3600 seconds (got {start_typing_delay_value}), ignoring"
+                    )
+            except ValueError:
+                logger.warning(
+                    f"Agent config '{path.name}': Invalid Start Typing Delay value '{start_typing_delay_str}', ignoring"
+                )
+
+        # Parse Typing Speed (optional field - float, must be >= 1)
+        typing_speed = None
+        typing_speed_str = _norm_set(fields.get("Typing Speed"))
+        if typing_speed_str:
+            try:
+                typing_speed_value = float(typing_speed_str)
+                if not math.isfinite(typing_speed_value):
+                    logger.warning(
+                        f"Agent config '{path.name}': Typing Speed must be a finite number (got {typing_speed_value}), ignoring"
+                    )
+                elif 1 <= typing_speed_value <= 1000:
+                    typing_speed = typing_speed_value
+                else:
+                    logger.warning(
+                        f"Agent config '{path.name}': Typing Speed must be between 1 and 1000 characters per second (got {typing_speed_value}), ignoring"
+                    )
+            except ValueError:
+                logger.warning(
+                    f"Agent config '{path.name}': Invalid Typing Speed value '{typing_speed_str}', ignoring"
+                )
+
         # Parse Daily Schedule (optional field - freeform English text)
         daily_schedule = fields.get("Daily Schedule")
         daily_schedule_description = None
@@ -177,6 +220,9 @@ def parse_agent_markdown(path):
             "timezone": timezone,  # str | None
             # llm config:
             "llm_name": llm_name,  # str | None
+            # typing behavior config:
+            "start_typing_delay": start_typing_delay,  # float | None
+            "typing_speed": typing_speed,  # float | None
             # daily schedule config:
             "daily_schedule_description": daily_schedule_description,  # str | None
             # context reset config:
@@ -263,6 +309,8 @@ def register_all_agents(force: bool = False):
                         config_name=config_name,
                         timezone=parsed.get("timezone"),
                         llm_name=parsed.get("llm_name"),
+                        start_typing_delay=parsed.get("start_typing_delay"),
+                        typing_speed=parsed.get("typing_speed"),
                         daily_schedule_description=parsed.get("daily_schedule_description"),
                         reset_context_on_first_message=parsed.get("reset_context_on_first_message", False),
                         is_disabled=parsed.get("is_disabled", False),

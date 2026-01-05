@@ -26,6 +26,10 @@ async def test_schedule_tasks_uses_text_for_typing_delay():
 
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
+    # Mock typing properties to use global defaults
+    from config import START_TYPING_DELAY, TYPING_SPEED
+    mock_agent.start_typing_delay = START_TYPING_DELAY
+    mock_agent.typing_speed = TYPING_SPEED
     await hr._schedule_tasks(
         [send_task],
         received_task=received_task,
@@ -61,11 +65,10 @@ async def test_schedule_tasks_defaults_delay_when_text_missing():
 
     mock_agent = MagicMock()
     mock_agent.name = "TestAgent"
-    
-    # Patch START_TYPING_DELAY in config module to ensure test uses expected default value of 2
-    # The config is imported inside _schedule_tasks, so we patch it at the source
-    with patch("config.START_TYPING_DELAY", 2.0):
-        await hr._schedule_tasks(
+    # Mock typing properties to use expected default values
+    mock_agent.start_typing_delay = 2.0
+    mock_agent.typing_speed = 60.0
+    await hr._schedule_tasks(
             [send_task],
             received_task=received_task,
             graph=graph,

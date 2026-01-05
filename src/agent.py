@@ -63,6 +63,9 @@ class Agent(
         reset_context_on_first_message=False,
         # Disabled status
         is_disabled=False,
+        # Typing behavior configuration
+        start_typing_delay=None,
+        typing_speed=None,
     ):
         self.name = name
         self.phone = phone
@@ -112,6 +115,10 @@ class Agent(
         self._llm = llm
         self._llm_name = llm_name
         
+        # Typing behavior configuration
+        self._start_typing_delay = start_typing_delay  # float | None
+        self._typing_speed = typing_speed  # float | None
+        
         # Daily schedule configuration
         self.daily_schedule_description = daily_schedule_description  # str | None
 
@@ -124,6 +131,22 @@ class Agent(
             self._llm = create_llm_from_name(self._llm_name)
 
         return self._llm
+
+    @property
+    def start_typing_delay(self) -> float:
+        """Return the agent's start typing delay, defaulting to global config when absent."""
+        if self._start_typing_delay is not None:
+            return self._start_typing_delay
+        from config import START_TYPING_DELAY
+        return START_TYPING_DELAY
+
+    @property
+    def typing_speed(self) -> float:
+        """Return the agent's typing speed, defaulting to global config when absent."""
+        if self._typing_speed is not None:
+            return self._typing_speed
+        from config import TYPING_SPEED
+        return TYPING_SPEED
 
     @property
     def timezone(self):
