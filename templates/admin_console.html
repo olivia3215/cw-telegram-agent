@@ -3456,6 +3456,7 @@
         let currentAgentProfile = null;
         let originalAgentProfile = null;
         let bioLimit = 70;
+        let expectedProfileAgent = null; // Track which agent we're expecting a profile response for
 
         // Profile photo fullscreen functions
         function showProfilePhotoFullscreen() {
@@ -3553,23 +3554,46 @@
         async function loadAgentProfile(agentName) {
             if (!agentName) {
                 document.getElementById('agent-profile-section').style.display = 'none';
+                expectedProfileAgent = null;
                 return;
             }
 
             const profileSection = document.getElementById('agent-profile-section');
             profileSection.style.display = 'block';
             
+            // Track which agent we're loading for
+            expectedProfileAgent = agentName;
+            
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/profile`);
                 const data = await response.json();
                 
                 if (data.error) {
+                    // Only handle error if this request is still relevant
+                    if (expectedProfileAgent !== agentName) {
+                        return;
+                    }
                     if (response.status === 400 && data.error.includes('not authenticated')) {
                         // Agent not authenticated - hide profile section or show message
                         profileSection.style.display = 'none';
+                        expectedProfileAgent = null;
                         return;
                     }
                     console.error('Error loading profile:', data.error);
+                    expectedProfileAgent = null;
+                    return;
+                }
+                
+                // Verify this response is still relevant (user may have switched agents)
+                // Check both expectedProfileAgent and the currently selected agent
+                if (expectedProfileAgent !== agentName) {
+                    // This response is for a different agent, ignore it
+                    return;
+                }
+                const agentSelect = document.getElementById('agents-agent-select');
+                const currentSelectedAgent = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                if (currentSelectedAgent !== agentName) {
+                    // Agent changed while loading, ignore this response
                     return;
                 }
                 
@@ -3623,7 +3647,11 @@
                 document.getElementById('agent-profile-save-status').textContent = '';
                 
             } catch (error) {
-                console.error('Error loading agent profile:', error);
+                // Only log error if this request is still relevant
+                if (expectedProfileAgent === agentName) {
+                    console.error('Error loading agent profile:', error);
+                    expectedProfileAgent = null;
+                }
             }
         }
 
@@ -3634,6 +3662,13 @@
             
             if (!agentName) {
                 alert('No agent selected');
+                return;
+            }
+            
+            // Verify the profile data matches the selected agent
+            // This prevents saving stale data from a previously selected agent
+            if (expectedProfileAgent !== null && expectedProfileAgent !== agentName) {
+                alert('Agent selection changed. Please reload the profile and try again.');
                 return;
             }
             
