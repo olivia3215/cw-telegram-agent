@@ -3486,6 +3486,9 @@
             const daySelect = document.getElementById('agent-profile-birthday-day');
             const month = monthSelect.value ? parseInt(monthSelect.value) : null;
             
+            // Preserve current day selection if it exists
+            const currentDay = daySelect.value ? parseInt(daySelect.value) : null;
+            
             // Clear existing options
             daySelect.innerHTML = '<option value="">Day</option>';
             
@@ -3506,6 +3509,18 @@
                 option.value = i;
                 option.textContent = i;
                 daySelect.appendChild(option);
+            }
+            
+            // Restore day selection if it's valid for the new month
+            // If the previous day is too high for the new month (e.g., 31 -> February),
+            // clamp it to the maximum valid day
+            if (currentDay !== null) {
+                if (currentDay <= days) {
+                    daySelect.value = currentDay;
+                } else {
+                    // Day is too high for new month, clamp to max valid day
+                    daySelect.value = days;
+                }
             }
             
             // Enable cancel button since we made a change
@@ -3646,8 +3661,22 @@
                 const dayValue = daySelect.value.trim();
                 const yearValue = yearInput.value.trim();
                 
+                // Validate birthday: if month is selected, day is required
+                if (monthValue && !dayValue) {
+                    statusDiv.textContent = 'Error: Please select a day when a month is selected';
+                    statusDiv.style.color = '#dc3545';
+                    saveBtn.disabled = false;
+                    // Highlight the day field
+                    daySelect.style.borderColor = '#dc3545';
+                    // Clear highlight after 3 seconds
+                    setTimeout(() => {
+                        daySelect.style.borderColor = '#ddd';
+                    }, 3000);
+                    return;
+                }
+                
                 // If month is empty, birthday should be null (removed)
-                // Otherwise, both month and day are required
+                // Otherwise, both month and day are required (validated above)
                 let birthday = null;
                 if (monthValue && dayValue) {
                     const month = parseInt(monthValue);
