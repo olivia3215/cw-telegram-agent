@@ -151,12 +151,18 @@ def parse_agent_markdown(path):
         # Parse LLM (optional field)
         llm_name = _norm_set(fields.get("LLM"))
 
-        # Parse Start Typing Delay (optional field - float)
+        # Parse Start Typing Delay (optional field - float, must be >= 0)
         start_typing_delay = None
         start_typing_delay_str = _norm_set(fields.get("Start Typing Delay"))
         if start_typing_delay_str:
             try:
-                start_typing_delay = float(start_typing_delay_str)
+                start_typing_delay_value = float(start_typing_delay_str)
+                if start_typing_delay_value >= 0:
+                    start_typing_delay = start_typing_delay_value
+                else:
+                    logger.warning(
+                        f"Agent config '{path.name}': Start Typing Delay must be >= 0 (got {start_typing_delay_value}), ignoring"
+                    )
             except ValueError:
                 logger.warning(
                     f"Agent config '{path.name}': Invalid Start Typing Delay value '{start_typing_delay_str}', ignoring"

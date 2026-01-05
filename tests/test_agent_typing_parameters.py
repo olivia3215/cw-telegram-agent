@@ -133,6 +133,53 @@ You are a test agent.
     assert "Invalid Start Typing Delay value" in caplog.text
 
 
+def test_parse_agent_with_negative_start_typing_delay(tmp_path: Path, caplog):
+    """Test that negative Start Typing Delay values are ignored."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+-1.5
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed.get("start_typing_delay") is None
+    assert "Start Typing Delay must be >= 0" in caplog.text
+
+
+def test_parse_agent_with_start_typing_delay_zero(tmp_path: Path):
+    """Test that Start Typing Delay of 0 is accepted (minimum valid value)."""
+    md = """# Agent Name
+TestAgent
+
+# Agent Phone
++15551234567
+
+# Start Typing Delay
+0
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are a test agent.
+"""
+    path = _write(tmp_path, "agent.md", md)
+    parsed = parse_agent_markdown(path)
+    assert parsed is not None
+    assert parsed["start_typing_delay"] == 0.0
+
+
 def test_parse_agent_with_invalid_typing_speed_less_than_one(tmp_path: Path, caplog):
     """Test that Typing Speed values less than 1 are ignored."""
     md = """# Agent Name
