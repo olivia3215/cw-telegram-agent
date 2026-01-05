@@ -280,6 +280,19 @@ def register_profile_routes(agents_bp: Blueprint):
                             "year": year
                         }
                 
+                # Recalculate premium status from fresh data
+                is_premium_from_full = False
+                if full_user_response:
+                    is_premium_from_full = getattr(full_user_response, "premium", False)
+                    # Also check nested structure if needed
+                    if not is_premium_from_full and hasattr(full_user_response, "full_user"):
+                        full_user = getattr(full_user_response, "full_user")
+                        if full_user:
+                            is_premium_from_full = getattr(full_user, "premium", False)
+                
+                is_premium = getattr(me, "premium", False) or is_premium_from_full
+                bio_limit = 140 if is_premium else 70
+                
                 return {
                     "first_name": getattr(me, "first_name", None) or "",
                     "last_name": getattr(me, "last_name", None) or "",
@@ -289,7 +302,7 @@ def register_profile_routes(agents_bp: Blueprint):
                     "birthday": birthday,
                     "profile_photo": profile_photo,
                     "is_premium": is_premium,
-                    "bio_limit": 140 if is_premium else 70
+                    "bio_limit": bio_limit
                 }
             
             profile_data = agent.execute(_update_profile(), timeout=30.0)
