@@ -369,6 +369,22 @@ class AIGeneratingMediaSource(MediaSource):
                 if "tgs_path" in locals() and tgs_path and tgs_path.exists():
                     tgs_path.unlink()
             
+            # Check if error is explicitly marked as non-retryable (e.g., 401, 403, 404, 501)
+            # This flag is set by gemini.py for permanent HTTP errors
+            if hasattr(e, "is_retryable") and e.is_retryable is False:
+                # Permanent failure - explicitly marked as non-retryable
+                error_str = str(e)
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.PERMANENT_FAILURE,
+                    f"LLM API error: {error_str[:100]}",
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    agent=agent,
+                    **metadata,
+                )
+            
             # Check if this is a format/argument error (400) - treat as permanent failure
             error_str = str(e)
             if "400" in error_str or "INVALID_ARGUMENT" in error_str:
