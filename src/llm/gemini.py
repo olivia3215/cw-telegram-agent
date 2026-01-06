@@ -280,11 +280,12 @@ class GeminiLLM(LLM):
             status_code = e.response.status_code
             error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
             # Check if this is a retryable HTTP status
-            if status_code in (429, 500, 501, 502, 503):
+            if status_code in (429, 500, 502, 503):
                 # Retryable HTTP errors
                 raise RetryableLLMError(error_msg, original_exception=e) from e
-            elif status_code in (400, 401, 403, 404):
+            elif status_code in (400, 401, 403, 404, 501):
                 # Permanent HTTP errors - mark as non-retryable
+                # 501 "Not Implemented" is permanent - server doesn't support the functionality
                 runtime_error = RuntimeError(error_msg)
                 runtime_error.is_retryable = False
                 raise runtime_error from e
@@ -457,11 +458,12 @@ class GeminiLLM(LLM):
             status_code = e.response.status_code
             error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
             # Check if this is a retryable HTTP status
-            if status_code in (429, 500, 501, 502, 503):
+            if status_code in (429, 500, 502, 503):
                 # Retryable HTTP errors
                 raise RetryableLLMError(error_msg, original_exception=e) from e
-            elif status_code in (400, 401, 403, 404):
+            elif status_code in (400, 401, 403, 404, 501):
                 # Permanent HTTP errors - mark as non-retryable
+                # 501 "Not Implemented" is permanent - server doesn't support the functionality
                 runtime_error = RuntimeError(error_msg)
                 runtime_error.is_retryable = False
                 raise runtime_error from e
@@ -594,11 +596,12 @@ class GeminiLLM(LLM):
             status_code = e.response.status_code
             error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
             # Check if this is a retryable HTTP status
-            if status_code in (429, 500, 501, 502, 503):
+            if status_code in (429, 500, 502, 503):
                 # Retryable HTTP errors
                 raise RetryableLLMError(error_msg, original_exception=e) from e
-            elif status_code in (400, 401, 403, 404):
+            elif status_code in (400, 401, 403, 404, 501):
                 # Permanent HTTP errors - mark as non-retryable
+                # 501 "Not Implemented" is permanent - server doesn't support the functionality
                 runtime_error = RuntimeError(error_msg)
                 runtime_error.is_retryable = False
                 raise runtime_error from e
