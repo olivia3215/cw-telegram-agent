@@ -397,7 +397,7 @@ async def ensure_photo_cache(agent, client):
         # Access saved messages using agent's own ID
         saved_messages_id = agent.agent_id
         photos_found = 0
-        photos_updated = 0
+        photos_new = 0
 
         # Track which unique_ids we see in this scan
         seen_unique_ids = set()
@@ -420,8 +420,8 @@ async def ensure_photo_cache(agent, client):
             # This prevents stale file_reference values from causing send failures
             is_new = unique_id_str not in agent.photos
             agent.photos[unique_id_str] = photo
-            photos_updated += 1
             if is_new:
+                photos_new += 1
                 logger.debug(
                     f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
                 )
@@ -439,7 +439,7 @@ async def ensure_photo_cache(agent, client):
         if photos_found > 0:
             logger.info(
                 f"[{getattr(agent, 'name', 'agent')}] Photo cache: {len(agent.photos)} photos "
-                f"({photos_updated} new, {removed_count} removed)"
+                f"({photos_new} new, {removed_count} removed)"
             )
 
     except Exception as e:
