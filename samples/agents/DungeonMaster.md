@@ -6,6 +6,11 @@ DungeonMaster
 
 +18625796324
 
+
+# Telegram ID
+
+6690871595
+
 # Reset Context On First Message
 
 Enabling this ensures that each new adventure starts with a clean slate.
