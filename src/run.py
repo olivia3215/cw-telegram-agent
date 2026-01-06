@@ -416,10 +416,12 @@ async def ensure_photo_cache(agent, client):
             seen_unique_ids.add(unique_id_str)
             photos_found += 1
 
-            # Update cache if this is a new photo or if the photo object has changed
-            if unique_id_str not in agent.photos:
-                agent.photos[unique_id_str] = photo
-                photos_updated += 1
+            # Always update the photo object to refresh file_reference values
+            # This prevents stale file_reference values from causing send failures
+            is_new = unique_id_str not in agent.photos
+            agent.photos[unique_id_str] = photo
+            photos_updated += 1
+            if is_new:
                 logger.debug(
                     f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
                 )
