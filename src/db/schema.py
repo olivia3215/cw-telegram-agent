@@ -163,6 +163,16 @@ def create_schema() -> None:
 
             conn.commit()
             logger.info("Database schema created successfully")
+            
+            # Clean up any existing Telegram system user (777000) entries from agent_activity
+            try:
+                from db import agent_activity
+                deleted_count = agent_activity.delete_telegram_system_user_entries()
+                if deleted_count > 0:
+                    logger.info(f"Cleaned up {deleted_count} Telegram system user entries from agent_activity")
+            except Exception as e:
+                # Don't fail schema creation if cleanup fails
+                logger.warning(f"Failed to clean up Telegram system user entries during schema creation: {e}")
 
         except Exception as e:
             conn.rollback()

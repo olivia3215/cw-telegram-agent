@@ -311,6 +311,11 @@ def api_recent_conversations():
             channel_telegram_id = activity["channel_telegram_id"]
             last_send_time = activity["last_send_time"]
             
+            # Filter out Telegram system user (777000) - defense in depth
+            from config import TELEGRAM_SYSTEM_USER_ID
+            if channel_telegram_id == TELEGRAM_SYSTEM_USER_ID:
+                continue
+            
             # Get agent instance directly by telegram ID (more reliable than config_name)
             agent = get_agent_for_id(agent_telegram_id)
             if not agent or not agent.is_authenticated or not agent.client:
