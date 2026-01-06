@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from handlers.received_helpers.llm_query import is_retryable_llm_error
+from llm.exceptions import RetryableLLMError
 
 
 def test_is_retryable_llm_error_retryable_cases():
@@ -64,3 +65,48 @@ def test_is_retryable_llm_error_retrieval():
     """Test that retrieval errors are recognized as retryable."""
     error = Exception("Temporary error: retrieval - will retry with fetched content")
     assert is_retryable_llm_error(error), "Retrieval errors should be retryable"
+
+
+def test_retryable_llm_error_exception_type():
+    """Test that RetryableLLMError is always considered retryable."""
+    error = RetryableLLMError("Test retryable error")
+    assert is_retryable_llm_error(error), "RetryableLLMError should always be retryable"
+    
+    # Test with original exception
+    original = Exception("Original error")
+    wrapped_error = RetryableLLMError("Wrapped error", original_exception=original)
+    assert is_retryable_llm_error(wrapped_error), "RetryableLLMError with original exception should be retryable"
+    assert wrapped_error.original_exception == original
+
+
+def test_is_retryable_flag_true():
+    """Test that is_retryable = True flag is respected."""
+    error = Exception("Some error")
+    error.is_retryable = True
+    assert is_retryable_llm_error(error), "Error with is_retryable = True should be retryable"
+
+
+def test_is_retryable_flag_false():
+    """Test that is_retryable = False flag skips fallback and returns False."""
+    # Create an error that would normally be retryable based on string matching
+    error = Exception("503 Service Unavailable")
+    error.is_retryable = False
+    assert not is_retryable_llm_error(error), "Error with is_retryable = False should not be retryable"
+    
+    # Test with a permanent error message
+    error2 = Exception("Invalid API key")
+    error2.is_retryable = False
+    assert not is_retryable_llm_error(error2), "Error with is_retryable = False should not be retryable"
+
+
+def test_is_retryable_flag_none_uses_fallback():
+    """Test that is_retryable = None uses fallback string matching."""
+    # Error that should be retryable based on string matching
+    error = Exception("503 Service Unavailable")
+    error.is_retryable = None
+    assert is_retryable_llm_error(error), "Error with is_retryable = None should use fallback"
+    
+    # Error that should not be retryable based on string matching
+    error2 = Exception("Invalid API key")
+    error2.is_retryable = None
+    assert not is_retryable_llm_error(error2), "Error with is_retryable = None should use fallback"

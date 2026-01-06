@@ -7,6 +7,7 @@ import logging
 from handlers.received_helpers.message_processing import ProcessedMessage
 from handlers.received_helpers.task_parsing import TransientLLMResponseError
 from llm.base import MsgTextPart
+from llm.exceptions import RetryableLLMError
 from task_graph import TaskGraph, TaskNode
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,14 @@ def is_retryable_llm_error(error: Exception) -> bool:
     """
     Determine if an LLM error is temporary and should be retried.
     
+    Checks in order:
+    1. If exception is RetryableLLMError instance, return True
+    2. If exception has is_retryable attribute:
+       - If False, return False immediately (skip fallback)
+       - If True, return True
+    3. If is_retryable is not set, fall back to string matching logic
+    4. When fallback is used, log a stack trace for observability
+    
     Returns True for temporary errors (503, rate limits, timeouts), False for permanent errors.
     
     Args:
@@ -24,6 +33,28 @@ def is_retryable_llm_error(error: Exception) -> bool:
     Returns:
         True if error is retryable, False otherwise
     """
+    # Check if exception is RetryableLLMError instance
+    if isinstance(error, RetryableLLMError):
+        return True
+    
+    # Check for is_retryable attribute
+    if hasattr(error, "is_retryable"):
+        is_retryable = getattr(error, "is_retryable")
+        if is_retryable is False:
+            # Explicitly marked as non-retryable, skip fallback
+            return False
+        elif is_retryable is True:
+            # Explicitly marked as retryable
+            return True
+        # If is_retryable is None or some other value, fall through to fallback
+    
+    # Fallback to string matching (for backward compatibility and unmarked errors)
+    # Log stack trace when fallback is used for observability
+    logger.exception(
+        "Using fallback string matching to determine retryability. "
+        "Consider explicitly marking this error with is_retryable flag or RetryableLLMError."
+    )
+    
     error_str = str(error).lower()
 
     # Temporary errors that should be retried

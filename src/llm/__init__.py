@@ -13,6 +13,9 @@ while organizing different LLM implementations into separate files.
 # Import base classes and types
 from .base import LLM, ChatMsg, MsgMediaPart, MsgPart, MsgTextPart
 
+# Import exception types
+from .exceptions import RetryableLLMError
+
 # Import LLM implementations
 from .gemini import GeminiLLM
 from .grok import GrokLLM
@@ -29,6 +32,8 @@ __all__ = [
     "MsgPart",
     "MsgTextPart",
     "MsgMediaPart",
+    # Exception types
+    "RetryableLLMError",
     # LLM implementations
     "GeminiLLM",
     "GrokLLM",

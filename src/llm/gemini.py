@@ -29,6 +29,7 @@ from media.mime_utils import (
 )
 
 from .base import LLM, ChatMsg, MsgPart
+from .exceptions import RetryableLLMError
 from .task_schema import get_task_response_schema_dict
 
 logger = logging.getLogger(__name__)
@@ -201,7 +202,9 @@ class GeminiLLM(LLM):
         Raises on failures so the scheduler's retry policy can handle it.
         """
         if not self.api_key:
-            raise ValueError("Missing Gemini API key")
+            error = ValueError("Missing Gemini API key")
+            error.is_retryable = False
+            raise error
 
         # Use centralized MIME type detection if not provided
         if not mime_type:
@@ -212,16 +215,20 @@ class GeminiLLM(LLM):
         # Special handling for TGS files (gzip-compressed Lottie animations)
         # Gemini doesn't support application/gzip for image/video analysis
         if is_tgs_mime_type(mime_type):
-            raise ValueError(
+            error = ValueError(
                 f"TGS animated stickers (MIME type {mime_type}) are not supported for AI image analysis. "
                 f"Use sticker metadata for description instead."
             )
+            error.is_retryable = False
+            raise error
 
         # Check if this MIME type is supported by the LLM
         if not self.is_mime_type_supported_by_llm(mime_type):
-            raise ValueError(
+            error = ValueError(
                 f"MIME type {mime_type} is not supported by Gemini for image description"
             )
+            error.is_retryable = False
+            raise error
 
         # Assert that this instance is the correct type for media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
@@ -270,11 +277,28 @@ class GeminiLLM(LLM):
                 response.raise_for_status()
                 body = response.content
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(
-                f"Gemini HTTP {e.response.status_code}: {e.response.text}"
-            ) from e
+            status_code = e.response.status_code
+            error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
+            # Check if this is a retryable HTTP status
+            if status_code in (429, 500, 501, 502, 503):
+                # Retryable HTTP errors
+                raise RetryableLLMError(error_msg, original_exception=e) from e
+            elif status_code in (400, 401, 403, 404):
+                # Permanent HTTP errors - mark as non-retryable
+                runtime_error = RuntimeError(error_msg)
+                runtime_error.is_retryable = False
+                raise runtime_error from e
+            else:
+                # Other HTTP errors - use fallback logic
+                raise RuntimeError(error_msg) from e
         except Exception as e:
-            raise RuntimeError(f"Gemini request failed: {e}") from e
+            # Check if this is a retryable error
+            from handlers.received_helpers.llm_query import is_retryable_llm_error
+            
+            if is_retryable_llm_error(e):
+                raise RetryableLLMError(f"Gemini request failed: {e}", original_exception=e) from e
+            else:
+                raise RuntimeError(f"Gemini request failed: {e}") from e
 
         try:
             obj = json.loads(body.decode("utf-8"))
@@ -315,13 +339,17 @@ class GeminiLLM(LLM):
             RuntimeError: For API failures
         """
         if not self.api_key:
-            raise ValueError("Missing Gemini API key")
+            error = ValueError("Missing Gemini API key")
+            error.is_retryable = False
+            raise error
 
         # Check video duration - reject videos longer than 10 seconds
         if duration is not None and duration > 10:
-            raise ValueError(
+            error = ValueError(
                 f"Video is too long to analyze (duration: {duration}s, max: 10s)"
             )
+            error.is_retryable = False
+            raise error
 
         # Use centralized MIME type detection if not provided
         if not mime_type:
@@ -332,42 +360,52 @@ class GeminiLLM(LLM):
         # Special handling for TGS files (gzip-compressed Lottie animations)
         # Gemini doesn't support application/gzip for video analysis
         if is_tgs_mime_type(mime_type):
-            raise ValueError(
+            error = ValueError(
                 f"TGS animated stickers (MIME type {mime_type}) are not supported for AI video analysis. "
                 f"Use sticker metadata for description instead."
             )
+            error.is_retryable = False
+            raise error
 
         # Check if this MIME type is supported by the LLM
         if not self.is_mime_type_supported_by_llm(mime_type):
-            raise ValueError(
+            error = ValueError(
                 f"MIME type {mime_type} is not supported by Gemini for video description"
             )
+            error.is_retryable = False
+            raise error
         
         # Check file size - Gemini has limits on inline_data size (typically 20MB)
         # Base64 encoding increases size by ~33%, so we check the original size
         MAX_VIDEO_SIZE = 20 * 1024 * 1024  # 20MB
         if len(video_bytes) > MAX_VIDEO_SIZE:
             size_mb = len(video_bytes) / (1024 * 1024)
-            raise ValueError(
+            error = ValueError(
                 f"Video file is too large ({size_mb:.1f}MB, max {MAX_VIDEO_SIZE / (1024 * 1024):.0f}MB) "
                 f"for Gemini inline_data API"
             )
+            error.is_retryable = False
+            raise error
         
         # Validate video file format - check if it's actually a valid MP4/WebM/etc.
         # MP4 files should start with ftyp box at offset 4
         # WebM files should start with EBML header
         if mime_type == "video/mp4":
             if len(video_bytes) < 8 or video_bytes[4:8] != b"ftyp":
-                raise ValueError(
+                error = ValueError(
                     f"Video file does not appear to be a valid MP4 (missing ftyp box). "
                     f"File may be corrupted or in wrong format."
                 )
+                error.is_retryable = False
+                raise error
         elif mime_type == "video/webm":
             if len(video_bytes) < 4 or video_bytes[:4] != b"\x1a\x45\xdf\xa3":
-                raise ValueError(
+                error = ValueError(
                     f"Video file does not appear to be a valid WebM (missing EBML header). "
                     f"File may be corrupted or in wrong format."
                 )
+                error.is_retryable = False
+                raise error
 
         # Assert that this instance is the correct type for media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
@@ -416,11 +454,28 @@ class GeminiLLM(LLM):
                 response.raise_for_status()
                 body = response.content
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(
-                f"Gemini HTTP {e.response.status_code}: {e.response.text}"
-            ) from e
+            status_code = e.response.status_code
+            error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
+            # Check if this is a retryable HTTP status
+            if status_code in (429, 500, 501, 502, 503):
+                # Retryable HTTP errors
+                raise RetryableLLMError(error_msg, original_exception=e) from e
+            elif status_code in (400, 401, 403, 404):
+                # Permanent HTTP errors - mark as non-retryable
+                runtime_error = RuntimeError(error_msg)
+                runtime_error.is_retryable = False
+                raise runtime_error from e
+            else:
+                # Other HTTP errors - use fallback logic
+                raise RuntimeError(error_msg) from e
         except Exception as e:
-            raise RuntimeError(f"Gemini request failed: {e}") from e
+            # Check if this is a retryable error
+            from handlers.received_helpers.llm_query import is_retryable_llm_error
+            
+            if is_retryable_llm_error(e):
+                raise RetryableLLMError(f"Gemini request failed: {e}", original_exception=e) from e
+            else:
+                raise RuntimeError(f"Gemini request failed: {e}") from e
 
         try:
             obj = json.loads(body.decode("utf-8"))
@@ -461,15 +516,19 @@ class GeminiLLM(LLM):
             RuntimeError: For API failures
         """
         if not self.api_key:
-            raise ValueError("Missing Gemini API key")
+            error = ValueError("Missing Gemini API key")
+            error.is_retryable = False
+            raise error
 
         # Check audio duration - reject audio longer than 5 minutes.
         # As of 2025-11-09, Gemini bills audio description at ~$0.001344 per minute,
         # so extending the ceiling to 5 minutes keeps the cost at ~$0.00672.
         if duration is not None and duration > 300:
-            raise ValueError(
+            error = ValueError(
                 f"Audio is too long to analyze (duration: {duration}s, max: 300s)"
             )
+            error.is_retryable = False
+            raise error
 
         # Use centralized MIME type detection if not provided
         if not mime_type:
@@ -479,9 +538,11 @@ class GeminiLLM(LLM):
 
         # Check if this MIME type is supported by the LLM
         if not self.is_audio_mime_type_supported(mime_type):
-            raise ValueError(
+            error = ValueError(
                 f"MIME type {mime_type} is not supported by Gemini for audio description"
             )
+            error.is_retryable = False
+            raise error
 
         # Assert that this instance is the correct type for media LLM (caller should select the correct LLM)
         from .media_helper import get_media_llm
@@ -530,11 +591,28 @@ class GeminiLLM(LLM):
                 response.raise_for_status()
                 body = response.content
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(
-                f"Gemini HTTP {e.response.status_code}: {e.response.text}"
-            ) from e
+            status_code = e.response.status_code
+            error_msg = f"Gemini HTTP {status_code}: {e.response.text}"
+            # Check if this is a retryable HTTP status
+            if status_code in (429, 500, 501, 502, 503):
+                # Retryable HTTP errors
+                raise RetryableLLMError(error_msg, original_exception=e) from e
+            elif status_code in (400, 401, 403, 404):
+                # Permanent HTTP errors - mark as non-retryable
+                runtime_error = RuntimeError(error_msg)
+                runtime_error.is_retryable = False
+                raise runtime_error from e
+            else:
+                # Other HTTP errors - use fallback logic
+                raise RuntimeError(error_msg) from e
         except Exception as e:
-            raise RuntimeError(f"Gemini request failed: {e}") from e
+            # Check if this is a retryable error
+            from handlers.received_helpers.llm_query import is_retryable_llm_error
+            
+            if is_retryable_llm_error(e):
+                raise RetryableLLMError(f"Gemini request failed: {e}", original_exception=e) from e
+            else:
+                raise RuntimeError(f"Gemini request failed: {e}") from e
 
         try:
             obj = json.loads(body.decode("utf-8"))
@@ -634,7 +712,7 @@ class GeminiLLM(LLM):
                             logger.warning(
                                 f"Gemini blocked prompt due to {block_reason} - treating as retryable failure"
                             )
-                            raise Exception(
+                            raise RetryableLLMError(
                                 f"Temporary error: prompt blocked ({block_reason}) - will retry"
                             )
                 
@@ -645,7 +723,7 @@ class GeminiLLM(LLM):
                         logger.warning(
                             "Gemini returned prohibited content - treating as retryable failure"
                         )
-                        raise Exception(
+                        raise RetryableLLMError(
                             "Temporary error: prohibited content - will retry"
                         )
             
@@ -668,13 +746,24 @@ class GeminiLLM(LLM):
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
-                raise Exception("Temporary error: response starts with a metadata placeholder - will retry")
+                raise RetryableLLMError("Temporary error: response starts with a metadata placeholder - will retry")
 
             return text or ""
+        except RetryableLLMError:
+            # Already wrapped, re-raise
+            raise
         except Exception as e:
             logger.error("SDK exception: %s", e)
-            # Return the exception so we can determine if it's retryable
-            raise e
+            # Check if this is a retryable error using the existing logic
+            # Import here to avoid circular dependency issues
+            from handlers.received_helpers.llm_query import is_retryable_llm_error
+            
+            if is_retryable_llm_error(e):
+                # Wrap retryable errors in RetryableLLMError
+                raise RetryableLLMError(str(e), original_exception=e) from e
+            else:
+                # Re-raise non-retryable errors as-is
+                raise
 
     def _mk_text_part(self, text: str) -> dict[str, str]:
         """Create a Gemini text part."""
@@ -901,14 +990,14 @@ class GeminiLLM(LLM):
                             logger.warning(
                                 f"Gemini blocked prompt for JSON schema query due to {block_reason}"
                             )
-                            raise Exception(f"Temporary error: prompt blocked ({block_reason}) - will retry")
+                            raise RetryableLLMError(f"Temporary error: prompt blocked ({block_reason}) - will retry")
                 
                 # Check candidate finish_reason for blocked content (happens when response is blocked)
                 if hasattr(response, "candidates") and response.candidates:
                     cand = response.candidates[0]
                     if hasattr(cand, "finish_reason") and cand.finish_reason == FinishReason.PROHIBITED_CONTENT:
                         logger.warning("Gemini returned prohibited content for JSON schema query")
-                        raise Exception("Temporary error: prohibited content - will retry")
+                        raise RetryableLLMError("Temporary error: prohibited content - will retry")
 
             # Extract text from response
             text = _extract_response_text(response)
@@ -930,6 +1019,17 @@ class GeminiLLM(LLM):
                 return text
 
             raise RuntimeError("No valid response from Gemini")
+        except RetryableLLMError:
+            # Already wrapped, re-raise
+            raise
         except Exception as e:
             logger.error("Gemini JSON schema query exception: %s", e)
-            raise
+            # Check if this is a retryable error using the existing logic
+            from handlers.received_helpers.llm_query import is_retryable_llm_error
+            
+            if is_retryable_llm_error(e):
+                # Wrap retryable errors in RetryableLLMError
+                raise RetryableLLMError(str(e), original_exception=e) from e
+            else:
+                # Re-raise non-retryable errors as-is
+                raise
