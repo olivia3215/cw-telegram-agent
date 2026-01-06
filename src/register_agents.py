@@ -208,6 +208,17 @@ def parse_agent_markdown(path):
         # Parse Disabled status (optional section)
         is_disabled = "Disabled" in fields
 
+        # Parse Telegram ID (optional field)
+        telegram_id = None
+        telegram_id_str = _norm_set(fields.get("Telegram ID"))
+        if telegram_id_str:
+            try:
+                telegram_id = int(telegram_id_str)
+            except ValueError:
+                logger.warning(
+                    f"Agent config '{path.name}': Invalid Telegram ID value '{telegram_id_str}', ignoring"
+                )
+
         return {
             "name": name,
             "phone": str(fields["Agent Phone"]).strip(),
@@ -229,6 +240,8 @@ def parse_agent_markdown(path):
             "reset_context_on_first_message": reset_context_on_first_message,  # bool
             # disabled status:
             "is_disabled": is_disabled,  # bool
+            # telegram id:
+            "telegram_id": telegram_id,  # int | None
         }
     except Exception as e:
         logger.error(f"Failed to parse agent config '{path}': {e}")
@@ -315,6 +328,14 @@ def register_all_agents(force: bool = False):
                         reset_context_on_first_message=parsed.get("reset_context_on_first_message", False),
                         is_disabled=parsed.get("is_disabled", False),
                     )
+                    # Set agent_id from config file if available
+                    telegram_id = parsed.get("telegram_id")
+                    if telegram_id:
+                        from agent import _agent_registry
+                        agent = _agent_registry.get_by_config_name(config_name)
+                        if agent:
+                            agent.agent_id = telegram_id
+                            logger.debug(f"Set agent_id from config for {agent_name}: {telegram_id}")
                     registered_agents.add(agent_name)
                     registered_config_names.add(config_name)
 
@@ -336,3 +357,88 @@ def reset_registered_agents_flag():
     global _AGENTS_LOADED
     with _REGISTER_LOCK:
         _AGENTS_LOADED = False
+
+
+def update_agent_config_telegram_id(config_file_path: Path, telegram_id: int) -> bool:
+    """
+    Update the agent config file to add or update the Telegram ID field.
+    
+    Args:
+        config_file_path: Path to the agent config markdown file
+        telegram_id: The Telegram ID to save
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not config_file_path.exists():
+            logger.error(f"Config file does not exist: {config_file_path}")
+            return False
+        
+        content = config_file_path.read_text(encoding="utf-8")
+        import re
+        
+        # Check if Telegram ID field already exists
+        telegram_id_pattern = r"^# +Telegram ID\s*$\n(.*?)(?=^# |\Z)"
+        match = re.search(telegram_id_pattern, content, re.MULTILINE | re.DOTALL)
+        
+        if match:
+            # Field exists, check if it matches
+            existing_content = match.group(1).strip()
+            try:
+                existing_id = int(existing_content)
+                if existing_id == telegram_id:
+                    # Already correct, no update needed
+                    logger.debug(f"Telegram ID already correct in {config_file_path.name}: {telegram_id}")
+                    return True
+            except ValueError:
+                pass  # Invalid existing value, will update
+            
+            # Replace the existing field content
+            new_field = f"# Telegram ID\n\n{telegram_id}\n\n"
+            content = content[:match.start()] + new_field + content[match.end():]
+        else:
+            # Field doesn't exist, add it after Agent Phone (a required field that should exist)
+            phone_pattern = r"^(# +Agent Phone\s*$\n.*?)(?=^# |\Z)"
+            phone_match = re.search(phone_pattern, content, re.MULTILINE | re.DOTALL)
+            
+            if phone_match:
+                # Insert after Agent Phone
+                insert_pos = phone_match.end()
+                new_field = f"\n# Telegram ID\n\n{telegram_id}\n\n"
+                content = content[:insert_pos] + new_field + content[insert_pos:]
+            else:
+                # Fallback: add at the end
+                content = content.rstrip() + f"\n\n# Telegram ID\n\n{telegram_id}\n"
+        
+        # Write the updated content
+        config_file_path.write_text(content, encoding="utf-8")
+        logger.info(f"Updated Telegram ID in {config_file_path.name}: {telegram_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to update Telegram ID in {config_file_path}: {e}")
+        return False
+
+
+def get_agent_telegram_id_from_config(config_file_path: Path) -> int | None:
+    """
+    Read the Telegram ID from an agent config file.
+    
+    Args:
+        config_file_path: Path to the agent config markdown file
+        
+    Returns:
+        The Telegram ID if found, None otherwise
+    """
+    try:
+        if not config_file_path.exists():
+            return None
+        
+        parsed = parse_agent_markdown(config_file_path)
+        if parsed:
+            return parsed.get("telegram_id")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to read Telegram ID from {config_file_path}: {e}")
+        return None

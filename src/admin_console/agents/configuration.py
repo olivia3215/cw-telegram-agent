@@ -830,8 +830,15 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
 
-            # 1. Delete agent config file
+            # 0. Read Telegram ID from config file BEFORE deleting it
+            # (since agent is disabled, we can't use client to get it)
             config_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            telegram_id = None
+            if config_file.exists():
+                from register_agents import get_agent_telegram_id_from_config
+                telegram_id = get_agent_telegram_id_from_config(config_file)
+
+            # 1. Delete agent config file
             if config_file.exists():
                 config_file.unlink()
             
@@ -857,6 +864,27 @@ def register_configuration_routes(agents_bp: Blueprint):
                 agent_config_name=agent.config_name,
                 agent_display_name=agent.name
             )
+
+            # 5. Delete MySQL data for the agent
+            if telegram_id:
+                try:
+                    from db.agent_deletion import delete_all_agent_data
+                    deleted_counts = delete_all_agent_data(telegram_id)
+                    logger.info(
+                        f"Deleted MySQL data for agent {agent.name} (telegram_id={telegram_id}): "
+                        f"{deleted_counts}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to delete MySQL data for agent {agent.name} "
+                        f"(telegram_id={telegram_id}): {e}"
+                    )
+                    # Don't fail the deletion if MySQL cleanup fails
+            else:
+                logger.warning(
+                    f"Could not determine Telegram ID for agent {agent.name} to delete MySQL data. "
+                    f"MySQL data may remain in the database."
+                )
 
             # Remove from registry
             from agent import _agent_registry
