@@ -10,6 +10,7 @@ Database operations for agent activity tracking.
 import logging
 from datetime import datetime
 
+from config import TELEGRAM_SYSTEM_USER_ID
 from db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,11 @@ def update_agent_activity(agent_telegram_id: int, channel_telegram_id: int) -> N
         agent_telegram_id: The agent's Telegram ID
         channel_telegram_id: The channel's Telegram ID
     """
+    # Reject Telegram system user ID (777000) - should never be tracked as a conversation partner
+    if channel_telegram_id == TELEGRAM_SYSTEM_USER_ID:
+        logger.debug(f"Skipping agent activity update for Telegram system user {TELEGRAM_SYSTEM_USER_ID}")
+        return
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -63,10 +69,11 @@ def get_recent_activity(limit: int = 10) -> list[dict]:
                 """
                 SELECT agent_telegram_id, channel_telegram_id, last_send_time
                 FROM agent_activity
+                WHERE channel_telegram_id != %s
                 ORDER BY last_send_time DESC
                 LIMIT %s
                 """,
-                (limit,),
+                (TELEGRAM_SYSTEM_USER_ID, limit),
             )
             rows = cursor.fetchall()
             
@@ -79,6 +86,36 @@ def get_recent_activity(limit: int = 10) -> list[dict]:
                 })
             
             return activities
+        finally:
+            cursor.close()
+
+
+def delete_telegram_system_user_entries() -> int:
+    """
+    Delete all agent_activity entries for Telegram system user (777000).
+    
+    Returns:
+        Number of rows deleted
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                DELETE FROM agent_activity
+                WHERE channel_telegram_id = %s
+                """,
+                (TELEGRAM_SYSTEM_USER_ID,),
+            )
+            deleted_count = cursor.rowcount
+            conn.commit()
+            if deleted_count > 0:
+                logger.info(f"Deleted {deleted_count} agent_activity entries for Telegram system user {TELEGRAM_SYSTEM_USER_ID}")
+            return deleted_count
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to delete Telegram system user entries from agent_activity: {e}")
+            raise
         finally:
             cursor.close()
 
