@@ -49,10 +49,12 @@ def is_retryable_llm_error(error: Exception) -> bool:
         # If is_retryable is None or some other value, fall through to fallback
     
     # Fallback to string matching (for backward compatibility and unmarked errors)
-    # Log stack trace when fallback is used for observability
-    logger.exception(
+    # Log warning when fallback is used for observability
+    # Use exc_info=error to include traceback if available, but won't cause issues if not
+    logger.warning(
         "Using fallback string matching to determine retryability. "
-        "Consider explicitly marking this error with is_retryable flag or RetryableLLMError."
+        "Consider explicitly marking this error with is_retryable flag or RetryableLLMError.",
+        exc_info=error,
     )
     
     error_str = str(error).lower()
