@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
+from admin_console.helpers import add_cache_busting_headers, get_agent_by_name
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,8 @@ def register_summary_routes(agents_bp: Blueprint):
             # Sort by message ID range (oldest first)
             summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
 
-            return jsonify({"summaries": summaries})
+            response = jsonify({"summaries": summaries})
+            return add_cache_busting_headers(response)
         except Exception as e:
             logger.error(f"Error getting summaries for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500

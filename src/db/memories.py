@@ -41,6 +41,10 @@ def load_memories(agent_telegram_id: int) -> list[dict[str, Any]]:
             )
             rows = cursor.fetchall()
             
+            # Commit the read transaction to ensure fresh data on next read
+            # This prevents stale reads when connections are reused from the pool
+            conn.commit()
+            
             memories = []
             for row in rows:
                 memory = {
@@ -59,6 +63,10 @@ def load_memories(agent_telegram_id: int) -> list[dict[str, Any]]:
                 memories.append(memory)
             
             return memories
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to load memories: {e}")
+            raise
         finally:
             cursor.close()
 
@@ -173,7 +181,13 @@ def agents_with_memories(agent_telegram_ids: list[int]) -> set[int]:
                 tuple(agent_telegram_ids),
             )
             rows = cursor.fetchall()
+            # Commit the read transaction to ensure fresh data on next read
+            conn.commit()
             return {row["agent_telegram_id"] for row in rows}
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to check agents with memories: {e}")
+            raise
         finally:
             cursor.close()
 

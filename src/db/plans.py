@@ -41,6 +41,10 @@ def load_plans(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]:
             )
             rows = cursor.fetchall()
             
+            # Commit the read transaction to ensure fresh data on next read
+            # This prevents stale reads when connections are reused from the pool
+            conn.commit()
+            
             plans = []
             for row in rows:
                 plan = {
@@ -53,6 +57,10 @@ def load_plans(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]:
                 plans.append(plan)
             
             return plans
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to load plans: {e}")
+            raise
         finally:
             cursor.close()
 

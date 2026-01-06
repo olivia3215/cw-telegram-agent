@@ -952,7 +952,12 @@
         }
 
         function fetchWithAuth(url, options = {}) {
-            const finalOptions = Object.assign({ credentials: 'same-origin' }, options);
+            // Always add cache: 'no-store' to prevent browser caching
+            // This ensures fresh data for all requests
+            const finalOptions = Object.assign({ 
+                credentials: 'same-origin',
+                cache: 'no-store'
+            }, options);
             return fetch(url, finalOptions).then((response) => {
                 if (response.status === 401) {
                     handleUnauthorized();
@@ -2367,6 +2372,9 @@
             
             const mainTabName = activeMainTab.getAttribute('data-tab-panel');
             
+            // Check if the subtab is already active - if so, we still want to reload data
+            const wasAlreadyActive = activeMainTab.querySelector(`.tab-button[data-subtab="${subtabName}"]`)?.classList.contains('active');
+            
             // Update subtab buttons within the active main tab
             const subtabButtons = activeMainTab.querySelectorAll('.tab-button[data-subtab]');
             subtabButtons.forEach(btn => {
@@ -2399,10 +2407,12 @@
                 const agentSelect = document.getElementById('agents-agent-select');
                 const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
                 if (agentName) {
+                    // Always reload data, even if the subtab was already active
+                    // This ensures fresh data when clicking the same tab again
                     if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
-                        loadMemories(agentName);
+                        loadMemories(agentName, true);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
                     } else if (subtabName === 'documents-agent') {
@@ -2467,6 +2477,8 @@
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                // Always call switchSubtab, even if the button is already active
+                // This ensures data is reloaded when clicking an already-active tab
                 switchSubtab(subtabName);
             }
         }, true);
@@ -2966,7 +2978,7 @@
                     if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
-                        loadMemories(agentName);
+                        loadMemories(agentName, true);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
                     } else if (subtabName === 'documents-agent') {
@@ -3132,8 +3144,10 @@
         }
 
         // Load memories
-        function loadMemories(agentName) {
+        function loadMemories(agentName, forceReload = false) {
             const container = document.getElementById('memories-container');
+            if (!container) return;
+            
             container.innerHTML = '<div class="loading">Loading memories...</div>';
             
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`)
@@ -3212,7 +3226,7 @@
                 if (data.error) {
                     alert('Error creating memory: ' + data.error);
                 } else {
-                    loadMemories(agentName);
+                    loadMemories(agentName, true);
                 }
             })
             .catch(error => {
@@ -3295,7 +3309,7 @@
                 if (data.error) {
                     alert('Error deleting memory: ' + data.error);
                 } else {
-                    loadMemories(agentName);
+                    loadMemories(agentName, true);
                 }
             })
             .catch(error => {
@@ -7722,6 +7736,33 @@
                     subtabBar.style.visibility = 'visible';
                     subtabBar.style.opacity = '1';
                 }
+            }
+            
+            // Watch for when memories panel becomes active and auto-reload
+            const memoriesPanel = document.querySelector('.subtab-panel[data-subtab-panel="memories"]');
+            if (memoriesPanel) {
+                const observer = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                            const isActive = memoriesPanel.classList.contains('active');
+                            if (isActive) {
+                                const agentSelect = document.getElementById('agents-agent-select');
+                                const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                                if (agentName) {
+                                    // Small delay to ensure DOM is updated
+                                    setTimeout(() => {
+                                        loadMemories(agentName, true);
+                                    }, 100);
+                                }
+                            }
+                        }
+                    });
+                });
+                
+                observer.observe(memoriesPanel, {
+                    attributes: true,
+                    attributeFilter: ['class']
+                });
             }
         });
     </script>

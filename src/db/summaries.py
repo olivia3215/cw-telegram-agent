@@ -43,6 +43,10 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
             )
             rows = cursor.fetchall()
             
+            # Commit the read transaction to ensure fresh data on next read
+            # This prevents stale reads when connections are reused from the pool
+            conn.commit()
+            
             summaries = []
             for row in rows:
                 summary = {
@@ -119,6 +123,10 @@ def load_summaries(agent_telegram_id: int, channel_id: int) -> list[dict[str, An
                 summaries.append(summary)
             
             return summaries
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to load summaries: {e}")
+            raise
         finally:
             cursor.close()
 
@@ -259,7 +267,13 @@ def has_summaries_for_channels(agent_telegram_id: int, channel_ids: list[int]) -
                 (agent_telegram_id, *channel_ids),
             )
             rows = cursor.fetchall()
+            # Commit the read transaction to ensure fresh data on next read
+            conn.commit()
             return {row["channel_id"] for row in rows}
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to check channels with summaries: {e}")
+            raise
         finally:
             cursor.close()
 

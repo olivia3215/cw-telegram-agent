@@ -8,7 +8,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
+from admin_console.helpers import add_cache_busting_headers, get_agent_by_name
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ def register_intention_routes(agents_bp: Blueprint):
             # Sort by created timestamp (newest first)
             intentions.sort(key=lambda x: x.get("created", ""), reverse=True)
 
-            return jsonify({"intentions": intentions})
+            response = jsonify({"intentions": intentions})
+            return add_cache_busting_headers(response)
         except Exception as e:
             logger.error(f"Error getting intentions for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
