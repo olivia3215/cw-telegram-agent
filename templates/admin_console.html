@@ -3186,7 +3186,7 @@
                         const optionText = option.textContent;
                         // Check if option text contains [@username] matching our input
                         const usernameMatch = optionText.match(/\[@([^\]]+)\]/);
-                        if (usernameMatch && usernameMatch[1] === usernameToMatch) {
+                        if (usernameMatch && usernameMatch[1].toLowerCase() === usernameToMatch.toLowerCase()) {
                             partnerSelect.value = option.value;
                             userIdInput.value = ''; // Clear input since we selected from dropdown
                             userId = stripAsterisk(option.value); // Update userId for loading
