@@ -38,7 +38,7 @@ async def test_authenticate_agent_success():
 
     with patch("run.get_telegram_client", return_value=mock_client), patch(
         "run.ensure_sticker_cache", return_value=None
-    ):
+    ), patch("run.ensure_photo_cache", return_value=None):
 
         result = await authenticate_agent(agent)
 
@@ -208,7 +208,9 @@ async def test_authenticate_agent_client_setup():
 
     with patch(
         "run.get_telegram_client", return_value=mock_client
-    ) as mock_get_client, patch("run.ensure_sticker_cache", return_value=None):
+    ) as mock_get_client, patch("run.ensure_sticker_cache", return_value=None), patch(
+        "run.ensure_photo_cache", return_value=None
+    ):
 
         result = await authenticate_agent(agent)
 
@@ -234,7 +236,7 @@ async def test_authenticate_agent_sticker_cache():
 
     with patch("run.get_telegram_client", return_value=mock_client), patch(
         "run.ensure_sticker_cache"
-    ) as mock_ensure_stickers:
+    ) as mock_ensure_stickers, patch("run.ensure_photo_cache", return_value=None):
 
         result = await authenticate_agent(agent)
 

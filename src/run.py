@@ -296,6 +296,13 @@ async def scan_unread_messages(agent: Agent):
                 clear_mentions=has_mentions,
                 clear_reactions=has_reactions_on_agent_message,
             )
+    
+    # Refresh photo cache from saved messages to pick up new photos and remove deleted ones
+    if agent_id:
+        try:
+            await ensure_photo_cache(agent, client)
+        except Exception as e:
+            logger.debug(f"[{agent.name}] Error refreshing photo cache during scan: {e}")
 
 
 async def ensure_sticker_cache(agent, client):
@@ -368,6 +375,79 @@ async def ensure_sticker_cache(agent, client):
             )
 
 
+async def ensure_photo_cache(agent, client):
+    """
+    Scan the agent's saved messages (me channel) for photos and cache them by file_unique_id.
+    This allows agents to send curated photos without storing expiring file_reference values.
+    """
+    from telegram_media import get_unique_id
+
+    # Agent must have agent_id to access saved messages
+    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        logger.debug(
+            f"[{getattr(agent, 'name', 'agent')}] Cannot cache photos: agent_id not set"
+        )
+        return
+
+    # Ensure photos dict exists
+    if not hasattr(agent, "photos"):
+        agent.photos = {}
+
+    try:
+        # Access saved messages using agent's own ID
+        saved_messages_id = agent.agent_id
+        photos_found = 0
+        photos_new = 0
+
+        # Track which unique_ids we see in this scan
+        seen_unique_ids = set()
+
+        # Iterate through messages in saved messages
+        async for message in client.iter_messages(saved_messages_id, limit=None):
+            photo = getattr(message, "photo", None)
+            if not photo:
+                continue
+
+            unique_id = get_unique_id(photo)
+            if not unique_id:
+                continue
+
+            unique_id_str = str(unique_id)
+            seen_unique_ids.add(unique_id_str)
+            photos_found += 1
+
+            # Always update the photo object to refresh file_reference values
+            # This prevents stale file_reference values from causing send failures
+            is_new = unique_id_str not in agent.photos
+            agent.photos[unique_id_str] = photo
+            if is_new:
+                photos_new += 1
+                logger.debug(
+                    f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
+                )
+
+        # Remove photos that are no longer in saved messages
+        removed_count = 0
+        for unique_id_str in list(agent.photos.keys()):
+            if unique_id_str not in seen_unique_ids:
+                del agent.photos[unique_id_str]
+                removed_count += 1
+                logger.debug(
+                    f"[{getattr(agent, 'name', 'agent')}] Removed photo from cache: {unique_id_str}"
+                )
+
+        if photos_found > 0:
+            logger.info(
+                f"[{getattr(agent, 'name', 'agent')}] Photo cache: {len(agent.photos)} photos "
+                f"({photos_new} new, {removed_count} removed)"
+            )
+
+    except Exception as e:
+        logger.exception(
+            f"[{getattr(agent, 'name', 'agent')}] Failed to cache photos from saved messages: {e}"
+        )
+
+
 async def authenticate_agent(agent: Agent):
     """
     Authenticate an agent and set up their basic connection.
@@ -435,6 +515,8 @@ async def authenticate_agent(agent: Agent):
         me = await client.get_me()
         agent_id = me.id
         agent.agent_id = agent_id
+        # Cache photos from saved messages after agent_id is set
+        await ensure_photo_cache(agent, client)
         
         # Save Telegram ID to config file if it differs from what's stored or is absent
         if agent.config_directory and agent.config_name:

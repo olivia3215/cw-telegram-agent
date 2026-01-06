@@ -21,6 +21,7 @@ Person
 Task-Memory
 Task-Retrieve
 Task-XSend
+Task-Photo
 
 # Daily Schedule
 

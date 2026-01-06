@@ -81,7 +81,9 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation'):
+        with patch('run.insert_received_task_for_conversation'), patch(
+            'run.ensure_photo_cache', return_value=None
+        ):
             await scan_unread_messages(mock_agent)
     
     # Verify GetUnreadReactions was called
@@ -120,7 +122,9 @@ async def test_reaction_detection_triggers_for_any_agent_message(mock_agent, moc
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert:
+        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
+            'run.ensure_photo_cache', return_value=None
+        ):
             await scan_unread_messages(mock_agent)
     
     # Verify task was inserted (reactions on any agent message should trigger response)
@@ -151,7 +155,9 @@ async def test_reaction_detection_triggers_for_agent_message(mock_agent, mock_di
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert:
+        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
+            'run.ensure_photo_cache', return_value=None
+        ):
             await scan_unread_messages(mock_agent)
     
     # Verify task was inserted for agent message with reactions
@@ -180,7 +186,9 @@ async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert:
+        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
+            'run.ensure_photo_cache', return_value=None
+        ):
             # Should not raise exception
             await scan_unread_messages(mock_agent)
     
@@ -210,7 +218,9 @@ async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dial
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert:
+        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
+            'run.ensure_photo_cache', return_value=None
+        ):
             await scan_unread_messages(mock_agent)
     
     # Verify GetUnreadReactions was not called (early return due to no unread reactions)
