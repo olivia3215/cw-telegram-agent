@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx  # pyright: ignore[reportMissingImports]
 import pytest  # pyright: ignore[reportMissingImports]
 
+from llm.exceptions import RetryableLLMError
 from llm.gemini import GeminiLLM
 from media.media_source import (
     AIGeneratingMediaSource,
@@ -333,13 +334,16 @@ async def test_gemini_describe_video_timeout():
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_class.return_value = mock_client
 
-        with pytest.raises(RuntimeError) as exc_info:
+        with pytest.raises(RetryableLLMError) as exc_info:
             await llm.describe_video(make_minimal_mp4_bytes(), mime_type="video/mp4", duration=5)
 
         assert (
             "timeout" in str(exc_info.value).lower()
             or "failed" in str(exc_info.value).lower()
         )
+        # Verify it wraps the original timeout exception
+        assert exc_info.value.original_exception is not None
+        assert isinstance(exc_info.value.original_exception, httpx.TimeoutException)
 
 
 # --- Tests for UnsupportedFormatMediaSource video handling ---
