@@ -25,7 +25,7 @@ async def parse_llm_reply_from_json(
     Parse LLM JSON response into a list of TaskNode instances.
 
     The response must be a JSON array where each element represents a task object.
-    Recognized task kinds: send, sticker, wait, think, retrieve, block, unblock.
+    Recognized task kinds: send, sticker, photo, wait, think, retrieve, block, unblock.
     There may be other task kinds that are documented later in the prompt.
     """
 

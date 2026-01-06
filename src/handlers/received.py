@@ -530,7 +530,7 @@ async def _schedule_tasks(
         if is_callout:
             task.params["callout"] = True
 
-        if task.type == "send" or task.type == "sticker":
+        if task.type == "send" or task.type == "sticker" or task.type == "photo":
             if "reply_to" not in task.params and fallback_reply_to:
                 task.params["reply_to"] = fallback_reply_to
                 fallback_reply_to = None
@@ -542,8 +542,10 @@ async def _schedule_tasks(
                 raw_text = task.params.get("text")
                 message = str(raw_text) if raw_text is not None else ""
                 delay_seconds = agent.start_typing_delay + len(message) / agent.typing_speed
-            else:  # sticker
+            elif task.type == "sticker":
                 delay_seconds = SELECT_STICKER_DELAY
+            else:  # photo - double the sticker delay
+                delay_seconds = SELECT_STICKER_DELAY * 2
 
             # Create wait task for typing indicator
             wait_task = task.insert_delay(graph, delay_seconds)

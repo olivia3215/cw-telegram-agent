@@ -130,6 +130,35 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["photo"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional identifier for later revisions.",
+                    },
+                    "unique_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Telegram file_unique_id string for the photo from saved messages.",
+                    },
+                    "reply_to": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string", "minLength": 1},
+                        ],
+                        "description": "Optional Telegram message ID to reply to.",
+                    },
+                },
+                "required": ["kind", "unique_id"],
+                "additionalProperties": False,
+                "title": "Photo Task",
+                "description": "Send a curated photo from saved messages by file_unique_id.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["wait"],
                         "description": "Task type identifier; always 'wait'.",
                     },
