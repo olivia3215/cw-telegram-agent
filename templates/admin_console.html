@@ -3033,7 +3033,12 @@
                     }
                 }
                 
-                // Load the conversation data (if no matching partner was found)
+                // If no matching partner was found in dropdown, set channelId as fallback
+                if (userIdInput && channelId) {
+                    userIdInput.value = channelId;
+                }
+                
+                // Load the conversation data
                 loadConversationData();
             } catch (error) {
                 console.error('Error parsing recent conversation selection:', error);
