@@ -436,6 +436,14 @@ async def authenticate_agent(agent: Agent):
         agent_id = me.id
         agent.agent_id = agent_id
         
+        # Save Telegram ID to config file if it differs from what's stored or is absent
+        if agent.config_directory and agent.config_name:
+            from pathlib import Path
+            from register_agents import update_agent_config_telegram_id
+            config_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            if config_file.exists():
+                update_agent_config_telegram_id(config_file, agent_id)
+        
         # Extract username (check both username and usernames attributes)
         username = None
         if hasattr(me, "username") and me.username:
