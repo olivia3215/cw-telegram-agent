@@ -2979,7 +2979,7 @@
             }
         });
 
-        document.getElementById('recent-conversations-select')?.addEventListener('change', (e) => {
+        document.getElementById('recent-conversations-select')?.addEventListener('change', async (e) => {
             const value = e.target.value;
             if (!value) {
                 return;
@@ -3002,11 +3002,11 @@
                     agentsSelect.value = agentConfigName;
                 }
                 
-                // Set channel ID in user-id input (clearing partner select)
+                // Clear user-id input initially (will be set after partner selection)
                 const userIdInput = document.getElementById('conversations-user-id');
                 const partnerSelect = document.getElementById('conversations-partner-select');
                 if (userIdInput) {
-                    userIdInput.value = channelId;
+                    userIdInput.value = '';
                 }
                 if (partnerSelect) {
                     partnerSelect.value = '';
@@ -3014,7 +3014,28 @@
                 
                 // Load conversation partners (this will populate the dropdown)
                 if (agentConfigName) {
-                    loadConversationPartners(agentConfigName, 'conversations');
+                    await loadConversationPartners(agentConfigName, 'conversations');
+                    
+                    // After partners are loaded, select the matching conversation
+                    if (partnerSelect) {
+                        // Find the option with matching channelId (strip asterisks for comparison)
+                        const channelIdStr = String(channelId);
+                        for (let i = 0; i < partnerSelect.options.length; i++) {
+                            const option = partnerSelect.options[i];
+                            const optionValue = stripAsterisk(option.value);
+                            if (optionValue === channelIdStr) {
+                                partnerSelect.value = option.value;
+                                // Trigger change event to ensure consistency with user interaction
+                                partnerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                                return; // Exit early since change event will call loadConversationData
+                            }
+                        }
+                    }
+                }
+                
+                // If no matching partner was found in dropdown, set channelId as fallback
+                if (userIdInput && channelId) {
+                    userIdInput.value = channelId;
                 }
                 
                 // Load the conversation data
@@ -3111,16 +3132,71 @@
             }
         });
 
-        function loadConversationData() {
+        async function loadConversationData() {
             const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
             const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
-            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+            let userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
             
-            if (!agentName || !userId) {
-                alert('Please select an agent and enter/select a conversation partner');
+            if (!agentName) {
+                alert('Please select an agent');
                 return;
+            }
+            
+            if (!userId) {
+                alert('Please enter/select a conversation partner');
+                return;
+            }
+            
+            // If userId is from text input and agent is selected, try to populate dropdowns
+            const userIdFromInput = userIdInput?.value.trim();
+            if (userIdFromInput && agentName) {
+                // Ensure partners are loaded
+                await loadConversationPartners(agentName, 'conversations');
+                
+                // Try to find matching conversation in dropdown
+                // Check if userId is numeric (direct user ID match)
+                const isNumeric = /^-?\d+$/.test(userIdFromInput);
+                let foundMatch = false;
+                if (isNumeric) {
+                    // Find the option with matching user ID (strip asterisks for comparison)
+                    for (let i = 0; i < partnerSelect.options.length; i++) {
+                        const option = partnerSelect.options[i];
+                        const optionValue = stripAsterisk(option.value);
+                        if (optionValue === userIdFromInput) {
+                            partnerSelect.value = option.value;
+                            userIdInput.value = ''; // Clear input since we selected from dropdown
+                            userId = optionValue; // Update userId for loading
+                            foundMatch = true;
+                            // Trigger change event to ensure consistency with user interaction
+                            partnerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            return; // Exit early since change event will call loadConversationData
+                        }
+                    }
+                } else {
+                    // For username/phone, try to match by username in dropdown
+                    // Usernames in dropdown are in format "Name (user_id) [@username]"
+                    const usernameToMatch = userIdFromInput.startsWith('@') 
+                        ? userIdFromInput.substring(1) 
+                        : userIdFromInput;
+                    
+                    for (let i = 0; i < partnerSelect.options.length; i++) {
+                        const option = partnerSelect.options[i];
+                        const optionText = option.textContent;
+                        // Check if option text contains [@username] matching our input
+                        const usernameMatch = optionText.match(/\[@([^\]]+)\]/);
+                        if (usernameMatch && usernameMatch[1].toLowerCase() === usernameToMatch.toLowerCase()) {
+                            partnerSelect.value = option.value;
+                            userIdInput.value = ''; // Clear input since we selected from dropdown
+                            userId = stripAsterisk(option.value); // Update userId for loading
+                            foundMatch = true;
+                            // Trigger change event to ensure consistency with user interaction
+                            partnerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            return; // Exit early since change event will call loadConversationData
+                        }
+                    }
+                }
             }
             
             // Load data for the active subtab
