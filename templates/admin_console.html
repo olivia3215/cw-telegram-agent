@@ -2405,6 +2405,8 @@
             
             if (mainTabName === 'agents') {
                 const agentSelect = document.getElementById('agents-agent-select');
+                // Capture agentName right before use to ensure it's current
+                // This prevents using stale values if loadAgents() is still updating the select
                 const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
                 if (agentName) {
                     // Always reload data, even if the subtab was already active
@@ -2412,6 +2414,7 @@
                     if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
+                        // loadMemories will validate agentName matches current selection
                         loadMemories(agentName, true);
                     } else if (subtabName === 'intentions') {
                         loadIntentions(agentName);
@@ -3148,11 +3151,30 @@
             const container = document.getElementById('memories-container');
             if (!container) return;
             
+            // Validate that the agentName still matches the currently selected agent
+            // This prevents stale data from being loaded if the user changed agents
+            // during an async operation (e.g., loadAgents() updating the select)
+            const agentSelect = document.getElementById('agents-agent-select');
+            const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            if (currentAgentName !== agentName) {
+                // Agent selection changed, don't load stale data
+                return;
+            }
+            
             container.innerHTML = '<div class="loading">Loading memories...</div>';
             
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`)
                 .then(response => response.json())
                 .then(data => {
+                    // Validate again that agentName still matches the currently selected agent
+                    // This prevents updating UI with stale data if user changed agents during the API call
+                    const agentSelect = document.getElementById('agents-agent-select');
+                    const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                    if (currentAgentName !== agentName) {
+                        // Agent selection changed during API call, don't update UI with stale data
+                        return;
+                    }
+                    
                     if (data.error) {
                         container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                         return;
