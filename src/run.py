@@ -303,6 +303,23 @@ async def scan_unread_messages(agent: Agent):
             await ensure_photo_cache(agent, client)
         except Exception as e:
             logger.debug(f"[{agent.name}] Error refreshing photo cache during scan: {e}")
+    
+    # Refresh username cache to pick up username changes
+    try:
+        me = await client.get_me()
+        username = None
+        if hasattr(me, "username") and me.username:
+            username = me.username
+        elif hasattr(me, "usernames") and me.usernames:
+            # Check usernames list for the first available username
+            for handle in me.usernames:
+                handle_value = getattr(handle, "username", None)
+                if handle_value:
+                    username = handle_value
+                    break
+        agent.telegram_username = username
+    except Exception as e:
+        logger.debug(f"[{agent.name}] Error refreshing username cache during scan: {e}")
 
 
 async def ensure_sticker_cache(agent, client):
