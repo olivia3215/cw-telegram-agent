@@ -632,7 +632,8 @@
         <!-- Agents Tab -->
         <section class="tab-panel" data-tab-panel="agents">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="parameters">Parameters</button>
+                <button class="tab-button active" data-subtab="profile">Profile</button>
+                <button class="tab-button" data-subtab="parameters">Parameters</button>
                 <button class="tab-button" data-subtab="memories">Memories</button>
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
                 <button class="tab-button" data-subtab="documents-agent">Documents</button>
@@ -646,77 +647,83 @@
                 </div>
             </div>
             <div id="agents-container" class="main-container">
-                <!-- Agent Profile Section -->
-                <div id="agent-profile-section" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
-                    <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #2c3e50;">Agent Profile</h3>
-                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
-                        <!-- Profile Photo -->
-                        <div style="text-align: center;">
-                            <img id="agent-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showProfilePhotoFullscreen()">
-                            <div style="margin-top: 8px; font-size: 12px; color: #666;">Click to enlarge</div>
-                        </div>
-                        <!-- Profile Photo Fullscreen Modal -->
-                        <div id="profile-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer;" onclick="closeProfilePhotoFullscreen()">
-                            <img id="profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
-                        </div>
-                        <!-- Profile Fields -->
-                        <div style="display: grid; gap: 16px;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                                <div>
-                                    <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
-                                    <input type="text" id="agent-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <!-- Profile Subtab -->
+                <div class="subtab-panel active" data-subtab-panel="profile">
+                    <!-- Agent Profile Section -->
+                    <div id="agent-profile-section" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
+                        <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #2c3e50;">Agent Profile</h3>
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
+                            <!-- Profile Photo -->
+                            <div style="text-align: center;">
+                                <img id="agent-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showProfilePhotoFullscreen()">
+                                <div style="margin-top: 8px; font-size: 12px; color: #666;">Click to enlarge</div>
+                            </div>
+                            <!-- Profile Photo Fullscreen Modal -->
+                            <div id="profile-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer;" onclick="closeProfilePhotoFullscreen()">
+                                <img id="profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
+                            </div>
+                            <!-- Profile Fields -->
+                            <div style="display: grid; gap: 16px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                    <div>
+                                        <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
+                                        <input type="text" id="agent-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                    </div>
+                                    <div>
+                                        <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
+                                        <input type="text" id="agent-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                    </div>
                                 </div>
                                 <div>
-                                    <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
-                                    <input type="text" id="agent-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                    <label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
+                                    <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                 </div>
-                            </div>
-                            <div>
-                                <label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
-                                <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                            </div>
-                            <div>
-                                <label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
-                                <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
-                            </div>
-                            <div>
-                                <label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
-                                <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
-                                <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
-                            </div>
-                            <div>
-                                <label for="agent-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
-                                <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
-                                    <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                        <option value="">Month</option>
-                                        <option value="1">January</option>
-                                        <option value="2">February</option>
-                                        <option value="3">March</option>
-                                        <option value="4">April</option>
-                                        <option value="5">May</option>
-                                        <option value="6">June</option>
-                                        <option value="7">July</option>
-                                        <option value="8">August</option>
-                                        <option value="9">September</option>
-                                        <option value="10">October</option>
-                                        <option value="11">November</option>
-                                        <option value="12">December</option>
-                                    </select>
-                                    <select id="agent-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                        <option value="">Day</option>
-                                    </select>
-                                    <input type="number" id="agent-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                <div>
+                                    <label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
+                                    <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
                                 </div>
-                            </div>
-                            <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button>
-                                <button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
-                                <div id="agent-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
+                                <div>
+                                    <label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
+                                    <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
+                                    <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
+                                </div>
+                                <div>
+                                    <label for="agent-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
+                                    <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
+                                        <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                            <option value="">Month</option>
+                                            <option value="1">January</option>
+                                            <option value="2">February</option>
+                                            <option value="3">March</option>
+                                            <option value="4">April</option>
+                                            <option value="5">May</option>
+                                            <option value="6">June</option>
+                                            <option value="7">July</option>
+                                            <option value="8">August</option>
+                                            <option value="9">September</option>
+                                            <option value="10">October</option>
+                                            <option value="11">November</option>
+                                            <option value="12">December</option>
+                                        </select>
+                                        <select id="agent-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                            <option value="">Day</option>
+                                        </select>
+                                        <input type="number" id="agent-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button>
+                                    <button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
+                                    <div id="agent-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
+                    <div id="profile-container">
+                        <div class="loading">Select an agent to view profile</div>
+                    </div>
                 </div>
-                <div class="subtab-panel active" data-subtab-panel="parameters">
+                <div class="subtab-panel" data-subtab-panel="parameters">
                     <div id="parameters-container">
                         <div class="loading">Select an agent to configure</div>
                     </div>
@@ -2307,7 +2314,7 @@
             
             if (tabName === 'agents') {
                 // Show first subtab (which will also call loadAgents)
-                switchSubtab('parameters');
+                switchSubtab('profile');
             } else if (tabName === 'conversations') {
                 // Show first subtab (which will also call loadAgents)
                 switchSubtab('curated-memories-conv');
@@ -2412,7 +2419,9 @@
                 if (agentName) {
                     // Always reload data, even if the subtab was already active
                     // This ensures fresh data when clicking the same tab again
-                    if (subtabName === 'parameters') {
+                    if (subtabName === 'profile') {
+                        loadAgentProfile(agentName);
+                    } else if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
                         // loadMemories will validate agentName matches current selection
@@ -2496,7 +2505,7 @@
         // Helper function to get current subtab name for agents tab
         function getCurrentAgentsSubtab() {
             const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button.active');
-            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'parameters';
+            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'profile';
         }
 
         // Helper function to get current subtab name for conversations tab
@@ -2972,14 +2981,13 @@
             }
             
             if (agentName) {
-                // Load agent profile
-                loadAgentProfile(agentName);
-                
                 // Load data for the active subtab
                 const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button.active');
                 if (activeSubtab) {
                     const subtabName = activeSubtab.getAttribute('data-subtab');
-                    if (subtabName === 'parameters') {
+                    if (subtabName === 'profile') {
+                        loadAgentProfile(agentName);
+                    } else if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
                         loadMemories(agentName);
@@ -2989,9 +2997,6 @@
                         loadAgentDocs(agentName);
                     }
                 }
-            } else {
-                // Hide profile section when no agent selected
-                document.getElementById('agent-profile-section').style.display = 'none';
             }
         });
 
@@ -3775,13 +3780,19 @@
         // Load agent profile
         async function loadAgentProfile(agentName) {
             if (!agentName) {
-                document.getElementById('agent-profile-section').style.display = 'none';
+                const profileSection = document.getElementById('agent-profile-section');
+                if (profileSection) {
+                    profileSection.style.display = 'none';
+                }
                 expectedProfileAgent = null;
                 return;
             }
 
             const profileSection = document.getElementById('agent-profile-section');
-            profileSection.style.display = 'block';
+            // Show profile section (this function is only called when profile subtab is active)
+            if (profileSection) {
+                profileSection.style.display = 'block';
+            }
             
             // Track which agent we're loading for
             expectedProfileAgent = agentName;
