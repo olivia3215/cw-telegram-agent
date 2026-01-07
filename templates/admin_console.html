@@ -3830,8 +3830,9 @@
                     }
                     if (response.status === 400 && data.error.includes('not authenticated')) {
                         // Agent not authenticated - hide profile section or show message
-                        profileSection.style.display = 'none';
-                        const profileContainer = document.getElementById('profile-container');
+                        if (profileSection) {
+                            profileSection.style.display = 'none';
+                        }
                         if (profileContainer) {
                             profileContainer.style.display = 'block';
                         }
@@ -3839,8 +3840,9 @@
                         return;
                     }
                     console.error('Error loading profile:', data.error);
-                    profileSection.style.display = 'none';
-                    const profileContainer = document.getElementById('profile-container');
+                    if (profileSection) {
+                        profileSection.style.display = 'none';
+                    }
                     if (profileContainer) {
                         profileContainer.style.display = 'block';
                     }
