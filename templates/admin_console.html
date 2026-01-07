@@ -954,10 +954,11 @@
         function fetchWithAuth(url, options = {}) {
             // Always add cache: 'no-store' to prevent browser caching
             // This ensures fresh data for all requests
-            const finalOptions = Object.assign({ 
+            // Put defaults AFTER options so they overwrite any cache settings from caller
+            const finalOptions = Object.assign({}, options, {
                 credentials: 'same-origin',
                 cache: 'no-store'
-            }, options);
+            });
             return fetch(url, finalOptions).then((response) => {
                 if (response.status === 401) {
                     handleUnauthorized();
