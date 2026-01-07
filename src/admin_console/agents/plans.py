@@ -8,7 +8,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
+from admin_console.helpers import add_cache_busting_headers, get_agent_by_name
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,8 @@ def register_plan_routes(agents_bp: Blueprint):
                 plans.sort(key=lambda x: x.get("created", "") or "", reverse=True)
 
             logger.debug(f"Returning {len(plans)} plans for {agent_config_name}/{user_id} (channel_id: {channel_id})")
-            return jsonify({"plans": plans})
+            response = jsonify({"plans": plans})
+            return add_cache_busting_headers(response)
         except Exception as e:
             logger.error(f"Error getting plans for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500

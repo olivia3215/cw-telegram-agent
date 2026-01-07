@@ -40,6 +40,10 @@ def load_intentions(agent_telegram_id: int) -> list[dict[str, Any]]:
             )
             rows = cursor.fetchall()
             
+            # Commit the read transaction to ensure fresh data on next read
+            # This prevents stale reads when connections are reused from the pool
+            conn.commit()
+            
             intentions = []
             for row in rows:
                 intention = {
@@ -52,6 +56,10 @@ def load_intentions(agent_telegram_id: int) -> list[dict[str, Any]]:
                 intentions.append(intention)
             
             return intentions
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to load intentions: {e}")
+            raise
         finally:
             cursor.close()
 

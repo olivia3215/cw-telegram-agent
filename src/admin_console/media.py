@@ -24,6 +24,7 @@ from clock import clock
 from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY
 from datetime import UTC
 from admin_console.helpers import (
+    add_cache_busting_headers,
     find_media_file,
     resolve_media_path,
 )
@@ -414,11 +415,7 @@ def api_media_list():
                 "directory": directory_path,
             }
         )
-        # Add cache-busting headers to ensure fresh data
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
+        return add_cache_busting_headers(response)
 
     except Exception as e:
         logger.error(f"Error listing media files: {e}")

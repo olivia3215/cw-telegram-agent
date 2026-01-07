@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from flask import jsonify  # pyright: ignore[reportMissingImports]
+from flask import Response, jsonify  # pyright: ignore[reportMissingImports]
 from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
     UsernameInvalidError,
     UsernameNotOccupiedError,
@@ -38,6 +38,22 @@ logger = logging.getLogger(__name__)
 # Rate limiting for cache population: track last run time per agent
 _cache_population_last_run: dict[str, datetime] = {}
 _cache_population_interval = timedelta(minutes=5)
+
+
+def add_cache_busting_headers(response: Response) -> Response:
+    """
+    Add cache-busting headers to a Flask response to prevent browser caching.
+    
+    Args:
+        response: Flask Response object
+        
+    Returns:
+        The same Response object with cache-busting headers added
+    """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
