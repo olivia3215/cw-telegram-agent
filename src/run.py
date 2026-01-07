@@ -454,7 +454,7 @@ async def ensure_photo_cache(agent, client):
                 )
 
         if photos_found > 0:
-            logger.info(
+            logger.debug(
                 f"[{getattr(agent, 'name', 'agent')}] Photo cache: {len(agent.photos)} photos "
                 f"({photos_new} new, {removed_count} removed)"
             )
