@@ -234,6 +234,20 @@ def register_profile_routes(agents_bp: Blueprint):
                 
                 # Return updated profile
                 me = await agent.client.get_me()
+                
+                # Refresh cached username from the updated profile
+                username = None
+                if hasattr(me, "username") and me.username:
+                    username = me.username
+                elif hasattr(me, "usernames") and me.usernames:
+                    # Check usernames list for the first available username
+                    for handle in me.usernames:
+                        handle_value = getattr(handle, "username", None)
+                        if handle_value:
+                            username = handle_value
+                            break
+                agent.telegram_username = username
+                
                 input_user = await agent.client.get_input_entity(me.id)
                 full_user_response = await agent.client(GetFullUserRequest(input_user))
                 
