@@ -24,6 +24,7 @@ from typing import Any
 import httpx  # pyright: ignore[reportMissingImports]
 
 from clock import clock
+from llm.exceptions import RetryableLLMError
 from llm.media_helper import get_media_llm
 from telegram_download import download_media_bytes
 
@@ -368,6 +369,22 @@ class AIGeneratingMediaSource(MediaSource):
                 if "tgs_path" in locals() and tgs_path and tgs_path.exists():
                     tgs_path.unlink()
             
+            # Check if error is explicitly marked as non-retryable (e.g., 401, 403, 404, 501)
+            # This flag is set by gemini.py for permanent HTTP errors
+            if hasattr(e, "is_retryable") and e.is_retryable is False:
+                # Permanent failure - explicitly marked as non-retryable
+                error_str = str(e)
+                return make_error_record(
+                    unique_id,
+                    MediaStatus.PERMANENT_FAILURE,
+                    f"LLM API error: {error_str[:100]}",
+                    kind=kind,
+                    sticker_set_name=sticker_set_name,
+                    sticker_name=sticker_name,
+                    agent=agent,
+                    **metadata,
+                )
+            
             # Check if this is a format/argument error (400) - treat as permanent failure
             error_str = str(e)
             if "400" in error_str or "INVALID_ARGUMENT" in error_str:
@@ -398,6 +415,32 @@ class AIGeneratingMediaSource(MediaSource):
                     agent=agent,
                     **metadata,
                 )
+        except RetryableLLMError as e:
+            # RetryableLLMError wraps retryable errors (timeouts, 429, 500, 502, 503, etc.)
+            # These should be treated as temporary failures
+            logger.warning(
+                f"AIGeneratingMediaSource: retryable LLM error for {unique_id}: {e}"
+            )
+
+            # Clean up temporary TGS and video files if conversion succeeded
+            if is_converted_tgs:
+                if video_file_path and video_file_path.exists():
+                    video_file_path.unlink()
+                if "tgs_path" in locals() and tgs_path and tgs_path.exists():
+                    tgs_path.unlink()
+
+            # Transient failure - return error record for AIChainMediaSource to handle
+            return make_error_record(
+                unique_id,
+                MediaStatus.TEMPORARY_FAILURE,
+                f"LLM error (retryable): {str(e)[:100]}",
+                retryable=True,
+                kind=kind,
+                sticker_set_name=sticker_set_name,
+                sticker_name=sticker_name,
+                agent=agent,
+                **metadata,
+            )
         except Exception as e:
             logger.exception(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
