@@ -2997,6 +2997,15 @@
                         loadAgentDocs(agentName);
                     }
                 }
+            } else {
+                // Agent selection cleared - hide profile section if profile subtab is active
+                const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button.active');
+                if (activeSubtab) {
+                    const subtabName = activeSubtab.getAttribute('data-subtab');
+                    if (subtabName === 'profile') {
+                        loadAgentProfile('');
+                    }
+                }
             }
         });
 
