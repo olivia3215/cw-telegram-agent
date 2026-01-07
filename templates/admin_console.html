@@ -3788,19 +3788,27 @@
 
         // Load agent profile
         async function loadAgentProfile(agentName) {
+            const profileSection = document.getElementById('agent-profile-section');
+            const profileContainer = document.getElementById('profile-container');
+            
             if (!agentName) {
-                const profileSection = document.getElementById('agent-profile-section');
                 if (profileSection) {
                     profileSection.style.display = 'none';
+                }
+                if (profileContainer) {
+                    profileContainer.style.display = 'block';
                 }
                 expectedProfileAgent = null;
                 return;
             }
 
-            const profileSection = document.getElementById('agent-profile-section');
             // Show profile section (this function is only called when profile subtab is active)
             if (profileSection) {
                 profileSection.style.display = 'block';
+            }
+            // Hide placeholder container when loading profile
+            if (profileContainer) {
+                profileContainer.style.display = 'none';
             }
             
             // Track which agent we're loading for
@@ -3818,10 +3826,19 @@
                     if (response.status === 400 && data.error.includes('not authenticated')) {
                         // Agent not authenticated - hide profile section or show message
                         profileSection.style.display = 'none';
+                        const profileContainer = document.getElementById('profile-container');
+                        if (profileContainer) {
+                            profileContainer.style.display = 'block';
+                        }
                         expectedProfileAgent = null;
                         return;
                     }
                     console.error('Error loading profile:', data.error);
+                    profileSection.style.display = 'none';
+                    const profileContainer = document.getElementById('profile-container');
+                    if (profileContainer) {
+                        profileContainer.style.display = 'block';
+                    }
                     expectedProfileAgent = null;
                     return;
                 }
