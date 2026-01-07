@@ -3227,6 +3227,14 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
+                    // Validate that agentName still matches the currently selected agent
+                    // This prevents updating UI with stale error data if user changed agents during the API call
+                    const agentSelect = document.getElementById('agents-agent-select');
+                    const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                    if (currentAgentName !== agentName) {
+                        // Agent selection changed during API call, don't update UI with stale error data
+                        return;
+                    }
                     container.innerHTML = `<div class="error">Error loading memories: ${escapeHtml(error)}</div>`;
                 });
         }
