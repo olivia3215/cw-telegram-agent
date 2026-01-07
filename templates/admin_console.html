@@ -2557,6 +2557,19 @@
                     if (data.error) return false;
                     const agent = data.agents?.find(a => a.config_name === agentName);
                     return agent?.has_plans || false;
+                } else if (subtabName === 'profile') {
+                    // Check if agent has profile content (non-empty profile fields)
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/profile`);
+                    const data = await response.json();
+                    if (data.error) return false;
+                    // Check if any profile fields are set (excluding telegram_id which is always present)
+                    const hasFirstName = data.first_name && data.first_name.trim().length > 0;
+                    const hasLastName = data.last_name && data.last_name.trim().length > 0;
+                    const hasUsername = data.username && data.username.trim().length > 0;
+                    const hasBio = data.bio && data.bio.trim().length > 0;
+                    const hasBirthday = data.birthday && (data.birthday.day || data.birthday.month);
+                    const hasProfilePhoto = data.profile_photo && data.profile_photo.length > 0;
+                    return hasFirstName || hasLastName || hasUsername || hasBio || hasBirthday || hasProfilePhoto;
                 }
             } catch (error) {
                 if (error && error.message === 'unauthorized') {
