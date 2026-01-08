@@ -739,15 +739,124 @@ def api_move_media(unique_id: str):
         from_dir = resolve_media_path(from_directory)
         to_dir = resolve_media_path(to_directory)
 
-        from_source = get_directory_media_source(from_dir)
-        to_source = get_directory_media_source(to_dir)
+        # Ensure directories are Path objects
+        if not isinstance(from_dir, Path):
+            from_dir = Path(from_dir)
+        if not isinstance(to_dir, Path):
+            to_dir = Path(to_dir)
 
-        try:
-            from_source.move_record_to(unique_id, to_source)
-        except KeyError:
-            return jsonify({"error": "Media record not found"}), 404
+        # Check if source or destination is state/media (which uses MySQL)
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        if not isinstance(state_media_path, Path):
+            state_media_path = Path(state_media_path)
+        is_from_state_media = str(from_dir.resolve()) == str(state_media_path.resolve())
+        is_to_state_media = str(to_dir.resolve()) == str(state_media_path.resolve())
 
-        logger.info(f"Moved media {unique_id} from {from_directory} to {to_directory}")
+        # Handle no-op case (moving state/media to itself)
+        if is_from_state_media and is_to_state_media:
+            logger.info(f"Moving media {unique_id} from state/media to itself (no-op)")
+            return jsonify({"success": True})
+
+        if is_from_state_media:
+            # Load from MySQL
+            from db import media_metadata
+            record = media_metadata.load_media_metadata(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
+
+            # Get the destination source (for writing JSON file)
+            to_source = get_directory_media_source(to_dir)
+
+            # Move media file from state/media to destination
+            media_file_name = record.get("media_file")
+            if media_file_name:
+                source_media = from_dir / media_file_name
+                if source_media.exists():
+                    to_dir.mkdir(parents=True, exist_ok=True)
+                    target_media = to_dir / media_file_name
+                    source_media.replace(target_media)
+                    logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+            else:
+                # Try common extensions if media_file field is not set
+                moved = False
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    source_media = from_dir / f"{unique_id}{ext}"
+                    if source_media.exists():
+                        to_dir.mkdir(parents=True, exist_ok=True)
+                        target_media = to_dir / source_media.name
+                        source_media.replace(target_media)
+                        media_file_name = source_media.name
+                        record["media_file"] = media_file_name
+                        logger.debug(f"Moved media file {source_media.name} from {from_dir} to {to_dir}")
+                        moved = True
+                        break
+                if not moved:
+                    logger.warning(f"No media file found for {unique_id} in {from_dir}")
+
+            # Write JSON file to destination directory
+            # Filter the record to exclude MySQL-specific or state-specific fields
+            # (same filtering as DirectoryMediaSource does for config directories)
+            to_source.put(unique_id, record)
+
+            # Delete from MySQL
+            media_metadata.delete_media_metadata(unique_id)
+            logger.info(f"Moved media {unique_id} from MySQL ({from_directory}) to {to_directory}")
+        elif is_to_state_media:
+            # Moving TO state/media (MySQL) from another directory
+            # Load from source directory
+            from_source = get_directory_media_source(from_dir)
+            record = from_source.get_cached_record(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
+
+            # Ensure unique_id is in the record
+            record["unique_id"] = unique_id
+
+            # Move media file from source to state/media
+            media_file_name = record.get("media_file")
+            if media_file_name:
+                source_media = from_dir / media_file_name
+                if source_media.exists():
+                    to_dir.mkdir(parents=True, exist_ok=True)
+                    target_media = to_dir / media_file_name
+                    source_media.replace(target_media)
+                    logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+            else:
+                # Try common extensions if media_file field is not set
+                moved = False
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    source_media = from_dir / f"{unique_id}{ext}"
+                    if source_media.exists():
+                        to_dir.mkdir(parents=True, exist_ok=True)
+                        target_media = to_dir / source_media.name
+                        source_media.replace(target_media)
+                        media_file_name = source_media.name
+                        record["media_file"] = media_file_name
+                        logger.debug(f"Moved media file {source_media.name} from {from_dir} to {to_dir}")
+                        moved = True
+                        break
+                if not moved:
+                    logger.warning(f"No media file found for {unique_id} in {from_dir}")
+
+            # Save to MySQL (filters fields automatically)
+            from db import media_metadata
+            media_metadata.save_media_metadata(record)
+
+            # Delete from source directory
+            from_source.delete_record(unique_id)
+            logger.info(f"Moved media {unique_id} from {from_directory} to MySQL ({to_directory})")
+        else:
+            # Use filesystem move (existing logic)
+            from_source = get_directory_media_source(from_dir)
+            to_source = get_directory_media_source(to_dir)
+
+            try:
+                from_source.move_record_to(unique_id, to_source)
+            except KeyError:
+                return jsonify({"error": "Media record not found"}), 404
+
+            logger.info(f"Moved media {unique_id} from {from_directory} to {to_directory}")
+
         return jsonify({"success": True})
 
     except Exception as e:
