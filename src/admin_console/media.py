@@ -794,8 +794,17 @@ def api_move_media(unique_id: str):
                 if source_media.exists():
                     to_dir.mkdir(parents=True, exist_ok=True)
                     target_media = to_dir / media_file_name
-                    source_media.replace(target_media)
-                    logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+                    try:
+                        source_media.replace(target_media)
+                        logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+                    except Exception as e:
+                        # Rollback: delete the metadata we just wrote to destination
+                        logger.error(f"Failed to move media file {media_file_name} from {from_dir} to {to_dir}: {e}")
+                        try:
+                            to_source.delete_record(unique_id)
+                        except Exception as rollback_error:
+                            logger.error(f"Failed to rollback metadata write for {unique_id}: {rollback_error}")
+                        return jsonify({"error": f"Failed to move media file: {str(e)}"}), 500
             else:
                 logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
@@ -839,8 +848,17 @@ def api_move_media(unique_id: str):
                 if source_media.exists():
                     to_dir.mkdir(parents=True, exist_ok=True)
                     target_media = to_dir / media_file_name
-                    source_media.replace(target_media)
-                    logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+                    try:
+                        source_media.replace(target_media)
+                        logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
+                    except Exception as e:
+                        # Rollback: delete the metadata we just saved to MySQL
+                        logger.error(f"Failed to move media file {media_file_name} from {from_dir} to {to_dir}: {e}")
+                        try:
+                            media_metadata.delete_media_metadata(unique_id)
+                        except Exception as rollback_error:
+                            logger.error(f"Failed to rollback metadata save for {unique_id}: {rollback_error}")
+                        return jsonify({"error": f"Failed to move media file: {str(e)}"}), 500
             else:
                 logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
