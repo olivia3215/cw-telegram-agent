@@ -175,3 +175,36 @@ def agents_with_notes(agent_telegram_ids: list[int]) -> set[int]:
             raise
         finally:
             cursor.close()
+
+
+def channels_with_notes(agent_telegram_id: int) -> set[int]:
+    """
+    Get all channel IDs that have notes for an agent.
+    
+    Args:
+        agent_telegram_id: The agent's Telegram ID
+        
+    Returns:
+        Set of channel IDs that have at least one note
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT DISTINCT channel_id
+                FROM notes
+                WHERE agent_telegram_id = %s
+                """,
+                (agent_telegram_id,),
+            )
+            rows = cursor.fetchall()
+            # Commit the read transaction to ensure fresh data on next read
+            conn.commit()
+            return {row["channel_id"] for row in rows}
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to get channels with notes for agent {agent_telegram_id}: {e}")
+            raise
+        finally:
+            cursor.close()
