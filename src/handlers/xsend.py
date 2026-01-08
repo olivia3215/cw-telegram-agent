@@ -3,6 +3,7 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
+import json
 import logging
 
 from agent import get_agent_for_id
@@ -10,6 +11,7 @@ from utils import normalize_peer_id
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import insert_received_task_for_conversation
 from handlers.registry import register_task_handler
+import handlers.telepathic as telepathic
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,15 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
     if target_channel_id == normalize_peer_id(current_channel_id):
         logger.info(f"[{agent.name}] xsend: target equals current channel; ignoring")
         return
+
+    # Send telepathic message to current channel (if telepathic)
+    current_channel_id_int = normalize_peer_id(current_channel_id)
+    if agent:
+        telepathy_payload = {"id": task.id, "target_channel_id": target_channel_id}
+        if intent:
+            telepathy_payload["intent"] = intent
+        body = json.dumps(telepathy_payload, ensure_ascii=False)
+        await telepathic.maybe_send_telepathic_message(agent, current_channel_id_int, "xsend", body)
 
     # Coalesce with existing received for the target; preserve/overwrite xsend_intent
     await insert_received_task_for_conversation(
