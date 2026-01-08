@@ -418,6 +418,7 @@ class DirectoryMediaSource(MediaSource):
             logger.exception(
                 f"DirectoryMediaSource: failed to cache {unique_id} to disk: {e}"
             )
+            raise
 
     def get_cached_record(self, unique_id: str) -> dict[str, Any] | None:
         """Return a copy of the cached record without async helpers."""

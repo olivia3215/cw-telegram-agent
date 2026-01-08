@@ -796,9 +796,14 @@ def api_move_media(unique_id: str):
             # Write JSON file to destination directory
             # Filter the record to exclude MySQL-specific or state-specific fields
             # (same filtering as DirectoryMediaSource does for config directories)
-            to_source.put(unique_id, record)
+            # Only delete from MySQL after successful write to prevent data loss
+            try:
+                to_source.put(unique_id, record)
+            except Exception as e:
+                logger.error(f"Failed to write media {unique_id} to {to_directory}: {e}")
+                return jsonify({"error": f"Failed to write to destination: {str(e)}"}), 500
 
-            # Delete from MySQL
+            # Delete from MySQL only after successful write
             media_metadata.delete_media_metadata(unique_id)
             logger.info(f"Moved media {unique_id} from MySQL ({from_directory}) to {to_directory}")
         elif is_to_state_media:
