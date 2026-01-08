@@ -810,6 +810,8 @@ def api_move_media(unique_id: str):
                         except Exception as rollback_error:
                             logger.error(f"Failed to rollback metadata write for {unique_id}: {rollback_error}")
                         return jsonify({"error": f"Failed to move media file: {str(e)}"}), 500
+                else:
+                    logger.warning(f"Media file {media_file_name} referenced in metadata for {unique_id} does not exist in {from_dir}")
             else:
                 logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
@@ -864,6 +866,8 @@ def api_move_media(unique_id: str):
                         except Exception as rollback_error:
                             logger.error(f"Failed to rollback metadata save for {unique_id}: {rollback_error}")
                         return jsonify({"error": f"Failed to move media file: {str(e)}"}), 500
+                else:
+                    logger.warning(f"Media file {media_file_name} referenced in metadata for {unique_id} does not exist in {from_dir}")
             else:
                 logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
