@@ -797,9 +797,9 @@ def api_move_media(unique_id: str):
             if media_file_name:
                 source_media = from_dir / media_file_name
                 if source_media.exists():
-                    to_dir.mkdir(parents=True, exist_ok=True)
                     target_media = to_dir / media_file_name
                     try:
+                        to_dir.mkdir(parents=True, exist_ok=True)
                         source_media.replace(target_media)
                         logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
                     except Exception as e:
@@ -851,9 +851,9 @@ def api_move_media(unique_id: str):
             if media_file_name:
                 source_media = from_dir / media_file_name
                 if source_media.exists():
-                    to_dir.mkdir(parents=True, exist_ok=True)
                     target_media = to_dir / media_file_name
                     try:
+                        to_dir.mkdir(parents=True, exist_ok=True)
                         source_media.replace(target_media)
                         logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
                     except Exception as e:
