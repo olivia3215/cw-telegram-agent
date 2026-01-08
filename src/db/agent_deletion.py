@@ -25,7 +25,7 @@ def delete_all_agent_data(agent_telegram_id: int) -> dict[str, int]:
     - summaries
     - schedules
     - agent_activity
-    - curated_memories
+    - notes
     - conversation_llm_overrides
     
     Args:
@@ -81,12 +81,12 @@ def delete_all_agent_data(agent_telegram_id: int) -> dict[str, int]:
             )
             deleted_counts["agent_activity"] = cursor.rowcount
             
-            # Delete from curated_memories
+            # Delete from notes
             cursor.execute(
-                "DELETE FROM curated_memories WHERE agent_telegram_id = %s",
+                "DELETE FROM notes WHERE agent_telegram_id = %s",
                 (agent_telegram_id,),
             )
-            deleted_counts["curated_memories"] = cursor.rowcount
+            deleted_counts["notes"] = cursor.rowcount
             
             # Delete from conversation_llm_overrides
             cursor.execute(

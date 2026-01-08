@@ -593,11 +593,11 @@ The system prompt is built in `handlers/received_helpers/prompt_builder.py` via 
    - Loaded via `agent._load_memory_content(channel_id)`
    - Contains persistent memory entries for the channel
    - Structure (`storage/agent_storage.py` `load_memory_content()`):
-     - **Curated Memories** (`# Curated Memories`)
-       - Loaded from `configdir/agents/{AgentName}/memory/{user_id}.json`
-       - Manually curated memories for the specific user
+     - **Notes** (`# Notes`)
+       - Loaded from MySQL `notes` table
+       - Conversation-specific memories (notes) for the specific user
+       - Can be created and edited by the agent using the `note` task, or via the admin console
        - Formatted as JSON code block
-       - Filesystem only (not stored in MySQL)
      - **Global Memories** (`# Global Memories`)
        - Loaded from MySQL `memories` table
        - Agent-specific global episodic memories (visible across all conversations)
@@ -908,7 +908,7 @@ configdir/
 ├── agents/
 │   └── AgentName/
 │       └── memory/
-│           └── UserID.json      # Curated memories (manually created)
+│           └── UserID.json      # Notes (conversation-specific memories, stored in MySQL)
 └── ...
 
 state/
@@ -920,17 +920,17 @@ state/
 ```
 
 **Storage Backend:**
-The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity, curated memories, channel metadata). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
+The system uses MySQL for storing agent data (memories, intentions, plans, summaries, schedules, translations, media_metadata, agent_activity, notes, channel metadata). Media files, Telegram sessions, and work queue state always remain in the filesystem. See README.md for MySQL setup instructions.
 
-- **Curated memories** (MySQL `curated_memories` table): Manually curated memories that are visible only when chatting with a given user. Can be created and edited via the admin console.
+- **Notes** (MySQL `notes` table): Conversation-specific memories that are visible only when chatting with a given user. Can be created and edited by the agent using the `note` task, or via the admin console.
 - **Global memories** (MySQL `memories` table): Global episodic memories automatically created from agent conversations, visible during all conversations.
 - **Channel metadata** (MySQL `conversation_llm_overrides` table): Channel-specific LLM model overrides
 - **Plans and summaries** (MySQL `plans` and `summaries` tables): Channel-specific plans and summaries
 
 **Memory Design:**
-- Curated memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`.
-- Curated memories that are visible only when chatting with a given user are stored in MySQL `curated_memories` table and can be managed via the admin console.
-- Memories produced by the agent are stored in the MySQL `memories` table and are visible by the agent during all conversations.
+- Memories that are visible during all conversations can be written into the character specification `configdir/agents/AgentName.md`, or created by the agent using the `remember` task (stored in MySQL `memories` table).
+- Notes (conversation-specific memories) that are visible only when chatting with a given user are stored in MySQL `notes` table and can be created/edited by the agent using the `note` task or managed via the admin console.
+- Global memories produced by the agent via the `remember` task are stored in the MySQL `memories` table and are visible by the agent during all conversations.
 
 ### Remember Task Processing
 
@@ -946,8 +946,8 @@ The `remember` task is processed immediately during LLM response parsing and doe
 Memory content is integrated into the system prompt as part of the complete prompt structure. See the **System Prompt Assembly Order** section above for the complete ordering. Memory content appears in step 4 of the assembly order, after stickers and before current time.
 
 The memory content section includes:
-- **Curated Memories** - manually curated memories for the specific user
-- **Global Memories** - agent-specific global episodic memories (visible across all conversations)
+- **Notes** - conversation-specific memories for the specific user (stored in MySQL `notes` table)
+- **Global Memories** - agent-specific global episodic memories (visible across all conversations, stored in MySQL `memories` table)
 
 **Note:** Channel plans are no longer included in memory content. They are now part of the intentions section (step 2b) and appear before intentions.
 
@@ -1006,7 +1006,7 @@ Agents track their source config directory to enable memory loading:
 
 - **Single directory**: Each agent is associated with one config directory where its `.md` file was found
 - **Registration**: Config directory is stored during agent registration in `register_agents.py`
-- **Memory loading**: Used to locate curated memory files in the correct config directory
+- **Memory loading**: Used to locate memory files and load notes from MySQL
 
 ### Memory Guidelines for Agents
 

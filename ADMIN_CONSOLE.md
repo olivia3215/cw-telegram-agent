@@ -48,7 +48,7 @@ The admin console provides three main tabs:
   - **Memories** — View and manage global agent memories (visible across all conversations)
   - **Intentions** — View and manage agent intentions
 - **Conversations** — Conversation management with subtabs:
-  - **Curated Memories** — View and manage per-user curated memories for specific conversation partners
+  - **Notes** — View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - **Conversation LLM** — Override LLM model for specific conversations
   - **Plans** — View and manage channel-specific plans
   - **Conversation** — View conversation history, edit summaries, trigger summarization, and delete telepathic messages (messages starting with `⟦think⟧`, `⟦remember⟧`, `⟦intend⟧`, `⟦plan⟧`, `⟦retrieve⟧`, `⟦summarize⟧`)

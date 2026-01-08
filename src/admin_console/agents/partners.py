@@ -112,7 +112,7 @@ def register_partner_routes(agents_bp: Blueprint):
             # Dictionary to store partners: {user_id: {"name": name, "username": username, "date": date}}
             partners_dict = {}
 
-            # 1. From curated memory files
+            # 1. From note files
             if agent.config_directory:
                 memory_dir = (
                     Path(agent.config_directory) / "agents" / agent.config_name / "memory"

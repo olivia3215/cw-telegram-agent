@@ -26,7 +26,7 @@ class AgentStorageMySQL:
     """
     MySQL-based storage implementation for agent data.
     
-    Stores agent state data (memories, intentions, plans, summaries, schedules, curated memories) in MySQL.
+    Stores agent state data (memories, intentions, plans, summaries, schedules, notes) in MySQL.
     Channel metadata still uses filesystem (for llm_model overrides).
     """
 
@@ -43,7 +43,7 @@ class AgentStorageMySQL:
         Args:
             agent_config_name: The agent's config file name (for config memory and logging)
             agent_telegram_id: The agent's Telegram ID (for MySQL queries)
-            config_directory: Optional config directory path (for curated memories)
+            config_directory: Optional config directory path (for notes)
             state_directory: State directory path (for config memory fallback)
         """
         if not agent_telegram_id or agent_telegram_id <= 0:
@@ -85,10 +85,10 @@ class AgentStorageMySQL:
         try:
             memory_parts = []
 
-            # Load config memory (curated memories for the current conversation) - still filesystem
+            # Load config memory (notes for the current conversation) - from MySQL
             config_memory = self.load_config_memory(channel_id)
             if config_memory:
-                memory_parts.append("# Curated Memories\n\n```json\n" + config_memory + "\n```")
+                memory_parts.append("# Notes\n\n```json\n" + config_memory + "\n```")
 
             # Load state memory (agent-specific global episodic memories) - from MySQL
             state_memory = self.load_state_memory()
@@ -105,19 +105,19 @@ class AgentStorageMySQL:
 
     def load_config_memory(self, user_id: int) -> str:
         """
-        Load curated memory from MySQL for a specific user.
+        Load notes from MySQL for a specific user.
         
         Returns:
-            Pretty-printed JSON string of the memory array, or empty string if no memory exists.
+            Pretty-printed JSON string of the notes array, or empty string if no notes exist.
         """
         try:
-            from db import curated_memories as db_curated_memories
-            memories_list = db_curated_memories.load_curated_memories(self.agent_telegram_id, user_id)
-            if memories_list:
-                return json.dumps(memories_list, indent=2, ensure_ascii=False)
+            from db import notes
+            notes_list = notes.load_notes(self.agent_telegram_id, user_id)
+            if notes_list:
+                return json.dumps(notes_list, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load curated memory from MySQL for channel {user_id}: {e}"
+                f"[{self.agent_config_name}] Failed to load notes from MySQL for channel {user_id}: {e}"
             )
         return ""
 

@@ -756,7 +756,7 @@
         <!-- Conversations Tab -->
         <section class="tab-panel" data-tab-panel="conversations">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="curated-memories-conv">Curated Memories</button>
+                <button class="tab-button active" data-subtab="notes-conv">Notes</button>
                 <button class="tab-button" data-subtab="conversation-llm">Conversation LLM</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
@@ -785,8 +785,8 @@
                 </div>
             </div>
             <div id="conversations-container" class="main-container">
-                <div class="subtab-panel active" data-subtab-panel="curated-memories-conv">
-                    <div id="curated-memories-conv-container">
+                <div class="subtab-panel active" data-subtab-panel="notes-conv">
+                    <div id="notes-conv-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
@@ -2310,7 +2310,7 @@
                 switchSubtab('parameters');
             } else if (tabName === 'conversations') {
                 // Show first subtab (which will also call loadAgents)
-                switchSubtab('curated-memories-conv');
+                switchSubtab('notes-conv');
                 // Load recent conversations
                 loadRecentConversations();
                 // If an agent is already selected, load conversation partners
@@ -2444,8 +2444,8 @@
                 const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
                 
                 if (agentName && userId) {
-                    if (subtabName === 'curated-memories-conv') {
-                        loadCuratedMemoriesForPartner();
+                    if (subtabName === 'notes-conv') {
+                        loadNotesForPartner();
                     } else if (subtabName === 'conversation-llm') {
                         loadConversationLLM();
                     } else if (subtabName === 'plans') {
@@ -2502,7 +2502,7 @@
         // Helper function to get current subtab name for conversations tab
         function getCurrentConversationsSubtab() {
             const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
-            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'curated-memories-conv';
+            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'notes-conv';
         }
 
         // Helper function to check if agent has nontrivial content for a subtab
@@ -2556,11 +2556,11 @@
         // Helper function to check if conversation partner has nontrivial content for a subtab
         async function partnerHasContent(agentName, userId, subtabName) {
             try {
-                if (subtabName === 'curated-memories-conv') {
-                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`);
+                if (subtabName === 'notes-conv') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}`);
                     const data = await response.json();
                     if (data.error) return false;
-                    return data.memories && data.memories.length > 0;
+                    return data.notes && data.notes.length > 0;
                 } else if (subtabName === 'conversation-llm') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`);
                     const data = await response.json();
@@ -2848,10 +2848,10 @@
                         agents.forEach(agent => {
                             agentContentChecks[agent.config_name] = agent.has_intentions || false;
                         });
-                    } else if (subtabName === 'curated-memories-conv') {
-                        // Conversations tab: Curated Memories subtab
+                    } else if (subtabName === 'notes-conv') {
+                        // Conversations tab: Notes subtab
                         agents.forEach(agent => {
-                            agentContentChecks[agent.config_name] = agent.has_curated_memories || false;
+                            agentContentChecks[agent.config_name] = agent.has_notes || false;
                         });
                     } else if (subtabName === 'conversation-llm') {
                         // Conversations tab: Conversation LLM subtab
@@ -3070,9 +3070,9 @@
                 conversationContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
             }
             
-            const curatedMemoriesContainer = document.getElementById('curated-memories-conv-container');
-            if (curatedMemoriesContainer) {
-                curatedMemoriesContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+            const notesContainer = document.getElementById('notes-conv-container');
+            if (notesContainer) {
+                notesContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
             }
             
             const conversationLLMContainer = document.getElementById('conversation-llm-container');
@@ -3428,38 +3428,38 @@
         }
 
 
-        // Auto-save for curated memories
-        const curatedMemoryAutoSaveTimers = {};
-        function scheduleCuratedMemoryAutoSave(agentName, userId, memoryId) {
-            const key = `${userId}-${memoryId}`;
-            if (curatedMemoryAutoSaveTimers[key]) {
-                clearTimeout(curatedMemoryAutoSaveTimers[key]);
+        // Auto-save for notes
+        const noteAutoSaveTimers = {};
+        function scheduleNoteAutoSave(agentName, userId, noteId) {
+            const key = `${agentName}-${userId}-${noteId}`;
+            if (noteAutoSaveTimers[key]) {
+                clearTimeout(noteAutoSaveTimers[key]);
             }
             
-            const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+            const statusEl = document.getElementById(`note-status-${userId}-${noteId}`);
             if (statusEl) {
                 statusEl.textContent = 'Typing...';
                 statusEl.style.color = '#007bff';
             }
             
-            curatedMemoryAutoSaveTimers[key] = setTimeout(() => {
+            noteAutoSaveTimers[key] = setTimeout(() => {
                 // Try both possible textarea ID formats (Agents tab and Conversations tab)
-                let textarea = document.getElementById(`curated-memory-${userId}-${memoryId}`);
+                let textarea = document.getElementById(`note-${userId}-${noteId}`);
                 if (!textarea) {
-                    textarea = document.getElementById(`curated-memory-params-${userId}-${memoryId}`);
+                    textarea = document.getElementById(`note-params-${userId}-${noteId}`);
                 }
                 if (!textarea) {
                     return; // Element no longer exists
                 }
                 const content = textarea.value.trim();
                 
-                const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+                const statusEl = document.getElementById(`note-status-${userId}-${noteId}`);
                 if (statusEl) {
                     statusEl.textContent = 'Saving...';
                     statusEl.style.color = '#007bff';
                 }
                 
-                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}/${memoryId}`, {
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}/${noteId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3468,7 +3468,7 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+                    const statusEl = document.getElementById(`note-status-${userId}-${noteId}`);
                     if (statusEl) {
                         if (data.error) {
                             statusEl.textContent = 'Error';
@@ -3483,7 +3483,7 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    const statusEl = document.getElementById(`curated-memory-status-${userId}-${memoryId}`);
+                    const statusEl = document.getElementById(`note-status-${userId}-${noteId}`);
                     if (statusEl) {
                         statusEl.textContent = 'Error';
                         statusEl.style.color = '#dc3545';
@@ -3492,27 +3492,27 @@
             }, 1000);
         }
 
-        function deleteCuratedMemory(agentName, userId, memoryId) {
-            if (!confirm('Are you sure you want to delete this curated memory?')) {
+        function deleteNote(agentName, userId, noteId) {
+            if (!confirm('Are you sure you want to delete this note?')) {
                 return;
             }
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}/${memoryId}`, {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}/${noteId}`, {
                 method: 'DELETE'
             })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Error deleting curated memory: ' + data.error);
+                    alert('Error deleting note: ' + data.error);
                 } else {
-                    loadCuratedMemoriesForPartner();
+                    loadNotesForPartner();
                 }
             })
             .catch(error => {
                 if (error && error.message === 'unauthorized') {
                     return;
                 }
-                alert('Error deleting curated memory: ' + error);
+                alert('Error deleting note: ' + error);
             });
         }
 
@@ -4633,7 +4633,7 @@
                     
                     // Map subtab names to content check keys
                     const subtabToKey = {
-                        'curated-memories-conv': 'curated_memories',
+                        'notes-conv': 'notes',
                         'conversation-llm': 'conversation_llm',
                         'plans': 'plans',
                         'conversation': 'conversation'  // Special case, uses different endpoint
@@ -4662,7 +4662,7 @@
                             }));
                         }
                     } else {
-                        // For curated-memories, conversation-llm, and plans, use partner-content-check endpoint
+                        // For notes, conversation-llm, and plans, use partner-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-content-check`, {
                                 method: 'POST',
@@ -4733,7 +4733,7 @@
         }
 
         // Functions for Parameters subtabs
-        function loadCuratedMemoriesForPartner() {
+        function loadNotesForPartner() {
             const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
@@ -4746,10 +4746,10 @@
                 return;
             }
             
-            const container = document.getElementById('curated-memories-conv-container');
-            container.innerHTML = '<div class="loading">Loading curated memories...</div>';
+            const container = document.getElementById('notes-conv-container');
+            container.innerHTML = '<div class="loading">Loading notes...</div>';
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`)
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -4757,30 +4757,30 @@
                         return;
                     }
                     
-                    const memories = data.memories || [];
-                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewCuratedMemoryForPartner(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Memory</button></div>';
+                    const notes = data.notes || [];
+                    let html = '<div style="margin-bottom: 16px;"><button onclick="createNewNoteForPartner(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ Add New Note</button></div>';
                     
-                    if (memories.length === 0) {
-                        html += '<div class="placeholder-card">No curated memories found for this user.</div>';
+                    if (notes.length === 0) {
+                        html += '<div class="placeholder-card">No notes found for this user.</div>';
                         container.innerHTML = html;
                         return;
                     }
                     
-                    html += memories.map(memory => `
+                    html += notes.map(note => `
                         <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                                 <div>
-                                    <strong>ID:</strong> ${escapeHtml(memory.id || 'N/A')}<br>
-                                    <strong>Created:</strong> ${escapeHtml(memory.created || 'N/A')}
+                                    <strong>ID:</strong> ${escapeHtml(note.id || 'N/A')}<br>
+                                    <strong>Created:</strong> ${escapeHtml(note.created || 'N/A')}
                                 </div>
-                                <button onclick="deleteCuratedMemory('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                <button onclick="deleteNote('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(note.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                             </div>
                             <textarea 
-                                id="curated-memory-params-${userId}-${memory.id}" 
+                                id="note-params-${userId}-${note.id}" 
                                 style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"
-                                oninput="scheduleCuratedMemoryAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(memory.id)}')"
-                            >${escapeHtml(memory.content || '')}</textarea>
-                            <div id="curated-memory-status-${userId}-${memory.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
+                                oninput="scheduleNoteAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(note.id)}')"
+                            >${escapeHtml(note.content || '')}</textarea>
+                            <div id="note-status-${userId}-${note.id}" style="margin-top: 8px; font-size: 12px; color: #28a745;">Saved</div>
                         </div>
                     `).join('');
                     container.innerHTML = html;
@@ -4789,36 +4789,36 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading curated memories: ${escapeHtml(error)}</div>`;
+                    container.innerHTML = `<div class="error">Error loading notes: ${escapeHtml(error)}</div>`;
                 });
         }
 
-        function createNewCuratedMemoryForPartner(agentName, userId) {
+        function createNewNoteForPartner(agentName, userId) {
             if (!agentName || !userId) {
                 alert('Please select an agent and conversation partner');
                 return;
             }
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/curated-memories/${userId}`, {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ content: 'New curated memory entry' })
+                body: JSON.stringify({ content: 'New note entry' })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Error creating curated memory: ' + data.error);
+                    alert('Error creating note: ' + data.error);
                 } else {
-                    loadCuratedMemoriesForPartner();
+                    loadNotesForPartner();
                 }
             })
             .catch(error => {
                 if (error && error.message === 'unauthorized') {
                     return;
                 }
-                alert('Error creating curated memory: ' + error);
+                alert('Error creating note: ' + error);
             });
         }
 
@@ -6148,10 +6148,10 @@
 
 
         // Set up conversation partner select change handlers
-        document.getElementById('curated-memories-params-partner-select')?.addEventListener('change', (e) => {
+        document.getElementById('notes-params-partner-select')?.addEventListener('change', (e) => {
             if (e.target.value) {
-                document.getElementById('curated-memories-params-user-id').value = '';
-                loadCuratedMemoriesForPartner();
+                document.getElementById('notes-params-user-id').value = '';
+                loadNotesForPartner();
             }
         });
 

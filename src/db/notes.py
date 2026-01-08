@@ -1,10 +1,10 @@
-# db/curated_memories.py
+# db/notes.py
 
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
 """
-Database operations for curated memories.
+Database operations for notes (conversation-specific memories).
 """
 
 import logging
@@ -16,16 +16,16 @@ from db.datetime_util import normalize_datetime_for_mysql
 logger = logging.getLogger(__name__)
 
 
-def load_curated_memories(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]:
+def load_notes(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]:
     """
-    Load curated memories for an agent and channel.
+    Load notes for an agent and channel.
     
     Args:
         agent_telegram_id: The agent's Telegram ID
         channel_id: The channel ID
         
     Returns:
-        List of curated memory dictionaries
+        List of note dictionaries
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -33,7 +33,7 @@ def load_curated_memories(agent_telegram_id: int, channel_id: int) -> list[dict[
             cursor.execute(
                 """
                 SELECT id, content, created
-                FROM curated_memories
+                FROM notes
                 WHERE agent_telegram_id = %s AND channel_id = %s
                 ORDER BY created ASC
                 """,
@@ -45,41 +45,41 @@ def load_curated_memories(agent_telegram_id: int, channel_id: int) -> list[dict[
             # This prevents stale reads when connections are reused from the pool
             conn.commit()
             
-            memories = []
+            notes_list = []
             for row in rows:
-                memory = {
+                note = {
                     "id": row["id"],
                     "content": row["content"],
                 }
                 if row["created"]:
-                    memory["created"] = row["created"].isoformat()
+                    note["created"] = row["created"].isoformat()
                 
-                memories.append(memory)
+                notes_list.append(note)
             
-            return memories
+            return notes_list
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to load curated memories: {e}")
+            logger.error(f"Failed to load notes: {e}")
             raise
         finally:
             cursor.close()
 
 
-def save_curated_memory(
+def save_note(
     agent_telegram_id: int,
     channel_id: int,
-    memory_id: str,
+    note_id: str,
     content: str,
     created: str | None = None,
 ) -> None:
     """
-    Save or update a curated memory.
+    Save or update a note.
     
     Args:
         agent_telegram_id: The agent's Telegram ID
         channel_id: The channel ID
-        memory_id: Unique memory ID
-        content: Memory content
+        note_id: Unique note ID
+        content: Note content
         created: Creation timestamp (ISO format string)
     """
     with get_db_connection() as conn:
@@ -90,7 +90,7 @@ def save_curated_memory(
             
             cursor.execute(
                 """
-                INSERT INTO curated_memories (
+                INSERT INTO notes (
                     id, agent_telegram_id, channel_id, content, created
                 ) VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
@@ -98,7 +98,7 @@ def save_curated_memory(
                     created = VALUES(created)
                 """,
                 (
-                    memory_id,
+                    note_id,
                     agent_telegram_id,
                     channel_id,
                     content,
@@ -108,46 +108,46 @@ def save_curated_memory(
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to save curated memory {memory_id}: {e}")
+            logger.error(f"Failed to save note {note_id}: {e}")
             raise
         finally:
             cursor.close()
 
 
-def delete_curated_memory(agent_telegram_id: int, channel_id: int, memory_id: str) -> None:
+def delete_note(agent_telegram_id: int, channel_id: int, note_id: str) -> None:
     """
-    Delete a curated memory.
+    Delete a note.
     
     Args:
         agent_telegram_id: The agent's Telegram ID
         channel_id: The channel ID
-        memory_id: Memory ID to delete
+        note_id: Note ID to delete
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "DELETE FROM curated_memories WHERE id = %s AND agent_telegram_id = %s AND channel_id = %s",
-                (memory_id, agent_telegram_id, channel_id),
+                "DELETE FROM notes WHERE id = %s AND agent_telegram_id = %s AND channel_id = %s",
+                (note_id, agent_telegram_id, channel_id),
             )
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to delete curated memory {memory_id}: {e}")
+            logger.error(f"Failed to delete note {note_id}: {e}")
             raise
         finally:
             cursor.close()
 
 
-def agents_with_curated_memories(agent_telegram_ids: list[int]) -> set[int]:
+def agents_with_notes(agent_telegram_ids: list[int]) -> set[int]:
     """
-    Check which agents have curated memories (bulk query).
+    Check which agents have notes (bulk query).
     
     Args:
         agent_telegram_ids: List of agent Telegram IDs to check
         
     Returns:
-        Set of agent Telegram IDs that have at least one curated memory
+        Set of agent Telegram IDs that have at least one note
     """
     if not agent_telegram_ids:
         return set()
@@ -160,7 +160,7 @@ def agents_with_curated_memories(agent_telegram_ids: list[int]) -> set[int]:
             cursor.execute(
                 f"""
                 SELECT DISTINCT agent_telegram_id
-                FROM curated_memories
+                FROM notes
                 WHERE agent_telegram_id IN ({placeholders})
                 """,
                 tuple(agent_telegram_ids),
@@ -171,8 +171,7 @@ def agents_with_curated_memories(agent_telegram_ids: list[int]) -> set[int]:
             return {row["agent_telegram_id"] for row in rows}
         except Exception as e:
             conn.rollback()
-            logger.error(f"Failed to check agents with curated memories: {e}")
+            logger.error(f"Failed to check agents with notes: {e}")
             raise
         finally:
             cursor.close()
-

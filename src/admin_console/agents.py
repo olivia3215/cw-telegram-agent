@@ -102,16 +102,16 @@ def _build_agent_id_by_config_name(agent_config_names: list[str], agents: list) 
     return agent_id_by_config_name
 
 
-def _agents_with_curated_memories(agent_config_names: list[str], agents: list) -> set[str]:
+def _agents_with_notes(agent_config_names: list[str], agents: list) -> set[str]:
     """
-    Check which agents have curated memories using MySQL bulk query.
+    Check which agents have notes using MySQL bulk query.
     
     Args:
         agent_config_names: List of agent config names to check
         agents: List of agent objects (to map config_name to agent_id)
         
     Returns:
-        Set of agent config names that have curated memories
+        Set of agent config names that have notes
     """
     # Map agent config names to agent IDs
     agent_id_by_config_name = _build_agent_id_by_config_name(agent_config_names, agents)
@@ -119,20 +119,20 @@ def _agents_with_curated_memories(agent_config_names: list[str], agents: list) -
     if not agent_id_by_config_name:
         return set()
     
-    # Bulk query to check which agents have curated memories
+    # Bulk query to check which agents have notes
     try:
-        from db import curated_memories as db_curated_memories
-        agent_ids_with_memories = db_curated_memories.agents_with_curated_memories(list(agent_id_by_config_name.values()))
+        from db import notes as db_notes
+        agent_ids_with_notes = db_notes.agents_with_notes(list(agent_id_by_config_name.values()))
         
         # Map back to config names
-        config_names_with_memories = {
+        config_names_with_notes = {
             config_name
             for config_name, agent_id in agent_id_by_config_name.items()
-            if agent_id in agent_ids_with_memories
+            if agent_id in agent_ids_with_notes
         }
-        return config_names_with_memories
+        return config_names_with_notes
     except Exception as e:
-        logger.debug(f"Error checking curated memories in MySQL: {e}")
+        logger.debug(f"Error checking notes in MySQL: {e}")
         return set()
 
 
@@ -210,13 +210,13 @@ def api_agents():
             agents_with_memories_set = set()
             agents_with_intentions_set = set()
         
-        # Check which agents have curated memories and conversation LLM overrides (MySQL bulk queries)
+        # Check which agents have notes and conversation LLM overrides (MySQL bulk queries)
         agent_config_names = [agent.config_name for agent in agents if agent.config_name]
         try:
-            agents_with_curated_memories_set = _agents_with_curated_memories(agent_config_names, agents)
+            agents_with_notes_set = _agents_with_notes(agent_config_names, agents)
         except Exception as e:
-            logger.debug(f"Error checking curated memories: {e}")
-            agents_with_curated_memories_set = set()
+            logger.debug(f"Error checking notes: {e}")
+            agents_with_notes_set = set()
         
         try:
             agents_with_conversation_llm_set = _agents_with_conversation_llm_overrides(agent_config_names, agents)
@@ -250,8 +250,8 @@ def api_agents():
             has_memories = agent.agent_id is not None and agent.agent_id in agents_with_memories_set
             has_intentions = agent.agent_id is not None and agent.agent_id in agents_with_intentions_set
             
-            # Check if agent has curated memories and conversation LLM overrides (MySQL-based)
-            has_curated_memories = agent.config_name in agents_with_curated_memories_set
+            # Check if agent has notes and conversation LLM overrides (MySQL-based)
+            has_notes = agent.config_name in agents_with_notes_set
             has_conversation_llm = agent.config_name in agents_with_conversation_llm_set
             
             agent_list.append({
@@ -266,7 +266,7 @@ def api_agents():
                 "has_plans": has_plans,
                 "has_memories": has_memories,
                 "has_intentions": has_intentions,
-                "has_curated_memories": has_curated_memories,
+                "has_notes": has_notes,
                 "has_conversation_llm": has_conversation_llm
             })
         

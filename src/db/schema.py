@@ -136,9 +136,9 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
-            # Create curated_memories table
+            # Create notes table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS curated_memories (
+                CREATE TABLE IF NOT EXISTS notes (
                     id VARCHAR(255) NOT NULL,
                     agent_telegram_id BIGINT NOT NULL,
                     channel_id BIGINT NOT NULL,
