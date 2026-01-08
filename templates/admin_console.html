@@ -2718,16 +2718,16 @@
                 } else if (data.status === 'needs_code') {
                     const code = prompt('Enter the Telegram verification code for this agent:');
                     if (code) {
-                        submitAgentLoginCode(agentName, code);
+                        await submitAgentLoginCode(agentName, code);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.status === 'needs_password') {
                     const password = prompt('Enter the 2FA password for this agent:');
                     if (password) {
-                        submitAgentLoginPassword(agentName, password);
+                        await submitAgentLoginPassword(agentName, password);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.error) {
                     alert('Login error: ' + data.error);
@@ -2772,13 +2772,13 @@
                 } else if (data.status === 'needs_password') {
                     const password = prompt('Enter the 2FA password for this agent:');
                     if (password) {
-                        submitAgentLoginPassword(agentName, password);
+                        await submitAgentLoginPassword(agentName, password);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.error) {
                     alert('Error: ' + data.error);
-                    handleAgentLogin(agentName); // Let them try again
+                    await handleAgentLogin(agentName); // Let them try again
                 }
             } catch (error) {
                 console.error('Error submitting code:', error);
@@ -2803,7 +2803,7 @@
                     });
                 } else if (data.error) {
                     alert('Error: ' + data.error);
-                    handleAgentLogin(agentName); // Let them try again
+                    await handleAgentLogin(agentName); // Let them try again
                 }
             } catch (error) {
                 console.error('Error submitting password:', error);
