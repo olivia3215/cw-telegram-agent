@@ -767,8 +767,28 @@ def api_move_media(unique_id: str):
             # Get the destination source (for writing JSON file)
             to_source = get_directory_media_source(to_dir)
 
-            # Move media file from state/media to destination
+            # Determine media file name before moving
             media_file_name = record.get("media_file")
+            if not media_file_name:
+                # Try common extensions if media_file field is not set
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    source_media = from_dir / f"{unique_id}{ext}"
+                    if source_media.exists():
+                        media_file_name = source_media.name
+                        record["media_file"] = media_file_name
+                        break
+
+            # Write JSON file to destination directory FIRST
+            # Filter the record to exclude MySQL-specific or state-specific fields
+            # (same filtering as DirectoryMediaSource does for config directories)
+            # Only move file after successful write to prevent inconsistent state
+            try:
+                to_source.put(unique_id, record)
+            except Exception as e:
+                logger.error(f"Failed to write media {unique_id} to {to_directory}: {e}")
+                return jsonify({"error": f"Failed to write to destination: {str(e)}"}), 500
+
+            # Move media file from state/media to destination AFTER successful metadata write
             if media_file_name:
                 source_media = from_dir / media_file_name
                 if source_media.exists():
@@ -777,33 +797,9 @@ def api_move_media(unique_id: str):
                     source_media.replace(target_media)
                     logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
             else:
-                # Try common extensions if media_file field is not set
-                moved = False
-                for ext in MEDIA_FILE_EXTENSIONS:
-                    source_media = from_dir / f"{unique_id}{ext}"
-                    if source_media.exists():
-                        to_dir.mkdir(parents=True, exist_ok=True)
-                        target_media = to_dir / source_media.name
-                        source_media.replace(target_media)
-                        media_file_name = source_media.name
-                        record["media_file"] = media_file_name
-                        logger.debug(f"Moved media file {source_media.name} from {from_dir} to {to_dir}")
-                        moved = True
-                        break
-                if not moved:
-                    logger.warning(f"No media file found for {unique_id} in {from_dir}")
+                logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
-            # Write JSON file to destination directory
-            # Filter the record to exclude MySQL-specific or state-specific fields
-            # (same filtering as DirectoryMediaSource does for config directories)
-            # Only delete from MySQL after successful write to prevent data loss
-            try:
-                to_source.put(unique_id, record)
-            except Exception as e:
-                logger.error(f"Failed to write media {unique_id} to {to_directory}: {e}")
-                return jsonify({"error": f"Failed to write to destination: {str(e)}"}), 500
-
-            # Delete from MySQL only after successful write
+            # Delete from MySQL only after successful write and file move
             media_metadata.delete_media_metadata(unique_id)
             logger.info(f"Moved media {unique_id} from MySQL ({from_directory}) to {to_directory}")
         elif is_to_state_media:
@@ -817,8 +813,27 @@ def api_move_media(unique_id: str):
             # Ensure unique_id is in the record
             record["unique_id"] = unique_id
 
-            # Move media file from source to state/media
+            # Determine media file name before moving
             media_file_name = record.get("media_file")
+            if not media_file_name:
+                # Try common extensions if media_file field is not set
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    source_media = from_dir / f"{unique_id}{ext}"
+                    if source_media.exists():
+                        media_file_name = source_media.name
+                        record["media_file"] = media_file_name
+                        break
+
+            # Save to MySQL FIRST (filters fields automatically)
+            # Only move file after successful save to prevent inconsistent state
+            from db import media_metadata
+            try:
+                media_metadata.save_media_metadata(record)
+            except Exception as e:
+                logger.error(f"Failed to save media {unique_id} to MySQL: {e}")
+                return jsonify({"error": f"Failed to save to MySQL: {str(e)}"}), 500
+
+            # Move media file from source to state/media AFTER successful metadata save
             if media_file_name:
                 source_media = from_dir / media_file_name
                 if source_media.exists():
@@ -827,27 +842,9 @@ def api_move_media(unique_id: str):
                     source_media.replace(target_media)
                     logger.debug(f"Moved media file {media_file_name} from {from_dir} to {to_dir}")
             else:
-                # Try common extensions if media_file field is not set
-                moved = False
-                for ext in MEDIA_FILE_EXTENSIONS:
-                    source_media = from_dir / f"{unique_id}{ext}"
-                    if source_media.exists():
-                        to_dir.mkdir(parents=True, exist_ok=True)
-                        target_media = to_dir / source_media.name
-                        source_media.replace(target_media)
-                        media_file_name = source_media.name
-                        record["media_file"] = media_file_name
-                        logger.debug(f"Moved media file {source_media.name} from {from_dir} to {to_dir}")
-                        moved = True
-                        break
-                if not moved:
-                    logger.warning(f"No media file found for {unique_id} in {from_dir}")
+                logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
-            # Save to MySQL (filters fields automatically)
-            from db import media_metadata
-            media_metadata.save_media_metadata(record)
-
-            # Delete from source directory
+            # Delete from source directory only after successful save and file move
             from_source.delete_record(unique_id)
             logger.info(f"Moved media {unique_id} from {from_directory} to MySQL ({to_directory})")
         else:
