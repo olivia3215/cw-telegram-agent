@@ -235,7 +235,7 @@ def register_memory_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            data = request.json
+            data = request.json or {}
             content = data.get("content", "").strip()
 
             # Load existing note to preserve created timestamp and metadata
