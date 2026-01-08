@@ -2679,8 +2679,7 @@
                     if (!isDisabled) {
                         // If enabling, trigger login check
                         await handleAgentLogin(agentName);
-                        // Restore button state after login check completes
-                        restoreButton();
+                        // loadAgentConfiguration will be called by handleAgentLogin to update the button
                     } else {
                         // Refresh configuration to update UI
                         loadAgentConfiguration(agentName);
@@ -2688,8 +2687,7 @@
                         loadAgents().then(() => {
                             document.getElementById('agents-agent-select').value = agentName;
                         });
-                        // Restore button state after disabling
-                        restoreButton();
+                        // loadAgentConfiguration will update the button with correct state
                     }
                 } else {
                     restoreButton();
