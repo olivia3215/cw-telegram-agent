@@ -151,14 +151,17 @@ def get_db_connection():
         yield conn
 
     except Exception as e:
-        if conn:
-            conn.rollback()
         logger.error(f"Database error: {e}")
         raise
     finally:
         # Return connection to pool if it's still valid
         if conn:
             try:
+                # Always rollback to ensure clean state and prevent accidentally committing
+                # unintentional transactions. Safe to call multiple times if already rolled back.
+                # For read operations: rollback just cleans transaction state
+                # For write operations: they should have explicitly committed, so rollback does nothing
+                conn.rollback()
                 # Check if connection is still alive
                 conn.ping(reconnect=False)
                 with _pool_lock:
@@ -169,7 +172,7 @@ def get_db_connection():
                         conn.close()
                         logger.debug("Closed excess MySQL connection")
             except Exception:
-                # Connection is dead, don't return to pool
+                # Connection is dead or rollback failed, don't return to pool
                 try:
                     conn.close()
                 except Exception:

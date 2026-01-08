@@ -53,6 +53,9 @@ def get_translation(message: str) -> str | None:
             if row and row["translation"]:
                 return row["translation"]
             return None
+        except Exception as e:
+            logger.error(f"Failed to get translation: {e}")
+            return None
         finally:
             cursor.close()
 
