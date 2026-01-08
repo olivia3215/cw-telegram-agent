@@ -3929,6 +3929,13 @@
                 // Only log error if this request is still relevant
                 if (expectedProfileAgent === agentName) {
                     console.error('Error loading agent profile:', error);
+                    // Restore UI state on network/parsing errors
+                    if (profileSection) {
+                        profileSection.style.display = 'none';
+                    }
+                    if (profileContainer) {
+                        profileContainer.style.display = 'block';
+                    }
                     expectedProfileAgent = null;
                 }
             }
