@@ -6396,8 +6396,8 @@
                         const selectedOption = this.options[this.selectedIndex];
                         const docConfigDir = selectedOption.dataset.configDir;
                         
-                        // If config directory wasn't selected, set it now
-                        if (!globalDocsConfigDir && docConfigDir) {
+                        // Always update config directory to match the selected item's directory
+                        if (docConfigDir && docConfigDir !== globalDocsConfigDir) {
                             const configSelect = document.getElementById('global-docs-config-select');
                             if (configSelect) {
                                 configSelect.value = docConfigDir;
@@ -7280,8 +7280,8 @@
                         const selectedOption = this.options[this.selectedIndex];
                         const promptConfigDir = selectedOption.dataset.configDir;
                         
-                        // If config directory wasn't selected, set it now
-                        if (!globalPromptsConfigDir && promptConfigDir) {
+                        // Always update config directory to match the selected item's directory
+                        if (promptConfigDir && promptConfigDir !== globalPromptsConfigDir) {
                             const configSelect = document.getElementById('global-prompts-config-select');
                             if (configSelect) {
                                 configSelect.value = promptConfigDir;
