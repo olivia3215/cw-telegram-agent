@@ -165,19 +165,48 @@ def validate_filename(filename: str) -> bool:
 
 @docs_bp.route("/api/docs", methods=["GET"])
 def api_docs_list():
-    """Get list of doc files in a directory."""
+    """Get list of doc files in a directory or from all config directories if config_dir is not provided."""
     try:
         config_dir = request.args.get("config_dir")
         agent_config_name = request.args.get("agent_config_name")  # None for global docs
         
-        if not config_dir:
-            return jsonify({"error": "Missing config_dir parameter"}), 400
-        
-        if not validate_config_dir(config_dir):
-            return jsonify({"error": "Invalid config_dir parameter"}), 400
-        
         if not validate_agent_config_name(agent_config_name):
             return jsonify({"error": "Invalid agent_config_name parameter"}), 400
+        
+        # If config_dir is not provided, list docs from all config directories
+        if not config_dir:
+            all_doc_files = []
+            for cfg_dir in CONFIG_DIRECTORIES:
+                try:
+                    docs_dir = resolve_docs_path(cfg_dir, agent_config_name)
+                    # Ensure directory exists
+                    docs_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # List all .md files from this config directory
+                    for md_file in sorted(docs_dir.glob("*.md")):
+                        if md_file.is_file():
+                            all_doc_files.append({
+                                "filename": md_file.name,
+                                "path": str(md_file),
+                                "config_dir": cfg_dir,
+                            })
+                except Exception as e:
+                    # Log but continue with other directories
+                    logger.warning(f"Error listing docs from {cfg_dir}: {e}")
+                    continue
+            
+            # Sort by filename for consistent ordering
+            all_doc_files.sort(key=lambda x: x["filename"])
+            
+            return jsonify({
+                "docs": all_doc_files,
+                "config_dir": None,  # Indicates all directories were searched
+                "agent_config_name": agent_config_name,
+            })
+        
+        # Single config directory case (existing behavior)
+        if not validate_config_dir(config_dir):
+            return jsonify({"error": "Invalid config_dir parameter"}), 400
         
         docs_dir = resolve_docs_path(config_dir, agent_config_name)
         
@@ -191,6 +220,7 @@ def api_docs_list():
                 doc_files.append({
                     "filename": md_file.name,
                     "path": str(md_file),
+                    "config_dir": config_dir,  # Include config_dir for consistency
                 })
         
         return jsonify({

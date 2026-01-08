@@ -6337,10 +6337,12 @@
                     document.getElementById('global-docs-select').innerHTML = '<option value="">Choose a document...</option>';
                     document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a config directory and document to edit</div>';
                     document.getElementById('delete-global-doc-btn').style.display = 'none';
-                    if (globalDocsConfigDir) {
-                        loadGlobalDocsList();
-                    }
+                    // Load docs list (will show all if no directory selected)
+                    loadGlobalDocsList();
                 };
+                
+                // Load docs list on initial load (will show all if no directory selected)
+                loadGlobalDocsList();
             } catch (error) {
                 console.error('Error loading config directories:', error);
             }
@@ -6348,25 +6350,61 @@
         
         // Load list of docs for global docs
         async function loadGlobalDocsList() {
-            if (!globalDocsConfigDir) return;
-            
             try {
-                const response = await fetch(`/admin/api/docs?config_dir=${encodeURIComponent(globalDocsConfigDir)}`);
+                // If no config directory is selected, fetch from all directories
+                const url = globalDocsConfigDir 
+                    ? `/admin/api/docs?config_dir=${encodeURIComponent(globalDocsConfigDir)}`
+                    : '/admin/api/docs';
+                
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 const select = document.getElementById('global-docs-select');
                 if (!select) return;
                 
                 select.innerHTML = '<option value="">Choose a document...</option>';
+                
+                // Get config directory display paths for labeling
+                let configDirDisplayMap = {};
+                if (!globalDocsConfigDir) {
+                    const configDirsResponse = await fetch('/admin/api/config-directories');
+                    const configDirsData = await configDirsResponse.json();
+                    configDirDisplayMap = {};
+                    configDirsData.directories.forEach(dir => {
+                        configDirDisplayMap[dir.path] = dir.display_path;
+                    });
+                }
+                
                 data.docs.forEach(doc => {
                     const option = document.createElement('option');
                     option.value = doc.filename;
-                    option.textContent = doc.filename;
+                    // Store config_dir in data attribute
+                    option.dataset.configDir = doc.config_dir || globalDocsConfigDir;
+                    
+                    // Display filename with source directory if showing all directories
+                    if (!globalDocsConfigDir && doc.config_dir) {
+                        const displayPath = configDirDisplayMap[doc.config_dir] || doc.config_dir;
+                        option.textContent = `${doc.filename} (from ${displayPath})`;
+                    } else {
+                        option.textContent = doc.filename;
+                    }
                     select.appendChild(option);
                 });
                 
                 select.onchange = function() {
                     if (this.value) {
+                        const selectedOption = this.options[this.selectedIndex];
+                        const docConfigDir = selectedOption.dataset.configDir;
+                        
+                        // If config directory wasn't selected, set it now
+                        if (!globalDocsConfigDir && docConfigDir) {
+                            const configSelect = document.getElementById('global-docs-config-select');
+                            if (configSelect) {
+                                configSelect.value = docConfigDir;
+                                globalDocsConfigDir = docConfigDir;
+                            }
+                        }
+                        
                         loadGlobalDoc(this.value);
                     } else {
                         document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
@@ -7183,10 +7221,12 @@
                     document.getElementById('global-prompts-select').innerHTML = '<option value="">Choose a role prompt...</option>';
                     document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a config directory and role prompt to edit</div>';
                     document.getElementById('delete-global-prompt-btn').style.display = 'none';
-                    if (globalPromptsConfigDir) {
-                        loadGlobalPromptsList();
-                    }
+                    // Load prompts list (will show all if no directory selected)
+                    loadGlobalPromptsList();
                 };
+                
+                // Load prompts list on initial load (will show all if no directory selected)
+                loadGlobalPromptsList();
             } catch (error) {
                 console.error('Error loading config directories:', error);
             }
@@ -7194,25 +7234,61 @@
         
         // Load list of prompts for global prompts
         async function loadGlobalPromptsList() {
-            if (!globalPromptsConfigDir) return;
-            
             try {
-                const response = await fetch(`/admin/api/prompts?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`);
+                // If no config directory is selected, fetch from all directories
+                const url = globalPromptsConfigDir 
+                    ? `/admin/api/prompts?config_dir=${encodeURIComponent(globalPromptsConfigDir)}`
+                    : '/admin/api/prompts';
+                
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 const select = document.getElementById('global-prompts-select');
                 if (!select) return;
                 
                 select.innerHTML = '<option value="">Choose a role prompt...</option>';
+                
+                // Get config directory display paths for labeling
+                let configDirDisplayMap = {};
+                if (!globalPromptsConfigDir) {
+                    const configDirsResponse = await fetch('/admin/api/config-directories');
+                    const configDirsData = await configDirsResponse.json();
+                    configDirDisplayMap = {};
+                    configDirsData.directories.forEach(dir => {
+                        configDirDisplayMap[dir.path] = dir.display_path;
+                    });
+                }
+                
                 data.prompts.forEach(prompt => {
                     const option = document.createElement('option');
                     option.value = prompt.filename;
-                    option.textContent = prompt.filename;
+                    // Store config_dir in data attribute
+                    option.dataset.configDir = prompt.config_dir || globalPromptsConfigDir;
+                    
+                    // Display filename with source directory if showing all directories
+                    if (!globalPromptsConfigDir && prompt.config_dir) {
+                        const displayPath = configDirDisplayMap[prompt.config_dir] || prompt.config_dir;
+                        option.textContent = `${prompt.filename} (from ${displayPath})`;
+                    } else {
+                        option.textContent = prompt.filename;
+                    }
                     select.appendChild(option);
                 });
                 
                 select.onchange = function() {
                     if (this.value) {
+                        const selectedOption = this.options[this.selectedIndex];
+                        const promptConfigDir = selectedOption.dataset.configDir;
+                        
+                        // If config directory wasn't selected, set it now
+                        if (!globalPromptsConfigDir && promptConfigDir) {
+                            const configSelect = document.getElementById('global-prompts-config-select');
+                            if (configSelect) {
+                                configSelect.value = promptConfigDir;
+                                globalPromptsConfigDir = promptConfigDir;
+                            }
+                        }
+                        
                         loadGlobalPrompt(this.value);
                     } else {
                         document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a role prompt to edit</div>';
