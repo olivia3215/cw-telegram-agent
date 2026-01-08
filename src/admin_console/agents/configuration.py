@@ -5,6 +5,7 @@
 import asyncio
 import logging
 import math
+import re
 import shutil
 from pathlib import Path
 
@@ -168,6 +169,10 @@ def register_configuration_routes(agents_bp: Blueprint):
             prompt = data.get("prompt", "").strip()
             if not prompt:
                 return jsonify({"error": "Agent instructions cannot be empty"}), 400
+
+            # Replace any first-level markdown headers (# ) with second-level headers (## )
+            # This prevents them from cutting short the "Agent Instructions" section
+            prompt = re.sub(r'^# ', '## ', prompt, flags=re.MULTILINE)
 
             # Find agent's markdown file
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
