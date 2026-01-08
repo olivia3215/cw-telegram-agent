@@ -151,11 +151,6 @@ def get_db_connection():
         yield conn
 
     except Exception as e:
-        if conn:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
         logger.error(f"Database error: {e}")
         raise
     finally:
