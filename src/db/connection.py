@@ -134,13 +134,6 @@ def get_db_connection():
         with _pool_lock:
             if _connection_pool:
                 conn = _connection_pool.pop()
-                # Commit any pending transaction from previous use to ensure clean state
-                # This prevents stale reads when connections are reused from the pool
-                try:
-                    conn.commit()
-                except Exception:
-                    # If commit fails (e.g., connection was closed), we'll create a new one
-                    pass
             else:
                 # Pool exhausted, create new connection
                 conn = pymysql.connect(
