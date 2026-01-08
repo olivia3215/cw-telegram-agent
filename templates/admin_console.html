@@ -2783,6 +2783,10 @@
             } catch (error) {
                 console.error('Error submitting code:', error);
                 alert('Error submitting code');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
@@ -2808,6 +2812,10 @@
             } catch (error) {
                 console.error('Error submitting password:', error);
                 alert('Error submitting password');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
