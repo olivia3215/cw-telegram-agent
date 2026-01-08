@@ -819,6 +819,9 @@ def api_move_media(unique_id: str):
                                 # No original record existed, just delete the JSON we created
                                 if json_path.exists():
                                     json_path.unlink()
+                                # Also remove from memory cache since put() already updated it
+                                with to_source._lock:
+                                    to_source._mem_cache.pop(unique_id, None)
                                 logger.debug(f"Deleted JSON metadata for {unique_id} during rollback")
                         except Exception as rollback_error:
                             logger.error(f"Failed to rollback metadata write for {unique_id}: {rollback_error}")
