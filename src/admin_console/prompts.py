@@ -148,13 +148,41 @@ def validate_prompt_filename(filename: str) -> bool:
 
 @prompts_bp.route("/api/prompts", methods=["GET"])
 def api_prompts_list():
-    """Get list of role prompt files in a config directory."""
+    """Get list of role prompt files in a config directory or from all config directories if config_dir is not provided."""
     try:
         config_dir = request.args.get("config_dir")
         
+        # If config_dir is not provided, list prompts from all config directories
         if not config_dir:
-            return jsonify({"error": "Missing config_dir parameter"}), 400
+            all_prompt_files = []
+            for cfg_dir in CONFIG_DIRECTORIES:
+                try:
+                    prompts_dir = resolve_prompts_path(cfg_dir)
+                    # Ensure directory exists
+                    prompts_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # List all .md files from this config directory
+                    for md_file in sorted(prompts_dir.glob("*.md")):
+                        if md_file.is_file():
+                            all_prompt_files.append({
+                                "filename": md_file.name,
+                                "path": str(md_file),
+                                "config_dir": cfg_dir,
+                            })
+                except Exception as e:
+                    # Log but continue with other directories
+                    logger.warning(f"Error listing prompts from {cfg_dir}: {e}")
+                    continue
+            
+            # Sort by filename for consistent ordering
+            all_prompt_files.sort(key=lambda x: x["filename"])
+            
+            return jsonify({
+                "prompts": all_prompt_files,
+                "config_dir": None,  # Indicates all directories were searched
+            })
         
+        # Single config directory case (existing behavior)
         if not validate_config_dir(config_dir):
             return jsonify({"error": "Invalid config_dir parameter"}), 400
         
@@ -170,6 +198,7 @@ def api_prompts_list():
                 prompt_files.append({
                     "filename": md_file.name,
                     "path": str(md_file),
+                    "config_dir": config_dir,  # Include config_dir for consistency
                 })
         
         return jsonify({
