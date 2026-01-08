@@ -2642,6 +2642,32 @@
         }
 
         async function toggleAgentDisabled(agentName, isDisabled) {
+            // Get button reference and store original state
+            const button = document.getElementById('toggle-agent-button');
+            if (!button) {
+                console.error('Toggle agent button not found');
+                return;
+            }
+            
+            const originalText = button.textContent;
+            const originalBackground = button.style.background;
+            const originalCursor = button.style.cursor;
+            const originalOpacity = button.style.opacity;
+            
+            // Immediately disable button and show loading state
+            button.disabled = true;
+            button.style.cursor = 'not-allowed';
+            button.style.opacity = '0.6';
+            button.textContent = isDisabled ? 'Disabling...' : 'Enabling...';
+            
+            // Helper function to restore button state
+            const restoreButton = () => {
+                button.disabled = false;
+                button.style.cursor = originalCursor || 'pointer';
+                button.style.opacity = originalOpacity || '1';
+                button.textContent = originalText;
+            };
+            
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/disabled`, {
                     method: 'PUT',
@@ -2652,7 +2678,8 @@
                 if (data.success) {
                     if (!isDisabled) {
                         // If enabling, trigger login check
-                        handleAgentLogin(agentName);
+                        await handleAgentLogin(agentName);
+                        // loadAgentConfiguration will be called by handleAgentLogin to update the button
                     } else {
                         // Refresh configuration to update UI
                         loadAgentConfiguration(agentName);
@@ -2660,12 +2687,15 @@
                         loadAgents().then(() => {
                             document.getElementById('agents-agent-select').value = agentName;
                         });
+                        // loadAgentConfiguration will update the button with correct state
                     }
                 } else {
+                    restoreButton();
                     alert('Error updating agent status: ' + data.error);
                 }
             } catch (error) {
                 console.error('Error toggling agent status:', error);
+                restoreButton();
                 alert('Error toggling agent status');
             }
         }
@@ -2686,19 +2716,27 @@
                 } else if (data.status === 'needs_code') {
                     const code = prompt('Enter the Telegram verification code for this agent:');
                     if (code) {
-                        submitAgentLoginCode(agentName, code);
+                        await submitAgentLoginCode(agentName, code);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.status === 'needs_password') {
                     const password = prompt('Enter the 2FA password for this agent:');
                     if (password) {
-                        submitAgentLoginPassword(agentName, password);
+                        await submitAgentLoginPassword(agentName, password);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.error) {
                     alert('Login error: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login status:', data.status, data);
+                    alert('Unexpected response from login API. Status: ' + (data.status || 'unknown'));
                     loadAgentConfiguration(agentName);
                     loadAgents().then(() => {
                         document.getElementById('agents-agent-select').value = agentName;
@@ -2707,6 +2745,10 @@
             } catch (error) {
                 console.error('Error during agent login:', error);
                 alert('Error during agent login');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
@@ -2728,17 +2770,29 @@
                 } else if (data.status === 'needs_password') {
                     const password = prompt('Enter the 2FA password for this agent:');
                     if (password) {
-                        submitAgentLoginPassword(agentName, password);
+                        await submitAgentLoginPassword(agentName, password);
                     } else {
-                        cancelAgentLogin(agentName);
+                        await cancelAgentLogin(agentName);
                     }
                 } else if (data.error) {
                     alert('Error: ' + data.error);
-                    handleAgentLogin(agentName); // Let them try again
+                    await handleAgentLogin(agentName); // Let them try again
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login code status:', data.status, data);
+                    alert('Unexpected response from login code API. Status: ' + (data.status || 'unknown'));
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
                 }
             } catch (error) {
                 console.error('Error submitting code:', error);
                 alert('Error submitting code');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
@@ -2759,11 +2813,23 @@
                     });
                 } else if (data.error) {
                     alert('Error: ' + data.error);
-                    handleAgentLogin(agentName); // Let them try again
+                    await handleAgentLogin(agentName); // Let them try again
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login password status:', data.status, data);
+                    alert('Unexpected response from login password API. Status: ' + (data.status || 'unknown'));
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
                 }
             } catch (error) {
                 console.error('Error submitting password:', error);
                 alert('Error submitting password');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
@@ -4168,7 +4234,7 @@
                                 <div>
                                     <h3 style="margin: 0;">Agent Status</h3>
                                     <div class="agent-status-actions">
-                                        <button onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                        <button id="toggle-agent-button" onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
