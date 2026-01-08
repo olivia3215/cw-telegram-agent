@@ -754,6 +754,11 @@ def api_move_media(unique_id: str):
 
         # Handle no-op case (moving state/media to itself)
         if is_from_state_media and is_to_state_media:
+            # Verify record exists before returning success (consistent with other branches)
+            from db import media_metadata
+            record = media_metadata.load_media_metadata(unique_id)
+            if not record:
+                return jsonify({"error": "Media record not found"}), 404
             logger.info(f"Moving media {unique_id} from state/media to itself (no-op)")
             return jsonify({"success": True})
 
