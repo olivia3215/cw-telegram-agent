@@ -134,6 +134,13 @@ def get_db_connection():
         with _pool_lock:
             if _connection_pool:
                 conn = _connection_pool.pop()
+                # Commit any pending transaction from previous use to ensure clean state
+                # This prevents stale reads when connections are reused from the pool
+                try:
+                    conn.commit()
+                except Exception:
+                    # If commit fails (e.g., connection was closed), we'll create a new one
+                    pass
             else:
                 # Pool exhausted, create new connection
                 conn = pymysql.connect(
@@ -152,13 +159,19 @@ def get_db_connection():
 
     except Exception as e:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         logger.error(f"Database error: {e}")
         raise
     finally:
         # Return connection to pool if it's still valid
         if conn:
             try:
+                # Commit any pending transaction before returning to pool
+                # This ensures connections are clean when reused
+                conn.commit()
                 # Check if connection is still alive
                 conn.ping(reconnect=False)
                 with _pool_lock:
@@ -169,7 +182,7 @@ def get_db_connection():
                         conn.close()
                         logger.debug("Closed excess MySQL connection")
             except Exception:
-                # Connection is dead, don't return to pool
+                # Connection is dead or commit failed, don't return to pool
                 try:
                     conn.close()
                 except Exception:
