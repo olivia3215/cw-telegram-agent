@@ -2779,6 +2779,14 @@
                 } else if (data.error) {
                     alert('Error: ' + data.error);
                     await handleAgentLogin(agentName); // Let them try again
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login code status:', data.status, data);
+                    alert('Unexpected response from login code API. Status: ' + (data.status || 'unknown'));
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
                 }
             } catch (error) {
                 console.error('Error submitting code:', error);
@@ -2808,6 +2816,14 @@
                 } else if (data.error) {
                     alert('Error: ' + data.error);
                     await handleAgentLogin(agentName); // Let them try again
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login password status:', data.status, data);
+                    alert('Unexpected response from login password API. Status: ' + (data.status || 'unknown'));
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
                 }
             } catch (error) {
                 console.error('Error submitting password:', error);
