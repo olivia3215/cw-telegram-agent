@@ -112,16 +112,17 @@ def register_partner_routes(agents_bp: Blueprint):
             # Dictionary to store partners: {user_id: {"name": name, "username": username, "date": date}}
             partners_dict = {}
 
-            # 1. From curated memory files
-            if agent.config_directory:
-                memory_dir = (
-                    Path(agent.config_directory) / "agents" / agent.config_name / "memory"
-                )
-                if memory_dir.exists():
-                    for memory_file in memory_dir.glob("*.json"):
-                        user_id = memory_file.stem
+            # 1. From notes in MySQL
+            if agent.agent_id:
+                try:
+                    from db import notes
+                    channels_with_notes_set = notes.channels_with_notes(agent.agent_id)
+                    for channel_id in channels_with_notes_set:
+                        user_id = str(channel_id)
                         if user_id not in partners_dict:
                             partners_dict[user_id] = {"name": None, "username": None, "date": None}
+                except Exception as e:
+                    logger.warning(f"Failed to load channels with notes for agent {agent_config_name}: {e}")
 
             # 2. From plan files (also includes memory files from state directory)
             plan_dir = Path(STATE_DIRECTORY) / agent.config_name / "memory"

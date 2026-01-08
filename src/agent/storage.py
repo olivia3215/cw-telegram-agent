@@ -63,7 +63,7 @@ class AgentStorageMixin:
         return self._storage.load_memory_content(channel_id)
 
     def _load_config_memory(self, user_id: int) -> str:
-        """Load curated memory from config directory for a specific user."""
+        """Load notes from config directory for a specific user."""
         return self._storage.load_config_memory(user_id)
 
     def _load_state_memory(self) -> str:

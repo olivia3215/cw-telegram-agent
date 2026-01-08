@@ -29,7 +29,7 @@ def create_storage(
     Args:
         agent_config_name: The agent's config file name (without .md extension)
         agent_telegram_id: The agent's Telegram ID (None if not authenticated yet)
-        config_directory: Optional config directory path (for curated memories)
+        config_directory: Optional config directory path (for notes)
         state_directory: State directory path (for config memory and channel metadata)
     
     Returns:

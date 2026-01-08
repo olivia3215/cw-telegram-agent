@@ -458,7 +458,7 @@ The Admin Console provides three main tabs:
   - View and manage agent intentions
 
 - **Conversations** — Manage conversation-specific data:
-  - View and manage per-user curated memories for specific conversation partners
+  - View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - Override LLM model for specific conversations
   - View and manage channel-specific plans
   - View conversation history, edit summaries, trigger summarization, and delete telepathic messages (internal agent messages visible in telepathic channels)

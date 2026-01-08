@@ -306,6 +306,12 @@ async def _load_existing_entry_mysql(
             for entry in entries:
                 if entry.get("id") == entry_id:
                     return entry
+        elif property_name == "note":
+            from db import notes
+            entries = notes.load_notes(agent.agent_id, channel_id)
+            for entry in entries:
+                if entry.get("id") == entry_id:
+                    return entry
         elif property_name == "summary":
             from db import summaries
             entries = summaries.load_summaries(agent.agent_id, channel_id)
@@ -335,6 +341,9 @@ async def _load_all_entries_mysql(
         elif property_name == "plan":
             from db import plans
             return plans.load_plans(agent.agent_id, channel_id)
+        elif property_name == "note":
+            from db import notes
+            return notes.load_notes(agent.agent_id, channel_id)
         elif property_name == "summary":
             from db import summaries
             return summaries.load_summaries(agent.agent_id, channel_id)
@@ -387,6 +396,15 @@ async def _save_entry_mysql(
                     content=content_value,
                     created=new_entry.get("created"),
                 )
+            elif property_name == "note":
+                from db import notes
+                notes.save_note(
+                    agent_telegram_id=agent.agent_id,
+                    channel_id=channel_id,
+                    note_id=entry_id,
+                    content=content_value,
+                    created=new_entry.get("created"),
+                )
             elif property_name == "summary":
                 from db import summaries
                 summaries.save_summary(
@@ -411,6 +429,9 @@ async def _save_entry_mysql(
             elif property_name == "plan":
                 from db import plans
                 plans.delete_plan(agent.agent_id, channel_id, entry_id)
+            elif property_name == "note":
+                from db import notes
+                notes.delete_note(agent.agent_id, channel_id, entry_id)
             elif property_name == "summary":
                 from db import summaries
                 summaries.delete_summary(agent.agent_id, channel_id, entry_id)

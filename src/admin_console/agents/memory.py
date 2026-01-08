@@ -140,20 +140,20 @@ def register_memory_routes(agents_bp: Blueprint):
             logger.error(f"Error creating memory for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories", methods=["GET"])
-    def api_get_curated_memories(agent_config_name: str):
-        """Get curated memories for an agent (from MySQL)."""
+    @agents_bp.route("/api/agents/<agent_config_name>/notes", methods=["GET"])
+    def api_get_notes(agent_config_name: str):
+        """Get notes for an agent (from MySQL)."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.is_authenticated:
-                return jsonify({"curated_memories": []})
+                return jsonify({"notes": []})
 
-            from db import curated_memories as db_curated_memories
+            from db import notes as db_notes
             
-            # Get all channels that have curated memories for this agent
+            # Get all channels that have notes for this agent
             # We need to query distinct channel_ids
             from db.connection import get_db_connection
             with get_db_connection() as conn:
@@ -162,7 +162,7 @@ def register_memory_routes(agents_bp: Blueprint):
                     cursor.execute(
                         """
                         SELECT DISTINCT channel_id
-                        FROM curated_memories
+                        FROM notes
                         WHERE agent_telegram_id = %s
                         """,
                         (agent.agent_id,),
@@ -172,56 +172,56 @@ def register_memory_routes(agents_bp: Blueprint):
                 finally:
                     cursor.close()
 
-            curated_memories = []
+            notes_list = []
             for channel_id in channel_ids:
-                memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+                channel_notes = db_notes.load_notes(agent.agent_id, channel_id)
                 # Sort by created timestamp (newest first)
-                memories.sort(key=lambda x: x.get("created", ""), reverse=True)
-                curated_memories.append(
+                channel_notes.sort(key=lambda x: x.get("created", ""), reverse=True)
+                notes_list.append(
                     {
                         "user_id": str(channel_id),
-                        "memories": memories,
+                        "notes": channel_notes,
                     }
                 )
 
-            response = jsonify({"curated_memories": curated_memories})
+            response = jsonify({"notes": notes_list})
             return add_cache_busting_headers(response)
         except Exception as e:
-            logger.error(f"Error getting curated memories for {agent_config_name}: {e}")
+            logger.error(f"Error getting notes for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>", methods=["GET"])
-    def api_get_curated_memories_for_user(agent_config_name: str, user_id: str):
-        """Get curated memories for a specific user."""
+    @agents_bp.route("/api/agents/<agent_config_name>/notes/<user_id>", methods=["GET"])
+    def api_get_notes_for_user(agent_config_name: str, user_id: str):
+        """Get notes for a specific user."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
             if not agent.is_authenticated:
-                return jsonify({"memories": []})
+                return jsonify({"notes": []})
 
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
             if error_response:
                 return error_response
 
-            from db import curated_memories as db_curated_memories
-            memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+            from db import notes as db_notes
+            notes_list = db_notes.load_notes(agent.agent_id, channel_id)
             # Sort by created timestamp (newest first)
-            memories.sort(key=lambda x: x.get("created", ""), reverse=True)
+            notes_list.sort(key=lambda x: x.get("created", ""), reverse=True)
 
-            response = jsonify({"memories": memories})
+            response = jsonify({"notes": notes_list})
             return add_cache_busting_headers(response)
         except Exception as e:
             logger.error(
-                f"Error getting curated memories for {agent_config_name}/{user_id}: {e}"
+                f"Error getting notes for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>/<memory_id>", methods=["PUT"])
-    def api_update_curated_memory(agent_config_name: str, user_id: str, memory_id: str):
-        """Update a curated memory entry."""
+    @agents_bp.route("/api/agents/<agent_config_name>/notes/<user_id>/<note_id>", methods=["PUT"])
+    def api_update_note(agent_config_name: str, user_id: str, note_id: str):
+        """Update a note entry."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -235,33 +235,33 @@ def register_memory_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            data = request.json
+            data = request.json or {}
             content = data.get("content", "").strip()
 
-            # Load existing memory to preserve created timestamp and metadata
-            from db import curated_memories as db_curated_memories
-            memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
+            # Load existing note to preserve created timestamp and metadata
+            from db import notes as db_notes
+            notes_list = db_notes.load_notes(agent.agent_id, channel_id)
             
-            # Find the memory entry
-            memory_entry = None
-            for entry in memories:
-                if entry.get("id") == memory_id:
-                    memory_entry = entry
+            # Find the note entry
+            note_entry = None
+            for entry in notes_list:
+                if entry.get("id") == note_id:
+                    note_entry = entry
                     break
             
-            if not memory_entry:
-                return jsonify({"error": "Memory not found"}), 404
+            if not note_entry:
+                return jsonify({"error": "Note not found"}), 404
 
             # Update content, preserve created and other metadata
-            created = memory_entry.get("created")
+            created = note_entry.get("created")
             # Extract metadata (everything except id, content, created)
-            metadata = {k: v for k, v in memory_entry.items() if k not in {"id", "content", "created"}}
+            metadata = {k: v for k, v in note_entry.items() if k not in {"id", "content", "created"}}
             
-            # Save updated memory
-            db_curated_memories.save_curated_memory(
+            # Save updated note
+            db_notes.save_note(
                 agent.agent_id,
                 channel_id,
-                memory_id,
+                note_id,
                 content,
                 created=created,
             )
@@ -269,13 +269,13 @@ def register_memory_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(
-                f"Error updating curated memory {memory_id} for {agent_config_name}/{user_id}: {e}"
+                f"Error updating note {note_id} for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>/<memory_id>", methods=["DELETE"])
-    def api_delete_curated_memory(agent_config_name: str, user_id: str, memory_id: str):
-        """Delete a curated memory entry."""
+    @agents_bp.route("/api/agents/<agent_config_name>/notes/<user_id>/<note_id>", methods=["DELETE"])
+    def api_delete_note(agent_config_name: str, user_id: str, note_id: str):
+        """Delete a note entry."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -289,19 +289,19 @@ def register_memory_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            from db import curated_memories as db_curated_memories
-            db_curated_memories.delete_curated_memory(agent.agent_id, channel_id, memory_id)
+            from db import notes as db_notes
+            db_notes.delete_note(agent.agent_id, channel_id, note_id)
 
             return jsonify({"success": True})
         except Exception as e:
             logger.error(
-                f"Error deleting curated memory {memory_id} for {agent_config_name}/{user_id}: {e}"
+                f"Error deleting note {note_id} for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/curated-memories/<user_id>", methods=["POST"])
-    def api_create_curated_memory(agent_config_name: str, user_id: str):
-        """Create a new curated memory entry."""
+    @agents_bp.route("/api/agents/<agent_config_name>/notes/<user_id>", methods=["POST"])
+    def api_create_note(agent_config_name: str, user_id: str):
+        """Create a new note entry."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -321,42 +321,42 @@ def register_memory_routes(agents_bp: Blueprint):
             if error_response:
                 return error_response
 
-            memory_id = f"memory-{uuid.uuid4().hex[:8]}"
+            note_id = f"note-{uuid.uuid4().hex[:8]}"
             created_value = normalize_created_string(None, agent)
             
             new_entry = {
-                "id": memory_id,
+                "id": note_id,
                 "content": content,
                 "created": created_value,
                 "origin": "puppetmaster"
             }
             
-            from db import curated_memories as db_curated_memories
-            db_curated_memories.save_curated_memory(
+            from db import notes as db_notes
+            db_notes.save_note(
                 agent.agent_id,
                 channel_id,
-                memory_id,
+                note_id,
                 content,
                 created=created_value,
             )
 
-            return jsonify({"success": True, "memory": new_entry})
+            return jsonify({"success": True, "note": new_entry})
         except Exception as e:
             logger.error(
-                f"Error creating curated memory for {agent_config_name}/{user_id}: {e}"
+                f"Error creating note for {agent_config_name}/{user_id}: {e}"
             )
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/partner-content-check", methods=["POST"])
     def api_check_partner_content_batch(agent_config_name: str):
         """
-        Batch check which partners have content for curated-memories, conversation-llm, and plans.
+        Batch check which partners have content for notes, conversation-llm, and plans.
         
         Request body: {"user_ids": ["user_id1", "user_id2", ...]}
         Response: {
             "content_checks": {
                 "user_id1": {
-                    "curated_memories": true,
+                    "notes": true,
                     "conversation_llm": false,
                     "plans": true
                 },
@@ -393,7 +393,7 @@ def register_memory_routes(agents_bp: Blueprint):
             # Initialize all checks to False
             for user_id_str in user_ids:
                 content_checks[user_id_str] = {
-                    "curated_memories": False,
+                    "notes": False,
                     "conversation_llm": False,
                     "plans": False
                 }
@@ -415,17 +415,17 @@ def register_memory_routes(agents_bp: Blueprint):
                 except Exception as e:
                     logger.warning(f"Error bulk checking conversation LLM overrides: {e}")
             
-            # Check curated memories and plans for each channel
+            # Check notes and plans for each channel
             for user_id_str, channel_id in user_id_to_channel_id.items():
                 checks = content_checks[user_id_str]
                 
-                # Check curated memories
+                # Check notes
                 try:
-                    from db import curated_memories as db_curated_memories
-                    memories = db_curated_memories.load_curated_memories(agent.agent_id, channel_id)
-                    checks["curated_memories"] = len(memories) > 0
+                    from db import notes as db_notes
+                    notes_list = db_notes.load_notes(agent.agent_id, channel_id)
+                    checks["notes"] = len(notes_list) > 0
                 except Exception:
-                    checks["curated_memories"] = False
+                    checks["notes"] = False
                 
                 # Check plans
                 try:

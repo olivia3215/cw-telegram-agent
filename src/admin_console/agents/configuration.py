@@ -842,7 +842,7 @@ def register_configuration_routes(agents_bp: Blueprint):
             if config_file.exists():
                 config_file.unlink()
             
-            # 2. Delete {configdir}/agents/{agent_name} directory (curated memories etc)
+            # 2. Delete {configdir}/agents/{agent_name} directory (notes etc)
             agent_config_dir = Path(agent.config_directory) / "agents" / agent.config_name
             if agent_config_dir.exists() and agent_config_dir.is_dir():
                 import shutil

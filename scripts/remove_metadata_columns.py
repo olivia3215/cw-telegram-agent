@@ -143,7 +143,7 @@ def remove_metadata_from_database(config: dict, db_type: str) -> None:
                 "intentions",
                 "plans",
                 "summaries",
-                "curated_memories",
+                "notes",
                 "media_metadata",
             ]
             

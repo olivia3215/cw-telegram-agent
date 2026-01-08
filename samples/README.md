@@ -504,13 +504,13 @@ Agents automatically remember important details about people they chat with usin
 - Each agent has a single memory file containing all memories
 - Enables better relationship building and personalized interactions
 
-### Creating Curated Memories
+### Creating Notes (Conversation-Specific Memories)
 
-You can create curated memories that are only remembered when the agent is in a direct chat with specific users. These memories are stored in MySQL and can be managed via the admin console. They are included along with automatically created ones and are perfect for important information you want to ensure the agent always remembers.
+You can create notes that are only remembered when the agent is in a direct chat with specific users. These notes are conversation-specific memories stored in MySQL and can be managed via the admin console. They are included along with automatically created global memories and are perfect for important information you want to ensure the agent always remembers.
 
-**Location**: Stored in MySQL `curated_memories` table.
+**Location**: Stored in MySQL `notes` table.
 
-**Management**: Use the admin console to create, edit, and delete curated memories for specific users.
+**Management**: Use the admin console to create, edit, and delete notes for specific users. The agent can also create and edit notes using the `note` task (see Task-Memory.md for details).
 
 **Format**: Each memory object needs a `content` field; other properties (like `created`, `notes`) are optional.
 
@@ -535,11 +535,11 @@ You can create curated memories that are only remembered when the agent is in a 
 ]
 ```
 
-The agent will see these curated memories in addition to any automatically created global memories.
+The agent will see these notes in addition to any automatically created global memories.
 
 For detailed information about the memory system architecture, file formats, and implementation, see [DESIGN.md](../DESIGN.md).
 
-### Global Curated Memories
+### Global Memories
 
 Anything that you want your agent to remember during all conversations should be placed in the agent's instructions.
 

@@ -14,6 +14,21 @@ from db.connection import get_db_connection
 logger = logging.getLogger(__name__)
 
 
+def _table_exists(cursor, table_name: str) -> bool:
+    """Check if a table exists in the current database."""
+    cursor.execute(
+        """
+        SELECT COUNT(*) as count
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+        """,
+        (table_name,),
+    )
+    result = cursor.fetchone()
+    return result["count"] > 0 if result else False
+
+
 def create_schema() -> None:
     """Create all database tables if they don't exist."""
     with get_db_connection() as conn:
@@ -136,9 +151,25 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
-            # Create curated_memories table
+            # Migrate curated_memories table to notes if it exists
+            # This handles the rename from curated_memories to notes
+            if _table_exists(cursor, "curated_memories"):
+                if _table_exists(cursor, "notes"):
+                    # Both tables exist - this shouldn't happen, but log a warning
+                    logger.warning(
+                        "Both 'curated_memories' and 'notes' tables exist. "
+                        "Please manually migrate data from 'curated_memories' to 'notes' "
+                        "and then drop 'curated_memories'."
+                    )
+                else:
+                    # Rename curated_memories to notes
+                    logger.info("Migrating 'curated_memories' table to 'notes'...")
+                    cursor.execute("ALTER TABLE curated_memories RENAME TO notes")
+                    logger.info("Successfully renamed 'curated_memories' to 'notes'")
+
+            # Create notes table (if it doesn't exist after migration)
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS curated_memories (
+                CREATE TABLE IF NOT EXISTS notes (
                     id VARCHAR(255) NOT NULL,
                     agent_telegram_id BIGINT NOT NULL,
                     channel_id BIGINT NOT NULL,
