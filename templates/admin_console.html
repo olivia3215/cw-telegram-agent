@@ -2642,6 +2642,32 @@
         }
 
         async function toggleAgentDisabled(agentName, isDisabled) {
+            // Get button reference and store original state
+            const button = document.getElementById('toggle-agent-button');
+            if (!button) {
+                console.error('Toggle agent button not found');
+                return;
+            }
+            
+            const originalText = button.textContent;
+            const originalBackground = button.style.background;
+            const originalCursor = button.style.cursor;
+            const originalOpacity = button.style.opacity;
+            
+            // Immediately disable button and show loading state
+            button.disabled = true;
+            button.style.cursor = 'not-allowed';
+            button.style.opacity = '0.6';
+            button.textContent = isDisabled ? 'Enabling...' : 'Disabling...';
+            
+            // Helper function to restore button state
+            const restoreButton = () => {
+                button.disabled = false;
+                button.style.cursor = originalCursor || 'pointer';
+                button.style.opacity = originalOpacity || '1';
+                button.textContent = originalText;
+            };
+            
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/disabled`, {
                     method: 'PUT',
@@ -2662,10 +2688,12 @@
                         });
                     }
                 } else {
+                    restoreButton();
                     alert('Error updating agent status: ' + data.error);
                 }
             } catch (error) {
                 console.error('Error toggling agent status:', error);
+                restoreButton();
                 alert('Error toggling agent status');
             }
         }
@@ -2707,6 +2735,10 @@
             } catch (error) {
                 console.error('Error during agent login:', error);
                 alert('Error during agent login');
+                loadAgentConfiguration(agentName);
+                loadAgents().then(() => {
+                    document.getElementById('agents-agent-select').value = agentName;
+                });
             }
         }
 
@@ -4168,7 +4200,7 @@
                                 <div>
                                     <h3 style="margin: 0;">Agent Status</h3>
                                     <div class="agent-status-actions">
-                                        <button onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                        <button id="toggle-agent-button" onclick="toggleAgentDisabled('${escJsAttr(agentName)}', ${!isDisabled})" style="padding: 8px 16px; background: ${isDisabled ? '#28a745' : '#6c757d'}; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
