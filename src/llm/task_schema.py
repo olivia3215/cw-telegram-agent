@@ -314,6 +314,40 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["note"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional note identifier for updating or deleting an existing note entry.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Channel-specific note text to store. Use an empty string to delete an existing note.",
+                    },
+                    "created": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time",
+                            },
+                            {
+                                "type": "string",
+                                "format": "date",
+                            },
+                        ],
+                        "description": "Optional creation timestamp (ISO 8601 date or date-time).",
+                    },
+                },
+                "required": ["kind", "content"],
+                "additionalProperties": False,
+                "title": "Note Task",
+                "description": "Create, update, or delete a channel-specific note entry.",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["summarize"],
                     },
                     "id": {

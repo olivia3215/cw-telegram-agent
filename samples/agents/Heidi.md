@@ -6,7 +6,6 @@ Heidi
 
 +14083607039
 
-
 # Telegram ID
 
 7359509635
@@ -27,6 +26,7 @@ Task-Memory
 Task-Retrieve
 Task-XSend
 Task-Photo
+Task-Plan
 
 # Daily Schedule
 
