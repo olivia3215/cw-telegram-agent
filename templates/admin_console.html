@@ -2678,7 +2678,9 @@
                 if (data.success) {
                     if (!isDisabled) {
                         // If enabling, trigger login check
-                        handleAgentLogin(agentName);
+                        await handleAgentLogin(agentName);
+                        // Restore button state after login check completes
+                        restoreButton();
                     } else {
                         // Refresh configuration to update UI
                         loadAgentConfiguration(agentName);
@@ -2686,6 +2688,8 @@
                         loadAgents().then(() => {
                             document.getElementById('agents-agent-select').value = agentName;
                         });
+                        // Restore button state after disabling
+                        restoreButton();
                     }
                 } else {
                     restoreButton();
@@ -2727,6 +2731,14 @@
                     }
                 } else if (data.error) {
                     alert('Login error: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                    loadAgents().then(() => {
+                        document.getElementById('agents-agent-select').value = agentName;
+                    });
+                } else {
+                    // Handle unexpected status values
+                    console.error('Unexpected login status:', data.status, data);
+                    alert('Unexpected response from login API. Status: ' + (data.status || 'unknown'));
                     loadAgentConfiguration(agentName);
                     loadAgents().then(() => {
                         document.getElementById('agents-agent-select').value = agentName;
