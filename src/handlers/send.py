@@ -5,11 +5,13 @@
 
 import logging
 
+from telethon.tl.functions.messages import SetHistoryTTLRequest  # pyright: ignore[reportMissingImports]
+
 from agent import get_agent_for_id
 from utils import coerce_to_int
-from utils.ids import ensure_int_id
+from utils.ids import ensure_int_id, normalize_peer_id
 from task_graph import TaskNode
-from utils.telegram import get_channel_name
+from utils.telegram import get_channel_name, is_dm
 from handlers.registry import register_task_handler
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,68 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     entity = await agent.get_cached_entity(channel_id_int)
     if not entity:
         raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
+
+    # For DM conversations, disable auto-delete before sending
+    # The agent depends on conversation history to maintain context
+    if is_dm(entity):
+        channel_name = await get_channel_name(agent, channel_id_int)
+        try:
+            # Step 1: Check if auto-delete is enabled by getting the dialog
+            dialog_ttl_period = None
+            try:
+                async for dialog in client.iter_dialogs():
+                    # Normalize both IDs for comparison (dialogs can be strings or ints)
+                    dialog_id = normalize_peer_id(dialog.id)
+                    if dialog_id == channel_id_int:
+                        dialog_ttl_period = getattr(dialog.dialog, "ttl_period", None)
+                        break
+            except Exception as e:
+                logger.debug(
+                    f"[{agent.name}] Could not get dialog info for [{channel_name}]: {e}"
+                )
+            
+            # Step 2: Only proceed if auto-delete is enabled (ttl_period > 0)
+            if dialog_ttl_period is not None and dialog_ttl_period > 0:
+                # Step 3: Disable auto-delete by setting TTL period to 0
+                await client(SetHistoryTTLRequest(peer=entity, period=0))
+                logger.debug(
+                    f"[{agent.name}] Disabled auto-delete for DM conversation [{channel_name}] (was {dialog_ttl_period}s)"
+                )
+                
+                # Step 4: Read recent messages and find the auto-delete disabled message
+                # The system message should be available immediately after the request
+                try:
+                    async for msg in client.iter_messages(entity, limit=10):
+                        action = getattr(msg, "action", None)
+                        if action:
+                            action_type = type(action).__name__
+                            # Check if this is a MessageActionSetMessagesTTL action
+                            if action_type == "MessageActionSetMessagesTTL":
+                                period = getattr(action, "period", None)
+                                # Find the message that indicates auto-delete was disabled (period=0)
+                                if period == 0:
+                                    # Delete the system message
+                                    await client.delete_messages(entity, [msg.id])
+                                    logger.debug(
+                                        f"[{agent.name}] Deleted auto-delete disabled message from [{channel_name}]"
+                                    )
+                                    break
+                except Exception as e:
+                    # Log but don't fail if we can't find/delete the message
+                    logger.debug(
+                        f"[{agent.name}] Could not find/delete auto-delete message for [{channel_name}]: {e}"
+                    )
+            else:
+                # Auto-delete is already disabled, nothing to do
+                logger.debug(
+                    f"[{agent.name}] Auto-delete already disabled for DM conversation [{channel_name}]"
+                )
+        except Exception as e:
+            # Log but don't fail the send if we can't disable auto-delete
+            # (e.g., if permissions don't allow it)
+            logger.debug(
+                f"[{agent.name}] Could not disable auto-delete for [{channel_name}]: {e}"
+            )
 
     reply_to_raw = task.params.get("reply_to")
     reply_to_int = coerce_to_int(reply_to_raw)
