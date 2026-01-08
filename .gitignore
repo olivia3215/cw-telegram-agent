@@ -16,3 +16,4 @@ state/
 *.log
 *.pid
 .cursor
+venv
