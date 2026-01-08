@@ -205,8 +205,23 @@ async def handle_incoming_message(agent: Agent, event):
 async def scan_unread_messages(agent: Agent):
     if agent.is_disabled:
         return
+    
+    # Try to reconnect if client is disconnected
+    if agent.client is None or not agent.client.is_connected():
+        logger.debug(
+            f"[{agent.name}] Client not connected, attempting to reconnect before scanning..."
+        )
+        if not await agent.ensure_client_connected():
+            logger.debug(
+                f"[{agent.name}] Client not connected and reconnection failed, skipping scan"
+            )
+            return
+    
+    # At this point, client should be connected (ensure_client_connected ensures this)
     client = agent.client
     if not client:
+        # Safety check - should not happen if ensure_client_connected succeeded
+        logger.warning(f"[{agent.name}] Client is None after successful reconnection, skipping scan")
         return
     agent_id = agent.agent_id
     
