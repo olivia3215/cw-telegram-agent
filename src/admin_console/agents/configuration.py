@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingIm
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_available_timezones, get_default_llm
 from config import STATE_DIRECTORY
 from prompt_loader import get_available_system_prompts
+from utils.markdown import transform_headers_preserving_code_blocks
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,11 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not prompt:
                 return jsonify({"error": "Agent instructions cannot be empty"}), 400
 
+            # Transform any level 1 headers in instructions to level 2 to maintain
+            # proper markdown hierarchy when inserted under "# Agent Instructions"
+            # This preserves content inside code blocks correctly
+            transformed_prompt = transform_headers_preserving_code_blocks(prompt)
+
             # Find agent's markdown file
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
             if not agent_file.exists():
@@ -179,13 +185,13 @@ def register_configuration_routes(agents_bp: Blueprint):
             from register_agents import extract_fields_from_markdown
             fields = extract_fields_from_markdown(content)
 
-            # Update Agent Instructions field
-            fields["Agent Instructions"] = prompt
+            # Update Agent Instructions field with transformed prompt
+            fields["Agent Instructions"] = transformed_prompt
 
             _write_agent_markdown(agent, fields)
 
-            # Update agent's instructions in place
-            agent.instructions = prompt
+            # Update agent's instructions in place with transformed version
+            agent.instructions = transformed_prompt
 
             return jsonify({"success": True})
         except Exception as e:
