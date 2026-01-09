@@ -212,6 +212,10 @@ async def perform_summarization(
     now_iso = clock.now(UTC).isoformat(timespec="seconds")
     chat_type = "group" if is_group else "direct"
     
+    # Extract allowed task types from the fully constructed system prompt
+    from llm.task_schema import extract_task_types_from_prompt
+    allowed_task_types = extract_task_types_from_prompt(system_prompt)
+    
     try:
         reply = await llm.query_structured(
             system_prompt=system_prompt,
@@ -220,6 +224,7 @@ async def perform_summarization(
             history=combined_history,
             history_size=len(combined_history),
             timeout_s=None,
+            allowed_task_types=allowed_task_types,
         )
     except Exception as e:
         logger.exception(

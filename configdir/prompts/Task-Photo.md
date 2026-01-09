@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: photo -->
+
 # Photo Task
 
 You can send curated photos from your saved messages using the `photo` task.

@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: schedule, think -->
+
 # Instructions - Scheduling
 
 You are extending your daily schedule. Please create schedule entries starting from the specified start time.

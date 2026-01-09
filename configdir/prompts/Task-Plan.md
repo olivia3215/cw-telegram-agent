@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: plan, intend -->
+
 # Planning Instructions
 
 Intentions and plans help you coordinate longer-term goals across conversations and channels. Use them to capture commitments you make to yourself so you can follow through even after the current turn ends.

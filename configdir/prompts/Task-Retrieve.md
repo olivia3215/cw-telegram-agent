@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: retrieve -->
+
 # Retrieval Augmentation Instructions
 
 You have the ability to retrieve information from the internet by fetching web pages. This allows you to access up-to-date information, search for specific topics, and provide more accurate responses.

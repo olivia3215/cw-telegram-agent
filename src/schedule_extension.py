@@ -68,6 +68,12 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
     # Get LLM instance
     llm = agent.llm
     
+    # Extract allowed task types from Instructions-Schedule.md
+    from prompt_loader import load_system_prompt
+    from llm.task_schema import extract_task_types_from_prompt
+    schedule_prompt = load_system_prompt("Instructions-Schedule")
+    allowed_task_types = extract_task_types_from_prompt(schedule_prompt)
+    
     # Query LLM using normal structured query (not JSON schema)
     now_iso = clock.now(agent.timezone).isoformat()
     
@@ -79,6 +85,7 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
             history=[],  # No conversation history for schedule extension
             history_size=llm.history_size,
             timeout_s=None,
+            allowed_task_types=allowed_task_types,
         )
     except Exception as e:
         logger.error(f"[{agent.name}] LLM query failed during schedule extension: {e}")

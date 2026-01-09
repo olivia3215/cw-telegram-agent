@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+import re
+from typing import Any, Dict, Set
 
 import copy
 
@@ -515,7 +516,65 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
 }
 
 
-def get_task_response_schema_dict() -> Dict[str, Any]:
-    """Return a JSON schema dict describing valid task responses."""
+def extract_task_types_from_prompt(prompt_text: str) -> Set[str]:
+    """
+    Extract task types from a prompt's metadata section(s).
+    
+    Looks for comment lines like: <!-- SCHEMA_TASKS: task1, task2, task3 -->
+    Finds ALL such comments in the prompt and combines their task types.
+    If none found, returns an empty set.
+    
+    Args:
+        prompt_text: The full text of the prompt file or system prompt
+        
+    Returns:
+        Set of task type strings (e.g., {"send", "react", "sticker"})
+    """
+    # Look for all HTML comments with SCHEMA_TASKS
+    pattern = r"<!--\s*SCHEMA_TASKS:\s*([^>]+)\s*-->"
+    matches = re.findall(pattern, prompt_text, re.IGNORECASE)
+    if not matches:
+        return set()
+    
+    # Combine all task types from all matches
+    task_types = set()
+    for tasks_str in matches:
+        # Parse comma-separated task types from this match
+        parsed = {task.strip() for task in tasks_str.split(",") if task.strip()}
+        task_types.update(parsed)
+    
+    return task_types
 
-    return copy.deepcopy(_TASK_RESPONSE_SCHEMA_DICT)
+
+def get_task_response_schema_dict(allowed_task_types: Set[str] | None = None) -> Dict[str, Any]:
+    """
+    Return a JSON schema dict describing valid task responses.
+    
+    Args:
+        allowed_task_types: Optional set of task types to include in the schema.
+                           If None, includes all task types.
+    
+    Returns:
+        JSON schema dictionary with filtered task types
+    """
+    schema = copy.deepcopy(_TASK_RESPONSE_SCHEMA_DICT)
+    
+    # If no filtering requested, return full schema
+    if allowed_task_types is None:
+        return schema
+    
+    # Use the provided allowed types
+    allowed = allowed_task_types
+    
+    # Filter the anyOf array to only include allowed task types
+    items = schema["items"]
+    if "anyOf" in items:
+        filtered_any_of = []
+        for task_schema in items["anyOf"]:
+            # Extract the task kind from the enum
+            kind_enum = task_schema.get("properties", {}).get("kind", {}).get("enum", [])
+            if kind_enum and kind_enum[0] in allowed:
+                filtered_any_of.append(task_schema)
+        items["anyOf"] = filtered_any_of
+    
+    return schema

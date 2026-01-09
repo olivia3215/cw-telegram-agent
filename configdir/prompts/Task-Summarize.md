@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: summarize -->
+
 # Summarization Instructions
 
 You have the ability to create and manage conversation summaries to help maintain context in long conversations.

@@ -73,17 +73,13 @@ class AgentPromptMixin:
 
         # Add role prompts
         if for_summarization:
-            # Exclude Task-* prompts except Task-Summarize
+            # Exclude all Task-* prompts (Instructions-Summarize.md already has summarize instructions)
             for role_prompt_name in self.role_prompt_names:
-                # Skip Task-* prompts except Task-Summarize
+                # Skip all Task-* prompts
                 if role_prompt_name.startswith("Task-"):
                     continue
                 role_prompt = load_system_prompt(role_prompt_name)
                 prompt_parts.append(role_prompt)
-            
-            # Always include Task-Summarize.md
-            summarize_prompt = load_system_prompt("Task-Summarize")
-            prompt_parts.append(summarize_prompt)
         else:
             # Add all role prompts in order, but exclude Task-Schedule
             # Task-Schedule.md is added conditionally based on context (see build_complete_system_prompt)

@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: send, react, sticker, wait, block, unblock, think -->
+
 # Response Format: JSON Tasks
 
 - Output a JSON array (`[...]`) containing task objects in the order they should run.

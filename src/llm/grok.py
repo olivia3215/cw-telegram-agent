@@ -343,6 +343,7 @@ class GrokLLM(LLM):
         history_size: int = 500,
         model: str | None = None,
         timeout_s: float | None = None,
+        allowed_task_types: set[str] | None = None,
     ) -> str:
         """
         Build messages using the parts-aware builder and call Grok with structured output.
@@ -370,13 +371,30 @@ class GrokLLM(LLM):
 
         model_name = model or self.model_name
 
+        # Build response format with JSON schema if task types are specified
+        response_format = None
+        if allowed_task_types is not None:
+            from .task_schema import get_task_response_schema_dict
+            schema_dict = get_task_response_schema_dict(allowed_task_types=allowed_task_types)
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "strict": True,
+                    "schema": schema_dict,
+                },
+            }
+
         try:
             # Call Grok API - response should be JSON array per Instructions.md prompt
-            response = await self.client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                timeout=timeout_s or 60.0,
-            )
+            create_kwargs = {
+                "model": model_name,
+                "messages": messages,
+                "timeout": timeout_s or 60.0,
+            }
+            if response_format is not None:
+                create_kwargs["response_format"] = response_format
+            response = await self.client.chat.completions.create(**create_kwargs)
 
             # Optional comprehensive logging for debugging
             if GROK_DEBUG_LOGGING:
