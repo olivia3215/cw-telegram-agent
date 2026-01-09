@@ -85,11 +85,21 @@ def transform_headers_preserving_code_blocks(markdown_text: str) -> str:
                 fence_count = count
                 code_block_lines.add(i)  # Include fence line itself
             elif char == fence_char and count >= fence_count:
-                # Closing fence - matches the opening fence (same char, same or more count)
-                code_block_lines.add(i)  # Include fence line itself
-                in_fenced_code = False
-                fence_char = None
-                fence_count = 0
+                # Check if this is a valid closing fence
+                # According to markdown specs, a closing fence must have only whitespace
+                # (or nothing) after the fence characters
+                remaining_after_fence = stripped[count:]
+                if remaining_after_fence.strip() == "":
+                    # Valid closing fence - matches the opening fence (same char, same or more count)
+                    # and has only whitespace after the fence characters
+                    code_block_lines.add(i)  # Include fence line itself
+                    in_fenced_code = False
+                    fence_char = None
+                    fence_count = 0
+                else:
+                    # Invalid closing fence - has non-whitespace after fence characters
+                    # This is content inside the code block, not a closing fence
+                    code_block_lines.add(i)
             else:
                 # Different fence type or nested - still in code block
                 code_block_lines.add(i)

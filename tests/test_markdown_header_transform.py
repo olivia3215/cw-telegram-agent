@@ -138,6 +138,78 @@ def test_preserves_tilde_fenced_blocks():
     assert "# Comment with tilde fence" in result
 
 
+def test_rejects_invalid_closing_fence_with_text():
+    """Test that a closing fence with non-whitespace text is NOT treated as a closing fence.
+    
+    According to markdown specs, a line like ``` ``` some text ``` is NOT a valid
+    closing fence and should be treated as content inside the code block.
+    """
+    input_text = """# Header
+
+```python
+# This is a comment
+``` some text
+# This should still be inside the code block
+print("hello")
+```
+More content"""
+    expected = """## Header
+
+```python
+# This is a comment
+``` some text
+# This should still be inside the code block
+print("hello")
+```
+More content"""
+    result = transform_headers_preserving_code_blocks(input_text)
+    # Verify that the line ``` some text did NOT close the code block
+    # Both # comments should be preserved (not transformed)
+    assert "# This is a comment" in result
+    assert "# This should still be inside the code block" in result
+    assert "## This is a comment" not in result
+    assert "## This should still be inside the code block" not in result
+    # Verify the header was transformed
+    assert "## Header" in result
+    assert result == expected
+
+
+def test_accepts_valid_closing_fence_with_whitespace():
+    """Test that a closing fence with only whitespace IS treated as a valid closing fence.
+    
+    According to markdown specs, a line like ``` ``` ``` (with whitespace) IS a valid
+    closing fence.
+    """
+    input_text = """# Header
+
+```python
+# This is a comment
+print("hello")
+```   
+# This should be outside the code block and transformed
+More content"""
+    expected = """## Header
+
+```python
+# This is a comment
+print("hello")
+```   
+## This should be outside the code block and transformed
+More content"""
+    result = transform_headers_preserving_code_blocks(input_text)
+    # Verify that the comment inside the code block was preserved
+    assert "# This is a comment" in result
+    assert "## This is a comment" not in result
+    # Verify that the header outside the code block was transformed (check that line starts with ##, not #)
+    result_lines = result.split('\n')
+    outside_header_line = [line for line in result_lines if "This should be outside the code block and transformed" in line][0]
+    assert outside_header_line.strip().startswith("## "), f"Expected header to start with '## ', got: {repr(outside_header_line)}"
+    assert not outside_header_line.strip().startswith("# "), f"Header should not start with '# ' (single hash), got: {repr(outside_header_line)}"
+    # Verify the main header was transformed
+    assert "## Header" in result
+    assert result == expected
+
+
 def test_real_world_example():
     """Test a realistic example with agent instructions."""
     input_text = """# Agent Instructions
