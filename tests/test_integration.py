@@ -43,6 +43,8 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
     # 2. Mock the agent and client needed by the helper function
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []  # No messages needed for this test
+    # is_connected() is a synchronous method in Telethon
+    mock_client.is_connected = MagicMock(return_value=True)
 
     mock_agent = MagicMock(
         system_prompt_name="TestPrompt",
@@ -50,6 +52,7 @@ async def test_preserves_callout_tasks_when_replacing_graph(monkeypatch):
         client=mock_client,
         is_disabled=False,
     )
+    mock_agent.ensure_client_connected = AsyncMock(return_value=True)
 
     # Patch get_agent_for_id to return our mock
     monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda x: mock_agent)
@@ -104,6 +107,8 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
     # 2. Mock the agent and client needed by the helper function
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []  # No messages needed for this test
+    # is_connected() is a synchronous method in Telethon
+    mock_client.is_connected = MagicMock(return_value=True)
 
     mock_agent = MagicMock(
         system_prompt_name="TestPrompt",
@@ -111,6 +116,7 @@ async def test_wait_tasks_with_preserve_true_do_not_become_dependencies(monkeypa
         client=mock_client,
         is_disabled=False,
     )
+    mock_agent.ensure_client_connected = AsyncMock(return_value=True)
 
     # Patch get_agent_for_id to return our mock
     monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda x: mock_agent)
@@ -176,6 +182,8 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     # 2. Mock the agent and client needed by the helper function
     mock_client = AsyncMock()
     mock_client.get_messages.return_value = []  # No messages needed for this test
+    # is_connected() is a synchronous method in Telethon
+    mock_client.is_connected = MagicMock(return_value=True)
 
     mock_agent = MagicMock(
         system_prompt_name="TestPrompt",
@@ -183,6 +191,7 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
         client=mock_client,
         is_disabled=False,
     )
+    mock_agent.ensure_client_connected = AsyncMock(return_value=True)
 
     # Patch get_agent_for_id to return our mock
     monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda x: mock_agent)

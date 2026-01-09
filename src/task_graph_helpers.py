@@ -129,14 +129,22 @@ async def insert_received_task_for_conversation(
     agent = get_agent_for_id(recipient_id)
     if not agent:
         raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
-    if not agent.client:
-        raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
-
+    
     if agent.is_disabled:
         logger.info(
             f"[{agent.name}] Skipping received task creation for disabled agent"
         )
         return
+    
+    # Try to reconnect if client is disconnected
+    if agent.client is None or not agent.client.is_connected():
+        logger.debug(
+            f"[{agent.name}] Client not connected, attempting to reconnect before creating received task..."
+        )
+        if not await agent.ensure_client_connected():
+            raise RuntimeError(
+                f"Telegram client for agent {recipient_id} not connected and reconnection failed"
+            )
     preserved_tasks = []
     # Find the existing graph for this conversation
     # Convert to ints for comparison (graph_for_conversation expects ints)
@@ -250,8 +258,23 @@ async def insert_received_task_for_conversation(
         agent = get_agent_for_id(recipient_id)
         if not agent:
             raise RuntimeError(f"Could not resolve agent for ID {recipient_id}")
-        if not agent.client:
-            raise RuntimeError(f"Telegram client for agent {recipient_id} not connected")
+        
+        # Check if agent was disabled while waiting for lock
+        if agent.is_disabled:
+            logger.info(
+                f"[{agent.name}] Skipping received task creation for disabled agent (disabled after lock acquisition)"
+            )
+            return
+        
+        # Try to reconnect if client is disconnected (could have disconnected during lock wait)
+        if agent.client is None or not agent.client.is_connected():
+            logger.debug(
+                f"[{agent.name}] Client not connected after lock acquisition, attempting to reconnect..."
+            )
+            if not await agent.ensure_client_connected():
+                raise RuntimeError(
+                    f"Telegram client for agent {recipient_id} not connected and reconnection failed after lock acquisition"
+                )
 
         recipient_name = agent.name
         channel_name = await get_channel_name(agent, channel_id)

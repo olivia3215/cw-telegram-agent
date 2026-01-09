@@ -79,9 +79,13 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
     work_queue = WorkQueue.get_instance()
 
     # Stub agent and channel name resolution
+    class _StubClient:
+        def is_connected(self):
+            return True
+    
     class _StubAgent:
         def __init__(self):
-            self.client = object()
+            self.client = _StubClient()
             self.name = "Stub"
             self.config_name = "Stub"
             self.agent_id = 100
@@ -90,6 +94,8 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
             class _E:
                 title = "X"
             return _E()
+        async def ensure_client_connected(self):
+            return True
 
     async def _fake_get_channel_name(agent, cid):
         return f"chan-{cid}"

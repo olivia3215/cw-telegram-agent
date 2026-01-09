@@ -18,11 +18,14 @@ def mock_agent():
     agent.name = "TestAgent"
     agent.agent_id = 12345
     agent.client = AsyncMock()
+    # is_connected() is a synchronous method in Telethon
+    agent.client.is_connected = MagicMock(return_value=True)
     agent.is_muted = AsyncMock(return_value=False)
     agent.is_blocked = AsyncMock(return_value=False)
     # Mock dialog_cache to return None (no cache) so tests use iter_dialogs()
     agent.dialog_cache = None
     agent.is_disabled = False
+    agent.ensure_client_connected = AsyncMock(return_value=True)
     return agent
 
 
