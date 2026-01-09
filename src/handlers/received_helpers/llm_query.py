@@ -187,6 +187,12 @@ async def run_llm_with_retrieval(
     ]
 
     # Query LLM
+    # Extract allowed task types from the fully constructed system prompt
+    # Check if this is a summarization mode request (from admin panel)
+    summarization_mode = task.params.get("summarization_mode", False)
+    from llm.task_schema import extract_task_types_from_prompt
+    allowed_task_types = extract_task_types_from_prompt(system_prompt)
+    
     try:
         reply = await llm.query_structured(
             system_prompt=system_prompt,
@@ -195,6 +201,7 @@ async def run_llm_with_retrieval(
             history=combined_history,
             history_size=llm.history_size,
             timeout_s=None,
+            allowed_task_types=allowed_task_types,
         )
     except Exception as e:
         # Use module-level function if not provided
@@ -218,8 +225,6 @@ async def run_llm_with_retrieval(
     logger.debug(f"[{agent.name}] LLM reply: {reply}")
 
     # Parse the tasks
-    # Check if this is a summarization mode request (from admin panel)
-    summarization_mode = task.params.get("summarization_mode", False)
     try:
         tasks = await parse_llm_reply_fn(
             reply, agent_id=agent_id, channel_id=channel_id, agent=agent, summarization_mode=summarization_mode

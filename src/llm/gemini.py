@@ -637,6 +637,7 @@ class GeminiLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         system_instruction: str | None = None,
+        allowed_task_types: set[str] | None = None,
     ) -> str:
         """
         Thin wrapper around the Gemini client for role-structured 'contents'.
@@ -690,11 +691,13 @@ class GeminiLLM(LLM):
 
             # Use the new client.models.generate_content API
             model_name = model or self.model_name
+            from .task_schema import get_task_response_schema_dict
+            schema_dict = get_task_response_schema_dict(allowed_task_types=allowed_task_types)
             config = GenerateContentConfig(
                 system_instruction=system_instruction,
                 safety_settings=self.safety_settings,
                 response_mime_type="application/json",
-                response_json_schema=copy.deepcopy(_TASK_RESPONSE_SCHEMA_DICT),
+                response_json_schema=copy.deepcopy(schema_dict),
             )
 
             response = await asyncio.to_thread(
@@ -901,6 +904,7 @@ class GeminiLLM(LLM):
         history_size: int = 500,
         model: str | None = None,
         timeout_s: float | None = None,
+        allowed_task_types: set[str] | None = None,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -923,6 +927,7 @@ class GeminiLLM(LLM):
             model=model,
             timeout_s=timeout_s,
             system_instruction=system_prompt,
+            allowed_task_types=allowed_task_types,
         )
 
     async def query_with_json_schema(

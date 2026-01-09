@@ -137,10 +137,15 @@ class LLM(ABC):
         history_size: int = 500,
         model: str | None = None,
         timeout_s: float | None = None,
+        allowed_task_types: set[str] | None = None,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
         Default implementation falls back to basic query method.
+        
+        Args:
+            allowed_task_types: Optional set of task types to allow in the response schema.
+                               If None, all task types are allowed.
         """
         ...
 

@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: schedule -->
+
 # Schedule Management
 
 You can manage your daily schedule by creating, updating, or deleting schedule entries using `schedule` tasks.

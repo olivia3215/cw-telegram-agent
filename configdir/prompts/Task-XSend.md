@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: xsend -->
+
 # Cross-Channel Communication (`xsend`) Instructions
 
 You have the ability to send a message, called the _**intent**_ *to your future self* in another channel.

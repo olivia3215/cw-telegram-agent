@@ -1,3 +1,5 @@
+<!-- SCHEMA_TASKS: summarize, think -->
+
 # Summarization Task
 
 You need to create or update a summary entry for the conversation history below.
