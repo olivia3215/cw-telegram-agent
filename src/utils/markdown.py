@@ -64,6 +64,18 @@ def transform_headers_preserving_code_blocks(markdown_text: str) -> str:
     
     # First pass: identify code block lines
     for i, line in enumerate(lines):
+        # Count leading spaces before checking for fence markers
+        # According to CommonMark, fences with 4+ leading spaces are NOT valid
+        # and should be treated as code block content
+        leading_spaces = len(line) - len(line.lstrip(' '))
+        if leading_spaces >= 4:
+            # Too many leading spaces - this cannot be a valid fence
+            # Treat as regular content (inside code block if we're in one)
+            if in_fenced_code:
+                code_block_lines.add(i)
+            # Don't process as fence
+            continue
+            
         stripped = line.strip()
         
         # Check for fenced code blocks (``` or ~~~)

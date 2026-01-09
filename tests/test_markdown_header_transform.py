@@ -262,3 +262,62 @@ Remember to be polite."""
     assert "## Scenario" in result
     assert "## Example Code" in result
 
+
+def test_rejects_fence_with_4_plus_spaces():
+    """Test that a fence with 4+ leading spaces is NOT treated as a valid fence.
+    
+    According to CommonMark spec, fences with 4+ leading spaces are NOT valid
+    fences and should be treated as code block content. A line like '    ```'
+    (4 spaces + backticks) inside a code block should NOT close the code block.
+    """
+    input_text = """# Header
+
+```python
+# This is a comment inside code block
+    ``` 
+# This should still be inside the code block
+print('hello')
+```"""
+
+    result = transform_headers_preserving_code_blocks(input_text)
+    # The line with 4 spaces + backticks should NOT close the code block
+    # So the comment "# This should still be inside the code block" should NOT be transformed
+    assert "# This should still be inside the code block" in result
+    assert "## This should still be inside the code block" not in result
+    # The comment before the 4-space fence should also be preserved
+    assert "# This is a comment inside code block" in result
+    assert "## This is a comment inside code block" not in result
+    # The header outside should be transformed
+    assert "## Header" in result
+
+
+def test_accepts_fence_with_3_spaces():
+    """Test that a fence with exactly 3 leading spaces IS treated as a valid fence.
+    
+    According to CommonMark spec, fences with 0-3 leading spaces ARE valid.
+    Only fences with 4+ leading spaces are invalid.
+    """
+    input_text = """# Header
+
+   ```
+# This should be INSIDE the code block and preserved
+print("hello")
+   ```
+
+# Another Header"""
+    expected = """## Header
+
+   ```
+# This should be INSIDE the code block and preserved
+print("hello")
+   ```
+
+## Another Header"""
+    result = transform_headers_preserving_code_blocks(input_text)
+    # The header inside the code block should NOT be transformed
+    assert "# This should be INSIDE the code block and preserved" in result
+    assert "## This should be INSIDE the code block and preserved" not in result
+    # Verify headers outside the code block were transformed
+    assert "## Header" in result
+    assert "## Another Header" in result
+
