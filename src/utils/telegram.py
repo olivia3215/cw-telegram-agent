@@ -76,7 +76,8 @@ async def get_channel_name(agent: "Agent", channel_id: int):
     except Exception as e:
         # Transient errors (network timeouts, rate limits, connection issues, etc.) should not
         # imply the entity doesn't exist. Only return "Deleted Account" when entity_cache.get()
-        # returns None after catching PeerIdInvalidError (handled above).
+        # catches PeerIdInvalidError and returns None (that None case is handled in the
+        # "if not entity:" block above).
         # For transient errors, return a generic identifier that doesn't imply deletion.
         logger.exception(f"Could not fetch entity for {channel_id}: {e}")
         if channel_id > 0:
