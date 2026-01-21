@@ -28,8 +28,8 @@ def _escape_quoted_string_value(value: str) -> str:
     Escape a value for use in a quoted-string within HTTP headers per RFC 6266.
     
     In quoted-string values, the following characters must be escaped:
-    - Backslash (\) -> \\
-    - Double quote (") -> \"
+    - Backslash `\` -> \\
+    - Double quote `"` -> \"
     
     Args:
         value: The string value to escape

@@ -94,6 +94,52 @@ def is_telepathic_message(message) -> bool:
     return text_stripped.startswith(TELEPATHIC_PREFIXES)
 
 
+def is_contact_signup_message(message) -> bool:
+    """
+    Check if a Telegram message is a Contact Sign Up service message.
+    
+    These messages appear when an address book phone number matches a new user
+    when they register with Telegram.
+    
+    Args:
+        message: Telegram message object
+        
+    Returns:
+        True if the message is a Contact Sign Up service message, False otherwise
+    """
+    action = getattr(message, "action", None)
+    if not action:
+        return False
+    
+    action_type = type(action).__name__
+    return action_type == "MessageActionContactSignUp"
+
+
+async def has_only_one_message(client, dialog_id) -> bool:
+    """
+    Check if a conversation has only one message.
+    
+    Args:
+        client: Telegram client
+        dialog_id: Dialog/chat ID
+        
+    Returns:
+        True if the conversation has only one message, False otherwise
+    """
+    try:
+        message_count = 0
+        async for message in client.iter_messages(dialog_id, limit=2):
+            message_count += 1
+            if message_count > 1:
+                return False
+        return message_count == 1
+    except Exception as e:
+        logger.debug(
+            f"Error checking message count for dialog {dialog_id}: {e}"
+        )
+        return False
+
+
 async def get_agent_message_with_reactions(agent: Agent, dialog):
     """
     Find an agent message in a dialog that has unread reactions.
@@ -301,7 +347,40 @@ async def scan_unread_messages(agent: Agent):
                     f"[{agent.name}] Error checking if unread messages are telepathic in dialog {dialog.id}: {e}"
                 )
 
-        if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not all_unread_are_telepathic:
+        # Check if this is a Contact Sign Up message in a single-message conversation
+        is_contact_signup_only = False
+        if has_unread and not is_callout and not is_marked_unread and not has_reactions_on_agent_message and not all_unread_are_telepathic:
+            try:
+                # Get the most recent unread message
+                unread_messages = []
+                async for message in client.iter_messages(
+                    dialog.id, limit=min(dialog.unread_count, 1)
+                ):
+                    unread_messages.append(message)
+                
+                if unread_messages:
+                    latest_message = unread_messages[0]
+                    if is_contact_signup_message(latest_message):
+                        # Check if conversation has only one message
+                        if await has_only_one_message(client, dialog.id):
+                            is_contact_signup_only = True
+                            dialog_name = await get_channel_name(agent, dialog.id)
+                            logger.info(
+                                f"[{agent.name}] Skipping received task for [{dialog_name}] - Contact Sign Up message in single-message conversation"
+                            )
+                            # Mark the message as read but don't create a received task
+                            entity = await agent.get_cached_entity(dialog.id)
+                            if entity:
+                                await client.send_read_acknowledge(entity, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
+                                logger.debug(
+                                    f"[{agent.name}] Marked Contact Sign Up message as read in [{dialog_name}]"
+                                )
+            except Exception as e:
+                logger.debug(
+                    f"[{agent.name}] Error checking for Contact Sign Up message in dialog {dialog.id}: {e}"
+                )
+
+        if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not all_unread_are_telepathic and not is_contact_signup_only:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
                 f"[{agent.name}] Found unread content in [{dialog_name}] "
