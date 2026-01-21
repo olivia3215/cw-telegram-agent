@@ -319,10 +319,35 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         f"Serving cached media {unique_id} from {cached_file} for {agent_config_name}/{user_id}/{message_id}"
                     )
                     
+                    # Try to get filename from metadata JSON if it exists
+                    file_name = None
+                    metadata_file = cached_file.with_suffix(".json")
+                    if metadata_file.exists():
+                        try:
+                            import json
+                            with open(metadata_file, "r") as f:
+                                metadata = json.load(f)
+                                # For documents, we might have stored the filename in description
+                                # or we could extract it from the document reference when the message was loaded
+                                # For now, we'll use unique_id, but this could be enhanced
+                                pass
+                        except Exception:
+                            pass
+                    
+                    # For cached files, we'll use unique_id as fallback
+                    # The filename extraction from the original message would require additional context
+                    # For now, documents served from cache will use unique_id unless we enhance this
+                    import urllib.parse
+                    if file_name:
+                        encoded_filename = urllib.parse.quote(file_name, safe='')
+                        content_disposition = f"inline; filename=\"{file_name}\"; filename*=UTF-8''{encoded_filename}"
+                    else:
+                        content_disposition = f"inline; filename={unique_id}"
+                    
                     return Response(
                         media_bytes,
                         mimetype=mime_type or "application/octet-stream",
-                        headers={"Content-Disposition": f"inline; filename={unique_id}"}
+                        headers={"Content-Disposition": content_disposition}
                     )
                 except Exception as e:
                     logger.warning(f"Error reading cached media file {cached_file}: {e}, falling back to Telegram download")
@@ -366,16 +391,41 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                             media_bytes = await download_media_bytes(client, item.file_ref)
                             # Detect MIME type
                             mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
-                            return media_bytes, mime_type, item
+                            
+                            # Extract filename from document for documents
+                            file_name = None
+                            if hasattr(item, "kind") and hasattr(item.kind, "value"):
+                                if item.kind.value == "document" and item.file_ref:
+                                    # Try to get filename from document.file_name first
+                                    file_name = getattr(item.file_ref, "file_name", None)
+                                    if not file_name:
+                                        # Check attributes for DocumentAttributeFilename
+                                        attrs = getattr(item.file_ref, "attributes", None)
+                                        if isinstance(attrs, (list, tuple)):
+                                            for attr in attrs:
+                                                # Check if this is DocumentAttributeFilename
+                                                if hasattr(attr, "file_name"):
+                                                    file_name = getattr(attr, "file_name", None)
+                                                    if file_name:
+                                                        break
+                                                # Also check by class name as fallback
+                                                attr_class = getattr(attr, "__class__", None)
+                                                if attr_class and hasattr(attr_class, "__name__"):
+                                                    if attr_class.__name__ == "DocumentAttributeFilename":
+                                                        file_name = getattr(attr, "file_name", None)
+                                                        if file_name:
+                                                            break
+                            
+                            return media_bytes, mime_type, item, file_name
                     
-                    return None, None, None
+                    return None, None, None, None
                 except Exception as e:
                     logger.error(f"Error fetching media: {e}")
                     return None, None, None
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
-                media_bytes, mime_type, media_item = agent.execute(_get_media(), timeout=30.0)
+                media_bytes, mime_type, media_item, file_name = agent.execute(_get_media(), timeout=30.0)
                 if media_bytes is None:
                     return jsonify({"error": "Media not found"}), 404
                 
@@ -452,10 +502,21 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     # Don't fail the request if caching fails
                     logger.warning(f"Error caching media file for {unique_id}: {e}")
                 
+                # Use filename if available, otherwise fall back to unique_id
+                # Properly escape filename for Content-Disposition header
+                import urllib.parse
+                if file_name:
+                    # URL-encode the filename for the Content-Disposition header
+                    # Use RFC 5987 format for better compatibility
+                    encoded_filename = urllib.parse.quote(file_name, safe='')
+                    content_disposition = f"inline; filename=\"{file_name}\"; filename*=UTF-8''{encoded_filename}"
+                else:
+                    content_disposition = f"inline; filename={unique_id}"
+                
                 return Response(
                     media_bytes,
                     mimetype=mime_type or "application/octet-stream",
-                    headers={"Content-Disposition": f"inline; filename={unique_id}"}
+                    headers={"Content-Disposition": content_disposition}
                 )
             except RuntimeError as e:
                 error_msg = str(e).lower()

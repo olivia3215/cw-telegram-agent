@@ -20,6 +20,7 @@ class MediaKind(str, Enum):
     - ANIMATION: Telegram animations (typically MP4)
     - VIDEO: Video files
     - AUDIO: Audio files
+    - DOCUMENT: Generic document files (e.g., markdown, PDF, text files)
     """
 
     PHOTO = "photo"
@@ -28,6 +29,7 @@ class MediaKind(str, Enum):
     ANIMATION = "animation"
     VIDEO = "video"
     AUDIO = "audio"
+    DOCUMENT = "document"
 
 
 @dataclass
@@ -93,3 +95,7 @@ class MediaItem:
     def needs_voice_analysis(self) -> bool:
         """Check if this media should use voice message analysis."""
         return self.is_voice_message()
+
+    def is_document(self) -> bool:
+        """Check if this is a document file."""
+        return self.kind == MediaKind.DOCUMENT

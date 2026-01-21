@@ -23,6 +23,7 @@ def iter_media_parts(msg: Any) -> list[MediaItem]:
     _maybe_add_audio(msg, out)
     _maybe_add_gif_or_animation(msg, out)
     _maybe_add_voice_message(msg, out)
+    _maybe_add_document(msg, out)  # Handle generic documents (must be last)
     return out
 
 
@@ -356,5 +357,68 @@ def _maybe_add_voice_message(msg: Any, out: list[MediaItem]) -> None:
             mime=mime,
             file_ref=voice,  # This will be used to identify as voice message
             duration=duration,
+        )
+    )
+
+
+def _maybe_add_document(msg: Any, out: list[MediaItem]) -> None:
+    """
+    Extract generic document files (e.g., markdown, PDF, text files) from Telegram messages.
+    This handles documents that don't match specific media types (photos, stickers, audio, video, etc.).
+    
+    Must be called last in iter_media_parts to avoid catching documents that were already
+    processed as specific media types.
+    """
+    doc = getattr(msg, "document", None)
+    if not doc:
+        return
+    
+    # Skip if this document was already processed as a specific media type
+    uid = get_unique_id(doc)
+    if not uid:
+        return
+    
+    # Check if we've already added this document as another media type
+    uid_str = str(uid)
+    for existing in out:
+        if existing.unique_id == uid_str:
+            # Already processed as another media type (sticker, audio, video, etc.)
+            return
+    
+    # Extract document metadata
+    mime = normalize_mime_type(
+        getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+    )
+    
+    # Try to get filename from document.file_name first, then from attributes
+    file_name = getattr(doc, "file_name", None)
+    if not file_name:
+        # Check attributes for DocumentAttributeFilename
+        attrs = getattr(doc, "attributes", None)
+        if isinstance(attrs, (list, tuple)):
+            for attr in attrs:
+                # Check if this is DocumentAttributeFilename by checking class name or file_name attribute
+                if hasattr(attr, "file_name"):
+                    file_name = getattr(attr, "file_name", None)
+                    if file_name:
+                        break
+                # Also check by class name as fallback
+                attr_class = getattr(attr, "__class__", None)
+                if attr_class and hasattr(attr_class, "__name__"):
+                    if attr_class.__name__ == "DocumentAttributeFilename":
+                        file_name = getattr(attr, "file_name", None)
+                        if file_name:
+                            break
+    
+    # For documents, we should have a filename, but let's be lenient and include them anyway
+    # if they have a MIME type or other identifying info, as some documents might not have filenames
+    
+    # Add as a generic document (even if no filename, as long as we have a unique_id)
+    out.append(
+        MediaItem(
+            kind=MediaKind.DOCUMENT,
+            unique_id=uid_str,
+            mime=mime,
+            file_ref=doc,
         )
     )
