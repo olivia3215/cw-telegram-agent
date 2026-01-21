@@ -56,7 +56,7 @@ from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES
-from config import GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY
+from config import GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY, TELEGRAM_SYSTEM_USER_ID
 
 # Configure logging level from environment variable, default to INFO
 log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
@@ -143,6 +143,13 @@ async def handle_incoming_message(agent: Agent, event):
     client = agent.client
     await event.get_sender()
     
+    # Ignore messages from Telegram system channel (777000)
+    if str(event.chat_id) == str(TELEGRAM_SYSTEM_USER_ID):
+        logger.debug(
+            f"[{agent.name}] Ignoring message from Telegram system channel ({TELEGRAM_SYSTEM_USER_ID})"
+        )
+        return
+    
     muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
 
@@ -228,6 +235,13 @@ async def scan_unread_messages(agent: Agent):
     async for dialog in client.iter_dialogs():
         # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
         await clock.sleep(0.05)
+        
+        # Ignore Telegram system channel (777000)
+        if str(dialog.id) == str(TELEGRAM_SYSTEM_USER_ID):
+            logger.debug(
+                f"[{agent.name}] Skipping Telegram system channel ({TELEGRAM_SYSTEM_USER_ID}) in scan"
+            )
+            continue
         
         muted = await agent.is_muted(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
