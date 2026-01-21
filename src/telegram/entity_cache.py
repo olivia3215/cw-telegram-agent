@@ -68,10 +68,10 @@ class TelegramEntityCache:
             entity = await self.client.get_entity(entity_id)
         except Exception as e:
             # Cache the "not found" result to avoid repeated API calls for deleted users
-            # Use a longer TTL for failures (1 hour) vs successful lookups (5 minutes default)
-            # since deleted users are unlikely to come back quickly
-            failure_ttl = min(self.ttl_seconds * 12, 3600)  # 12x normal TTL, max 1 hour
-            self._cache[entity_id] = (None, now + timedelta(seconds=failure_ttl))
+            # Use infinite TTL (far-future expiration) since deleted accounts won't come back
+            # Set expiration to 10 years in the future to effectively make it permanent
+            infinite_expiration = now + timedelta(days=365 * 10)
+            self._cache[entity_id] = (None, infinite_expiration)
             logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
             return None
 
