@@ -16,7 +16,7 @@ from handlers.received_helpers.message_processing import format_message_reaction
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
-from utils.telegram import can_agent_send_to_channel, get_channel_name, is_user_blocking_agent
+from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
 # Import markdown_to_html - use importlib since this module is loaded dynamically by conversation_content.py
@@ -497,6 +497,23 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 if not entity:
                     return []
                 
+                # Check if this is a DM conversation (needed for read status checking)
+                is_dm_conversation = is_dm(entity)
+                
+                # For DMs, get the dialog to check read_outbox_max_id for read receipts
+                # This tells us up to which message ID the partner has read our outgoing messages
+                read_outbox_max_id = None
+                if is_dm_conversation:
+                    try:
+                        # Get the dialog from the dialogs list to access read_outbox_max_id
+                        dialogs = await client.get_dialogs()
+                        for d in dialogs:
+                            if d.id == channel_id:
+                                read_outbox_max_id = getattr(d, "read_outbox_max_id", None)
+                                break
+                    except Exception as e:
+                        logger.debug(f"Failed to get dialog read_outbox_max_id for {channel_id}: {e}")
+                
                 # Get media chain for formatting media descriptions
                 media_chain = get_default_media_source_chain()
                 
@@ -941,6 +958,16 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             })
                             text = "[Message]"
                     
+                    # Check if message is read by partner (only for DMs and messages sent by agent)
+                    is_read_by_partner = None
+                    if is_dm_conversation and is_from_agent:
+                        # For agent messages in DMs, check if partner has read them
+                        # If read_outbox_max_id is None, we can't determine read status
+                        if read_outbox_max_id is not None:
+                            # Message is read if its ID is <= read_outbox_max_id
+                            is_read_by_partner = msg_id <= read_outbox_max_id
+                        # If read_outbox_max_id is None, is_read_by_partner remains None
+                    
                     messages.append({
                         "id": str(message.id),
                         "text": text,  # HTML-formatted text (XSS-protected via markdown_to_html)
@@ -951,6 +978,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         "timestamp": timestamp,
                         "reply_to_msg_id": reply_to_msg_id,
                         "reactions": reactions_str,
+                        "is_read_by_partner": is_read_by_partner,  # True if read, False if unread, None if unknown/not applicable
                     })
                 logger.info(
                     f"[{agent_config_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "

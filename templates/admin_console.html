@@ -5568,6 +5568,11 @@
                     if (msg.reply_to_msg_id) {
                         metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
                     }
+                    // Add read receipt checkmark for agent messages in DMs
+                    // is_read_by_partner is only set for agent messages in DMs (null/undefined otherwise)
+                    if (msg.is_read_by_partner === true) {
+                        metadataLine += ` ✔️`;
+                    }
                     
                     // Add reactions if present
                     // Note: msg.reactions may contain HTML (img tags for custom emojis) added by the backend,
