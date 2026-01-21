@@ -217,3 +217,64 @@ async def test_mixed_unread_messages_trigger_received_task(mock_agent, monkeypat
             
             # Verify that insert_received_task_for_conversation WAS called
             mock_insert.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_telegram_system_channel_message_does_not_trigger_received_task(mock_agent, mock_event, monkeypatch, fake_clock):
+    """Test that messages from Telegram system channel (777000) don't trigger received tasks."""
+    import os
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
+    from run import handle_incoming_message
+    from config import TELEGRAM_SYSTEM_USER_ID
+    
+    # Ensure run.clock uses fake_clock
+    monkeypatch.setattr("run.clock", fake_clock)
+    
+    # Make the message from Telegram system channel
+    mock_event.chat_id = TELEGRAM_SYSTEM_USER_ID
+    mock_event.message.text = "Your verification code is 12345"
+    
+    # Mock get_channel_name
+    with patch('run.get_channel_name', return_value="Telegram"):
+        # Mock insert_received_task_for_conversation - should NOT be called
+        with patch('run.insert_received_task_for_conversation') as mock_insert:
+            await handle_incoming_message(mock_agent, mock_event)
+            
+            # Verify that insert_received_task_for_conversation was NOT called
+            mock_insert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_telegram_system_channel_dialog_skipped_in_scan(mock_agent, monkeypatch, fake_clock):
+    """Test that Telegram system channel (777000) dialog is skipped during scan_unread_messages."""
+    import os
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
+    from run import scan_unread_messages
+    from config import TELEGRAM_SYSTEM_USER_ID
+    
+    # Ensure run.clock uses fake_clock
+    monkeypatch.setattr("run.clock", fake_clock)
+    
+    # Create mock dialog for Telegram system channel with unread messages
+    mock_dialog = MagicMock()
+    mock_dialog.id = TELEGRAM_SYSTEM_USER_ID
+    mock_dialog.unread_count = 5
+    mock_dialog.unread_mentions_count = 0
+    mock_dialog.dialog = MagicMock()
+    mock_dialog.dialog.unread_mark = False
+    mock_dialog.dialog.unread_reactions_count = 0
+    
+    # Mock iter_dialogs to return the Telegram system channel dialog
+    async def mock_iter_dialogs():
+        yield mock_dialog
+    
+    mock_agent.client.iter_dialogs = mock_iter_dialogs
+    
+    # Mock get_channel_name
+    with patch('run.get_channel_name', return_value="Telegram"):
+        # Mock insert_received_task_for_conversation - should NOT be called
+        with patch('run.insert_received_task_for_conversation') as mock_insert:
+            await scan_unread_messages(mock_agent)
+            
+            # Verify that insert_received_task_for_conversation was NOT called
+            mock_insert.assert_not_called()
