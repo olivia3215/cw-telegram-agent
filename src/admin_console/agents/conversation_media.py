@@ -344,16 +344,12 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                             import json
                             with open(metadata_file, "r") as f:
                                 metadata = json.load(f)
-                                # For documents, we might have stored the filename in description
-                                # or we could extract it from the document reference when the message was loaded
-                                # For now, we'll use unique_id, but this could be enhanced
-                                pass
+                                # Extract filename from metadata if stored
+                                file_name = metadata.get("file_name")
                         except Exception:
                             pass
                     
-                    # For cached files, we'll use unique_id as fallback
-                    # The filename extraction from the original message would require additional context
-                    # For now, documents served from cache will use unique_id unless we enhance this
+                    # Use unique_id as fallback if filename not found in metadata
                     import urllib.parse
                     if file_name:
                         # Escape filename for RFC 6266 quoted-string (escape backslashes and double quotes)
@@ -507,6 +503,10 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                             # Add MIME type
                             if mime_type:
                                 record["mime_type"] = mime_type
+                            
+                            # Add filename for documents
+                            if file_name:
+                                record["file_name"] = file_name
                             
                             try:
                                 cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
