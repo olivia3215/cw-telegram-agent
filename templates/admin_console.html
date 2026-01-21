@@ -4114,6 +4114,9 @@
                 // Success - reload profile to get updated data (especially profile photo)
                 await loadAgentProfile(agentName);
                 
+                // Refresh agent list to update username in pulldown selectors
+                await loadAgents();
+                
                 statusDiv.textContent = 'Profile saved successfully';
                 statusDiv.style.color = '#28a745';
                 cancelBtn.style.display = 'none';
