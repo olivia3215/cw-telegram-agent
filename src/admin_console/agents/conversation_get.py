@@ -509,7 +509,8 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         dialogs = await client.get_dialogs()
                         for d in dialogs:
                             if d.id == channel_id:
-                                read_outbox_max_id = getattr(d, "read_outbox_max_id", None)
+                                # read_outbox_max_id is on the underlying TL Dialog object, not the wrapper
+                                read_outbox_max_id = getattr(d.dialog, "read_outbox_max_id", None)
                                 break
                     except Exception as e:
                         logger.debug(f"Failed to get dialog read_outbox_max_id for {channel_id}: {e}")
