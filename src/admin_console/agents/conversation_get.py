@@ -17,6 +17,7 @@ from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
+from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
 # Import markdown_to_html - use importlib since this module is loaded dynamically by conversation_content.py
@@ -505,13 +506,11 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 read_outbox_max_id = None
                 if is_dm_conversation:
                     try:
-                        # Get the dialog from the dialogs list to access read_outbox_max_id
-                        dialogs = await client.get_dialogs()
-                        for d in dialogs:
-                            if d.id == channel_id:
-                                # read_outbox_max_id is on the underlying TL Dialog object, not the wrapper
-                                read_outbox_max_id = getattr(d.dialog, "read_outbox_max_id", None)
-                                break
+                        # Get the dialog directly for this peer (more efficient than looping through all dialogs)
+                        result = await client(GetPeerDialogsRequest(peers=[entity]))
+                        if result.dialogs:
+                            # read_outbox_max_id is on the underlying TL Dialog object
+                            read_outbox_max_id = getattr(result.dialogs[0], "read_outbox_max_id", None)
                     except Exception as e:
                         logger.debug(f"Failed to get dialog read_outbox_max_id for {channel_id}: {e}")
                 
