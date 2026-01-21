@@ -270,6 +270,14 @@ async def test_telegram_system_channel_dialog_skipped_in_scan(mock_agent, monkey
     
     mock_agent.client.iter_dialogs = mock_iter_dialogs
     
+    # Mock iter_messages for ensure_photo_cache (called at end of scan_unread_messages)
+    async def mock_iter_messages(peer, limit=None):
+        # Return empty generator for saved messages cache refresh
+        if False:  # Make it an async generator
+            yield
+    
+    mock_agent.client.iter_messages = mock_iter_messages
+    
     # Mock get_channel_name
     with patch('run.get_channel_name', return_value="Telegram"):
         # Mock insert_received_task_for_conversation - should NOT be called
