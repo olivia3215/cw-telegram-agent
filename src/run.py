@@ -322,19 +322,33 @@ async def scan_unread_messages(agent: Agent):
     # Refresh username cache to pick up username changes
     try:
         me = await client.get_me()
-        username = None
-        if hasattr(me, "username") and me.username:
-            username = me.username
-        elif hasattr(me, "usernames") and me.usernames:
-            # Check usernames list for the first available username
-            for handle in me.usernames:
-                handle_value = getattr(handle, "username", None)
-                if handle_value:
-                    username = handle_value
-                    break
-        agent.telegram_username = username
+        if me is None:
+            logger.debug(f"[{agent.name}] get_me() returned None, skipping username refresh")
+        else:
+            username = None
+            if hasattr(me, "username") and me.username:
+                username = me.username
+            elif hasattr(me, "usernames") and me.usernames:
+                # Check usernames list for the first available username
+                for handle in me.usernames:
+                    handle_value = getattr(handle, "username", None)
+                    if handle_value:
+                        username = handle_value
+                        break
+            
+            # Check if username changed
+            old_username = getattr(agent, "telegram_username", None)
+            if username != old_username:
+                if old_username is None:
+                    logger.info(f"[{agent.name}] Username set to: {username}")
+                elif username is None:
+                    logger.info(f"[{agent.name}] Username removed (was: {old_username})")
+                else:
+                    logger.info(f"[{agent.name}] Username updated from {old_username} to {username}")
+            
+            agent.telegram_username = username
     except Exception as e:
-        logger.debug(f"[{agent.name}] Error refreshing username cache during scan: {e}")
+        logger.warning(f"[{agent.name}] Error refreshing username cache during scan: {e}")
 
 
 async def ensure_sticker_cache(agent, client):
