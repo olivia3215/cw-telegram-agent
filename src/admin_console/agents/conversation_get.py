@@ -961,13 +961,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     
                     # Check if message is read by partner (only for DMs and messages sent by agent)
                     is_read_by_partner = None
-                    if is_dm_conversation and is_from_agent:
+                    if is_dm_conversation and is_from_agent and read_outbox_max_id is not None:
                         # For agent messages in DMs, check if partner has read them
-                        # If read_outbox_max_id is None, we can't determine read status
-                        if read_outbox_max_id is not None:
-                            # Message is read if its ID is <= read_outbox_max_id
-                            is_read_by_partner = msg_id <= read_outbox_max_id
-                        # If read_outbox_max_id is None, is_read_by_partner remains None
+                        # Message is read if its ID is <= read_outbox_max_id
+                        is_read_by_partner = msg_id <= read_outbox_max_id
                     
                     messages.append({
                         "id": str(message.id),
