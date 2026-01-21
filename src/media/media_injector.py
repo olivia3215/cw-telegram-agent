@@ -469,17 +469,54 @@ async def format_message_for_prompt(
                 meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None
             failure_reason = meta.get("failure_reason") if isinstance(meta, dict) else None
+            
+            # For documents, extract filename if available and include it in the description
+            media_kind = it.kind.value if hasattr(it.kind, "value") else str(it.kind)
+            if media_kind == "document" and it.file_ref:
+                # Try to get filename from document.file_name first
+                file_name = getattr(it.file_ref, "file_name", None)
+                if not file_name:
+                    # Check attributes for DocumentAttributeFilename
+                    attrs = getattr(it.file_ref, "attributes", None)
+                    if isinstance(attrs, (list, tuple)):
+                        for attr in attrs:
+                            # Check if this is DocumentAttributeFilename
+                            if hasattr(attr, "file_name"):
+                                file_name = getattr(attr, "file_name", None)
+                                if file_name:
+                                    break
+                            # Also check by class name as fallback
+                            attr_class = getattr(attr, "__class__", None)
+                            if attr_class and hasattr(attr_class, "__name__"):
+                                if attr_class.__name__ == "DocumentAttributeFilename":
+                                    file_name = getattr(attr, "file_name", None)
+                                    if file_name:
+                                        break
+                
+                if file_name:
+                    # Include filename in description for documents
+                    if desc_text:
+                        desc_text = f"{file_name} — {desc_text}"
+                    else:
+                        desc_text = file_name
+                elif not desc_text:
+                    # If no filename and no description, provide a generic document description
+                    # Include MIME type if available
+                    mime = getattr(it, "mime", None)
+                    if mime:
+                        desc_text = f"document ({mime})"
+                    else:
+                        desc_text = "document"
+            
             media_sentence = format_media_sentence(
-                it.kind.value if hasattr(it.kind, "value") else str(it.kind),
+                media_kind,
                 desc_text,
                 failure_reason=failure_reason,
             )
             parts.append(
                 {
                     "kind": "media",
-                    "media_kind": (
-                        it.kind.value if hasattr(it.kind, "value") else str(it.kind)
-                    ),
+                    "media_kind": media_kind,
                     "rendered_text": media_sentence,
                     "unique_id": it.unique_id,
                 }
