@@ -10,6 +10,8 @@ Telegram entity caching utility.
 import logging
 from datetime import UTC, timedelta
 
+from telethon.errors.rpcerrorlist import PeerIdInvalidError  # pyright: ignore[reportMissingImports]
+
 from clock import clock
 from utils import normalize_peer_id
 
@@ -43,6 +45,9 @@ class TelegramEntityCache:
         """
         Get a Telegram entity, using cache if available.
         
+        Also caches "not found" results (None) to avoid repeated API calls
+        for deleted users or entities that don't exist.
+        
         Args:
             entity_id: The entity ID to fetch
             
@@ -63,9 +68,20 @@ class TelegramEntityCache:
             if self.agent:
                 await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
-        except Exception as e:
-            logger.warning(f"[{self.name}] get_cached_entity failed for ID {entity_id}: {e}")
+        except PeerIdInvalidError as e:
+            # Cache the "not found" result to avoid repeated API calls for deleted users
+            # Use 1-hour TTL for "not found" results to allow retries if the entity becomes
+            # available later (e.g., user reactivates account, channel becomes accessible)
+            not_found_ttl = timedelta(hours=1)
+            not_found_expiration = now + not_found_ttl
+            self._cache[entity_id] = (None, not_found_expiration)
+            logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
             return None
+        except Exception as e:
+            # Transient errors (network timeouts, rate limits, connection issues, etc.)
+            # should not be cached as "not found" - let them propagate so callers can retry
+            logger.warning(f"[{self.name}] Transient error fetching entity {entity_id}: {e}")
+            raise
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
         return entity

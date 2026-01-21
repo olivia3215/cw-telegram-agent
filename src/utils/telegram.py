@@ -43,7 +43,12 @@ async def get_channel_name(agent: "Agent", channel_id: int):
         # get_entity can fetch users, chats, or channels
         entity = await agent.get_cached_entity(channel_id)
         if not entity:
-            return f"Unknown ({channel_id})"
+            # Use "Deleted Account" only for users (positive IDs)
+            # Groups and channels (negative IDs) should use "Unknown"
+            if channel_id > 0:
+                return f"Deleted Account ({channel_id})"
+            else:
+                return f"Unknown ({channel_id})"
 
         # 1. Check for a 'title' (for groups and channels)
         if hasattr(entity, "title") and entity.title:
@@ -69,9 +74,16 @@ async def get_channel_name(agent: "Agent", channel_id: int):
         return f"Entity ({entity.id})"
 
     except Exception as e:
-        # If the entity can't be fetched, return a default identifier
+        # Transient errors (network timeouts, rate limits, connection issues, etc.) should not
+        # imply the entity doesn't exist. Only return "Deleted Account" when entity_cache.get()
+        # catches PeerIdInvalidError and returns None (that None case is handled in the
+        # "if not entity:" block above).
+        # For transient errors, return a generic identifier that doesn't imply deletion.
         logger.exception(f"Could not fetch entity for {channel_id}: {e}")
-        return f"Unknown ({channel_id})"
+        if channel_id > 0:
+            return f"User ({channel_id})"
+        else:
+            return f"Channel ({channel_id})"
 
 
 async def get_dialog_name(agent, channel_id):
