@@ -421,7 +421,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     return None, None, None, None
                 except Exception as e:
                     logger.error(f"Error fetching media: {e}")
-                    return None, None, None
+                    return None, None, None, None
 
             # Use agent.execute() to run the coroutine on the agent's event loop
             try:
