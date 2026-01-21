@@ -23,6 +23,23 @@ from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissing
 logger = logging.getLogger(__name__)
 
 
+def _escape_quoted_string_value(value: str) -> str:
+    """
+    Escape a value for use in a quoted-string within HTTP headers per RFC 6266.
+    
+    In quoted-string values, the following characters must be escaped:
+    - Backslash (\) -> \\
+    - Double quote (") -> \"
+    
+    Args:
+        value: The string value to escape
+        
+    Returns:
+        The escaped string safe for use in quoted-string values
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def register_conversation_media_routes(agents_bp: Blueprint):
     """Register conversation media serving routes."""
     
@@ -339,8 +356,10 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     # For now, documents served from cache will use unique_id unless we enhance this
                     import urllib.parse
                     if file_name:
+                        # Escape filename for RFC 6266 quoted-string (escape backslashes and double quotes)
+                        escaped_filename = _escape_quoted_string_value(file_name)
                         encoded_filename = urllib.parse.quote(file_name, safe='')
-                        content_disposition = f"inline; filename=\"{file_name}\"; filename*=UTF-8''{encoded_filename}"
+                        content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
                     else:
                         content_disposition = f"inline; filename={unique_id}"
                     
@@ -506,10 +525,12 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 # Properly escape filename for Content-Disposition header
                 import urllib.parse
                 if file_name:
+                    # Escape filename for RFC 6266 quoted-string (escape backslashes and double quotes)
+                    escaped_filename = _escape_quoted_string_value(file_name)
                     # URL-encode the filename for the Content-Disposition header
                     # Use RFC 5987 format for better compatibility
                     encoded_filename = urllib.parse.quote(file_name, safe='')
-                    content_disposition = f"inline; filename=\"{file_name}\"; filename*=UTF-8''{encoded_filename}"
+                    content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
                 else:
                     content_disposition = f"inline; filename={unique_id}"
                 
