@@ -10,6 +10,8 @@ Telegram entity caching utility.
 import logging
 from datetime import UTC, timedelta
 
+from telethon.errors.rpcerrorlist import PeerIdInvalidError  # pyright: ignore[reportMissingImports]
+
 from clock import clock
 from utils import normalize_peer_id
 
@@ -66,14 +68,20 @@ class TelegramEntityCache:
             if self.agent:
                 await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
-        except Exception as e:
+        except PeerIdInvalidError as e:
             # Cache the "not found" result to avoid repeated API calls for deleted users
-            # Use infinite TTL (far-future expiration) since deleted accounts won't come back
-            # Set expiration to 10 years in the future to effectively make it permanent
-            infinite_expiration = now + timedelta(days=365 * 10)
-            self._cache[entity_id] = (None, infinite_expiration)
+            # Use 1-hour TTL for "not found" results to allow retries if the entity becomes
+            # available later (e.g., user reactivates account, channel becomes accessible)
+            not_found_ttl = timedelta(hours=1)
+            not_found_expiration = now + not_found_ttl
+            self._cache[entity_id] = (None, not_found_expiration)
             logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
             return None
+        except Exception as e:
+            # Transient errors (network timeouts, rate limits, connection issues, etc.)
+            # should not be cached as "not found" - let them propagate so callers can retry
+            logger.warning(f"[{self.name}] Transient error fetching entity {entity_id}: {e}")
+            raise
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
         return entity
