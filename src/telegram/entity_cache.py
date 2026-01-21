@@ -43,6 +43,9 @@ class TelegramEntityCache:
         """
         Get a Telegram entity, using cache if available.
         
+        Also caches "not found" results (None) to avoid repeated API calls
+        for deleted users or entities that don't exist.
+        
         Args:
             entity_id: The entity ID to fetch
             
@@ -64,7 +67,12 @@ class TelegramEntityCache:
                 await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
         except Exception as e:
-            logger.warning(f"[{self.name}] get_cached_entity failed for ID {entity_id}: {e}")
+            # Cache the "not found" result to avoid repeated API calls for deleted users
+            # Use a longer TTL for failures (1 hour) vs successful lookups (5 minutes default)
+            # since deleted users are unlikely to come back quickly
+            failure_ttl = min(self.ttl_seconds * 12, 3600)  # 12x normal TTL, max 1 hour
+            self._cache[entity_id] = (None, now + timedelta(seconds=failure_ttl))
+            logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
             return None
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))

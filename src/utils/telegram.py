@@ -43,7 +43,7 @@ async def get_channel_name(agent: "Agent", channel_id: int):
         # get_entity can fetch users, chats, or channels
         entity = await agent.get_cached_entity(channel_id)
         if not entity:
-            return f"Unknown ({channel_id})"
+            return f"Deleted Account ({channel_id})"
 
         # 1. Check for a 'title' (for groups and channels)
         if hasattr(entity, "title") and entity.title:
@@ -69,9 +69,9 @@ async def get_channel_name(agent: "Agent", channel_id: int):
         return f"Entity ({entity.id})"
 
     except Exception as e:
-        # If the entity can't be fetched, return a default identifier
+        # If the entity can't be fetched, return "Deleted Account" to match Telegram's behavior
         logger.exception(f"Could not fetch entity for {channel_id}: {e}")
-        return f"Unknown ({channel_id})"
+        return f"Deleted Account ({channel_id})"
 
 
 async def get_dialog_name(agent, channel_id):
