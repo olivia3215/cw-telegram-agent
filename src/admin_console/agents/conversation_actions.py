@@ -18,6 +18,7 @@ from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY, TRANSLATION_MODEL
 from handlers.received import parse_llm_reply
 from llm.factory import create_llm_from_name
+from llm.exceptions import RetryableLLMError
 from handlers.received_helpers.summarization import trigger_summarization_directly
 from task_graph import WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
@@ -316,9 +317,58 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                                         return []
                                 
                                 return []
+                            except RetryableLLMError as e:
+                                # Check if this is a PROHIBITED_CONTENT error
+                                error_msg = str(e).lower()
+                                if "prohibited_content" in error_msg or "prompt blocked" in error_msg:
+                                    # Re-raise to allow retry with batch size 1
+                                    raise
+                                # For other retryable errors, log and return empty
+                                logger.error(f"Error translating batch: {e}")
+                                return []
                             except Exception as e:
                                 logger.error(f"Error translating batch: {e}")
                                 return []
+                        
+                        # Helper function to process a batch of translations
+                        def _process_batch_translations(
+                            batch_translations: list[dict[str, str]],
+                            batch_label: str
+                        ) -> tuple[dict[str, str], list[dict[str, str]]]:
+                            """
+                            Process translations from a batch: save to cache, build translation dict, return results.
+                            
+                            Returns:
+                                tuple: (batch_translation_dict, list of translations)
+                            """
+                            batch_translation_dict: dict[str, str] = {}
+                            
+                            # Save translations to MySQL immediately as they are received
+                            try:
+                                from translation_cache import save_translation
+                                for translation in batch_translations:
+                                    message_id = translation.get("message_id")
+                                    translated_text = translation.get("translated_text", "")
+                                    if message_id and translated_text:
+                                        original_text = message_id_to_text.get(message_id)
+                                        if original_text:
+                                            save_translation(original_text, translated_text)
+                            except Exception as save_error:
+                                logger.warning(f"Failed to save translations to MySQL for {batch_label}: {save_error}")
+                            
+                            # Build translation dict for all message IDs with the same text
+                            for translation in batch_translations:
+                                message_id = translation.get("message_id")
+                                translated_text = translation.get("translated_text", "")
+                                if message_id and translated_text:
+                                    original_text = message_id_to_text.get(message_id)
+                                    if original_text:
+                                        # Translated text already has HTML tags restored
+                                        # Update batch_translation_dict for all message_ids with this text
+                                        for msg_id in text_to_message_ids.get(original_text, []):
+                                            batch_translation_dict[msg_id] = translated_text
+                            
+                            return batch_translation_dict, batch_translations
                         
                         # Translate all batches
                         # Process each batch individually and continue even if some batches fail
@@ -330,40 +380,58 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
                             try:
                                 batch_translations = agent.execute(_translate_batch(batch), timeout=60.0)
                                 
-                                # Collect translations for this batch
-                                batch_translation_dict: dict[str, str] = {}
-                                
-                                # Save translations to MySQL immediately as they are received
-                                try:
-                                    from translation_cache import save_translation
-                                    for translation in batch_translations:
-                                        message_id = translation.get("message_id")
-                                        translated_text = translation.get("translated_text", "")
-                                        if message_id and translated_text:
-                                            original_text = message_id_to_text.get(message_id)
-                                            if original_text:
-                                                save_translation(original_text, translated_text)
-                                except Exception as save_error:
-                                    logger.warning(f"Failed to save translations to MySQL for batch {batch_idx + 1}: {save_error}")
-                                
-                                for translation in batch_translations:
-                                    message_id = translation.get("message_id")
-                                    translated_text = translation.get("translated_text", "")
-                                    if message_id and translated_text:
-                                        # Find the original text for this message_id using the reverse mapping
-                                        original_text = message_id_to_text.get(message_id)
-                                        
-                                        if original_text:
-                                            # Translated text already has HTML tags restored
-                                            # Update batch_translation_dict for all message_ids with this text
-                                            for msg_id in text_to_message_ids.get(original_text, []):
-                                                batch_translation_dict[msg_id] = translated_text
+                                batch_translation_dict, _ = _process_batch_translations(
+                                    batch_translations, f"batch {batch_idx + 1}/{len(batches)}"
+                                )
                                 
                                 # Stream this batch's translations to client
                                 if batch_translation_dict:
                                     yield f"data: {json_lib.dumps({'type': 'translation', 'translations': batch_translation_dict})}\n\n"
                                 
                                 all_new_translations.extend(batch_translations)
+                            except RetryableLLMError as e:
+                                # Check if this is a PROHIBITED_CONTENT error
+                                error_msg = str(e).lower()
+                                if "prohibited_content" in error_msg or "prompt blocked" in error_msg:
+                                    # Retry with batch size 1 (translate messages one by one)
+                                    logger.warning(f"Batch {batch_idx + 1}/{len(batches)} blocked due to PROHIBITED_CONTENT, retrying with batch size 1")
+                                    batch_translation_dict: dict[str, str] = {}
+                                    
+                                    # Translate each message individually using the same processing logic
+                                    for msg in batch:
+                                        try:
+                                            single_msg_batch = [msg]
+                                            single_translations = agent.execute(_translate_batch(single_msg_batch), timeout=60.0)
+                                            
+                                            single_dict, _ = _process_batch_translations(
+                                                single_translations, f"message {msg.get('message_id')}"
+                                            )
+                                            
+                                            # Merge into batch dict
+                                            batch_translation_dict.update(single_dict)
+                                            all_new_translations.extend(single_translations)
+                                        except RetryableLLMError as single_retry_error:
+                                            # Even individual messages can be blocked - log and skip
+                                            error_msg = str(single_retry_error).lower()
+                                            if "prohibited_content" in error_msg or "prompt blocked" in error_msg:
+                                                logger.warning(f"Individual message {msg.get('message_id')} also blocked due to PROHIBITED_CONTENT, skipping")
+                                                batch_errors.append(f"Message {msg.get('message_id')} blocked: PROHIBITED_CONTENT")
+                                            else:
+                                                logger.error(f"Error translating individual message {msg.get('message_id')}: {single_retry_error}")
+                                                batch_errors.append(f"Message {msg.get('message_id')} failed: {single_retry_error}")
+                                        except Exception as single_error:
+                                            # Log error for individual message but continue with others
+                                            logger.error(f"Error translating individual message {msg.get('message_id')}: {single_error}")
+                                            batch_errors.append(f"Message {msg.get('message_id')} failed: {single_error}")
+                                    
+                                    # Stream translations for this batch (now processed individually)
+                                    if batch_translation_dict:
+                                        yield f"data: {json_lib.dumps({'type': 'translation', 'translations': batch_translation_dict})}\n\n"
+                                else:
+                                    # Other retryable errors - log and continue with other batches
+                                    error_msg_str = f"Batch {batch_idx + 1}/{len(batches)} failed with retryable error: {e}"
+                                    logger.error(error_msg_str)
+                                    batch_errors.append(error_msg_str)
                             except RuntimeError as e:
                                 error_msg = str(e).lower()
                                 if "not authenticated" in error_msg or "not running" in error_msg:
