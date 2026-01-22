@@ -64,6 +64,9 @@ log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
 
+# Suppress verbose telethon.client.updates messages
+logging.getLogger("telethon.client.updates").setLevel(logging.WARNING)
+
 STATE_PATH = os.path.join(os.environ["CINDY_AGENT_STATE_DIR"], "work_queue.json")
 
 
