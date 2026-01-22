@@ -2875,6 +2875,65 @@
             }
         }
 
+        async function moveAgentConfigDirectory(agentName, newConfigDirectory, currentConfigDirectory) {
+            // Reset dropdown to current value first (will be updated on success)
+            const select = document.getElementById('agent-config-directory-select');
+            if (select) {
+                select.value = currentConfigDirectory;
+            }
+
+            if (!newConfigDirectory || newConfigDirectory === currentConfigDirectory) {
+                return;
+            }
+
+            // Show confirmation dialog
+            const confirmed = confirm(
+                `Are you sure you want to move agent "${agentName}" from config directory "${currentConfigDirectory}" to "${newConfigDirectory}"?\n\n` +
+                `This will move:\n` +
+                `- ${currentConfigDirectory}/agents/${agentName}.md\n` +
+                `- ${currentConfigDirectory}/agents/${agentName}/\n\n` +
+                `to the new config directory.`
+            );
+
+            if (!confirmed) {
+                // Reset dropdown to current value
+                if (select) {
+                    select.value = currentConfigDirectory;
+                }
+                return;
+            }
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/move-directory`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config_directory: newConfigDirectory })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('Agent config directory moved successfully.');
+                    // Reload agents list and configuration
+                    await loadAgents();
+                    loadAgentConfiguration(agentName);
+                } else {
+                    alert('Error moving config directory: ' + data.error);
+                    // Reset dropdown to current value
+                    if (select) {
+                        select.value = currentConfigDirectory;
+                    }
+                    loadAgentConfiguration(agentName);
+                }
+            } catch (error) {
+                console.error('Error moving config directory:', error);
+                alert('Error moving config directory: ' + error);
+                // Reset dropdown to current value
+                if (select) {
+                    select.value = currentConfigDirectory;
+                }
+                loadAgentConfiguration(agentName);
+            }
+        }
+
         async function deleteAgent(agentName, displayName) {
             const confirmation = prompt(`To delete agent "${displayName}", type DELETE ${displayName}:`);
             if (confirmation !== `DELETE ${displayName}`) {
@@ -4230,6 +4289,8 @@
                     const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
                     const startTypingDelay = data.start_typing_delay !== undefined ? data.start_typing_delay : null;
                     const typingSpeed = data.typing_speed !== undefined ? data.typing_speed : null;
+                    const configDirectory = data.config_directory || '';
+                    const availableConfigDirectories = data.available_config_directories || [];
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -4255,6 +4316,19 @@
                                                 style="font-size: 12px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; width: 150px;"
                                                 onchange="renameAgentConfig('${escJsAttr(agentName)}', this.value)">` : 
                                             `<strong>${escapeHtml(agentName)}</strong>`
+                                        }
+                                    </div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                        Config Directory:
+                                        ${isDisabled ? 
+                                            `<select id="agent-config-directory-select" 
+                                                style="font-size: 12px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 4px; width: 200px; margin-left: 4px;"
+                                                onchange="moveAgentConfigDirectory('${escJsAttr(agentName)}', this.value, '${escJsAttr(configDirectory)}')">
+                                                ${availableConfigDirectories.map(dir => 
+                                                    `<option value="${escapeHtml(dir.value)}" ${dir.value === configDirectory ? 'selected' : ''}>${escapeHtml(dir.label)}</option>`
+                                                ).join('')}
+                                            </select>` : 
+                                            `<strong>${escapeHtml(configDirectory || 'Unknown')}</strong>`
                                         }
                                     </div>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>

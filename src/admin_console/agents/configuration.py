@@ -88,6 +88,11 @@ def register_configuration_routes(agents_bp: Blueprint):
             start_typing_delay = agent._start_typing_delay if hasattr(agent, '_start_typing_delay') else None
             typing_speed = agent._typing_speed if hasattr(agent, '_typing_speed') else None
 
+            # Get config directory info
+            from config import CONFIG_DIRECTORIES
+            current_config_directory = agent.config_directory if agent.config_directory else None
+            available_config_directories = [{"value": d, "label": d} for d in CONFIG_DIRECTORIES]
+
             return jsonify({
                 "name": agent.name,
                 "phone": agent.phone,
@@ -105,6 +110,8 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "is_disabled": agent.is_disabled,
                 "start_typing_delay": start_typing_delay,
                 "typing_speed": typing_speed,
+                "config_directory": current_config_directory,
+                "available_config_directories": available_config_directories,
             })
         except Exception as e:
             logger.error(f"Error getting configuration for {agent_config_name}: {e}")
@@ -815,6 +822,105 @@ def register_configuration_routes(agents_bp: Blueprint):
             return jsonify({"success": True, "new_config_name": new_config_name})
         except Exception as e:
             logger.error(f"Error renaming config for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/move-directory", methods=["PUT"])
+    def api_move_agent_config_directory(agent_config_name: str):
+        """Move agent config directory (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to move config directory"}), 400
+
+            if not agent.config_directory:
+                return jsonify({"error": "Agent has no config directory"}), 400
+
+            data = request.json
+            new_config_directory = data.get("config_directory", "").strip()
+            if not new_config_directory:
+                return jsonify({"error": "New config directory cannot be empty"}), 400
+
+            # Validate new config directory is in allowed list
+            from config import CONFIG_DIRECTORIES
+            if new_config_directory not in CONFIG_DIRECTORIES:
+                return jsonify({"error": f"Invalid config directory. Must be one of: {', '.join(CONFIG_DIRECTORIES)}"}), 400
+
+            # Check if we're already in the target directory
+            if agent.config_directory == new_config_directory:
+                return jsonify({"error": "Agent is already in the specified config directory"}), 400
+
+            old_config_dir = Path(agent.config_directory)
+            new_config_dir = Path(new_config_directory)
+
+            # Validate directories exist
+            if not old_config_dir.exists() or not old_config_dir.is_dir():
+                return jsonify({"error": f"Old config directory does not exist: {agent.config_directory}"}), 400
+            if not new_config_dir.exists() or not new_config_dir.is_dir():
+                return jsonify({"error": f"New config directory does not exist: {new_config_directory}"}), 400
+
+            # Ensure agents subdirectory exists in new config directory
+            new_agents_dir = new_config_dir / "agents"
+            new_agents_dir.mkdir(parents=True, exist_ok=True)
+
+            # Check if target already has an agent with the same config_name
+            new_agent_file = new_agents_dir / f"{agent.config_name}.md"
+            if new_agent_file.exists():
+                return jsonify({"error": f"Agent config file '{agent.config_name}.md' already exists in target directory"}), 400
+
+            new_agent_config_dir = new_agents_dir / agent.config_name
+            if new_agent_config_dir.exists():
+                return jsonify({"error": f"Agent config directory '{agent.config_name}' already exists in target directory"}), 400
+
+            # Get paths for old files/directories
+            old_agents_dir = old_config_dir / "agents"
+            old_agent_file = old_agents_dir / f"{agent.config_name}.md"
+            old_agent_config_dir = old_agents_dir / agent.config_name
+
+            # Validate old files/directories exist
+            if not old_agent_file.exists():
+                return jsonify({"error": "Agent configuration file not found"}), 404
+
+            # Move the agent config file
+            try:
+                shutil.move(str(old_agent_file), str(new_agent_file))
+                logger.info(f"Moved agent config file from {old_agent_file} to {new_agent_file}")
+            except Exception as e:
+                logger.error(f"Error moving agent config file: {e}")
+                return jsonify({"error": f"Failed to move agent config file: {e}"}), 500
+
+            # Move the agent config directory (if it exists)
+            if old_agent_config_dir.exists() and old_agent_config_dir.is_dir():
+                try:
+                    shutil.move(str(old_agent_config_dir), str(new_agent_config_dir))
+                    logger.info(f"Moved agent config directory from {old_agent_config_dir} to {new_agent_config_dir}")
+                except Exception as e:
+                    logger.error(f"Error moving agent config directory: {e}")
+                    # Try to rollback the file move
+                    rollback_errors = []
+                    try:
+                        shutil.move(str(new_agent_file), str(old_agent_file))
+                        logger.info(f"Rolled back file move from {new_agent_file} to {old_agent_file}")
+                    except Exception as rollback_e:
+                        rollback_errors.append(f"Failed to rollback file move: {rollback_e}")
+                        logger.error(f"Failed to rollback file move: {rollback_e}")
+                    
+                    error_msg = f"Failed to move agent config directory: {e}"
+                    if rollback_errors:
+                        error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
+                    return jsonify({"error": error_msg}), 500
+
+            # Re-register all agents to pick up the move
+            # This clears the registry and creates new agent objects, so the new config_directory
+            # will be read from the moved config file during re-registration
+            from register_agents import register_all_agents
+            register_all_agents(force=True)
+
+            return jsonify({"success": True, "new_config_directory": new_config_directory})
+        except Exception as e:
+            logger.error(f"Error moving config directory for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>", methods=["DELETE"])
