@@ -77,6 +77,20 @@ class TelegramEntityCache:
             self._cache[entity_id] = (None, not_found_expiration)
             logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
             return None
+        except ValueError as e:
+            # Telethon can raise ValueError with "Could not find the input entity" message
+            # when an entity doesn't exist or isn't accessible (e.g., deleted account, blocked user).
+            # Treat this the same as PeerIdInvalidError - cache as "not found" to avoid repeated API calls.
+            error_msg = str(e)
+            if "Could not find the input entity" in error_msg:
+                not_found_ttl = timedelta(hours=1)
+                not_found_expiration = now + not_found_ttl
+                self._cache[entity_id] = (None, not_found_expiration)
+                logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
+                return None
+            # Other ValueError instances are treated as transient errors
+            logger.warning(f"[{self.name}] Transient error fetching entity {entity_id}: {e}")
+            raise
         except Exception as e:
             # Transient errors (network timeouts, rate limits, connection issues, etc.)
             # should not be cached as "not found" - let them propagate so callers can retry
