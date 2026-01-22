@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.account import UpdateNotifySettingsRequest  # pyright: ignore[reportMissingImports]
-from telethon.tl.functions.channels import LeaveChannelRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.channels import JoinChannelRequest, LeaveChannelRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import ImportChatInviteRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     Chat,
@@ -199,9 +199,30 @@ def register_membership_routes(agents_bp: Blueprint):
                             return {"error": f"Could not find group/channel: {str(e)}"}
 
                     # If we have an entity but haven't joined yet, try to join
-                    # For public channels/groups, we can just access them
-                    # For private ones, we need an invite link
                     if entity and channel_id:
+                        # Actually join the channel/group
+                        # For channels and supergroups, use JoinChannelRequest
+                        # For basic groups, if we can resolve the entity, we're likely already a member
+                        try:
+                            if isinstance(entity, Channel):
+                                # Join channel or supergroup
+                                await client(JoinChannelRequest(entity))
+                            elif isinstance(entity, Chat):
+                                # For basic groups, if we can resolve the entity via get_entity(),
+                                # we're likely already a member. If not, we'd need an invite link.
+                                # Since we already resolved it successfully, assume we're a member.
+                                pass
+                            else:
+                                return {"error": "Unknown entity type"}
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            # If we're already a member, that's fine - continue
+                            if "already" in error_str or "participant" in error_str:
+                                pass  # Already a member, continue
+                            else:
+                                logger.warning(f"Error joining channel/group: {e}")
+                                return {"error": f"Failed to join: {str(e)}"}
+
                         # Mute immediately as requested
                         await _set_mute_status(client, channel_id, True)
 
