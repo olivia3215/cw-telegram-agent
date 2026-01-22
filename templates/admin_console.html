@@ -3817,8 +3817,8 @@
                     
                     let html = '<div style="margin-bottom: 20px;">';
                     html += '<div style="display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">';
-                    html += '<input type="text" id="membership-identifier" placeholder="Group username, ID, or invitation link" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onkeypress="if(event.key===\'Enter\') subscribeToGroup(\'' + escapeHtml(agentName) + '\')">';
-                    html += '<button id="membership-subscribe-btn" onclick="subscribeToGroup(\'' + escapeHtml(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Subscribe</button>';
+                    html += '<input type="text" id="membership-identifier" placeholder="Group username, ID, or invitation link" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onkeypress="if(event.key===\'Enter\') subscribeToGroup(\'' + escJsAttr(agentName) + '\')">';
+                    html += '<button id="membership-subscribe-btn" onclick="subscribeToGroup(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Subscribe</button>';
                     html += '</div>';
                     html += '</div>';
                     
@@ -3844,10 +3844,10 @@
                             html += '</div>';
                             html += '<div style="display: flex; align-items: center; gap: 8px;">';
                             html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
-                            html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escapeHtml(agentName) + '\', \'' + escapeHtml(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                            html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
                             html += '<span style="font-size: 14px;">Muted</span>';
                             html += '</label>';
-                            html += '<button onclick="deleteMembership(\'' + escapeHtml(agentName) + '\', \'' + escapeHtml(channelId) + '\', \'' + escapeHtml(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
+                            html += '<button onclick="deleteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', \'' + escJsAttr(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
                             html += '</div>';
                             html += '</div>';
                         });
