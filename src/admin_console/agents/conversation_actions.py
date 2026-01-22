@@ -496,16 +496,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             if not agent.agent_id:
                 return jsonify({"error": "Agent not authenticated"}), 400
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
-            
-            # Reject Telegram system user ID (777000) - should never be used as a conversation partner
-            from config import TELEGRAM_SYSTEM_USER_ID
-            if channel_id == TELEGRAM_SYSTEM_USER_ID:
-                return jsonify({"error": f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner"}), 400
-
             data = request.json
             intent = data.get("intent", "").strip()
 
@@ -516,6 +506,8 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             # Create xsend task by inserting a received task with xsend_intent
             # This is async, so we need to run it on the agent's event loop
             async def _create_xsend():
+                # Resolve user_id to channel_id (handles @username, phone numbers, and numeric IDs)
+                channel_id = await _resolve_user_id_to_channel_id(agent, user_id)
                 await insert_received_task_for_conversation(
                     recipient_id=agent.agent_id,
                     channel_id=str(channel_id),
@@ -528,6 +520,8 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
             try:
                 agent.execute(_create_xsend(), timeout=30.0)
                 return jsonify({"success": True, "message": "XSend task created successfully"})
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
             except RuntimeError as e:
                 error_msg = str(e).lower()
                 if "not authenticated" in error_msg or "not running" in error_msg:

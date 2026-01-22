@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import add_cache_busting_headers, get_agent_by_name
+from admin_console.helpers import add_cache_busting_headers, get_agent_by_name, resolve_user_id_and_handle_errors
 from utils.time import normalize_created_string
 
 logger = logging.getLogger(__name__)
@@ -26,10 +26,10 @@ def register_summary_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             # Load from MySQL
             if not agent.is_authenticated:
@@ -55,10 +55,10 @@ def register_summary_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             data = request.json or {}
             content = data.get("content")
@@ -124,10 +124,10 @@ def register_summary_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             # Delete from MySQL
             if not agent.is_authenticated:
@@ -149,10 +149,10 @@ def register_summary_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            try:
-                channel_id = int(user_id)
-            except ValueError:
-                return jsonify({"error": "Invalid user ID"}), 400
+            # Resolve user_id (which may be a username) to channel_id
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
 
             data = request.json or {}
             content = data.get("content", "").strip()
