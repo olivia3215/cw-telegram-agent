@@ -637,6 +637,7 @@
                 <button class="tab-button" data-subtab="memories">Memories</button>
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
                 <button class="tab-button" data-subtab="documents-agent">Documents</button>
+                <button class="tab-button" data-subtab="memberships">Memberships</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector">
@@ -755,6 +756,11 @@
                         <div id="agent-docs-editor-container">
                             <div class="loading">Select an agent and document to edit</div>
                         </div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="memberships">
+                    <div id="memberships-container">
+                        <div class="loading">Select an agent to manage memberships</div>
                     </div>
                 </div>
             </div>
@@ -3079,6 +3085,8 @@
                         loadIntentions(agentName);
                     } else if (subtabName === 'documents-agent') {
                         loadAgentDocs(agentName);
+                    } else if (subtabName === 'memberships') {
+                        loadMemberships(agentName);
                     }
                 }
             } else {
@@ -3768,6 +3776,190 @@
                     return;
                 }
                 alert('Error deleting intention: ' + error);
+            });
+        }
+
+        // Load memberships
+        function loadMemberships(agentName) {
+            const container = document.getElementById('memberships-container');
+            if (!container) return;
+            
+            // Validate that the agentName still matches the currently selected agent
+            const agentSelect = document.getElementById('agents-agent-select');
+            const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            if (currentAgentName !== agentName) {
+                return;
+            }
+            
+            if (!agentName) {
+                container.innerHTML = '<div class="loading">Select an agent to manage memberships</div>';
+                return;
+            }
+            
+            container.innerHTML = '<div class="loading">Loading memberships...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships`)
+                .then(response => response.json())
+                .then(data => {
+                    // Re-validate agent name after async operation
+                    const agentSelect = document.getElementById('agents-agent-select');
+                    const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                    if (currentAgentName !== agentName) {
+                        return;
+                    }
+                    
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                        return;
+                    }
+                    
+                    const memberships = data.memberships || [];
+                    
+                    let html = '<div style="margin-bottom: 20px;">';
+                    html += '<div style="display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">';
+                    html += '<input type="text" id="membership-identifier" placeholder="Group username, ID, or invitation link" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onkeypress="if(event.key===\'Enter\') subscribeToGroup(\'' + escapeHtml(agentName) + '\')">';
+                    html += '<button id="membership-subscribe-btn" onclick="subscribeToGroup(\'' + escapeHtml(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Subscribe</button>';
+                    html += '</div>';
+                    html += '</div>';
+                    
+                    if (memberships.length === 0) {
+                        html += '<div style="padding: 20px; text-align: center; color: #666;">No group memberships found</div>';
+                    } else {
+                        html += '<div style="display: grid; gap: 12px;">';
+                        memberships.forEach(membership => {
+                            const name = membership.name || 'Unknown';
+                            const channelId = membership.channel_id;
+                            const username = membership.username ? `@${membership.username}` : '';
+                            const isMuted = membership.is_muted || false;
+                            
+                            html += '<div style="padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; align-items: center; gap: 12px;">';
+                            html += '<div style="flex: 1; min-width: 0;">';
+                            html += '<div style="font-weight: 500; margin-bottom: 4px;">' + escapeHtml(name) + '</div>';
+                            html += '<div style="font-size: 12px; color: #666;">';
+                            html += 'ID: ' + escapeHtml(channelId);
+                            if (username) {
+                                html += ' • ' + escapeHtml(username);
+                            }
+                            html += '</div>';
+                            html += '</div>';
+                            html += '<div style="display: flex; align-items: center; gap: 8px;">';
+                            html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
+                            html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escapeHtml(agentName) + '\', \'' + escapeHtml(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                            html += '<span style="font-size: 14px;">Muted</span>';
+                            html += '</label>';
+                            html += '<button onclick="deleteMembership(\'' + escapeHtml(agentName) + '\', \'' + escapeHtml(channelId) + '\', \'' + escapeHtml(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
+                            html += '</div>';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading memberships: ${escapeHtml(error)}</div>`;
+                });
+        }
+
+        function subscribeToGroup(agentName) {
+            const identifierInput = document.getElementById('membership-identifier');
+            if (!identifierInput) return;
+            
+            const identifier = identifierInput.value.trim();
+            if (!identifier) {
+                alert('Please enter a group username, ID, or invitation link');
+                return;
+            }
+            
+            const button = document.getElementById('membership-subscribe-btn');
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Subscribing...';
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships/subscribe`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ identifier: identifier })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error subscribing: ' + data.error);
+                } else {
+                    // Clear input
+                    identifierInput.value = '';
+                    // Reload memberships
+                    loadMemberships(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error subscribing: ' + error);
+            })
+            .finally(() => {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = 'Subscribe';
+                }
+            });
+        }
+
+        function toggleMuteMembership(agentName, channelId, isMuted) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships/${encodeURIComponent(channelId)}/mute`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ is_muted: isMuted })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error toggling mute: ' + data.error);
+                    // Reload to restore correct state
+                    loadMemberships(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error toggling mute: ' + error);
+                // Reload to restore correct state
+                loadMemberships(agentName);
+            });
+        }
+
+        function deleteMembership(agentName, channelId, name) {
+            const displayName = name || channelId;
+            if (!confirm(`Are you sure you want to delete the subscription to "${displayName}"?`)) {
+                return;
+            }
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships/${encodeURIComponent(channelId)}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error deleting subscription: ' + data.error);
+                } else {
+                    loadMemberships(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting subscription: ' + error);
             });
         }
 
