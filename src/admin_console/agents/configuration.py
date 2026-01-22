@@ -912,10 +912,9 @@ def register_configuration_routes(agents_bp: Blueprint):
                         error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
                     return jsonify({"error": error_msg}), 500
 
-            # Update agent's config_directory in the registry
-            agent.config_directory = new_config_directory
-
             # Re-register all agents to pick up the move
+            # This clears the registry and creates new agent objects, so the new config_directory
+            # will be read from the moved config file during re-registration
             from register_agents import register_all_agents
             register_all_agents(force=True)
 
