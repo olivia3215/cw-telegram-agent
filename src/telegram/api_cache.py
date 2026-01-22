@@ -10,6 +10,7 @@ Telegram API caching utility for mute status and blocklist.
 import logging
 from datetime import UTC, datetime, timedelta
 
+from telethon.errors.rpcerrorlist import ChannelPrivateError  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.account import GetNotifySettingsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.contacts import GetBlockedRequest  # pyright: ignore[reportMissingImports]
 
@@ -77,6 +78,12 @@ class TelegramAPICache:
                     self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
                     return False
             settings = await self.client(GetNotifySettingsRequest(peer=peer_id))
+        except ChannelPrivateError as e:
+            # ChannelPrivateError occurs when a channel is deleted or the agent is removed from it
+            # This is an expected error, so log at DEBUG level instead of ERROR
+            logger.debug(f"[{self.name}] Channel {peer_id} is private or deleted, treating as not muted: {e}")
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
         except Exception as e:
             logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
