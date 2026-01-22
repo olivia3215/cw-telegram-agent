@@ -899,11 +899,18 @@ def register_configuration_routes(agents_bp: Blueprint):
                 except Exception as e:
                     logger.error(f"Error moving agent config directory: {e}")
                     # Try to rollback the file move
+                    rollback_errors = []
                     try:
                         shutil.move(str(new_agent_file), str(old_agent_file))
+                        logger.info(f"Rolled back file move from {new_agent_file} to {old_agent_file}")
                     except Exception as rollback_e:
+                        rollback_errors.append(f"Failed to rollback file move: {rollback_e}")
                         logger.error(f"Failed to rollback file move: {rollback_e}")
-                    return jsonify({"error": f"Failed to move agent config directory: {e}"}), 500
+                    
+                    error_msg = f"Failed to move agent config directory: {e}"
+                    if rollback_errors:
+                        error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
+                    return jsonify({"error": error_msg}), 500
 
             # Update agent's config_directory in the registry
             agent.config_directory = new_config_directory
