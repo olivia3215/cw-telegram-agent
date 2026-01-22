@@ -10,7 +10,10 @@ Telegram entity caching utility.
 import logging
 from datetime import UTC, timedelta
 
-from telethon.errors.rpcerrorlist import PeerIdInvalidError  # pyright: ignore[reportMissingImports]
+from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
+    ChannelPrivateError,
+    PeerIdInvalidError,
+)
 
 from clock import clock
 from utils import normalize_peer_id
@@ -68,8 +71,9 @@ class TelegramEntityCache:
             if self.agent:
                 await self.agent.ensure_client_connected()
             entity = await self.client.get_entity(entity_id)
-        except PeerIdInvalidError as e:
-            # Cache the "not found" result to avoid repeated API calls for deleted users
+        except (PeerIdInvalidError, ChannelPrivateError) as e:
+            # Cache the "not found" result to avoid repeated API calls for deleted users/channels
+            # ChannelPrivateError occurs when a channel is deleted or the agent is removed from it
             # Use 1-hour TTL for "not found" results to allow retries if the entity becomes
             # available later (e.g., user reactivates account, channel becomes accessible)
             not_found_ttl = timedelta(hours=1)
