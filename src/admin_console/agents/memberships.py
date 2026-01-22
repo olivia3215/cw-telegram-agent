@@ -165,6 +165,7 @@ def register_membership_routes(agents_bp: Blueprint):
                 try:
                     entity = None
                     channel_id = None
+                    joined_via_invite = False
 
                     # Check if it's an invitation link
                     invite_match = re.search(r'(?:t\.me/joinchat/|t\.me/\+)([A-Za-z0-9_-]+)', identifier)
@@ -172,18 +173,60 @@ def register_membership_routes(agents_bp: Blueprint):
                         # It's an invitation link
                         invite_hash = invite_match.group(1)
                         try:
+                            # Get list of existing channel IDs before joining
+                            existing_channel_ids = set()
+                            async for dialog in client.iter_dialogs(limit=100):
+                                dialog_entity = dialog.entity
+                                if is_group_or_channel(dialog_entity):
+                                    try:
+                                        dialog_id = dialog.id
+                                        if hasattr(dialog_id, 'user_id'):
+                                            dialog_id = dialog_id.user_id
+                                        elif not isinstance(dialog_id, int):
+                                            dialog_id = int(dialog_id)
+                                        existing_channel_ids.add(normalize_peer_id(dialog_id))
+                                    except Exception:
+                                        pass
+                            
                             result = await client(ImportChatInviteRequest(invite_hash))
+                            joined_via_invite = True
+                            
                             # ImportChatInviteRequest returns updates, extract the chat from there
-                            # The chat should now be in the dialogs
-                            # We'll need to find it by iterating dialogs or using the updates
-                            # For now, let's try to get the entity from the result
                             if hasattr(result, 'chats') and result.chats:
                                 entity = result.chats[0]
-                                channel_id = entity.id
+                                channel_id = normalize_peer_id(entity.id)
                             else:
-                                # If we can't get it from result, we'll need to refresh dialogs
-                                # For simplicity, return success and let the frontend refresh
-                                return {"success": True, "message": "Successfully joined group"}
+                                # If result.chats is empty, find the newly joined chat from dialogs
+                                # by comparing before/after channel IDs
+                                entity = None
+                                channel_id = None
+                                
+                                # Iterate through dialogs to find the newly joined group/channel
+                                async for dialog in client.iter_dialogs(limit=100):
+                                    dialog_entity = dialog.entity
+                                    if is_group_or_channel(dialog_entity):
+                                        try:
+                                            dialog_id = dialog.id
+                                            if hasattr(dialog_id, 'user_id'):
+                                                dialog_id = dialog_id.user_id
+                                            elif not isinstance(dialog_id, int):
+                                                dialog_id = int(dialog_id)
+                                            normalized_id = normalize_peer_id(dialog_id)
+                                            
+                                            # Check if this is a new channel (not in existing list)
+                                            if normalized_id not in existing_channel_ids:
+                                                entity = dialog_entity
+                                                channel_id = normalized_id
+                                                break
+                                        except Exception as e:
+                                            logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
+                                            continue
+                                
+                                if not entity or not channel_id:
+                                    # Could not find the chat - still try to proceed but log a warning
+                                    logger.warning(f"Successfully joined via invite link but could not identify the chat for muting")
+                                    # Return error so user knows muting failed, even though join succeeded
+                                    return {"error": "Successfully joined group but could not determine chat ID for muting"}
                         except Exception as e:
                             logger.warning(f"Error importing chat invite: {e}")
                             return {"error": f"Failed to join via invitation link: {str(e)}"}
@@ -198,30 +241,32 @@ def register_membership_routes(agents_bp: Blueprint):
                             logger.warning(f"Error getting entity for {identifier}: {e}")
                             return {"error": f"Could not find group/channel: {str(e)}"}
 
-                    # If we have an entity but haven't joined yet, try to join
+                    # If we have an entity and channel_id, proceed with join (if needed) and mute
                     if entity and channel_id:
-                        # Actually join the channel/group
-                        # For channels and supergroups, use JoinChannelRequest
-                        # For basic groups, if we can resolve the entity, we're likely already a member
-                        try:
-                            if isinstance(entity, Channel):
-                                # Join channel or supergroup
-                                await client(JoinChannelRequest(entity))
-                            elif isinstance(entity, Chat):
-                                # For basic groups, if we can resolve the entity via get_entity(),
-                                # we're likely already a member. If not, we'd need an invite link.
-                                # Since we already resolved it successfully, assume we're a member.
-                                pass
-                            else:
-                                return {"error": "Unknown entity type"}
-                        except Exception as e:
-                            error_str = str(e).lower()
-                            # If we're already a member, that's fine - continue
-                            if "already" in error_str or "participant" in error_str:
-                                pass  # Already a member, continue
-                            else:
-                                logger.warning(f"Error joining channel/group: {e}")
-                                return {"error": f"Failed to join: {str(e)}"}
+                        # For invite links, we've already joined, so skip the join step
+                        if not joined_via_invite:
+                            # Actually join the channel/group
+                            # For channels and supergroups, use JoinChannelRequest
+                            # For basic groups, if we can resolve the entity, we're likely already a member
+                            try:
+                                if isinstance(entity, Channel):
+                                    # Join channel or supergroup
+                                    await client(JoinChannelRequest(entity))
+                                elif isinstance(entity, Chat):
+                                    # For basic groups, if we can resolve the entity via get_entity(),
+                                    # we're likely already a member. If not, we'd need an invite link.
+                                    # Since we already resolved it successfully, assume we're a member.
+                                    pass
+                                else:
+                                    return {"error": "Unknown entity type"}
+                            except Exception as e:
+                                error_str = str(e).lower()
+                                # If we're already a member, that's fine - continue
+                                if "already" in error_str or "participant" in error_str:
+                                    pass  # Already a member, continue
+                                else:
+                                    logger.warning(f"Error joining channel/group: {e}")
+                                    return {"error": f"Failed to join: {str(e)}"}
 
                         # Mute immediately as requested
                         await _set_mute_status(client, channel_id, True)
