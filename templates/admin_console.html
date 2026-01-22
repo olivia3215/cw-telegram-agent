@@ -3896,6 +3896,10 @@
                 } else {
                     // Clear input
                     identifierInput.value = '';
+                    // Show warning if present (e.g., join succeeded but mute failed)
+                    if (data.warning) {
+                        alert('Warning: ' + data.warning);
+                    }
                     // Reload memberships
                     loadMemberships(agentName);
                 }

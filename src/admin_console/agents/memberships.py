@@ -269,13 +269,22 @@ def register_membership_routes(agents_bp: Blueprint):
                                     return {"error": f"Failed to join: {str(e)}"}
 
                         # Mute immediately as requested
-                        await _set_mute_status(client, channel_id, True)
+                        mute_warning = None
+                        try:
+                            await _set_mute_status(client, channel_id, True)
+                        except Exception as mute_error:
+                            # Join succeeded but muting failed - log warning but don't fail the subscription
+                            logger.warning(f"Successfully joined group/channel but failed to mute: {mute_error}")
+                            mute_warning = f"Successfully joined but could not mute: {str(mute_error)}"
 
-                        return {
+                        response = {
                             "success": True,
                             "channel_id": str(channel_id),
                             "name": getattr(entity, "title", None) or identifier,
                         }
+                        if mute_warning:
+                            response["warning"] = mute_warning
+                        return response
                     else:
                         return {"error": "Could not determine channel ID"}
 
