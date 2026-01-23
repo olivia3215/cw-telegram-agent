@@ -786,7 +786,7 @@ def _generate_standalone_html(
                         media_path = f"media/{media_map[unique_id]}"
                         
                         if media_kind == "photo" or (media_kind == "sticker" and not is_animated):
-                            sticker_name = part.get("sticker_name", unique_id)
+                            sticker_name = part.get("sticker_name") or unique_id
                             content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
                         elif is_animated:
                             # TGS animation - will be loaded by JavaScript
