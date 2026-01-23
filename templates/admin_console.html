@@ -3946,7 +3946,8 @@
 
         function deleteMembership(agentName, channelId, name) {
             const displayName = name || channelId;
-            if (!confirm(`Are you sure you want to delete the subscription to "${displayName}"?`)) {
+            const escapedDisplayName = escJsTemplate(displayName);
+            if (!confirm(`Are you sure you want to delete the subscription to "${escapedDisplayName}"?`)) {
                 return;
             }
             
@@ -8244,7 +8245,15 @@
                       .replace(/\n/g, '\\n')
                       .replace(/\r/g, '\\r')
                       .replace(/'/g, "\\'")
-                      .replace(/"/g, '&quot;');
+                      .replace(/"/g, '&quot;')
+                      .replace(/`/g, '\\`');
+        }
+
+        function escJsTemplate(str) {
+            if (!str) return '';
+            return str.replace(/\\/g, '\\\\')
+                      .replace(/`/g, '\\`')
+                      .replace(/\$/g, '\\$');
         }
         
         // Ensure subtab bars are visible for active tab panels on page load
