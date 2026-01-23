@@ -155,8 +155,6 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         else:
                             sender_name = "User"
                         
-                        sender_name = html.escape(sender_name)
-                        
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
                         
                         # Extract reply_to
