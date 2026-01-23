@@ -735,9 +735,9 @@ def _generate_standalone_html(
             for part in parts:
                 if part.get("kind") == "text":
                     part_text = part.get("text", "")
-                    if show_translations and msg_id in translations:
-                        # For parts, we'd need part-level translations, but for now use message-level
-                        part_text = translations.get(msg_id, part_text)
+                    # Don't apply message-level translation to individual parts
+                    # (would cause duplication if message has multiple text parts)
+                    # Translation is only applied when there are no parts (see fallback below)
                     part_text = _replace_emoji_urls_with_local(part_text, emoji_map)
                     content_html += f'<div class="message-content">{part_text}</div>\n'
                 elif part.get("kind") == "media":
