@@ -292,6 +292,12 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                 ]
                                 
                                 for batch in batches:
+                                    # Create mapping from message_id to original text for saving to cache
+                                    message_id_to_original_text = {
+                                        msg["message_id"]: msg["text"]
+                                        for msg in batch
+                                    }
+                                    
                                     # Replace HTML tags with placeholders
                                     batch_with_placeholders = []
                                     batch_tag_maps = {}
@@ -345,6 +351,10 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         try:
                                             result = json_lib.loads(result_text)
                                             batch_translations = result.get("translations", [])
+                                            
+                                            # Save translations to cache and store in translations dict
+                                            from translation_cache import save_translation
+                                            
                                             for translation in batch_translations:
                                                 message_id = translation.get("message_id")
                                                 translated_text = translation.get("translated_text", "")
@@ -354,6 +364,14 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                         translated_text, tag_map
                                                     )
                                                     translations[message_id] = restored_text
+                                                    
+                                                    # Save to cache to avoid re-translating in future downloads
+                                                    original_text = message_id_to_original_text.get(message_id)
+                                                    if original_text:
+                                                        try:
+                                                            save_translation(original_text, restored_text)
+                                                        except Exception as save_error:
+                                                            logger.warning(f"Failed to save translation to cache for message {message_id}: {save_error}")
                                         except Exception as e:
                                             logger.warning(f"Error parsing translation batch: {e}")
                     
