@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
@@ -559,11 +560,18 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"conversation_{agent_config_name}_{user_id}_{timestamp}.zip"
                 
+                # Properly format Content-Disposition header per RFC 6266
+                # Escape quotes and backslashes in filename, then wrap in quotes
+                escaped_filename = filename.replace('\\', '\\\\').replace('"', '\\"')
+                # Use both filename (for compatibility) and filename* (RFC 5987 encoding for international chars)
+                encoded_filename = quote(filename, safe='')
+                content_disposition = f'attachment; filename="{escaped_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+                
                 return Response(
                     zip_data,
                     mimetype="application/zip",
                     headers={
-                        "Content-Disposition": f"attachment; filename={filename}",
+                        "Content-Disposition": content_disposition,
                         "Content-Length": str(len(zip_data))
                     }
                 )
