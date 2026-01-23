@@ -872,16 +872,45 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
     
     html_text = re.sub(pattern_img_with_data_emoji, replace_img_with_data_emoji, html_text)
     
-    # Replace remaining data-emoji-url attributes (for non-img elements)
-    # Pattern: data-emoji-url="/admin/api/agents/.../emoji/12345"
-    pattern = r'data-emoji-url="[^"]*emoji/(\d+)"'
-    def replace_emoji(match):
-        doc_id = int(match.group(1))
-        if doc_id in emoji_map:
-            return f'src="media/{emoji_map[doc_id]}"'
-        return match.group(0)
+    # Handle span elements with custom-emoji-container that have data-emoji-url
+    # These contain inner img tags that need their src updated
+    # Pattern: <span ... data-emoji-url="...emoji/12345" ...><img ... /></span>
+    pattern_span_with_emoji = r'(<span[^>]*?data-emoji-url="[^"]*emoji/(\d+)"[^>]*?>)(.*?)(</span>)'
+    def replace_span_emoji(match):
+        span_open = match.group(1)
+        doc_id = int(match.group(2))
+        span_content = match.group(3)
+        span_close = match.group(4)
+        
+        if doc_id not in emoji_map:
+            return match.group(0)
+        
+        local_path = f'media/{emoji_map[doc_id]}'
+        
+        # Update the inner img tag's src attribute if it exists
+        if '<img' in span_content:
+            # Update img src within the span content to use local path
+            # Match img tags with src containing emoji URLs
+            span_content = re.sub(
+                r'(<img[^>]*?src=")[^"]*emoji/(\d+)"([^>]*?>)',
+                lambda m: f'{m.group(1)}{local_path}"{m.group(3)}' if int(m.group(2)) == doc_id else m.group(0),
+                span_content
+            )
+        
+        # Update data-emoji-url on the span to point to local path (for consistency)
+        span_open = re.sub(
+            r'data-emoji-url="[^"]*emoji/\d+"',
+            f'data-emoji-url="{local_path}"',
+            span_open
+        )
+        
+        return f'{span_open}{span_content}{span_close}'
     
-    html_text = re.sub(pattern, replace_emoji, html_text)
+    html_text = re.sub(pattern_span_with_emoji, replace_span_emoji, html_text, flags=re.DOTALL)
+    
+    # Note: We don't replace remaining data-emoji-url attributes on other elements
+    # because we can't safely convert them to src (which is only valid for img elements).
+    # The img and span cases have been handled above.
     
     # Also replace img src URLs for emojis (in case src wasn't updated by previous patterns)
     # Pattern: <img ... src="/admin/api/agents/.../emoji/12345" ...>
