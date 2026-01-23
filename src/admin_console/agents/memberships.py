@@ -485,7 +485,7 @@ async def _set_mute_status(client, peer_id: int, mute: bool):
         settings = InputPeerNotifySettings(
             show_previews=None,
             silent=True,
-            mute_until=mute_until,
+            mute_until=int(mute_until.timestamp()),
             sound=None,
         )
     else:
