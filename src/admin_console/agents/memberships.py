@@ -174,8 +174,10 @@ def register_membership_routes(agents_bp: Blueprint):
                         invite_hash = invite_match.group(1)
                         try:
                             # Get list of existing channel IDs before joining
+                            # Note: We iterate through all dialogs (no limit) to ensure we capture
+                            # all existing channels, avoiding false positives when searching for the new channel
                             existing_channel_ids = set()
-                            async for dialog in client.iter_dialogs(limit=100):
+                            async for dialog in client.iter_dialogs():
                                 dialog_entity = dialog.entity
                                 if is_group_or_channel(dialog_entity):
                                     try:
@@ -198,11 +200,13 @@ def register_membership_routes(agents_bp: Blueprint):
                             else:
                                 # If result.chats is empty, find the newly joined chat from dialogs
                                 # by comparing before/after channel IDs
+                                # Note: We iterate through all dialogs (no limit) to ensure we find
+                                # the newly joined channel even if the agent has many dialogs
                                 entity = None
                                 channel_id = None
                                 
                                 # Iterate through dialogs to find the newly joined group/channel
-                                async for dialog in client.iter_dialogs(limit=100):
+                                async for dialog in client.iter_dialogs():
                                     dialog_entity = dialog.entity
                                     if is_group_or_channel(dialog_entity):
                                         try:
