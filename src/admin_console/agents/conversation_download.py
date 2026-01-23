@@ -125,12 +125,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     # Fetch ALL messages (up to 2500) - not just unsummarized
                     # Don't use min_id filter - we want everything
                     messages = []
-                    total_fetched = 0
                     async for message in client.iter_messages(entity, limit=2500):
-                        total_fetched += 1
-                        if total_fetched >= 2500:
-                            break
-
                         # Extract message data similar to conversation_get.py
                         msg_id = int(message.id)
                         
