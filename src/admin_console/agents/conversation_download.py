@@ -836,7 +836,35 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
     if not html_text:
         return html_text
     
-    # Replace data-emoji-url with local path
+    # First, handle img tags that have data-emoji-url attributes
+    # These may also have src attributes, which we need to update instead of creating duplicates
+    # Pattern: <img ... data-emoji-url="/admin/api/agents/.../emoji/12345" ...>
+    pattern_img_with_data_emoji = r'(<img[^>]*?data-emoji-url="[^"]*emoji/(\d+)"[^>]*?>)'
+    def replace_img_with_data_emoji(match):
+        img_tag = match.group(1)
+        doc_id = int(match.group(2))
+        
+        if doc_id not in emoji_map:
+            return img_tag
+        
+        local_path = f'media/{emoji_map[doc_id]}'
+        
+        # Check if img tag already has a src attribute
+        if 'src="' in img_tag or "src='" in img_tag:
+            # Update existing src attribute and remove data-emoji-url
+            # Pattern to match src="..." or src='...'
+            img_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{local_path}"', img_tag)
+            # Remove data-emoji-url attribute
+            img_tag = re.sub(r'\s*data-emoji-url="[^"]*"', '', img_tag)
+        else:
+            # No src attribute, replace data-emoji-url with src
+            img_tag = re.sub(r'data-emoji-url="[^"]*emoji/\d+"', f'src="{local_path}"', img_tag)
+        
+        return img_tag
+    
+    html_text = re.sub(pattern_img_with_data_emoji, replace_img_with_data_emoji, html_text)
+    
+    # Replace remaining data-emoji-url attributes (for non-img elements)
     # Pattern: data-emoji-url="/admin/api/agents/.../emoji/12345"
     pattern = r'data-emoji-url="[^"]*emoji/(\d+)"'
     def replace_emoji(match):
@@ -847,7 +875,7 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
     
     html_text = re.sub(pattern, replace_emoji, html_text)
     
-    # Also replace img src URLs for emojis
+    # Also replace img src URLs for emojis (in case src wasn't updated by previous patterns)
     # Pattern: <img ... src="/admin/api/agents/.../emoji/12345" ...>
     pattern2 = r'(<img[^>]*src=")[^"]*emoji/(\d+)"([^>]*>)'
     def replace_emoji_img(match):
