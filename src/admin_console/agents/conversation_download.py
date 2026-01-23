@@ -96,7 +96,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent client event loop is not available"}), 503
 
             # Import necessary modules for message fetching and formatting
-            from admin_console.agents.conversation_get import (
+            from admin_console.agents.conversation_get import (  # pyright: ignore[reportMissingImports]
                 _replace_custom_emojis_with_images,
                 _replace_custom_emoji_in_reactions,
             )
@@ -467,7 +467,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             
                             # Try to get emoji from cache
                             try:
-                                from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest
+                                from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest  # pyright: ignore[reportMissingImports]
                                 result = await client(GetCustomEmojiDocumentsRequest(document_id=[doc_id]))
                                 
                                 documents = None
