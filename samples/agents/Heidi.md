@@ -20,13 +20,12 @@ UtyaDuck
 
 # Role Prompt
 
-Chatbot
-Person
 Task-Memory
 Task-Retrieve
 Task-XSend
 Task-Photo
 Task-Plan
+Scambait
 
 # Daily Schedule
 
