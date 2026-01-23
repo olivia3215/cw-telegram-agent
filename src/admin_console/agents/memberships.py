@@ -198,33 +198,83 @@ def register_membership_routes(agents_bp: Blueprint):
                                 entity = result.chats[0]
                                 channel_id = normalize_peer_id(entity.id)
                             else:
-                                # If result.chats is empty, find the newly joined chat from dialogs
-                                # by comparing before/after channel IDs
-                                # Note: We iterate through all dialogs (no limit) to ensure we find
-                                # the newly joined channel even if the agent has many dialogs
+                                # If result.chats is empty, try to extract channel info from updates
                                 entity = None
                                 channel_id = None
                                 
-                                # Iterate through dialogs to find the newly joined group/channel
-                                async for dialog in client.iter_dialogs():
-                                    dialog_entity = dialog.entity
-                                    if is_group_or_channel(dialog_entity):
-                                        try:
-                                            dialog_id = dialog.id
-                                            if hasattr(dialog_id, 'user_id'):
-                                                dialog_id = dialog_id.user_id
-                                            elif not isinstance(dialog_id, int):
-                                                dialog_id = int(dialog_id)
-                                            normalized_id = normalize_peer_id(dialog_id)
-                                            
-                                            # Check if this is a new channel (not in existing list)
-                                            if normalized_id not in existing_channel_ids:
-                                                entity = dialog_entity
-                                                channel_id = normalized_id
-                                                break
-                                        except Exception as e:
-                                            logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
-                                            continue
+                                # First, try to find channel info in result.updates
+                                if hasattr(result, 'updates') and result.updates:
+                                    for update in result.updates:
+                                        # Check if update has channel/chat information
+                                        if hasattr(update, 'channel_id'):
+                                            try:
+                                                # Try to get the entity for this channel ID
+                                                update_channel_id = normalize_peer_id(update.channel_id)
+                                                entity = await client.get_entity(update_channel_id)
+                                                if is_group_or_channel(entity):
+                                                    channel_id = update_channel_id
+                                                    break
+                                            except Exception:
+                                                pass
+                                        elif hasattr(update, 'chat_id'):
+                                            try:
+                                                # Try to get the entity for this chat ID
+                                                update_chat_id = normalize_peer_id(update.chat_id)
+                                                entity = await client.get_entity(update_chat_id)
+                                                if is_group_or_channel(entity):
+                                                    channel_id = update_chat_id
+                                                    break
+                                            except Exception:
+                                                pass
+                                
+                                # If we still don't have the channel, find newly joined chats from dialogs
+                                # by comparing before/after channel IDs
+                                if not entity or not channel_id:
+                                    # Collect ALL new channels (not just the first one)
+                                    # This prevents race conditions where another group is added concurrently
+                                    new_channels = []
+                                    
+                                    # Iterate through dialogs to find all newly joined groups/channels
+                                    async for dialog in client.iter_dialogs():
+                                        dialog_entity = dialog.entity
+                                        if is_group_or_channel(dialog_entity):
+                                            try:
+                                                dialog_id = dialog.id
+                                                if hasattr(dialog_id, 'user_id'):
+                                                    dialog_id = dialog_id.user_id
+                                                elif not isinstance(dialog_id, int):
+                                                    dialog_id = int(dialog_id)
+                                                normalized_id = normalize_peer_id(dialog_id)
+                                                
+                                                # Check if this is a new channel (not in existing list)
+                                                if normalized_id not in existing_channel_ids:
+                                                    new_channels.append((dialog_entity, normalized_id))
+                                            except Exception as e:
+                                                logger.warning(f"Error normalizing peer ID for dialog {dialog.id}: {e}")
+                                                continue
+                                    
+                                    # If exactly one new channel, use it (safe to assume it's the one we joined)
+                                    if len(new_channels) == 1:
+                                        entity, channel_id = new_channels[0]
+                                    elif len(new_channels) > 1:
+                                        # Multiple new channels detected - can't reliably determine which one
+                                        # was joined via the invite link. This can happen if:
+                                        # - Another admin added the agent to a group concurrently
+                                        # - An automated process added the agent to a group
+                                        # - Multiple invite links were accepted simultaneously
+                                        logger.warning(
+                                            f"Multiple new channels detected after joining via invite link "
+                                            f"({len(new_channels)} channels). Cannot reliably determine which one "
+                                            f"was joined via the invite. New channels: {[c[1] for c in new_channels]}"
+                                        )
+                                        return {
+                                            "error": (
+                                                "Successfully joined group but could not determine which channel "
+                                                "was joined (multiple new channels detected). Please try again "
+                                                "or manually manage the membership."
+                                            )
+                                        }
+                                    # else: len(new_channels) == 0, handled below
                                 
                                 if not entity or not channel_id:
                                     # Could not find the chat - still try to proceed but log a warning
