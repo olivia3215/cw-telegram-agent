@@ -744,13 +744,22 @@ def _generate_standalone_html(
         content_html = ""
         parts = msg.get("parts", [])
         if parts:
+            # Track if we've already applied the translation to a text part
+            translation_applied = False
             for part in parts:
                 if part.get("kind") == "text":
-                    part_text = part.get("text", "")
-                    # Don't apply message-level translation to individual parts
-                    # (would cause duplication if message has multiple text parts)
-                    # Translation is only applied when there are no parts (see fallback below)
-                    part_text = _replace_emoji_urls_with_local(part_text, emoji_map)
+                    # Use translated text if available and not already applied
+                    if show_translations and msg_id in translations and not translation_applied:
+                        # Use the translated text (already processed for emoji URLs on line 741)
+                        part_text = text
+                        translation_applied = True
+                    else:
+                        # Skip this text part if translation was already applied (to avoid duplication)
+                        if translation_applied:
+                            continue
+                        # Use original part text and process emoji URLs
+                        part_text = part.get("text", "")
+                        part_text = _replace_emoji_urls_with_local(part_text, emoji_map)
                     content_html += f'<div class="message-content">{part_text}</div>\n'
                 elif part.get("kind") == "media":
                     unique_id = part.get("unique_id")
