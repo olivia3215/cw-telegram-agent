@@ -429,6 +429,11 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                 else:
                                                     continue
                                             
+                                            # Check if message is None (deleted or inaccessible)
+                                            if msg_obj is None:
+                                                logger.warning(f"Message {msg_id_int} not found (deleted or inaccessible) for media {unique_id}, skipping download")
+                                                continue
+                                            
                                             media_items = iter_media_parts(msg_obj)
                                             for item in media_items:
                                                 if item.unique_id == unique_id:
