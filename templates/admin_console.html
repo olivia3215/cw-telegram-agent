@@ -8241,6 +8241,8 @@
         function escJsAttr(str) {
             if (!str) return '';
             return str.replace(/\\/g, '\\\\')
+                      .replace(/\n/g, '\\n')
+                      .replace(/\r/g, '\\r')
                       .replace(/'/g, "\\'")
                       .replace(/"/g, '&quot;');
         }
