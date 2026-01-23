@@ -371,6 +371,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         
                         # Download all media files
                         media_map = {}  # unique_id -> filename
+                        mime_map = {}  # unique_id -> mime_type
                         for msg in messages:
                             for part in msg.get("parts", []):
                                 if part.get("kind") == "media":
@@ -413,6 +414,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                             with open(media_path, "wb") as f:
                                                 f.write(media_bytes)
                                             media_map[unique_id] = filename
+                                            mime_map[unique_id] = mime_type
                                         except Exception as e:
                                             logger.warning(f"Error copying cached media {unique_id}: {e}")
                                     else:
@@ -437,6 +439,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     with open(media_path, "wb") as f:
                                                         f.write(media_bytes)
                                                     media_map[unique_id] = filename
+                                                    mime_map[unique_id] = mime_type
                                                     break
                                         except Exception as e:
                                             logger.warning(f"Error downloading media {unique_id}: {e}")
@@ -530,7 +533,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         agent_tz_id = agent.get_timezone_identifier()
                         html_content = _generate_standalone_html(
                             agent_config_name, user_id, summaries, messages, translations, 
-                            agent_tz_id, media_map, emoji_map, include_translations
+                            agent_tz_id, media_map, mime_map, emoji_map, include_translations
                         )
                         
                         # Write HTML
@@ -593,7 +596,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
 
 def _generate_standalone_html(
     agent_name: str, user_id: str, summaries: list, messages: list, 
-    translations: dict, agent_timezone: str, media_map: dict, emoji_map: dict,
+    translations: dict, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
     show_translations: bool
 ) -> str:
     """Generate standalone HTML file for conversation display."""
@@ -763,9 +766,13 @@ def _generate_standalone_html(
                             # TGS animation - will be loaded by JavaScript
                             content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{unique_id}" data-unique-id="{unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
                         elif media_kind in ("video", "animation", "gif"):
-                            content_html += f'<div class="message-media"><video controls autoplay loop muted><source src="{html.escape(media_path)}"></video></div>\n'
+                            mime_type = mime_map.get(unique_id, "")
+                            type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
+                            content_html += f'<div class="message-media"><video controls autoplay loop muted><source src="{html.escape(media_path)}"{type_attr}></video></div>\n'
                         elif media_kind == "audio":
-                            content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"></audio></div>\n'
+                            mime_type = mime_map.get(unique_id, "")
+                            type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
+                            content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"{type_attr}></audio></div>\n'
                         else:
                             rendered_text = part.get("rendered_text", "")
                             content_html += f'<div class="message-media" style="color: #666; font-style: italic;">{html.escape(rendered_text)} <a href="{html.escape(media_path)}" download>[Download]</a></div>\n'
