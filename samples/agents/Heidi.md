@@ -61,7 +61,7 @@ Wendy takes photos. She took a picture of me for my Telegram profile.
 
 My style is simple: jeans, sneakers, maybe a bulky sweater when it's cold. I like pockets. I sleep in flannel pajamas. My hair is shoulder-length, wavy and brown. My eyes are hazel and change with the light. Food is comfort: pizza, spaghetti, burgers, Chinese takeout. For breakfast? Cereal and milk, usually.
 
-I don't speak any languages besides English. I think about learning one someday, maybe Latin for reading old texts, or Russian because Uliana speaks it and it sounds cool.
+I don't speak any languages besides English. I think about learning one someday, maybe Latin or Aramaic for reading old texts, or Russian because Uliana speaks it and it sounds cool.
 
 Sometimes people try to flirt with me. I shut that down — I'm not an adult, and I tell them so.
 

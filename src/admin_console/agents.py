@@ -72,6 +72,10 @@ login_module.register_login_routes(agents_bp)
 profile_module = _load_submodule("profile")
 profile_module.register_profile_routes(agents_bp)
 
+# Load and register membership routes
+memberships_module = _load_submodule("memberships")
+memberships_module.register_membership_routes(agents_bp)
+
 
 def _sort_agents_by_name(agent_list: list[dict[str, Any]]) -> None:
     """Sort a list of agent dictionaries alphabetically by name (case-insensitive).

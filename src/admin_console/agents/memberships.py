@@ -14,6 +14,7 @@ from telethon.tl.functions.messages import ImportChatInviteRequest  # pyright: i
 from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     Chat,
     Channel,
+    InputNotifyPeer,
     InputPeerNotifySettings,
     User,
 )
@@ -325,7 +326,7 @@ def register_membership_routes(agents_bp: Blueprint):
                         # Mute immediately as requested
                         mute_warning = None
                         try:
-                            await _set_mute_status(client, channel_id, True)
+                            await _set_mute_status(client, entity, True)
                         except Exception as mute_error:
                             # Join succeeded but muting failed - log warning but don't fail the subscription
                             logger.warning(f"Successfully joined group/channel but failed to mute: {mute_error}")
@@ -494,7 +495,7 @@ def register_membership_routes(agents_bp: Blueprint):
                         return {"error": "Channel ID does not refer to a group or channel"}
 
                     # Set mute status
-                    await _set_mute_status(client, channel_id_normalized, is_muted)
+                    await _set_mute_status(client, entity, is_muted)
 
                     # Invalidate cache so next check gets fresh data
                     if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
@@ -531,8 +532,14 @@ def register_membership_routes(agents_bp: Blueprint):
             return jsonify({"error": str(e)}), 500
 
 
-async def _set_mute_status(client, peer_id: int, mute: bool):
-    """Set mute status for a peer."""
+async def _set_mute_status(client, entity, mute: bool):
+    """Set mute status for a peer.
+    
+    Args:
+        client: Telethon client instance
+        entity: Telegram entity (Channel, Chat, User, etc.) to set mute status for
+        mute: True to mute, False to unmute
+    """
     if mute:
         # Mute forever (set mute_until to a far future date)
         mute_until = datetime.now(UTC) + timedelta(days=365 * 100)  # 100 years
@@ -551,4 +558,7 @@ async def _set_mute_status(client, peer_id: int, mute: bool):
             sound=None,
         )
 
-    await client(UpdateNotifySettingsRequest(peer=peer_id, settings=settings))
+    # Convert entity to InputPeer and wrap in InputNotifyPeer
+    input_peer = await client.get_input_entity(entity)
+    input_notify_peer = InputNotifyPeer(peer=input_peer)
+    await client(UpdateNotifySettingsRequest(peer=input_notify_peer, settings=settings))
