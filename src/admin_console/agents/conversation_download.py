@@ -8,6 +8,7 @@ import html
 import io
 import json as json_lib
 import logging
+import mimetypes
 import re
 import tempfile
 import zipfile
@@ -767,10 +768,20 @@ def _generate_standalone_html(
                             content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{unique_id}" data-unique-id="{unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
                         elif media_kind in ("video", "animation", "gif"):
                             mime_type = mime_map.get(unique_id, "")
+                            # If MIME type is missing, try to infer it from file extension
+                            if not mime_type:
+                                inferred_type, _ = mimetypes.guess_type(media_path)
+                                if inferred_type:
+                                    mime_type = inferred_type
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><video controls autoplay loop muted><source src="{html.escape(media_path)}"{type_attr}></video></div>\n'
                         elif media_kind == "audio":
                             mime_type = mime_map.get(unique_id, "")
+                            # If MIME type is missing, try to infer it from file extension
+                            if not mime_type:
+                                inferred_type, _ = mimetypes.guess_type(media_path)
+                                if inferred_type:
+                                    mime_type = inferred_type
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"{type_attr}></audio></div>\n'
                         else:
