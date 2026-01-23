@@ -5549,6 +5549,7 @@
                     html += 'Display Translation</label>';
                     html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+                    html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
                     html += '</div>';
                     html += '</div>';
                 }
@@ -6016,6 +6017,74 @@
                     return;
                 }
                 statusDiv.textContent = 'Error: ' + error;
+                statusDiv.style.color = '#dc3545';
+                buttonElement.disabled = false;
+                buttonElement.textContent = originalText;
+            });
+        }
+
+        function downloadConversation(agentName, userId, buttonElement) {
+            // Disable button and show status
+            buttonElement.disabled = true;
+            const originalText = buttonElement.textContent;
+            buttonElement.textContent = 'Preparing download...';
+            
+            // Create or update status div
+            let statusDiv = document.getElementById(`download-status-${userId}`);
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = `download-status-${userId}`;
+                statusDiv.style.marginTop = '8px';
+                statusDiv.style.fontSize = '14px';
+                buttonElement.parentElement.appendChild(statusDiv);
+            }
+            statusDiv.textContent = 'Preparing download...';
+            statusDiv.style.color = '#007bff';
+            
+            // Get translation setting
+            const checkbox = document.getElementById('translation-toggle');
+            const includeTranslations = checkbox ? checkbox.checked : false;
+            
+            // Make request to download endpoint
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/download`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    include_translations: includeTranslations
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP ${response.status}`);
+                    });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.download = `conversation_${agentName}_${userId}_${timestamp}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                statusDiv.textContent = 'Download complete!';
+                statusDiv.style.color = '#28a745';
+                buttonElement.disabled = false;
+                buttonElement.textContent = originalText;
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                statusDiv.textContent = 'Error: ' + (error.message || error);
                 statusDiv.style.color = '#dc3545';
                 buttonElement.disabled = false;
                 buttonElement.textContent = originalText;
