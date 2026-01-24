@@ -790,7 +790,8 @@ def _generate_standalone_html(
                             content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
                         elif is_animated:
                             # TGS animation - will be loaded by JavaScript
-                            content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{unique_id}" data-unique-id="{unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
+                            escaped_unique_id = html.escape(unique_id)
+                            content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
                         elif media_kind in ("video", "animation", "gif"):
                             mime_type = mime_map.get(unique_id, "")
                             # If MIME type is missing, try to infer it from file extension
