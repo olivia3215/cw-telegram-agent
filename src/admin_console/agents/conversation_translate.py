@@ -14,16 +14,11 @@ from config import TRANSLATION_MODEL
 from llm.factory import create_llm_from_name
 from llm.exceptions import RetryableLLMError
 
-# Import markdown_to_html and placeholder functions from conversation module
-# Use importlib since this module is loaded dynamically by conversation_actions.py
-import importlib.util
-from pathlib import Path
-_conversation_path = Path(__file__).parent / "conversation.py"
-_conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
-_conversation_mod = importlib.util.module_from_spec(_conversation_spec)
-_conversation_spec.loader.exec_module(_conversation_mod)
-replace_html_tags_with_placeholders = _conversation_mod.replace_html_tags_with_placeholders
-restore_html_tags_from_placeholders = _conversation_mod.restore_html_tags_from_placeholders
+# Import placeholder functions from conversation module
+from admin_console.agents.conversation import (
+    replace_html_tags_with_placeholders,
+    restore_html_tags_from_placeholders,
+)
 
 logger = logging.getLogger(__name__)
 

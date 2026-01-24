@@ -23,15 +23,17 @@ from config import CONFIG_DIRECTORIES, STATE_DIRECTORY, TRANSLATION_MODEL
 from llm.factory import create_llm_from_name
 
 # Import markdown_to_html and placeholder functions from conversation module
-# Use importlib since this module is loaded dynamically by conversation_actions.py
-import importlib.util
-_conversation_path = Path(__file__).parent / "conversation.py"
-_conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
-_conversation_mod = importlib.util.module_from_spec(_conversation_spec)
-_conversation_spec.loader.exec_module(_conversation_mod)
-markdown_to_html = _conversation_mod.markdown_to_html
-replace_html_tags_with_placeholders = _conversation_mod.replace_html_tags_with_placeholders
-restore_html_tags_from_placeholders = _conversation_mod.restore_html_tags_from_placeholders
+from admin_console.agents.conversation import (
+    markdown_to_html,
+    replace_html_tags_with_placeholders,
+    restore_html_tags_from_placeholders,
+)
+
+# Import emoji replacement functions from conversation_get module
+from admin_console.agents.conversation_get import (
+    _replace_custom_emojis_with_images,
+    _replace_custom_emoji_in_reactions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +99,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent client event loop is not available"}), 503
 
             # Import necessary modules for message fetching and formatting
-            from admin_console.agents.conversation_get import (  # pyright: ignore[reportMissingImports]
-                _replace_custom_emojis_with_images,
-                _replace_custom_emoji_in_reactions,
-            )
+            # Note: _replace_custom_emojis_with_images and _replace_custom_emoji_in_reactions
+            # are already imported at module level using importlib
             from handlers.received_helpers.message_processing import format_message_reactions
             from media.media_injector import format_message_for_prompt, inject_media_descriptions
             from media.media_source import get_default_media_source_chain

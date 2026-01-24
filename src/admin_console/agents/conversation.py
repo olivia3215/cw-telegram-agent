@@ -241,29 +241,7 @@ def markdown_to_html(text: str) -> str:
 def register_conversation_routes(agents_bp: Blueprint):
     """Register conversation management routes."""
     # Import and register routes from split modules
-    # Use importlib to avoid circular import issues
-    import importlib.util
-    from pathlib import Path
-    
-    agents_dir = Path(__file__).parent
-    
-    # Load conversation_content
-    content_path = agents_dir / "conversation_content.py"
-    content_spec = importlib.util.spec_from_file_location("conversation_content", content_path)
-    conversation_content = importlib.util.module_from_spec(content_spec)
-    content_spec.loader.exec_module(conversation_content)
-    
-    # Load conversation_actions
-    actions_path = agents_dir / "conversation_actions.py"
-    actions_spec = importlib.util.spec_from_file_location("conversation_actions", actions_path)
-    conversation_actions = importlib.util.module_from_spec(actions_spec)
-    actions_spec.loader.exec_module(conversation_actions)
-    
-    # Load conversation_media
-    media_path = agents_dir / "conversation_media.py"
-    media_spec = importlib.util.spec_from_file_location("conversation_media", media_path)
-    conversation_media = importlib.util.module_from_spec(media_spec)
-    media_spec.loader.exec_module(conversation_media)
+    from admin_console.agents import conversation_content, conversation_actions, conversation_media
     
     conversation_content.register_conversation_content_routes(agents_bp)
     conversation_actions.register_conversation_actions_routes(agents_bp)
