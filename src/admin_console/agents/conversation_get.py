@@ -20,14 +20,8 @@ from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, i
 from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 
-# Import markdown_to_html - use importlib since this module is loaded dynamically by conversation_content.py
-import importlib.util
-from pathlib import Path
-_conversation_path = Path(__file__).parent / "conversation.py"
-_conversation_spec = importlib.util.spec_from_file_location("conversation", _conversation_path)
-_conversation_mod = importlib.util.module_from_spec(_conversation_spec)
-_conversation_spec.loader.exec_module(_conversation_mod)
-markdown_to_html = _conversation_mod.markdown_to_html
+# Import markdown_to_html from conversation module
+from admin_console.agents.conversation import markdown_to_html
 
 # Import entity formatting utilities
 from utils.telegram_entities import utf16_offset_to_python_index, entities_to_markdown

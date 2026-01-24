@@ -152,6 +152,9 @@ def register_membership_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             data = request.json
+            if data is None:
+                return jsonify({"error": "Request body must be valid JSON"}), 400
+
             identifier = data.get("identifier", "").strip()
 
             if not identifier:
@@ -466,6 +469,9 @@ def register_membership_routes(agents_bp: Blueprint):
                 return jsonify({"error": "Agent not authenticated"}), 503
 
             data = request.json
+            if data is None:
+                return jsonify({"error": "Request body must be valid JSON"}), 400
+
             is_muted = data.get("is_muted", False)
 
             client = agent.client
