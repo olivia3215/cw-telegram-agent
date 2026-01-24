@@ -117,11 +117,6 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     if not entity:
                         raise ValueError(f"Cannot resolve entity for channel_id {channel_id}")
 
-                    # Get summaries
-                    from db import summaries as db_summaries
-                    summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
-                    summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
-
                     # Fetch ALL messages (up to 2500) - not just unsummarized
                     # Don't use min_id filter - we want everything
                     messages = []
@@ -549,7 +544,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         # Generate HTML
                         agent_tz_id = agent.get_timezone_identifier()
                         html_content = _generate_standalone_html(
-                            agent_config_name, user_id, summaries, messages, translations, 
+                            agent_config_name, user_id, messages, translations, 
                             agent_tz_id, media_map, mime_map, emoji_map, include_translations
                         )
                         
@@ -612,7 +607,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
 
 
 def _generate_standalone_html(
-    agent_name: str, user_id: str, summaries: list, messages: list, 
+    agent_name: str, user_id: str, messages: list, 
     translations: dict, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
     show_translations: bool
 ) -> str:
@@ -681,17 +676,6 @@ def _generate_standalone_html(
             height: 200px;
             position: relative;
         }}
-        .summary {{
-            background: white;
-            padding: 16px;
-            margin-bottom: 16px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .summary-header {{
-            font-weight: bold;
-            margin-bottom: 8px;
-        }}
         .reactions {{
             font-size: 11px;
             color: #888;
@@ -711,19 +695,6 @@ def _generate_standalone_html(
 <body>
     <h1>Conversation: {html.escape(agent_name)} / {html.escape(user_id)}</h1>
 """
-    
-    # Add summaries
-    if summaries:
-        html_content += '<div style="margin-bottom: 24px;"><h2>Conversation Summaries</h2>\n'
-        for summary in summaries:
-            html_content += f"""    <div class="summary">
-        <div class="summary-header">ID: {html.escape(str(summary.get('id', 'N/A')))} | Created: {html.escape(str(summary.get('created', 'N/A')))}</div>
-        <div>Message IDs: {html.escape(str(summary.get('min_message_id', '')))} - {html.escape(str(summary.get('max_message_id', '')))}</div>
-        <div>Dates: {html.escape(str(summary.get('first_message_date', '')))} to {html.escape(str(summary.get('last_message_date', '')))}</div>
-        <div>{html.escape(summary.get('content', ''))}</div>
-    </div>
-"""
-        html_content += '</div>\n'
     
     # Add messages
     html_content += '<h2>Messages</h2>\n'
