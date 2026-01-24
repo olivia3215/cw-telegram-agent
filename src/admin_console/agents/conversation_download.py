@@ -810,10 +810,19 @@ def _generate_standalone_html(
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"{type_attr}></audio></div>\n'
                         else:
+                            # Unknown media type - rendered_text is already included in the media div below
                             rendered_text = part.get("rendered_text", "")
                             content_html += f'<div class="message-media" style="color: #666; font-style: italic;">{html.escape(rendered_text)} <a href="{html.escape(media_path)}" download>[Download]</a></div>\n'
                         
-                        if part.get("rendered_text"):
+                        # Add caption for known media types only (unknown types already include rendered_text in the else branch)
+                        is_unknown_media_type = not (
+                            media_kind == "photo" or 
+                            (media_kind == "sticker" and not is_animated) or 
+                            is_animated or 
+                            media_kind in ("video", "animation", "gif") or 
+                            media_kind == "audio"
+                        )
+                        if part.get("rendered_text") and not is_unknown_media_type:
                             content_html += f'<div style="color: #666; font-size: 11px; margin-top: 2px; font-style: italic;">{html.escape(part.get("rendered_text", ""))}</div>\n'
         else:
             # Fallback to text
