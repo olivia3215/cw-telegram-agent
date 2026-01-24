@@ -12,9 +12,10 @@ import mimetypes
 import re
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
@@ -707,14 +708,27 @@ def _generate_standalone_html(
         reply_to = msg.get("reply_to_msg_id")
         reactions = msg.get("reactions", "")
         
-        # Format timestamp (simplified - just show the ISO timestamp)
-        # The timestamp is already in ISO format from the backend
+        # Format timestamp in agent's timezone
         if timestamp:
             try:
-                # Parse and format nicely
+                # Parse ISO timestamp (assumed to be in UTC)
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-            except:
+                # Ensure it's UTC-aware if timezone-naive
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                # Convert to agent's timezone
+                if agent_timezone:
+                    try:
+                        agent_tz = ZoneInfo(agent_timezone)
+                        dt_local = dt.astimezone(agent_tz)
+                        formatted_time = dt_local.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        # If timezone conversion fails, fall back to UTC formatting
+                        formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    # No agent timezone specified, use UTC
+                    formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
                 formatted_time = timestamp
         else:
             formatted_time = "N/A"
