@@ -110,6 +110,22 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
 
             has_db_changes = llm_name is not None or is_gagged is not None
 
+            async def _set_muted_status(muted: bool) -> None:
+                from admin_console.agents.memberships import _set_mute_status
+
+                client = agent.client
+                if not client or not client.is_connected():
+                    raise RuntimeError("Agent client not connected")
+
+                entity = await agent.get_cached_entity(channel_id)
+                if not entity:
+                    entity = await client.get_entity(channel_id)
+                if entity:
+                    await _set_mute_status(client, entity, muted)
+                    # Invalidate cache
+                    if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
+                        agent.api_cache._mute_cache.pop(channel_id, None)
+
             # If we have DB changes and Telegram changes together, we want "all-or-nothing" behavior:
             # - Apply DB changes in a transaction
             # - Apply Telegram muted
@@ -146,22 +162,8 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
 
                         # Apply Telegram muted (external side-effect) before committing DB.
                         if is_muted is not None:
-                            async def _set_muted():
-                                from admin_console.agents.memberships import _set_mute_status
-                                client = agent.client
-                                if not client or not client.is_connected():
-                                    raise RuntimeError("Agent client not connected")
-                                entity = await agent.get_cached_entity(channel_id)
-                                if not entity:
-                                    entity = await client.get_entity(channel_id)
-                                if entity:
-                                    await _set_mute_status(client, entity, bool(is_muted))
-                                    # Invalidate cache
-                                    if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
-                                        agent.api_cache._mute_cache.pop(channel_id, None)
-
                             try:
-                                agent.execute(_set_muted(), timeout=30.0)
+                                agent.execute(_set_muted_status(bool(is_muted)), timeout=30.0)
                                 logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
                             except Exception as e:
                                 # Roll back any staged DB changes so we don't partially apply.
@@ -193,22 +195,8 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             else:
                 # Only Telegram muted change (no DB transaction needed)
                 if is_muted is not None:
-                    async def _set_muted():
-                        from admin_console.agents.memberships import _set_mute_status
-                        client = agent.client
-                        if not client or not client.is_connected():
-                            raise RuntimeError("Agent client not connected")
-                        entity = await agent.get_cached_entity(channel_id)
-                        if not entity:
-                            entity = await client.get_entity(channel_id)
-                        if entity:
-                            await _set_mute_status(client, entity, bool(is_muted))
-                            # Invalidate cache
-                            if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
-                                agent.api_cache._mute_cache.pop(channel_id, None)
-
                     try:
-                        agent.execute(_set_muted(), timeout=30.0)
+                        agent.execute(_set_muted_status(bool(is_muted)), timeout=30.0)
                         logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
                     except Exception as e:
                         logger.warning(f"Error setting muted status: {e}")
