@@ -192,6 +192,17 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Create conversation_gagged table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_gagged (
+                    agent_telegram_id BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL,
+                    is_gagged BOOLEAN NOT NULL,
+                    PRIMARY KEY (agent_telegram_id, channel_id),
+                    INDEX idx_agent_channel (agent_telegram_id, channel_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             conn.commit()
             logger.info("Database schema created successfully")
             

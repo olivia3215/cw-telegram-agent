@@ -208,6 +208,9 @@ def parse_agent_markdown(path):
         # Parse Disabled status (optional section)
         is_disabled = "Disabled" in fields
 
+        # Parse Gagged status (optional section)
+        is_gagged = "Gagged" in fields
+
         # Parse Telegram ID (optional field)
         telegram_id = None
         telegram_id_str = _norm_set(fields.get("Telegram ID"))
@@ -240,6 +243,8 @@ def parse_agent_markdown(path):
             "reset_context_on_first_message": reset_context_on_first_message,  # bool
             # disabled status:
             "is_disabled": is_disabled,  # bool
+            # gagged status:
+            "is_gagged": is_gagged,  # bool
             # telegram id:
             "telegram_id": telegram_id,  # int | None
         }
@@ -327,6 +332,7 @@ def register_all_agents(force: bool = False):
                         daily_schedule_description=parsed.get("daily_schedule_description"),
                         reset_context_on_first_message=parsed.get("reset_context_on_first_message", False),
                         is_disabled=parsed.get("is_disabled", False),
+                        is_gagged=parsed.get("is_gagged", False),
                     )
                     # Set agent_id from config file if available
                     telegram_id = parsed.get("telegram_id")

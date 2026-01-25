@@ -1,6 +1,6 @@
 # admin_console/agents/conversation_llm.py
 #
-# Conversation-specific LLM management routes for the admin console.
+# Conversation parameters management routes for the admin console (LLM, muted, gagged).
 
 import logging
 
@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 def register_conversation_llm_routes(agents_bp: Blueprint):
-    """Register conversation-specific LLM routes."""
+    """Register conversation parameters routes (LLM, muted, gagged)."""
     
-    @agents_bp.route("/api/agents/<agent_config_name>/conversation-llm/<user_id>", methods=["GET"])
-    def api_get_conversation_llm(agent_config_name: str, user_id: str):
-        """Get conversation-specific LLM for a user."""
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-parameters/<user_id>", methods=["GET"])
+    def api_get_conversation_parameters(agent_config_name: str, user_id: str):
+        """Get conversation parameters (LLM, muted, gagged) for a user."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -37,7 +37,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
 
-            # Get conversation LLM from MySQL directly (not through agent.get_channel_llm_model which might have caching issues)
+            # Get conversation LLM from MySQL
             from db import conversation_llm as db_conversation_llm
             conversation_llm = db_conversation_llm.get_conversation_llm(agent.agent_id, channel_id)
             agent_default_llm = agent._llm_name or get_default_llm()
@@ -50,18 +50,36 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                 else:
                     llm["is_default"] = False
 
+            # Get muted status (Telegram notification setting)
+            async def _get_muted():
+                return await agent.is_muted(channel_id)
+            
+            try:
+                is_muted = agent.execute(_get_muted(), timeout=10.0)
+            except Exception as e:
+                logger.warning(f"Error getting muted status: {e}")
+                is_muted = False
+
+            # Get gagged status (database override)
+            from db import conversation_gagged
+            gagged_override = conversation_gagged.get_conversation_gagged(agent.agent_id, channel_id)
+            # If override exists, use it; otherwise use global default
+            is_gagged = gagged_override if gagged_override is not None else agent.is_gagged
+
             return jsonify({
                 "conversation_llm": conversation_llm,
                 "agent_default_llm": agent_default_llm,
                 "available_llms": available_llms,
+                "is_muted": is_muted,
+                "is_gagged": is_gagged,
             })
         except Exception as e:
-            logger.error(f"Error getting conversation LLM for {agent_config_name}/{user_id}: {e}")
+            logger.error(f"Error getting conversation parameters for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>/conversation-llm/<user_id>", methods=["PUT"])
-    def api_update_conversation_llm(agent_config_name: str, user_id: str):
-        """Update conversation-specific LLM for a user."""
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation-parameters/<user_id>", methods=["PUT"])
+    def api_update_conversation_parameters(agent_config_name: str, user_id: str):
+        """Update conversation parameters (LLM, muted, gagged) for a user."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -79,31 +97,64 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             except (ValueError, TypeError):
                 return jsonify({"error": "Invalid channel ID"}), 400
 
-            data = request.json
-            llm_name = data.get("llm_name", "").strip()
+            data = request.json or {}
+            llm_name = data.get("llm_name")
+            if llm_name is not None:
+                llm_name = str(llm_name).strip() if llm_name else None
+            is_muted = data.get("is_muted") if "is_muted" in data else None
+            is_gagged = data.get("is_gagged") if "is_gagged" in data else None
 
-            # Update in MySQL
+            # Update in MySQL/database
             if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
             
-            agent_default_llm = agent._llm_name or get_default_llm()
+            # Update LLM if provided
+            if llm_name is not None:
+                agent_default_llm = agent._llm_name or get_default_llm()
+                from db import conversation_llm
+                conversation_llm.set_conversation_llm(agent.agent_id, channel_id, llm_name, agent_default_llm)
+                if llm_name == agent_default_llm or not llm_name:
+                    logger.info(f"Removed conversation LLM override (using agent default)")
+                else:
+                    logger.info(f"Set conversation LLM override to '{llm_name}'")
             
-            logger.info(
-                f"Updating conversation LLM for agent {agent_config_name} (agent_id={agent.agent_id}), "
-                f"channel {channel_id}: llm_name='{llm_name}', agent_default='{agent_default_llm}'"
-            )
-
-            # Set or remove the conversation-specific LLM
-            # set_conversation_llm will only store if different from default, and remove if matching default
-            from db import conversation_llm
-            conversation_llm.set_conversation_llm(agent.agent_id, channel_id, llm_name, agent_default_llm)
+            # Update muted status if provided (Telegram notification setting)
+            if is_muted is not None:
+                async def _set_muted():
+                    from admin_console.agents.memberships import _set_mute_status
+                    client = agent.client
+                    if not client or not client.is_connected():
+                        raise RuntimeError("Agent client not connected")
+                    entity = await agent.get_cached_entity(channel_id)
+                    if not entity:
+                        entity = await client.get_entity(channel_id)
+                    if entity:
+                        await _set_mute_status(client, entity, is_muted)
+                        # Invalidate cache
+                        if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
+                            agent.api_cache._mute_cache.pop(channel_id, None)
+                
+                try:
+                    agent.execute(_set_muted(), timeout=30.0)
+                    logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
+                except Exception as e:
+                    logger.warning(f"Error setting muted status: {e}")
+                    return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
             
-            if llm_name == agent_default_llm or not llm_name:
-                logger.info(f"Removed conversation LLM override (using agent default)")
-            else:
-                logger.info(f"Set conversation LLM override to '{llm_name}'")
+            # Update gagged status if provided (database override)
+            if is_gagged is not None:
+                from db import conversation_gagged
+                # If setting to global default, remove override; otherwise set override
+                if is_gagged == agent.is_gagged:
+                    # Remove override (use global default)
+                    conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id, None)
+                    logger.info(f"Removed conversation gagged override (using global default: {agent.is_gagged})")
+                else:
+                    # Set override
+                    conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id, is_gagged)
+                    logger.info(f"Set conversation gagged override to {is_gagged}")
 
             return jsonify({"success": True})
         except Exception as e:
-            logger.error(f"Error updating conversation LLM for {agent_config_name}/{user_id}: {e}")
+            logger.error(f"Error updating conversation parameters for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500

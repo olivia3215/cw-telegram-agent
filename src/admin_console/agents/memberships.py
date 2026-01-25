@@ -101,12 +101,16 @@ def register_membership_routes(agents_bp: Blueprint):
 
                         # Check mute status
                         is_muted = await agent.is_muted(dialog_id)
+                        
+                        # Check gagged status
+                        is_gagged = await agent.is_conversation_gagged(dialog_id)
 
                         memberships.append({
                             "channel_id": channel_id,
                             "name": name,
                             "username": username,
                             "is_muted": is_muted,
+                            "is_gagged": is_gagged,
                         })
 
                 except Exception as e:
@@ -326,7 +330,7 @@ def register_membership_routes(agents_bp: Blueprint):
                                     logger.warning(f"Error joining channel/group: {e}")
                                     return {"error": f"Failed to join: {str(e)}"}
 
-                        # Mute immediately as requested
+                        # Mute and gag immediately as requested (new channels should be muted and gagged)
                         mute_warning = None
                         try:
                             await _set_mute_status(client, entity, True)
@@ -334,6 +338,15 @@ def register_membership_routes(agents_bp: Blueprint):
                             # Join succeeded but muting failed - log warning but don't fail the subscription
                             logger.warning(f"Successfully joined group/channel but failed to mute: {mute_error}")
                             mute_warning = f"Successfully joined but could not mute: {str(mute_error)}"
+                        
+                        # Set gagged status for new channel
+                        try:
+                            from db import conversation_gagged
+                            # channel_id is already normalized (int) from earlier in the function
+                            conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id, True)
+                            logger.info(f"Set gagged=True for newly subscribed channel {channel_id}")
+                        except Exception as gag_error:
+                            logger.warning(f"Successfully joined group/channel but failed to set gagged status: {gag_error}")
 
                         response = {
                             "success": True,
@@ -535,6 +548,47 @@ def register_membership_routes(agents_bp: Blueprint):
 
         except Exception as e:
             logger.error(f"Error toggling mute for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/memberships/<channel_id>/gagged", methods=["PUT"])
+    def api_toggle_gagged(agent_config_name: str, channel_id: str):
+        """Toggle gagged status for a group/channel."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_authenticated:
+                return jsonify({"error": "Agent not authenticated"}), 503
+
+            data = request.json
+            if data is None:
+                return jsonify({"error": "Request body must be valid JSON"}), 400
+
+            is_gagged = data.get("is_gagged", False)
+
+            # Normalize channel_id
+            try:
+                channel_id_int = int(channel_id)
+                channel_id_normalized = normalize_peer_id(channel_id_int)
+            except (ValueError, TypeError):
+                return jsonify({"error": f"Invalid channel ID: {channel_id}"}), 400
+
+            # Update gagged status in database
+            from db import conversation_gagged
+            # If setting to global default, remove override; otherwise set override
+            if is_gagged == agent.is_gagged:
+                # Remove override (use global default)
+                conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id_normalized, None)
+                logger.info(f"Removed conversation gagged override for channel {channel_id} (using global default: {agent.is_gagged})")
+            else:
+                # Set override
+                conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id_normalized, is_gagged)
+                logger.info(f"Set conversation gagged override for channel {channel_id}: {is_gagged}")
+
+            return jsonify({"success": True, "is_gagged": is_gagged})
+        except Exception as e:
+            logger.error(f"Error toggling gagged for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
 

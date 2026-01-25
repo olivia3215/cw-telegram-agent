@@ -62,10 +62,12 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
         await telepathic.maybe_send_telepathic_message(agent, current_channel_id_int, "xsend", body)
 
     # Coalesce with existing received for the target; preserve/overwrite xsend_intent
+    # xsend bypasses gagged check - it should still work even when gagged
     await insert_received_task_for_conversation(
         recipient_id=agent_id,
         channel_id=target_channel_id,
         xsend_intent=intent,
+        bypass_gagged=True,
     )
 
     logger.info(

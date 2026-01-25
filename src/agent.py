@@ -63,6 +63,8 @@ class Agent(
         reset_context_on_first_message=False,
         # Disabled status
         is_disabled=False,
+        # Gagged status (global default)
+        is_gagged=False,
         # Typing behavior configuration
         start_typing_delay=None,
         typing_speed=None,
@@ -77,6 +79,7 @@ class Agent(
         self.config_name = config_name if config_name is not None else name
 
         self.is_disabled = is_disabled
+        self.is_gagged = is_gagged  # Global default gagged status
 
         # Store raw timezone value (will be normalized via property on first access)
         self._timezone_raw = timezone
