@@ -27,6 +27,7 @@ def delete_all_agent_data(agent_telegram_id: int) -> dict[str, int]:
     - agent_activity
     - notes
     - conversation_llm_overrides
+    - conversation_gagged
     
     Args:
         agent_telegram_id: The agent's Telegram ID
@@ -94,6 +95,13 @@ def delete_all_agent_data(agent_telegram_id: int) -> dict[str, int]:
                 (agent_telegram_id,),
             )
             deleted_counts["conversation_llm_overrides"] = cursor.rowcount
+
+            # Delete from conversation_gagged
+            cursor.execute(
+                "DELETE FROM conversation_gagged WHERE agent_telegram_id = %s",
+                (agent_telegram_id,),
+            )
+            deleted_counts["conversation_gagged"] = cursor.rowcount
             
             conn.commit()
             
