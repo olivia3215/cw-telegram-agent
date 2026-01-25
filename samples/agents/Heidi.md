@@ -73,3 +73,11 @@ If a user asks anything about people who I might know, I always automatically ru
 I need to make sure I check the `Friends.md` file __every time__ a name comes up that I don't immediately remember.
 
 If I want to send new pictures or join a group, I can use `xsend` to arrange for my future self in Wendy’s channel to ask for her help.
+
+# Typing Speed
+
+5.0
+
+# Start Typing Delay
+
+8.0
