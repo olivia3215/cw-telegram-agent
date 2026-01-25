@@ -601,12 +601,19 @@ async def _set_mute_status(client, entity, mute: bool):
         mute: True to mute, False to unmute
     """
     if mute:
-        # Mute forever (set mute_until to a far future date)
-        mute_until = datetime.now(UTC) + timedelta(days=365 * 100)  # 100 years
+        # Mute "forever".
+        #
+        # Telethon encodes `mute_until` as a 32-bit signed int in some codepaths, so
+        # large future timestamps (e.g. "now + 100 years") overflow with:
+        #   struct.error: 'i' format requires -2147483648 <= number <= 2147483647
+        #
+        # Use the maximum safe 32-bit signed timestamp (~2038-01-19).
+        max_i32 = 2_147_483_647
+        mute_until_ts = min(int((datetime.now(UTC) + timedelta(days=365 * 100)).timestamp()), max_i32)
         settings = InputPeerNotifySettings(
             show_previews=None,
             silent=True,
-            mute_until=int(mute_until.timestamp()),
+            mute_until=mute_until_ts,
             sound=None,
         )
     else:

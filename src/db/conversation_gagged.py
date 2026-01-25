@@ -48,6 +48,41 @@ def get_conversation_gagged(agent_telegram_id: int, channel_id: int) -> bool | N
             cursor.close()
 
 
+def channels_with_conversation_gagged_overrides(agent_telegram_id: int, channel_ids: list[int]) -> set[int]:
+    """
+    Bulk query: which channel_ids have an explicit gagged override row.
+    """
+    if not channel_ids:
+        return set()
+
+    # MySQL parameter placeholder expansion
+    placeholders = ",".join(["%s"] * len(channel_ids))
+    sql = f"""
+        SELECT channel_id
+        FROM conversation_gagged
+        WHERE agent_telegram_id = %s AND channel_id IN ({placeholders})
+    """
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql, (agent_telegram_id, *channel_ids))
+            rows = cursor.fetchall() or []
+            out: set[int] = set()
+            for row in rows:
+                try:
+                    out.add(int(row["channel_id"]))
+                except Exception:
+                    # Be tolerant of cursor row formats (dict/tuple/etc.)
+                    try:
+                        out.add(int(row[0]))
+                    except Exception:
+                        continue
+            return out
+        finally:
+            cursor.close()
+
+
 def _set_conversation_gagged_on_connection(
     conn: Any,
     agent_telegram_id: int,

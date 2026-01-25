@@ -72,6 +72,9 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                 "available_llms": available_llms,
                 "is_muted": is_muted,
                 "is_gagged": is_gagged,
+                # Expose override info so the UI can distinguish "global default" from a per-conversation override.
+                "gagged_override": gagged_override,
+                "agent_is_gagged": agent.is_gagged,
             })
         except Exception as e:
             logger.error(f"Error getting conversation parameters for {agent_config_name}/{user_id}: {e}")

@@ -2601,7 +2601,18 @@
                     const data = await response.json();
                     if (data.error) return false;
                     const agentDefaultLLM = data.agent_default_llm;
-                    return data.conversation_llm && data.conversation_llm !== agentDefaultLLM;
+                    const hasLlmOverride = data.conversation_llm && data.conversation_llm !== agentDefaultLLM;
+                    // Prefer explicit override indicator if the API provides it; otherwise fall back
+                    // to the effective value (best-effort).
+                    const hasGaggedOverride = Object.prototype.hasOwnProperty.call(data, 'gagged_override')
+                        ? data.gagged_override !== null
+                        : (
+                            // Back-compat: if server provides both, infer override from mismatch.
+                            Object.prototype.hasOwnProperty.call(data, 'agent_is_gagged')
+                                ? data.is_gagged !== data.agent_is_gagged
+                                : false
+                        );
+                    return hasLlmOverride || hasGaggedOverride;
                 } else if (subtabName === 'plans') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`);
                     const data = await response.json();
@@ -5102,7 +5113,8 @@
                     // Map subtab names to content check keys
                     const subtabToKey = {
                         'notes-conv': 'notes',
-                        'conversation-parameters': 'conversation_llm',
+                        // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
+                        'conversation-parameters': 'conversation_parameters',
                         'plans': 'plans',
                         'conversation': 'conversation'  // Special case, uses different endpoint
                     };
@@ -5147,7 +5159,15 @@
                                     for (const userId of userIds) {
                                         const checks = batchData.content_checks[userId];
                                         if (checks) {
-                                            partnerContentChecks[userId] = checks[contentKey] || false;
+                                            // Back-compat: older servers only returned "conversation_llm" for the
+                                            // conversation-parameters subtab.
+                                            if (subtabName === 'conversation-parameters') {
+                                                partnerContentChecks[userId] = !!(
+                                                    checks.conversation_parameters || checks.conversation_llm
+                                                );
+                                            } else {
+                                                partnerContentChecks[userId] = checks[contentKey] || false;
+                                            }
                                         } else {
                                             partnerContentChecks[userId] = false;
                                         }
