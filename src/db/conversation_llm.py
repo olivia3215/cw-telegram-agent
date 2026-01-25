@@ -8,6 +8,7 @@ Database operations for conversation LLM overrides.
 """
 
 import logging
+from typing import Any
 
 from db.connection import get_db_connection
 
@@ -47,7 +48,59 @@ def get_conversation_llm(agent_telegram_id: int, channel_id: int) -> str | None:
             cursor.close()
 
 
-def set_conversation_llm(agent_telegram_id: int, channel_id: int, llm_model: str | None, agent_default_llm: str) -> None:
+def _set_conversation_llm_on_connection(
+    conn: Any,
+    agent_telegram_id: int,
+    channel_id: int,
+    llm_model: str | None,
+    agent_default_llm: str,
+) -> None:
+    cursor = conn.cursor()
+    try:
+        # Normalize llm_model
+        if llm_model is None or (isinstance(llm_model, str) and not llm_model.strip()):
+            llm_model = None
+        else:
+            llm_model = llm_model.strip()
+
+        # If setting to agent default or None, remove the override
+        if llm_model is None or llm_model == agent_default_llm:
+            cursor.execute(
+                """
+                DELETE FROM conversation_llm_overrides
+                WHERE agent_telegram_id = %s AND channel_id = %s
+                """,
+                (agent_telegram_id, channel_id),
+            )
+            logger.debug(
+                f"Removed conversation LLM override for agent {agent_telegram_id}, channel {channel_id} "
+                f"(matches default: {agent_default_llm})"
+            )
+        else:
+            # Set or update the override (only stored if different from default)
+            cursor.execute(
+                """
+                INSERT INTO conversation_llm_overrides (agent_telegram_id, channel_id, llm_model)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE llm_model = VALUES(llm_model)
+                """,
+                (agent_telegram_id, channel_id, llm_model),
+            )
+            logger.debug(
+                f"Set conversation LLM override for agent {agent_telegram_id}, channel {channel_id}: {llm_model}"
+            )
+    finally:
+        cursor.close()
+
+
+def set_conversation_llm(
+    agent_telegram_id: int,
+    channel_id: int,
+    llm_model: str | None,
+    agent_default_llm: str,
+    *,
+    conn: Any | None = None,
+) -> None:
     """
     Set or remove the LLM model override for a specific conversation.
     
@@ -59,51 +112,25 @@ def set_conversation_llm(agent_telegram_id: int, channel_id: int, llm_model: str
         channel_id: The channel ID
         llm_model: The LLM model name (e.g., "gemini-2.0-flash", "grok"), or None to remove the override
         agent_default_llm: The agent's default LLM model name
+        conn: Optional existing DB connection. If provided, this function will not commit/rollback;
+              the caller is responsible for transaction management.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    if conn is not None:
+        _set_conversation_llm_on_connection(conn, agent_telegram_id, channel_id, llm_model, agent_default_llm)
+        return
+
+    with get_db_connection() as owned_conn:
         try:
-            # Normalize llm_model
-            if llm_model is None or (isinstance(llm_model, str) and not llm_model.strip()):
-                llm_model = None
-            else:
-                llm_model = llm_model.strip()
-            
-            # If setting to agent default or None, remove the override
-            if llm_model is None or llm_model == agent_default_llm:
-                cursor.execute(
-                    """
-                    DELETE FROM conversation_llm_overrides
-                    WHERE agent_telegram_id = %s AND channel_id = %s
-                    """,
-                    (agent_telegram_id, channel_id),
-                )
-                logger.debug(
-                    f"Removed conversation LLM override for agent {agent_telegram_id}, channel {channel_id} "
-                    f"(matches default: {agent_default_llm})"
-                )
-            else:
-                # Set or update the override (only stored if different from default)
-                cursor.execute(
-                    """
-                    INSERT INTO conversation_llm_overrides (agent_telegram_id, channel_id, llm_model)
-                    VALUES (%s, %s, %s)
-                    ON DUPLICATE KEY UPDATE llm_model = VALUES(llm_model)
-                    """,
-                    (agent_telegram_id, channel_id, llm_model),
-                )
-                logger.debug(
-                    f"Set conversation LLM override for agent {agent_telegram_id}, channel {channel_id}: {llm_model}"
-                )
-            conn.commit()
+            _set_conversation_llm_on_connection(
+                owned_conn, agent_telegram_id, channel_id, llm_model, agent_default_llm
+            )
+            owned_conn.commit()
         except Exception as e:
-            conn.rollback()
+            owned_conn.rollback()
             logger.error(
                 f"Failed to set conversation LLM for agent {agent_telegram_id}, channel {channel_id}: {e}"
             )
             raise
-        finally:
-            cursor.close()
 
 
 def agents_with_conversation_llm_overrides(agent_telegram_ids: list[int]) -> set[int]:

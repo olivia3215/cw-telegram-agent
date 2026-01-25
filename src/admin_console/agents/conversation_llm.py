@@ -107,52 +107,112 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             # Update in MySQL/database
             if not agent.is_authenticated:
                 return jsonify({"error": "Agent not authenticated"}), 503
-            
-            # Update LLM if provided
-            if llm_name is not None:
-                agent_default_llm = agent._llm_name or get_default_llm()
-                from db import conversation_llm
-                conversation_llm.set_conversation_llm(agent.agent_id, channel_id, llm_name, agent_default_llm)
-                if llm_name == agent_default_llm or not llm_name:
-                    logger.info(f"Removed conversation LLM override (using agent default)")
-                else:
-                    logger.info(f"Set conversation LLM override to '{llm_name}'")
-            
-            # Update muted status if provided (Telegram notification setting)
-            if is_muted is not None:
-                async def _set_muted():
-                    from admin_console.agents.memberships import _set_mute_status
-                    client = agent.client
-                    if not client or not client.is_connected():
-                        raise RuntimeError("Agent client not connected")
-                    entity = await agent.get_cached_entity(channel_id)
-                    if not entity:
-                        entity = await client.get_entity(channel_id)
-                    if entity:
-                        await _set_mute_status(client, entity, is_muted)
-                        # Invalidate cache
-                        if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
-                            agent.api_cache._mute_cache.pop(channel_id, None)
-                
-                try:
-                    agent.execute(_set_muted(), timeout=30.0)
-                    logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
-                except Exception as e:
-                    logger.warning(f"Error setting muted status: {e}")
-                    return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
-            
-            # Update gagged status if provided (database override)
-            if is_gagged is not None:
-                from db import conversation_gagged
-                # If setting to global default, remove override; otherwise set override
-                if is_gagged == agent.is_gagged:
-                    # Remove override (use global default)
-                    conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id, None)
-                    logger.info(f"Removed conversation gagged override (using global default: {agent.is_gagged})")
-                else:
-                    # Set override
-                    conversation_gagged.set_conversation_gagged(agent.agent_id, channel_id, is_gagged)
-                    logger.info(f"Set conversation gagged override to {is_gagged}")
+
+            has_db_changes = llm_name is not None or is_gagged is not None
+
+            # If we have DB changes and Telegram changes together, we want "all-or-nothing" behavior:
+            # - Apply DB changes in a transaction
+            # - Apply Telegram muted
+            # - Only commit DB changes if Telegram step succeeds
+            #
+            # This prevents the old behavior where LLM persisted even when muted failed.
+            if has_db_changes:
+                from db.connection import get_db_connection
+                from db import conversation_gagged, conversation_llm
+
+                with get_db_connection() as conn:
+                    try:
+                        # Stage DB changes (uncommitted)
+                        if llm_name is not None:
+                            agent_default_llm = agent._llm_name or get_default_llm()
+                            conversation_llm.set_conversation_llm(
+                                agent.agent_id,
+                                channel_id,
+                                llm_name,
+                                agent_default_llm,
+                                conn=conn,
+                            )
+
+                        if is_gagged is not None:
+                            # If setting to global default, remove override; otherwise set override
+                            if is_gagged == agent.is_gagged:
+                                conversation_gagged.set_conversation_gagged(
+                                    agent.agent_id, channel_id, None, conn=conn
+                                )
+                            else:
+                                conversation_gagged.set_conversation_gagged(
+                                    agent.agent_id, channel_id, bool(is_gagged), conn=conn
+                                )
+
+                        # Apply Telegram muted (external side-effect) before committing DB.
+                        if is_muted is not None:
+                            async def _set_muted():
+                                from admin_console.agents.memberships import _set_mute_status
+                                client = agent.client
+                                if not client or not client.is_connected():
+                                    raise RuntimeError("Agent client not connected")
+                                entity = await agent.get_cached_entity(channel_id)
+                                if not entity:
+                                    entity = await client.get_entity(channel_id)
+                                if entity:
+                                    await _set_mute_status(client, entity, bool(is_muted))
+                                    # Invalidate cache
+                                    if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
+                                        agent.api_cache._mute_cache.pop(channel_id, None)
+
+                            try:
+                                agent.execute(_set_muted(), timeout=30.0)
+                                logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
+                            except Exception as e:
+                                # Roll back any staged DB changes so we don't partially apply.
+                                conn.rollback()
+                                logger.warning(f"Error setting muted status: {e}")
+                                return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
+
+                        # All good: commit staged DB changes.
+                        conn.commit()
+
+                        if llm_name is not None:
+                            agent_default_llm = agent._llm_name or get_default_llm()
+                            if llm_name == agent_default_llm or not llm_name:
+                                logger.info("Removed conversation LLM override (using agent default)")
+                            else:
+                                logger.info(f"Set conversation LLM override to '{llm_name}'")
+
+                        if is_gagged is not None:
+                            if is_gagged == agent.is_gagged:
+                                logger.info(
+                                    f"Removed conversation gagged override (using global default: {agent.is_gagged})"
+                                )
+                            else:
+                                logger.info(f"Set conversation gagged override to {bool(is_gagged)}")
+
+                    except Exception as e:
+                        conn.rollback()
+                        raise
+            else:
+                # Only Telegram muted change (no DB transaction needed)
+                if is_muted is not None:
+                    async def _set_muted():
+                        from admin_console.agents.memberships import _set_mute_status
+                        client = agent.client
+                        if not client or not client.is_connected():
+                            raise RuntimeError("Agent client not connected")
+                        entity = await agent.get_cached_entity(channel_id)
+                        if not entity:
+                            entity = await client.get_entity(channel_id)
+                        if entity:
+                            await _set_mute_status(client, entity, bool(is_muted))
+                            # Invalidate cache
+                            if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
+                                agent.api_cache._mute_cache.pop(channel_id, None)
+
+                    try:
+                        agent.execute(_set_muted(), timeout=30.0)
+                        logger.info(f"Set muted status to {is_muted} for channel {channel_id}")
+                    except Exception as e:
+                        logger.warning(f"Error setting muted status: {e}")
+                        return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
 
             return jsonify({"success": True})
         except Exception as e:
