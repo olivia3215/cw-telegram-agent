@@ -95,39 +95,3 @@ def set_conversation_gagged(agent_telegram_id: int, channel_id: int, is_gagged: 
             raise
         finally:
             cursor.close()
-
-
-def channels_with_conversation_gagged(agent_telegram_id: int, channel_ids: list[int]) -> set[int]:
-    """
-    Check which channels are gagged for a given agent (bulk query).
-    
-    Args:
-        agent_telegram_id: The agent's Telegram ID
-        channel_ids: List of channel IDs to check
-        
-    Returns:
-        Set of channel IDs that are gagged (have is_gagged=True)
-    """
-    if not channel_ids:
-        return set()
-    
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            # Use IN clause for bulk query
-            placeholders = ','.join(['%s'] * len(channel_ids))
-            cursor.execute(
-                f"""
-                SELECT channel_id
-                FROM conversation_gagged
-                WHERE agent_telegram_id = %s AND channel_id IN ({placeholders}) AND is_gagged = TRUE
-                """,
-                (agent_telegram_id, *channel_ids),
-            )
-            rows = cursor.fetchall()
-            return {row["channel_id"] for row in rows}
-        except Exception as e:
-            logger.error(f"Failed to check conversation gagged flags for channels: {e}")
-            return set()
-        finally:
-            cursor.close()
