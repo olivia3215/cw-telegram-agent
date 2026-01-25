@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import threading
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterable, Optional
@@ -198,7 +199,25 @@ class PuppetMasterManager:
 
         async def _disconnect() -> None:
             if client and client.is_connected():
-                await client.disconnect()
+                try:
+                    await client.disconnect()
+                except sqlite3.OperationalError as e:
+                    # Database lock errors during shutdown are not critical
+                    # The session state may not be saved, but that's acceptable during shutdown
+                    if "database is locked" in str(e).lower():
+                        logger.debug(
+                            "Database locked during puppet master disconnect (non-critical during shutdown): %s",
+                            e,
+                        )
+                    else:
+                        # Re-raise if it's a different OperationalError
+                        raise
+                except Exception as e:
+                    # Log other errors but don't fail shutdown
+                    logger.debug(
+                        "Error during puppet master disconnect (non-critical during shutdown): %s",
+                        e,
+                    )
 
         if loop.is_running():
             future = asyncio.run_coroutine_threadsafe(_disconnect(), loop)
@@ -207,14 +226,30 @@ class PuppetMasterManager:
             except FuturesTimeoutError:
                 logger.warning("Timed out disconnecting puppet master client")
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "Error disconnecting puppet master client: %s", exc, exc_info=True
-                )
+                # During shutdown, database lock errors are expected and non-critical
+                if isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower():
+                    logger.debug(
+                        "Database locked during puppet master shutdown (non-critical): %s", exc
+                    )
+                else:
+                    logger.warning(
+                        "Error disconnecting puppet master client: %s", exc, exc_info=True
+                    )
         else:
             try:
                 loop.run_until_complete(_disconnect())
             except RuntimeError:
                 pass
+            except sqlite3.OperationalError as exc:
+                # During shutdown, database lock errors are expected and non-critical
+                if "database is locked" in str(exc).lower():
+                    logger.debug(
+                        "Database locked during puppet master shutdown (non-critical): %s", exc
+                    )
+                else:
+                    logger.warning(
+                        "Error disconnecting puppet master client: %s", exc, exc_info=True
+                    )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
                     "Error disconnecting puppet master client: %s", exc, exc_info=True
