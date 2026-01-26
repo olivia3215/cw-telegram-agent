@@ -199,22 +199,29 @@ async def handle_incoming_message(agent: Agent, event):
         )
         return
     
-    muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
-    gagged = await agent.is_conversation_gagged(event.chat_id)
     sender_id = event.sender_id
 
-    mark_partner_typing(agent.agent_id, sender_id)
+    # Some Telegram updates (e.g., certain channel posts / service messages) can have
+    # sender_id=None. Guard all sender-specific logic accordingly.
+    # Note: mute is a per-chat setting; checking sender_id in group chats can trigger
+    # Telethon "Could not find the input entity" errors for PeerUser IDs.
+    muted = await agent.is_muted(event.chat_id)
+    gagged = await agent.is_conversation_gagged(event.chat_id)
 
-    sender_is_blocked = await agent.is_blocked(sender_id)
-    if sender_is_blocked:
-        # completely ignore messages from blocked contacts
-        return
+    if sender_id is not None:
+        mark_partner_typing(agent.agent_id, sender_id)
+
+    if sender_id is not None:
+        sender_is_blocked = await agent.is_blocked(sender_id)
+        if sender_is_blocked:
+            # completely ignore messages from blocked contacts
+            return
 
     # We don't test `event.message.is_reply` because
     # a reply to our message already sets `event.message.mentioned`
     is_callout = event.message.mentioned
 
-    sender_name = await get_channel_name(agent, sender_id)
+    sender_name = await get_channel_name(agent, sender_id if sender_id is not None else event.chat_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
 
     # Skip telepathic messages - they should never trigger received tasks

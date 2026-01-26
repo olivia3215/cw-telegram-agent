@@ -84,6 +84,17 @@ class TelegramAPICache:
             logger.debug(f"[{self.name}] Channel {peer_id} is private or deleted, treating as not muted: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
+        except ValueError as e:
+            # Telethon can raise ValueError when it can't resolve an input entity for a PeerUser/PeerChannel.
+            # This commonly happens for users seen in group chats that aren't in contacts and lack an access hash.
+            msg = str(e)
+            if "Could not find the input entity" in msg:
+                logger.debug(f"[{self.name}] Could not resolve input entity for {peer_id}; treating as not muted: {e}")
+                self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+                return False
+            logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
+            self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
+            return False
         except Exception as e:
             logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))

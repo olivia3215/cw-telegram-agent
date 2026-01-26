@@ -33,11 +33,13 @@ def format_username(entity):
     return None
 
 
-async def get_channel_name(agent: "Agent", channel_id: int):
+async def get_channel_name(agent: "Agent", channel_id: int | None):
     """
     Fetches the display name for any channel (user, group, or channel).
     Accepts Agent-like objects (e.g., test doubles) too.
     """
+    if channel_id is None:
+        return "Unknown (None)"
     channel_id = normalize_peer_id(channel_id)
     try:
         # get_entity can fetch users, chats, or channels
