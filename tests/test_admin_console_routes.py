@@ -1,5 +1,7 @@
+import gc
 import json
 import shlex
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -98,6 +100,88 @@ def test_challenge_manager_isolated_per_app_instance():
         assert manager_b is not manager_a
         with pytest.raises(ChallengeNotFound):
             manager_b.verify(code)
+
+
+def test_conversation_media_caching_does_not_emit_unawaited_coroutine_warning(
+    monkeypatch, tmp_path
+):
+    """
+    Regression test for admin console conversation media caching.
+
+    We previously called MySQLMediaSource.put() without awaiting it, which caused:
+    - RuntimeWarning: coroutine 'MySQLMediaSource.put' was never awaited
+    - caching to be silently skipped
+    """
+    from admin_console.agents import conversation_media as cm
+    from media.mysql_media_source import MySQLMediaSource
+
+    # Ensure we don't hit any existing cached files
+    monkeypatch.setattr(cm, "CONFIG_DIRECTORIES", [])
+    monkeypatch.setattr(cm, "STATE_DIRECTORY", str(tmp_path))
+
+    # Avoid touching real Telegram/MySQL; just ensure the coroutine is executed.
+    put_calls = {"count": 0}
+
+    async def fake_put(
+        self, unique_id, record, media_bytes=None, file_extension=None, agent=None
+    ):
+        put_calls["count"] += 1
+
+    monkeypatch.setattr(MySQLMediaSource, "put", fake_put)
+
+    # Bypass channel resolution.
+    monkeypatch.setattr(
+        "admin_console.helpers.resolve_user_id_and_handle_errors",
+        lambda agent, user_id, logger: (123, None),
+    )
+
+    class FakeClient:
+        def is_connected(self):
+            return True
+
+    class FakeLoop:
+        def is_running(self):
+            return True
+
+    class FakeKind:
+        value = "photo"
+
+    class FakeMediaItem:
+        kind = FakeKind()
+        sticker_set_name = None
+        sticker_set_title = None
+        sticker_name = None
+        sticker_set_id = None
+        sticker_access_hash = None
+        duration = None
+
+    class FakeAgent:
+        name = "Arthur"
+        client = FakeClient()
+
+        def _get_client_loop(self):
+            return FakeLoop()
+
+        def execute(self, coro, timeout=30.0):
+            # The real Agent.execute runs the coroutine on the agent loop.
+            # In tests, close it so we don't introduce our own un-awaited warning.
+            coro.close()
+            media_bytes = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 64)
+            return media_bytes, "image/png", FakeMediaItem(), None
+
+    monkeypatch.setattr(cm, "get_agent_by_name", lambda _: FakeAgent())
+
+    client = _make_client()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        resp = client.get(
+            "/admin/api/agents/Arthur/conversation/SomeUser/media/1/uid123"
+        )
+        # Force GC so any dropped coroutine triggers warnings inside this context.
+        gc.collect()
+
+    assert resp.status_code == 200
+    assert put_calls["count"] == 1
 
 
 def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
