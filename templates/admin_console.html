@@ -6746,36 +6746,6 @@
             }
         }
 
-
-        // Set up conversation partner select change handlers
-        document.getElementById('notes-params-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('notes-params-user-id').value = '';
-                loadNotesForPartner();
-            }
-        });
-
-        document.getElementById('conversation-llm-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('conversation-llm-user-id').value = '';
-                loadConversationParameters();
-            }
-        });
-
-        document.getElementById('plans-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('plans-user-id').value = '';
-                loadPlans();
-            }
-        });
-
-        document.getElementById('conversation-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('conversation-user-id').value = '';
-                loadConversation();
-            }
-        });
-
         // XSend functionality
         function sendXSend() {
             const agentSelect = document.getElementById('conversations-agent-select');
