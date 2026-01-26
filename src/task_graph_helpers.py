@@ -115,6 +115,7 @@ async def insert_received_task_for_conversation(
     reaction_message_id: int | None = None,
     clear_mentions: bool = False,
     clear_reactions: bool = False,
+    bypass_gagged: bool = False,
 ):
     """
     Replaces a conversation's task graph, preserving any tasks marked 'callout'.
@@ -136,6 +137,23 @@ async def insert_received_task_for_conversation(
         )
         return
     
+    # Convert to ints for comparison (needed for gagged check and graph_for_conversation)
+    agent_id_int = ensure_int_id(recipient_id)
+    channel_id_int = ensure_int_id(channel_id)
+    
+    # Check if conversation is gagged (unless bypass_gagged is True, e.g., for xsend)
+    if not bypass_gagged:
+        try:
+            gagged = await agent.is_conversation_gagged(channel_id_int)
+            if gagged:
+                logger.debug(
+                    f"[{agent.name}] Skipping received task creation for channel {channel_id} - conversation is gagged"
+                )
+                return
+        except Exception as e:
+            logger.warning(f"[{agent.name}] Error checking gagged status: {e}")
+            # On error, continue (don't block received task creation)
+    
     # Try to reconnect if client is disconnected
     if agent.client is None or not agent.client.is_connected():
         logger.debug(
@@ -147,9 +165,6 @@ async def insert_received_task_for_conversation(
             )
     preserved_tasks = []
     # Find the existing graph for this conversation
-    # Convert to ints for comparison (graph_for_conversation expects ints)
-    agent_id_int = ensure_int_id(recipient_id)
-    channel_id_int = ensure_int_id(channel_id)
 
     lock = await _get_lock_for_conversation(agent_id_int, channel_id_int)
     async with lock:

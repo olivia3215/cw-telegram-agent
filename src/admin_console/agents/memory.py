@@ -350,7 +350,7 @@ def register_memory_routes(agents_bp: Blueprint):
     @agents_bp.route("/api/agents/<agent_config_name>/partner-content-check", methods=["POST"])
     def api_check_partner_content_batch(agent_config_name: str):
         """
-        Batch check which partners have content for notes, conversation-llm, and plans.
+        Batch check which partners have content for notes, conversation overrides, and plans.
         
         Request body: {"user_ids": ["user_id1", "user_id2", ...]}
         Response: {
@@ -358,6 +358,8 @@ def register_memory_routes(agents_bp: Blueprint):
                 "user_id1": {
                     "notes": true,
                     "conversation_llm": false,
+                    "conversation_gagged": true,
+                    "conversation_parameters": true,
                     "plans": true
                 },
                 ...
@@ -395,6 +397,8 @@ def register_memory_routes(agents_bp: Blueprint):
                 content_checks[user_id_str] = {
                     "notes": False,
                     "conversation_llm": False,
+                    "conversation_gagged": False,
+                    "conversation_parameters": False,
                     "plans": False
                 }
             
@@ -414,10 +418,29 @@ def register_memory_routes(agents_bp: Blueprint):
                             content_checks[user_id_str]["conversation_llm"] = True
                 except Exception as e:
                     logger.warning(f"Error bulk checking conversation LLM overrides: {e}")
+
+            # Bulk check conversation gagged overrides (presence in table = override)
+            if valid_channel_ids:
+                try:
+                    from db import conversation_gagged as db_conversation_gagged
+                    channels_with_gagged_overrides = db_conversation_gagged.channels_with_conversation_gagged_overrides(
+                        agent.agent_id, valid_channel_ids
+                    )
+                    for user_id_str, channel_id in user_id_to_channel_id.items():
+                        if channel_id in channels_with_gagged_overrides:
+                            content_checks[user_id_str]["conversation_gagged"] = True
+                except Exception as e:
+                    logger.warning(f"Error bulk checking conversation gagged overrides: {e}")
             
             # Check notes and plans for each channel
             for user_id_str, channel_id in user_id_to_channel_id.items():
                 checks = content_checks[user_id_str]
+
+                # Conversation-parameters marker: any per-conversation overrides we can detect cheaply.
+                # (Muted is a Telegram-side setting and intentionally excluded here to avoid N API calls.)
+                checks["conversation_parameters"] = bool(
+                    checks.get("conversation_llm") or checks.get("conversation_gagged")
+                )
                 
                 # Check notes
                 try:

@@ -108,6 +108,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "daily_schedule_description": agent.daily_schedule_description if hasattr(agent, 'daily_schedule_description') else None,
                 "reset_context_on_first_message": agent.reset_context_on_first_message,
                 "is_disabled": agent.is_disabled,
+                "is_gagged": agent.is_gagged,
                 "start_typing_delay": start_typing_delay,
                 "typing_speed": typing_speed,
                 "config_directory": current_config_directory,
@@ -675,6 +676,47 @@ def register_configuration_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating disabled status for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/gagged", methods=["PUT"])
+    def api_update_agent_gagged(agent_config_name: str):
+        """Update agent global gagged status."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.config_directory:
+                return jsonify({"error": "Agent has no config directory"}), 400
+
+            data = request.json
+            is_gagged = data.get("is_gagged", False)
+
+            # Find agent's markdown file
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            if not agent_file.exists():
+                return jsonify({"error": "Agent configuration file not found"}), 404
+
+            # Read and parse the markdown file
+            content = agent_file.read_text(encoding="utf-8")
+            from register_agents import extract_fields_from_markdown
+            fields = extract_fields_from_markdown(content)
+
+            # Update Gagged field
+            if is_gagged:
+                fields["Gagged"] = ""
+            else:
+                if "Gagged" in fields:
+                    del fields["Gagged"]
+
+            _write_agent_markdown(agent, fields)
+
+            # Update agent's gagged status in place
+            agent.is_gagged = is_gagged
+
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating gagged status for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/rename", methods=["PUT"])

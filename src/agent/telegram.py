@@ -88,6 +88,42 @@ class AgentTelegramMixin:
             return False
         return await api_cache.is_muted(peer_id)
 
+    async def is_conversation_gagged(self, channel_id: int) -> bool:
+        """
+        Checks if a conversation is gagged.
+        
+        Returns True if:
+        - Global gagged flag is True AND no per-conversation override exists, OR
+        - Per-conversation override is True
+        
+        Returns False if:
+        - Global gagged flag is False AND no per-conversation override exists, OR
+        - Per-conversation override is False
+        
+        Args:
+            channel_id: The channel ID to check
+            
+        Returns:
+            True if gagged, False otherwise
+        """
+        if not self.agent_id:
+            # Not authenticated, use global default
+            return self.is_gagged
+        
+        try:
+            from db import conversation_gagged
+            override = conversation_gagged.get_conversation_gagged(self.agent_id, channel_id)
+            if override is not None:
+                # Per-conversation override exists, use it
+                return override
+            else:
+                # No override, use global default
+                return self.is_gagged
+        except Exception as e:
+            logger.warning(f"[{self.name}] Error checking gagged status for channel {channel_id}: {e}")
+            # On error, use global default
+            return self.is_gagged
+
     async def get_cached_entity(self, entity_id: int):
         """
         Return a Telegram entity.

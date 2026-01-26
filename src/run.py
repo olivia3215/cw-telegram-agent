@@ -199,27 +199,42 @@ async def handle_incoming_message(agent: Agent, event):
         )
         return
     
-    muted = await agent.is_muted(event.chat_id) or await agent.is_muted(event.sender_id)
     sender_id = event.sender_id
 
-    mark_partner_typing(agent.agent_id, sender_id)
+    # Some Telegram updates (e.g., certain channel posts / service messages) can have
+    # sender_id=None. Guard all sender-specific logic accordingly.
+    # Note: mute is a per-chat setting; checking sender_id in group chats can trigger
+    # Telethon "Could not find the input entity" errors for PeerUser IDs.
+    muted = await agent.is_muted(event.chat_id)
+    gagged = await agent.is_conversation_gagged(event.chat_id)
 
-    sender_is_blocked = await agent.is_blocked(sender_id)
-    if sender_is_blocked:
-        # completely ignore messages from blocked contacts
-        return
+    if sender_id is not None:
+        mark_partner_typing(agent.agent_id, sender_id)
+
+    if sender_id is not None:
+        sender_is_blocked = await agent.is_blocked(sender_id)
+        if sender_is_blocked:
+            # completely ignore messages from blocked contacts
+            return
 
     # We don't test `event.message.is_reply` because
     # a reply to our message already sets `event.message.mentioned`
     is_callout = event.message.mentioned
 
-    sender_name = await get_channel_name(agent, sender_id)
+    sender_name = await get_channel_name(agent, sender_id if sender_id is not None else event.chat_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
 
     # Skip telepathic messages - they should never trigger received tasks
     if is_telepathic_message(event.message):
         logger.debug(
             f"[{agent.name}] Skipping telepathic message from [{sender_name}] in [{dialog_name}]"
+        )
+        return
+
+    # If gagged, skip creating received tasks (async notifications should not trigger received tasks when gagged)
+    if gagged:
+        logger.debug(
+            f"[{agent.name}] Skipping received task for async message from [{sender_name}] in [{dialog_name}] - conversation is gagged"
         )
         return
 
@@ -293,8 +308,16 @@ async def scan_unread_messages(agent: Agent):
             continue
         
         muted = await agent.is_muted(dialog.id)
+        gagged = await agent.is_conversation_gagged(dialog.id)
         has_unread = not muted and dialog.unread_count > 0
         has_mentions = dialog.unread_mentions_count > 0
+
+        # If gagged, skip creating received tasks (but don't mark as read yet - that happens in received task handler)
+        if gagged:
+            logger.debug(
+                f"[{agent.name}] Skipping received task creation for [{await get_channel_name(agent, dialog.id)}] - conversation is gagged"
+            )
+            continue
 
         # If there are mentions, we must check if they are from a non-blocked user.
         # Skip telepathic messages even if they mention the agent.
@@ -795,6 +818,15 @@ async def run_telegram_loop(agent: Agent):
                             chat_name = await get_channel_name(agent, chat_id)
                             logger.debug(
                                 f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - agent cannot send messages in this chat"
+                            )
+                            return
+                        
+                        # Check if conversation is gagged (async notifications should not trigger received tasks when gagged)
+                        gagged = await agent.is_conversation_gagged(chat_id)
+                        if gagged:
+                            chat_name = await get_channel_name(agent, chat_id)
+                            logger.debug(
+                                f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - conversation is gagged"
                             )
                             return
                         

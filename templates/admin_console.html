@@ -770,7 +770,7 @@
         <section class="tab-panel" data-tab-panel="conversations">
             <nav class="tab-bar" style="margin-bottom: 16px;">
                 <button class="tab-button active" data-subtab="notes-conv">Notes</button>
-                <button class="tab-button" data-subtab="conversation-llm">Conversation LLM</button>
+                <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
@@ -803,8 +803,8 @@
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
-                <div class="subtab-panel" data-subtab-panel="conversation-llm">
-                    <div id="conversation-llm-container">
+                <div class="subtab-panel" data-subtab-panel="conversation-parameters">
+                    <div id="conversation-parameters-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
@@ -2468,8 +2468,8 @@
                 if (agentName && userId) {
                     if (subtabName === 'notes-conv') {
                         loadNotesForPartner();
-                    } else if (subtabName === 'conversation-llm') {
-                        loadConversationLLM();
+                    } else if (subtabName === 'conversation-parameters') {
+                        loadConversationParameters();
                     } else if (subtabName === 'plans') {
                         loadPlans();
                     } else if (subtabName === 'conversation') {
@@ -2596,12 +2596,23 @@
                     const data = await response.json();
                     if (data.error) return false;
                     return data.notes && data.notes.length > 0;
-                } else if (subtabName === 'conversation-llm') {
-                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`);
+                } else if (subtabName === 'conversation-parameters') {
+                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-parameters/${userId}`);
                     const data = await response.json();
                     if (data.error) return false;
                     const agentDefaultLLM = data.agent_default_llm;
-                    return data.conversation_llm && data.conversation_llm !== agentDefaultLLM;
+                    const hasLlmOverride = data.conversation_llm && data.conversation_llm !== agentDefaultLLM;
+                    // Prefer explicit override indicator if the API provides it; otherwise fall back
+                    // to the effective value (best-effort).
+                    const hasGaggedOverride = Object.prototype.hasOwnProperty.call(data, 'gagged_override')
+                        ? data.gagged_override !== null
+                        : (
+                            // Back-compat: if server provides both, infer override from mismatch.
+                            Object.prototype.hasOwnProperty.call(data, 'agent_is_gagged')
+                                ? data.is_gagged !== data.agent_is_gagged
+                                : false
+                        );
+                    return hasLlmOverride || hasGaggedOverride;
                 } else if (subtabName === 'plans') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`);
                     const data = await response.json();
@@ -3013,8 +3024,8 @@
                         agents.forEach(agent => {
                             agentContentChecks[agent.config_name] = agent.has_notes || false;
                         });
-                    } else if (subtabName === 'conversation-llm') {
-                        // Conversations tab: Conversation LLM subtab
+                    } else if (subtabName === 'conversation-parameters') {
+                        // Conversations tab: Parameters subtab
                         agents.forEach(agent => {
                             agentContentChecks[agent.config_name] = agent.has_conversation_llm || false;
                         });
@@ -3242,9 +3253,9 @@
                 notesContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
             }
             
-            const conversationLLMContainer = document.getElementById('conversation-llm-container');
-            if (conversationLLMContainer) {
-                conversationLLMContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+            const conversationParametersContainer = document.getElementById('conversation-parameters-container');
+            if (conversationParametersContainer) {
+                conversationParametersContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
             }
             
             const plansContainer = document.getElementById('plans-container');
@@ -3892,6 +3903,7 @@
                             const channelId = membership.channel_id;
                             const username = membership.username ? `@${membership.username}` : '';
                             const isMuted = membership.is_muted || false;
+                            const isGagged = membership.is_gagged || false;
                             
                             html += '<div style="padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; align-items: center; gap: 12px;">';
                             html += '<div style="flex: 1; min-width: 0;">';
@@ -3904,6 +3916,10 @@
                             html += '</div>';
                             html += '</div>';
                             html += '<div style="display: flex; align-items: center; gap: 8px;">';
+                            html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
+                            html += '<input type="checkbox" ' + (isGagged ? 'checked' : '') + ' onchange="toggleGaggedMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                            html += '<span style="font-size: 14px;">Gagged</span>';
+                            html += '</label>';
                             html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
                             html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
                             html += '<span style="font-size: 14px;">Muted</span>';
@@ -3974,6 +3990,32 @@
                     button.disabled = false;
                     button.textContent = 'Subscribe';
                 }
+            });
+        }
+
+        function toggleGaggedMembership(agentName, channelId, isGagged) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships/${encodeURIComponent(channelId)}/gagged`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ is_gagged: isGagged })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error toggling gagged: ' + data.error);
+                    // Reload to restore previous state
+                    loadMemberships(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error toggling gagged: ' + error);
+                // Reload to restore previous state
+                loadMemberships(agentName);
             });
         }
 
@@ -4477,6 +4519,7 @@
                     const currentTimezone = data.timezone || '';
                     const availableTimezones = data.available_timezones || [];
                     const isDisabled = data.is_disabled || false;
+                    const isGagged = data.is_gagged || false;
                     
                     // New fields
                     const phone = data.phone || '';
@@ -4630,6 +4673,15 @@
                                             onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
                                         Reset Context On First Message
                                     </label>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Global Gagged</h3>
+                                    <label class="agent-param-checkbox-label" style="margin-top: 8px;">
+                                        <input type="checkbox" id="gagged-toggle" ${isGagged ? 'checked' : ''} 
+                                            onchange="updateAgentGagged('${escJsAttr(agentName)}', this.checked)">
+                                        Gag all conversations by default (can be overridden per conversation)
+                                    </label>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">When gagged, messages are read but no received tasks are created</div>
                                 </div>
                             </div>
 
@@ -4805,6 +4857,27 @@
             })
             .catch(error => {
                 if (error && error.message !== 'unauthorized') alert('Error updating reset context: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentGagged(agentName, isGagged) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/gagged`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_gagged: isGagged })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error updating gagged status: ' + data.error);
+                    loadAgentConfiguration(agentName);
+                }
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') {
+                    alert('Error updating gagged status: ' + error);
+                }
                 loadAgentConfiguration(agentName);
             });
         }
@@ -5040,7 +5113,8 @@
                     // Map subtab names to content check keys
                     const subtabToKey = {
                         'notes-conv': 'notes',
-                        'conversation-llm': 'conversation_llm',
+                        // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
+                        'conversation-parameters': 'conversation_parameters',
                         'plans': 'plans',
                         'conversation': 'conversation'  // Special case, uses different endpoint
                     };
@@ -5068,7 +5142,7 @@
                             }));
                         }
                     } else {
-                        // For notes, conversation-llm, and plans, use partner-content-check endpoint
+                        // For notes, conversation-parameters, and plans, use partner-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-content-check`, {
                                 method: 'POST',
@@ -5085,7 +5159,15 @@
                                     for (const userId of userIds) {
                                         const checks = batchData.content_checks[userId];
                                         if (checks) {
-                                            partnerContentChecks[userId] = checks[contentKey] || false;
+                                            // Back-compat: older servers only returned "conversation_llm" for the
+                                            // conversation-parameters subtab.
+                                            if (subtabName === 'conversation-parameters') {
+                                                partnerContentChecks[userId] = !!(
+                                                    checks.conversation_parameters || checks.conversation_llm
+                                                );
+                                            } else {
+                                                partnerContentChecks[userId] = checks[contentKey] || false;
+                                            }
                                         } else {
                                             partnerContentChecks[userId] = false;
                                         }
@@ -5228,7 +5310,7 @@
             });
         }
 
-        function loadConversationLLM() {
+        function loadConversationParameters() {
             const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
@@ -5241,10 +5323,10 @@
                 return;
             }
             
-            const container = document.getElementById('conversation-llm-container');
-            container.innerHTML = '<div class="loading">Loading conversation LLM...</div>';
+            const container = document.getElementById('conversation-parameters-container');
+            container.innerHTML = '<div class="loading">Loading conversation parameters...</div>';
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`)
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-parameters/${userId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -5255,17 +5337,39 @@
                     const conversationLLM = data.conversation_llm || null;
                     const agentDefaultLLM = data.agent_default_llm || '';
                     const availableLLMs = data.available_llms || [];
+                    const isMuted = data.is_muted || false;
+                    const isGagged = data.is_gagged || false;
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <h3>Conversation LLM</h3>
-                            <p>Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
-                            <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; margin-bottom: 16px;" onchange="updateConversationLLM('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this.value)">
-                                ${availableLLMs.map(llm => {
-                                    const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                    return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
-                                }).join('')}
-                            </select>
+                            <h3>Conversation Parameters</h3>
+                            
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: bold;">LLM Model:</label>
+                                <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
+                                <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px;" onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
+                                    ${availableLLMs.map(llm => {
+                                        const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
+                                        return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
+                                    }).join('')}
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: bold;">Muted:</label>
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="conversation-muted-toggle" ${isMuted ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
+                                    <span>Mute notifications for this conversation</span>
+                                </label>
+                            </div>
+                            
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: bold;">Gagged:</label>
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="conversation-gagged-toggle" ${isGagged ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
+                                    <span>Gag this conversation (read messages but don't create received tasks)</span>
+                                </label>
+                            </div>
                         </div>
                     `;
                 })
@@ -5273,35 +5377,51 @@
                     if (error && error.message === 'unauthorized') {
                         return;
                     }
-                    container.innerHTML = `<div class="error">Error loading conversation LLM: ${escapeHtml(error)}</div>`;
+                    container.innerHTML = `<div class="error">Error loading conversation parameters: ${escapeHtml(error)}</div>`;
                 });
         }
 
-        function updateConversationLLM(agentName, userId, llmName) {
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-llm/${userId}`, {
+        function updateConversationParameters(agentName, userId) {
+            const llmSelect = document.getElementById('conversation-llm-select');
+            const mutedToggle = document.getElementById('conversation-muted-toggle');
+            const gaggedToggle = document.getElementById('conversation-gagged-toggle');
+            
+            const llmName = llmSelect ? llmSelect.value : null;
+            const isMuted = mutedToggle ? mutedToggle.checked : null;
+            const isGagged = gaggedToggle ? gaggedToggle.checked : null;
+            
+            const updateData = {};
+            if (llmName !== null) updateData.llm_name = llmName;
+            if (isMuted !== null) updateData.is_muted = isMuted;
+            if (isGagged !== null) updateData.is_gagged = isGagged;
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-parameters/${userId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ llm_name: llmName })
+                body: JSON.stringify(updateData)
             })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert('Error updating conversation LLM: ' + data.error);
+                    alert('Error updating conversation parameters: ' + data.error);
+                    // Reload to sync UI with server state (some operations may have succeeded)
+                    loadConversationParameters();
                 } else {
-                    // Reload to show updated value
-                    loadConversationLLM();
+                    // Success - no need to reload, UI is already updated
                 }
             })
             .catch(error => {
                 if (error && error.message === 'unauthorized') {
                     return;
                 }
-                alert('Error updating conversation LLM: ' + error);
+                alert('Error updating conversation parameters: ' + error);
+                // Reload to restore previous state
+                loadConversationParameters();
             });
         }
-
+        
         function loadPlans() {
             const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
@@ -6625,36 +6745,6 @@
                 showTranslation = false;
             }
         }
-
-
-        // Set up conversation partner select change handlers
-        document.getElementById('notes-params-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('notes-params-user-id').value = '';
-                loadNotesForPartner();
-            }
-        });
-
-        document.getElementById('conversation-llm-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('conversation-llm-user-id').value = '';
-                loadConversationLLM();
-            }
-        });
-
-        document.getElementById('plans-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('plans-user-id').value = '';
-                loadPlans();
-            }
-        });
-
-        document.getElementById('conversation-partner-select')?.addEventListener('change', (e) => {
-            if (e.target.value) {
-                document.getElementById('conversation-user-id').value = '';
-                loadConversation();
-            }
-        });
 
         // XSend functionality
         function sendXSend() {

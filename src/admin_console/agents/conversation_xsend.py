@@ -45,6 +45,7 @@ def register_conversation_xsend_routes(agents_bp: Blueprint):
                     recipient_id=agent.agent_id,
                     channel_id=str(channel_id),
                     xsend_intent=intent if intent else None,
+                    bypass_gagged=True,  # xsend bypasses gagged check
                 )
                 # Save work queue back to state file
                 work_queue.save(state_path)
