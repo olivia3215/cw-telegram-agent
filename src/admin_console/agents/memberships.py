@@ -340,6 +340,7 @@ def register_membership_routes(agents_bp: Blueprint):
                             mute_warning = f"Successfully joined but could not mute: {str(mute_error)}"
                         
                         # Set gagged status for new channel
+                        gagged_warning = None
                         try:
                             from db import conversation_gagged
                             # channel_id is already normalized (int) from earlier in the function
@@ -347,14 +348,18 @@ def register_membership_routes(agents_bp: Blueprint):
                             logger.info(f"Set gagged=True for newly subscribed channel {channel_id}")
                         except Exception as gag_error:
                             logger.warning(f"Successfully joined group/channel but failed to set gagged status: {gag_error}")
+                            gagged_warning = (
+                                f"Successfully joined but could not set gagged status: {str(gag_error)}"
+                            )
 
                         response = {
                             "success": True,
                             "channel_id": str(channel_id),
                             "name": getattr(entity, "title", None) or identifier,
                         }
-                        if mute_warning:
-                            response["warning"] = mute_warning
+                        warnings = [w for w in (mute_warning, gagged_warning) if w]
+                        if warnings:
+                            response["warning"] = "; ".join(warnings)
                         return response
                     else:
                         return {"error": "Could not determine channel ID"}
