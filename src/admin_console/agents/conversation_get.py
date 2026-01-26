@@ -513,7 +513,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 
                 # Use min_id to only fetch unsummarized messages (avoid fetching messages we'll filter out)
                 # This prevents unnecessary API calls and flood waits
-                iter_kwargs = {"limit": 500}
+                iter_kwargs = {"limit": 200} # limit to 200 messages
                 if highest_summarized_id is not None:
                     iter_kwargs["min_id"] = highest_summarized_id
                 

@@ -102,7 +102,7 @@ This is required by newer Gemini families (e.g., `gemini-3-flash-preview`) that 
 
 ### History ordering and target message
 
-- History is chronological (oldest → newest), capped by `history_size` (default 500 messages).
+- History is chronological (oldest → newest), capped by `history_size` (default 200 messages).
 - The **target message** (the one we want a response to)...
   - Causes a system instruction to be added: "Consider responding to message with message_id NNNN."
   - In DMs, the target is the last message.
