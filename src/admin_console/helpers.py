@@ -28,7 +28,14 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
-from config import STATE_DIRECTORY, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY, TELEGRAM_SYSTEM_USER_ID
+from config import (
+    STATE_DIRECTORY,
+    GOOGLE_GEMINI_API_KEY,
+    GROK_API_KEY,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    TELEGRAM_SYSTEM_USER_ID,
+)
 from media.media_sources import iter_directory_media_sources
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
@@ -173,6 +180,7 @@ def get_available_llms() -> list[dict[str, Any]]:
     - Gemini models only shown if GOOGLE_GEMINI_API_KEY is set
     - Grok models only shown if GROK_API_KEY is set
     - OpenAI models only shown if OPENAI_API_KEY is set
+    - OpenRouter models only shown if OPENROUTER_API_KEY is set
     """
     all_llms = [
         # Gemini models
@@ -240,6 +248,16 @@ def get_available_llms() -> list[dict[str, Any]]:
         },
     ]
     
+    # Add OpenRouter models from cache if available
+    if OPENROUTER_API_KEY:
+        try:
+            from admin_console.openrouter_scraper import load_cached_models
+            openrouter_models = load_cached_models()
+            if openrouter_models:
+                all_llms.extend(openrouter_models)
+        except Exception as e:
+            logger.warning(f"Error loading OpenRouter models: {e}")
+    
     # Filter models based on API key availability
     filtered_llms = []
     for llm in all_llms:
@@ -249,6 +267,8 @@ def get_available_llms() -> list[dict[str, Any]]:
         elif provider == "grok" and GROK_API_KEY:
             filtered_llms.append(llm)
         elif provider == "openai" and OPENAI_API_KEY:
+            filtered_llms.append(llm)
+        elif provider == "openrouter" and OPENROUTER_API_KEY:
             filtered_llms.append(llm)
     
     # Remove provider key from output (not needed by frontend)

@@ -56,7 +56,13 @@ from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES
-from config import GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY, TELEGRAM_SYSTEM_USER_ID
+from config import (
+    GOOGLE_GEMINI_API_KEY,
+    GROK_API_KEY,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    TELEGRAM_SYSTEM_USER_ID,
+)
 
 # Configure logging level from environment variable, default to INFO
 log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
@@ -997,6 +1003,10 @@ async def main():
             elif llm_name_lower.startswith("gpt") or llm_name_lower.startswith("openai"):
                 if not OPENAI_API_KEY:
                     missing_keys.append(f"Agent '{agent.name}' uses OpenAI model '{llm_name}' but OPENAI_API_KEY is not set")
+            elif "/" in llm_name_lower or llm_name_lower.startswith("openrouter"):
+                # OpenRouter models use "provider/model" format
+                if not OPENROUTER_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses OpenRouter model '{llm_name}' but OPENROUTER_API_KEY is not set")
     
     if missing_keys:
         logger.error("Startup validation failed: Missing required API keys for agent LLM models:")

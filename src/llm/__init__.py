@@ -20,6 +20,7 @@ from .exceptions import RetryableLLMError
 from .gemini import GeminiLLM
 from .grok import GrokLLM
 from .openai import OpenAILLM
+from .openrouter import OpenRouterLLM
 
 # Import utility functions
 # (prompt_builder functions moved to LLM implementations as private methods)
@@ -38,4 +39,5 @@ __all__ = [
     "GeminiLLM",
     "GrokLLM",
     "OpenAILLM",
+    "OpenRouterLLM",
 ]

@@ -4595,11 +4595,19 @@
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
                                     <h3>Agent LLM</h3>
-                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
+                                    <input 
+                                        id="agent-llm-select" 
+                                        type="text" 
+                                        class="agent-param-input" 
+                                        value="${escapeHtml(currentLLM || '')}"
+                                        list="agent-llm-datalist-${escJsAttr(agentName)}"
+                                        placeholder="Type or select an LLM model..."
+                                        onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
+                                    <datalist id="agent-llm-datalist-${escJsAttr(agentName)}">
                                         ${availableLLMs.map(llm => {
-                                            return `<option value="${escapeHtml(llm.value)}" ${llm.value === currentLLM ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
+                                            return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                         }).join('')}
-                                    </select>
+                                    </datalist>
                                 </div>
                             </div>
 
@@ -4882,6 +4890,38 @@
             });
         }
 
+        async function refreshOpenRouterModels() {
+            const statusEl = document.getElementById('openrouter-status-global');
+            if (!statusEl) return;
+            
+            statusEl.textContent = 'Refreshing...';
+            statusEl.style.color = '#666';
+            
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/admin/openrouter/refresh-models`, {
+                    method: 'POST',
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to refresh models');
+                }
+                
+                const data = await response.json();
+                statusEl.textContent = `✓ Refreshed ${data.model_count} models`;
+                statusEl.style.color = '#4CAF50';
+                
+                // Reload the page to show updated models
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } catch (error) {
+                statusEl.textContent = `✗ Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+                console.error('Error refreshing OpenRouter models:', error);
+            }
+        }
+        
         function updateAgentLLM(agentName, llmName) {
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/llm`, {
                 method: 'PUT',
@@ -5347,12 +5387,19 @@
                             <div style="margin-bottom: 24px;">
                                 <label style="display: block; margin-bottom: 8px; font-weight: bold;">LLM Model:</label>
                                 <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
-                                <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px;" onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
+                                <input 
+                                    id="conversation-llm-select" 
+                                    type="text" 
+                                    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px; width: 100%;" 
+                                    value="${escapeHtml(conversationLLM || agentDefaultLLM)}"
+                                    list="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}"
+                                    placeholder="Type or select an LLM model..."
+                                    onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
+                                <datalist id="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}">
                                     ${availableLLMs.map(llm => {
-                                        const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                        return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
+                                        return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                     }).join('')}
-                                </select>
+                                </datalist>
                             </div>
                             
                             <div style="margin-bottom: 24px;">
@@ -8295,14 +8342,54 @@
                 }
                 
                 const parameters = data.parameters || [];
+                const availableLLMs = data.available_llms || [];
                 
                 container.innerHTML = `
                     <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin-top: 0;">Global Parameters</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0;">Global Parameters</h3>
+                            <div>
+                                <button onclick="refreshOpenRouterModels()" style="padding: 6px 12px; font-size: 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                    Refresh OpenRouter Models
+                                </button>
+                                <span id="openrouter-status-global" style="margin-left: 8px; font-size: 12px; color: #666;"></span>
+                            </div>
+                        </div>
                         <div class="agent-param-grid">
                             ${parameters.map(param => {
                                 const inputType = (param.type === 'float' || param.type === 'int') ? 'number' : 'text';
                                 const stepAttr = param.type === 'float' ? 'step="0.1"' : (param.type === 'int' ? 'step="1"' : '');
+                                
+                                // Special handling for LLM model parameters - use combobox (datalist + input)
+                                const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
+                                if (llmModelParams.includes(param.name)) {
+                                    const datalistId = `global-param-${param.name}-datalist`;
+                                    return `
+                                        <div class="agent-param-section">
+                                            <h3>${escapeHtml(param.name)}</h3>
+                                            <input 
+                                                id="global-param-${escapeHtml(param.name)}" 
+                                                type="text" 
+                                                class="agent-param-input" 
+                                                value="${escapeHtml(param.value)}"
+                                                list="${datalistId}"
+                                                placeholder="Type or select an LLM model..."
+                                                onchange="updateGlobalParameter('${escJsAttr(param.name)}', this.value)">
+                                            <datalist id="${datalistId}">
+                                                ${availableLLMs.map(llm => `
+                                                    <option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}</option>
+                                                `).join('')}
+                                            </datalist>
+                                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                                ${escapeHtml(param.comment || '')}
+                                                ${param.default ? ` (Default: ${escapeHtml(param.default)})` : ''}
+                                            </div>
+                                            <div id="global-param-status-${escapeHtml(param.name)}" style="margin-top: 4px; font-size: 12px; color: #28a745;"></div>
+                                        </div>
+                                    `;
+                                }
+                                
+                                // Regular input for other parameters
                                 return `
                                     <div class="agent-param-section">
                                         <h3>${escapeHtml(param.name)}</h3>
