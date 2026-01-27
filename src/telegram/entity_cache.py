@@ -14,6 +14,7 @@ from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImpor
     ChannelPrivateError,
     PeerIdInvalidError,
 )
+from telethon.tl.functions.contacts import GetContactsRequest  # pyright: ignore[reportMissingImports]
 
 from clock import clock
 from utils import normalize_peer_id
@@ -43,6 +44,8 @@ class TelegramEntityCache:
         self.ttl_seconds = ttl_seconds
         self.name = name or "entity_cache"
         self._cache = {}  # {entity_id: (entity, expiration_time)}
+        self._contacts_cache = None  # Cached contacts list
+        self._contacts_cache_expiration = None  # When contacts cache expires
 
     async def get(self, entity_id: int):
         """
@@ -84,10 +87,21 @@ class TelegramEntityCache:
         except ValueError as e:
             # Telethon can raise ValueError with "Could not find the input entity" message
             # when an entity doesn't exist or isn't accessible (e.g., deleted account, blocked user).
-            # Treat this the same as PeerIdInvalidError - cache as "not found" to avoid repeated API calls.
             error_msg = str(e)
             if "Could not find the input entity" in error_msg:
-                not_found_ttl = timedelta(hours=1)
+                # For positive user IDs, try contacts fallback before giving up
+                if entity_id > 0:
+                    entity = await self._try_resolve_from_contacts(entity_id)
+                    if entity:
+                        # Found in contacts - cache it with normal TTL
+                        self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
+                        logger.debug(f"[{self.name}] Resolved entity {entity_id} from contacts")
+                        return entity
+                
+                # Not found in contacts or not a user ID - cache as "not found"
+                # Use shorter TTL (5 minutes) for "not found" when contacts fallback was attempted,
+                # to allow retries if contact is added later
+                not_found_ttl = timedelta(minutes=5)
                 not_found_expiration = now + not_found_ttl
                 self._cache[entity_id] = (None, not_found_expiration)
                 logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
@@ -104,7 +118,54 @@ class TelegramEntityCache:
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
         return entity
 
+    async def _try_resolve_from_contacts(self, user_id: int):
+        """
+        Try to resolve a user ID from the agent's contacts list.
+        
+        Args:
+            user_id: The user ID to look up
+            
+        Returns:
+            The User entity if found in contacts, None otherwise
+        """
+        # Check if contacts cache is still valid (5 minute TTL)
+        now = clock.now(UTC)
+        if (
+            self._contacts_cache is None
+            or self._contacts_cache_expiration is None
+            or now > self._contacts_cache_expiration
+        ):
+            # Fetch contacts
+            if not self.client:
+                return None
+            
+            try:
+                if self.agent:
+                    await self.agent.ensure_client_connected()
+                result = await self.client(GetContactsRequest(hash=0))
+                # Build a dict mapping user_id -> User entity
+                self._contacts_cache = {}
+                if hasattr(result, "users"):
+                    for user in result.users:
+                        user_id_val = getattr(user, "id", None)
+                        if user_id_val:
+                            self._contacts_cache[user_id_val] = user
+                # Cache for 5 minutes
+                self._contacts_cache_expiration = now + timedelta(minutes=5)
+                logger.debug(f"[{self.name}] Loaded {len(self._contacts_cache)} contacts")
+            except Exception as e:
+                logger.debug(f"[{self.name}] Failed to fetch contacts: {e}")
+                # Cache empty result for 1 minute to avoid repeated failures
+                self._contacts_cache = {}
+                self._contacts_cache_expiration = now + timedelta(minutes=1)
+                return None
+        
+        # Look up user in contacts cache
+        return self._contacts_cache.get(user_id)
+
     def clear(self):
-        """Clear all cached entities."""
+        """Clear all cached entities and contacts cache."""
         logger.info(f"[{self.name}] Clearing entity cache.")
         self._cache.clear()
+        self._contacts_cache = None
+        self._contacts_cache_expiration = None

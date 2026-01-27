@@ -114,7 +114,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             async def _download_conversation():
                 try:
                     client = agent.client
-                    entity = await client.get_entity(channel_id)
+                    # Use agent.get_cached_entity() to benefit from contacts fallback
+                    entity = await agent.get_cached_entity(channel_id)
                     if not entity:
                         raise ValueError(f"Cannot resolve entity for channel_id {channel_id}")
 
