@@ -2,6 +2,7 @@
 #
 # Conversation media serving routes for the admin console (emoji and media).
 
+import asyncio
 import glob
 import logging
 from pathlib import Path
@@ -28,8 +29,8 @@ def _escape_quoted_string_value(value: str) -> str:
     Escape a value for use in a quoted-string within HTTP headers per RFC 6266.
     
     In quoted-string values, the following characters must be escaped:
-    - Backslash `\` -> \\
-    - Double quote `"` -> \"
+    - Backslash `\\` -> `\\\\`
+    - Double quote `"` -> `\\"`
     
     Args:
         value: The string value to escape
@@ -509,7 +510,18 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 record["file_name"] = file_name
                             
                             try:
-                                cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                                # MySQLMediaSource.put is async; ensure it is executed so we don't
+                                # drop an un-awaited coroutine (which would skip caching and emit
+                                # "coroutine was never awaited" warnings).
+                                asyncio.run(
+                                    cache_source.put(
+                                        unique_id,
+                                        record,
+                                        media_bytes,
+                                        file_extension,
+                                        agent=agent,
+                                    )
+                                )
                                 logger.debug(
                                     f"Cached media file {media_filename} with full metadata to {state_media_dir} for {unique_id}"
                                 )
