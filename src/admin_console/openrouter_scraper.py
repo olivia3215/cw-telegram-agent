@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 CACHE_FILE = Path(STATE_DIRECTORY) / "openrouter_roleplay_models.json"
 CACHE_TTL_HOURS = 24  # Cache for 24 hours
 
-# API endpoint for roleplay models
-MODELS_API_URL = "https://openrouter.ai/api/v1/models?category=roleplay"
-# Rankings URL for getting popularity order (optional)
+# API endpoint for all models (we filter by rankings page popularity)
+ALL_MODELS_API_URL = "https://openrouter.ai/api/v1/models"
+# Rankings URL for getting popular roleplay models (source of truth)
 RANKINGS_URL = "https://openrouter.ai/rankings?category=roleplay"
 
 
@@ -197,97 +197,260 @@ async def _get_popularity_order() -> list[str]:
         return []
 
 
+async def _match_rankings_to_api_models(
+    rankings_models: list[dict[str, Any]], 
+    api_models: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """
+    Match models from rankings page to API models to get pricing.
+    
+    Uses multiple matching strategies:
+    1. Exact match by canonical_slug
+    2. Exact match by id
+    3. Match by base model name (removing date suffixes)
+    4. Fuzzy match by model name
+    
+    Args:
+        rankings_models: List of model dicts from rankings page with 'model_id' and 'name'
+        api_models: List of model dicts from API with 'id', 'canonical_slug', 'name', 'pricing'
+        
+    Returns:
+        Dictionary mapping rankings model_id to API model data
+    """
+    # Build lookup maps from API models
+    id_to_model = {}
+    canonical_to_model = {}
+    base_to_models = {}
+    name_to_models = {}
+    
+    for model in api_models:
+        model_id = model.get("id")
+        canonical_slug = model.get("canonical_slug")
+        model_name = model.get("name", "")
+        
+        id_to_model[model_id] = model
+        if canonical_slug:
+            canonical_to_model[canonical_slug] = model
+        
+        # Create base model name (remove date suffixes like -20250929)
+        if "/" in model_id:
+            parts = model_id.split("/")
+            model_name_parts = parts[1].split("-")
+            if len(model_name_parts) > 1:
+                last_part = model_name_parts[-1]
+                if last_part.isdigit() or (len(last_part) >= 4 and last_part[:4].isdigit()):
+                    base_name = parts[0] + "/" + "-".join(model_name_parts[:-1])
+                else:
+                    base_name = model_id
+            else:
+                base_name = model_id
+            
+            if base_name not in base_to_models:
+                base_to_models[base_name] = []
+            base_to_models[base_name].append(model)
+        
+        # Index by normalized name for fuzzy matching
+        normalized_name = model_name.lower()
+        for prefix in ["google: ", "anthropic: ", "xai: ", "x-ai: ", "deepseek: ", "openai: ", "xiaomi: "]:
+            if normalized_name.startswith(prefix):
+                normalized_name = normalized_name[len(prefix):]
+                break
+        normalized_name = " ".join(normalized_name.split())
+        if normalized_name and normalized_name not in name_to_models:
+            name_to_models[normalized_name] = []
+        if normalized_name:
+            name_to_models[normalized_name].append(model)
+    
+    # Match rankings models to API models
+    matched = {}
+    for rank_model in rankings_models:
+        scraped_id = rank_model["model_id"]
+        scraped_name = rank_model.get("name", "")
+        matched_model = None
+        
+        # Strategy 1: Exact match by canonical_slug
+        if scraped_id in canonical_to_model:
+            matched_model = canonical_to_model[scraped_id]
+        
+        # Strategy 2: Exact match by id
+        elif scraped_id in id_to_model:
+            matched_model = id_to_model[scraped_id]
+        
+        # Strategy 3: Match by base name
+        elif "/" in scraped_id:
+            parts = scraped_id.split("/")
+            model_name_parts = parts[1].split("-")
+            if len(model_name_parts) > 1:
+                last_part = model_name_parts[-1]
+                if last_part.isdigit() or (len(last_part) >= 4 and last_part[:4].isdigit()):
+                    base_name = parts[0] + "/" + "-".join(model_name_parts[:-1])
+                else:
+                    base_name = scraped_id
+            else:
+                base_name = scraped_id
+            
+            if base_name in base_to_models:
+                matched_model = base_to_models[base_name][0]
+        
+        # Strategy 4: Fuzzy match by name
+        if not matched_model and scraped_name:
+            normalized_scraped = scraped_name.lower()
+            for prefix in ["google: ", "anthropic: ", "xai: ", "x-ai: ", "deepseek: ", "openai: ", "xiaomi: "]:
+                if normalized_scraped.startswith(prefix):
+                    normalized_scraped = normalized_scraped[len(prefix):]
+                    break
+            normalized_scraped = " ".join(normalized_scraped.split())
+            
+            if normalized_scraped in name_to_models:
+                matched_model = name_to_models[normalized_scraped][0]
+        
+        if matched_model:
+            matched[scraped_id] = matched_model
+        else:
+            logger.debug(f"Could not match rankings model '{scraped_id}' to API model")
+    
+    return matched
+
+
+def _format_model_entry(model: dict[str, Any], model_id: str, name: str) -> dict[str, Any]:
+    """
+    Format a single model entry with pricing information.
+    
+    Args:
+        model: API model data with pricing
+        model_id: Model ID to use
+        name: Model name to use
+        
+    Returns:
+        Formatted model dictionary with 'value', 'label', and 'provider'
+    """
+    pricing = model.get("pricing", {})
+    prompt_price_str = pricing.get("prompt", "0")
+    completion_price_str = pricing.get("completion", "0")
+    
+    # Format label with pricing
+    try:
+        prompt_price = float(prompt_price_str) if prompt_price_str else 0.0
+        completion_price = float(completion_price_str) if completion_price_str else 0.0
+        
+        if prompt_price == 0.0 and completion_price == 0.0:
+            # Check if this is explicitly a free model
+            if ":free" in model_id.lower() or "free" in name.lower():
+                label = f"{name} (free)"
+            else:
+                # Zero pricing - show without price
+                label = name
+        else:
+            prompt_price_formatted = _format_price(prompt_price_str)
+            completion_price_formatted = _format_price(completion_price_str)
+            label = f"{name} ({prompt_price_formatted} / {completion_price_formatted})"
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid pricing format for model {model_id}")
+        label = name
+    
+    return {
+        "value": model_id,
+        "label": label,
+        "provider": "openrouter",
+    }
+
+
 async def scrape_roleplay_models() -> list[dict[str, Any]]:
     """
-    Fetch roleplay models from OpenRouter API.
+    Fetch roleplay models by combining rankings page and API category filter.
     
-    Uses the JSON API to get reliable model data with pricing.
-    Optionally uses rankings page to get popularity order.
+    Strategy:
+    1. Get popular models from rankings page (for ordering, includes models like xiaomi/mimo-v2-flash)
+    2. Get all models from API category filter (ensures we include all roleplay models, including free ones)
+    3. Merge: use rankings order for models that appear there, append API-only models at the end
     
     Returns:
         List of model dictionaries with 'value', 'label', and 'provider' fields
         suitable for use in get_available_llms()
-        Models are ordered by popularity if rankings data is available, otherwise by name
+        Models are ordered by popularity from rankings, then API category models
     """
-    logger.info("Fetching OpenRouter roleplay models from API...")
+    logger.info("Fetching OpenRouter roleplay models...")
     
     if not OPENROUTER_API_KEY:
         logger.error("OPENROUTER_API_KEY not set, cannot fetch models")
         return []
     
     try:
-        # Fetch models from API
+        # Step 1: Get popular models from rankings page (for ordering)
+        rankings_models = []
+        try:
+            html = await _fetch_rankings_page_with_playwright()
+            rankings_models = _parse_models_from_html(html)
+            logger.info(f"Found {len(rankings_models)} models in rankings page")
+        except Exception as e:
+            logger.warning(f"Could not fetch rankings page, will use API category filter only: {e}")
+        
+        # Step 2: Fetch models from API category filter (ensures we get all roleplay models)
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                MODELS_API_URL,
+            category_response = await client.get(
+                "https://openrouter.ai/api/v1/models?category=roleplay",
                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
             )
-            response.raise_for_status()
-            data = response.json()
+            category_response.raise_for_status()
+            category_data = category_response.json()
         
-        api_models = data.get("data", [])
-        if not api_models:
-            logger.warning("No models returned from OpenRouter API")
-            return []
+        api_category_models = category_data.get("data", [])
+        logger.info(f"Fetched {len(api_category_models)} models from API category filter")
         
-        logger.info(f"Fetched {len(api_models)} roleplay models from API")
+        # Step 3: If we have rankings models, also fetch all models for matching
+        all_api_models = {}
+        if rankings_models:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                all_response = await client.get(
+                    ALL_MODELS_API_URL,
+                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                )
+                all_response.raise_for_status()
+                all_data = all_response.json()
+            
+            for model in all_data.get("data", []):
+                all_api_models[model.get("id")] = model
         
-        # Optionally get popularity order from rankings page
-        popularity_order = await _get_popularity_order()
-        popularity_index = {model_id: idx for idx, model_id in enumerate(popularity_order)} if popularity_order else {}
+        # Step 4: Build lookup for API category models
+        category_models_by_id = {model.get("id"): model for model in api_category_models}
         
-        # Build result list from API data
+        # Step 5: Process rankings models first (in popularity order)
         result = []
-        for model in api_models:
-            model_id = model.get("id")
-            name = model.get("name", model_id)
-            pricing = model.get("pricing", {})
+        seen_model_ids = set()
+        
+        if rankings_models:
+            # Match rankings models to API models
+            matched_models = await _match_rankings_to_api_models(rankings_models, list(all_api_models.values()))
             
-            prompt_price_str = pricing.get("prompt", "0")
-            completion_price_str = pricing.get("completion", "0")
-            
-            # Format label with pricing
-            try:
-                prompt_price = float(prompt_price_str) if prompt_price_str else 0.0
-                completion_price = float(completion_price_str) if completion_price_str else 0.0
+            for rank_model in rankings_models:
+                scraped_id = rank_model["model_id"]
+                api_model = matched_models.get(scraped_id)
                 
-                if prompt_price == 0.0 and completion_price == 0.0:
-                    # Check if this is explicitly a free model
-                    if ":free" in model_id.lower() or "free" in name.lower():
-                        label = f"{name} (free)"
-                    else:
-                        # Zero pricing - show without price
-                        label = name
+                if api_model:
+                    model_id = api_model.get("id")
+                    # Use category model if available (might have different pricing)
+                    if model_id in category_models_by_id:
+                        api_model = category_models_by_id[model_id]
+                    
+                    name = api_model.get("name", rank_model.get("name", model_id))
+                    result.append(_format_model_entry(api_model, model_id, name))
+                    seen_model_ids.add(model_id)
                 else:
-                    prompt_price_formatted = _format_price(prompt_price_str)
-                    completion_price_formatted = _format_price(completion_price_str)
-                    label = f"{name} ({prompt_price_formatted} / {completion_price_formatted})"
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid pricing format for model {model_id}")
-                label = name
-            
-            # Get popularity rank if available
-            popularity_rank = popularity_index.get(model_id, len(api_models))
-            
-            result.append({
-                "value": model_id,
-                "label": label,
-                "provider": "openrouter",
-                "_popularity_rank": popularity_rank,  # For sorting
-            })
+                    logger.debug(f"Could not match rankings model '{scraped_id}' to API model")
         
-        # Sort by popularity rank if available, otherwise by name
-        result.sort(key=lambda x: (x["_popularity_rank"], x["label"]))
+        # Step 6: Add remaining API category models that weren't in rankings
+        for model in api_category_models:
+            model_id = model.get("id")
+            if model_id not in seen_model_ids:
+                name = model.get("name", model_id)
+                result.append(_format_model_entry(model, model_id, name))
+                seen_model_ids.add(model_id)
         
-        # Remove internal sorting field
-        for item in result:
-            item.pop("_popularity_rank", None)
-        
-        logger.info(f"Successfully fetched {len(result)} roleplay models with pricing")
+        logger.info(f"Successfully fetched {len(result)} roleplay models (rankings: {len(rankings_models) if rankings_models else 0}, API category: {len(api_category_models)})")
         return result
         
     except Exception as e:
-        logger.error(f"Error fetching OpenRouter models from API: {e}")
+        logger.error(f"Error fetching OpenRouter models: {e}")
         raise
 
 
