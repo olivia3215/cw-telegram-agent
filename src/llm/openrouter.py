@@ -58,6 +58,7 @@ class OpenRouterLLM(LLM):
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1",
         )
+        self.history_size = 100
 
         # Safety settings for Gemini models (OpenRouter format uses "BLOCK_NONE" instead of "OFF")
         self.safety_settings = [
