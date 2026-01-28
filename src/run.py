@@ -994,7 +994,13 @@ async def main():
                 missing_keys.append(f"Agent '{agent.name}' uses default Gemini model but GOOGLE_GEMINI_API_KEY is not set")
         else:
             llm_name_lower = llm_name.strip().lower()
-            if llm_name_lower.startswith("gemini"):
+            # Check for OpenRouter format FIRST (before other prefix checks)
+            # OpenRouter models use "provider/model" format (e.g., "openai/gpt-oss-120b")
+            # This must come before other checks since "openai/gpt-oss-120b" starts with "openai"
+            if "/" in llm_name_lower or llm_name_lower.startswith("openrouter"):
+                if not OPENROUTER_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses OpenRouter model '{llm_name}' but OPENROUTER_API_KEY is not set")
+            elif llm_name_lower.startswith("gemini"):
                 if not GOOGLE_GEMINI_API_KEY:
                     missing_keys.append(f"Agent '{agent.name}' uses Gemini model '{llm_name}' but GOOGLE_GEMINI_API_KEY is not set")
             elif llm_name_lower.startswith("grok"):
@@ -1003,10 +1009,6 @@ async def main():
             elif llm_name_lower.startswith("gpt") or llm_name_lower.startswith("openai"):
                 if not OPENAI_API_KEY:
                     missing_keys.append(f"Agent '{agent.name}' uses OpenAI model '{llm_name}' but OPENAI_API_KEY is not set")
-            elif "/" in llm_name_lower or llm_name_lower.startswith("openrouter"):
-                # OpenRouter models use "provider/model" format
-                if not OPENROUTER_API_KEY:
-                    missing_keys.append(f"Agent '{agent.name}' uses OpenRouter model '{llm_name}' but OPENROUTER_API_KEY is not set")
     
     if missing_keys:
         logger.error("Startup validation failed: Missing required API keys for agent LLM models:")
