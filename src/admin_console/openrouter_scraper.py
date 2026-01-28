@@ -139,6 +139,28 @@ def _extract_base_model_name(model_id: str) -> str:
         return model_id
 
 
+def _normalize_model_name(name: str) -> str:
+    """
+    Normalize model name by removing provider prefixes and normalizing whitespace.
+    
+    Strips common provider prefixes like "google: ", "anthropic: ", etc. and
+    normalizes whitespace to single spaces.
+    
+    Args:
+        name: Model name to normalize
+        
+    Returns:
+        Normalized model name (lowercase, provider prefix removed, whitespace normalized)
+    """
+    normalized = name.lower()
+    prefixes = ["google: ", "anthropic: ", "xai: ", "x-ai: ", "deepseek: ", "openai: ", "xiaomi: "]
+    for prefix in prefixes:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    return " ".join(normalized.split())
+
+
 def _parse_models_from_html(html: str) -> list[dict[str, Any]]:
     """
     Parse model information from the rankings page HTML.
@@ -252,12 +274,7 @@ async def _match_rankings_to_api_models(
             base_to_models[base_name].append(model)
         
         # Index by normalized name for fuzzy matching
-        normalized_name = model_name.lower()
-        for prefix in ["google: ", "anthropic: ", "xai: ", "x-ai: ", "deepseek: ", "openai: ", "xiaomi: "]:
-            if normalized_name.startswith(prefix):
-                normalized_name = normalized_name[len(prefix):]
-                break
-        normalized_name = " ".join(normalized_name.split())
+        normalized_name = _normalize_model_name(model_name)
         if normalized_name and normalized_name not in name_to_models:
             name_to_models[normalized_name] = []
         if normalized_name:
@@ -286,12 +303,7 @@ async def _match_rankings_to_api_models(
         
         # Strategy 4: Fuzzy match by name
         if not matched_model and scraped_name:
-            normalized_scraped = scraped_name.lower()
-            for prefix in ["google: ", "anthropic: ", "xai: ", "x-ai: ", "deepseek: ", "openai: ", "xiaomi: "]:
-                if normalized_scraped.startswith(prefix):
-                    normalized_scraped = normalized_scraped[len(prefix):]
-                    break
-            normalized_scraped = " ".join(normalized_scraped.split())
+            normalized_scraped = _normalize_model_name(scraped_name)
             
             if normalized_scraped in name_to_models:
                 matched_model = name_to_models[normalized_scraped][0]
