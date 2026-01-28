@@ -3,16 +3,13 @@
 # Copyright (c) 2025 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
-import asyncio
 import base64
-import copy
 import json
 import logging
 import os
 from collections.abc import Iterable
 from typing import Any
 
-import httpx  # pyright: ignore[reportMissingImports]
 from openai import AsyncOpenAI  # pyright: ignore[reportMissingImports]
 
 from config import OPENROUTER_API_KEY
