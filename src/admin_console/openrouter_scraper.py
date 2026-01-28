@@ -324,7 +324,16 @@ def _format_model_entry(model: dict[str, Any], model_id: str, name: str) -> dict
     Returns:
         Formatted model dictionary with 'value', 'label', and 'provider'
     """
-    pricing = model.get("pricing", {})
+    # Handle None values for model_id and name
+    if model_id is None:
+        model_id = model.get("id", "unknown")
+    if name is None:
+        name = model.get("name", model_id) or "unknown"
+    
+    # Handle None pricing - model.get("pricing") can return None even if key exists
+    pricing = model.get("pricing")
+    if pricing is None or not isinstance(pricing, dict):
+        pricing = {}
     prompt_price_str = pricing.get("prompt", "0")
     completion_price_str = pricing.get("completion", "0")
     
@@ -335,7 +344,10 @@ def _format_model_entry(model: dict[str, Any], model_id: str, name: str) -> dict
         
         if prompt_price == 0.0 and completion_price == 0.0:
             # Check if this is explicitly a free model
-            if ":free" in model_id.lower() or "free" in name.lower():
+            # Safe string operations - model_id and name are guaranteed to be strings at this point
+            model_id_lower = (model_id or "").lower()
+            name_lower = (name or "").lower()
+            if ":free" in model_id_lower or "free" in name_lower:
                 label = f"{name} (free)"
             else:
                 # Zero pricing - show without price
@@ -344,9 +356,9 @@ def _format_model_entry(model: dict[str, Any], model_id: str, name: str) -> dict
             prompt_price_formatted = _format_price(prompt_price_str)
             completion_price_formatted = _format_price(completion_price_str)
             label = f"{name} ({prompt_price_formatted} / {completion_price_formatted})"
-    except (ValueError, TypeError):
-        logger.warning(f"Invalid pricing format for model {model_id}")
-        label = name
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.warning(f"Invalid pricing format for model {model_id}: {e}")
+        label = name or model_id or "unknown"
     
     return {
         "value": model_id,
