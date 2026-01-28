@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 openrouter_bp = Blueprint("openrouter", __name__)
 
 
-@openrouter_bp.route("/api/admin/openrouter/refresh-models", methods=["POST"])
+@openrouter_bp.route("/api/openrouter/refresh-models", methods=["POST"])
 def api_openrouter_refresh_models():
     """Trigger a refresh of OpenRouter roleplay models."""
     try:
