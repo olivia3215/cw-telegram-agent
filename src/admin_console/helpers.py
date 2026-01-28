@@ -174,7 +174,7 @@ def get_default_llm() -> str:
 
 
 def get_available_llms() -> list[dict[str, Any]]:
-    """Get list of available LLM options with metadata.
+    """Get list of available LLM options with metadata from database.
     
     Filters models based on API key availability:
     - Gemini models only shown if GOOGLE_GEMINI_API_KEY is set
@@ -182,81 +182,42 @@ def get_available_llms() -> list[dict[str, Any]]:
     - OpenAI models only shown if OPENAI_API_KEY is set
     - OpenRouter models only shown if OPENROUTER_API_KEY is set
     """
-    all_llms = [
-        # Gemini models
-        {
-            "value": "gemini-3-pro-preview",
-            "label": "gemini-3-pro-preview ($2.00 / $12.00)",
-            "provider": "gemini",
-        },
-        {
-            "value": "gemini-2.5-pro",
-            "label": "gemini-2.5-pro ($1.25 / $10.00)",
-            "provider": "gemini",
-        },
-        {
-            "value": "gemini-3-flash-preview",
-            "label": "gemini-3-flash-preview ($0.50 / $3.00)",
-            "provider": "gemini",
-        },
-        {
-            "value": "gemini-2.5-flash-lite-preview-09-2025",
-            "label": "gemini-2.5-flash-lite-preview-09-2025 ($0.10 / $0.40)",
-            "provider": "gemini",
-        },
-        {
-            "value": "gemini-2.0-flash",
-            "label": "gemini-2.0-flash ($0.10 / $0.40)",
-            "provider": "gemini",
-        },
-        {
-            "value": "gemini-2.0-flash-lite",
-            "label": "gemini-2.0-flash-lite ($0.07 / $0.30)",
-            "provider": "gemini",
-        },
-        # Grok models
-        {
-            "value": "grok-4-1-fast-non-reasoning",
-            "label": "grok-4-1-fast-non-reasoning ($0.20 / $0.50)",
-            "provider": "grok",
-        },
-        {
-            "value": "grok-4-0709",
-            "label": "grok-4-0709 ($3.00 / $15.00)",
-            "provider": "grok",
-        },
-        # OpenAI models
-        {
-            "value": "gpt-5.2",
-            "label": "gpt-5.2 ($1.75 / $14.00)",
-            "provider": "openai",
-        },
-        {
-            "value": "gpt-5.1",
-            "label": "gpt-5.1 ($1.50 / $10.00)",
-            "provider": "openai",
-        },
-        {
-            "value": "gpt-5-mini",
-            "label": "gpt-5-mini ($0.25 / $2.00)",
-            "provider": "openai",
-        },
-        {
-            "value": "gpt-5-nano",
-            "label": "gpt-5-nano ($0.05 / $0.40)",
-            "provider": "openai",
-        },
-    ]
-    
-    # Add OpenRouter models from cache if available
-    if OPENROUTER_API_KEY:
-        try:
-            from admin_console.openrouter_scraper import load_cached_models
-            openrouter_models = load_cached_models()
-            if openrouter_models:
-                all_llms.extend(openrouter_models)
-        except Exception as e:
-            logger.warning(f"Error loading OpenRouter models: {e}")
+    try:
+        from db.available_llms import get_all_llms
+        
+        db_llms = get_all_llms()
+        
+        # Convert database format to frontend format
+        all_llms = []
+        for llm in db_llms:
+            prompt_price = float(llm.get("prompt_price", 0.0))
+            completion_price = float(llm.get("completion_price", 0.0))
+            
+            # Format label with pricing
+            # Prices in database are already per 1M tokens, so format directly
+            model_id = llm.get("model_id", "")
+            name = llm.get("name", model_id)
+            
+            if prompt_price == 0.0 and completion_price == 0.0:
+                # Check if this is explicitly a free model
+                if ":free" in model_id.lower() or "free" in name.lower():
+                    label = f"{name} (free)"
+                else:
+                    label = name
+            else:
+                prompt_price_formatted = f"${prompt_price:.2f}"
+                completion_price_formatted = f"${completion_price:.2f}"
+                label = f"{name} ({prompt_price_formatted} / {completion_price_formatted})"
+            
+            all_llms.append({
+                "value": llm.get("model_id", ""),
+                "label": label,
+                "provider": llm.get("provider", "custom"),
+            })
+    except Exception as e:
+        logger.warning(f"Error loading LLMs from database: {e}")
+        # Fallback to empty list if database is not available
+        all_llms = []
     
     # Filter models based on API key availability
     filtered_llms = []
@@ -269,6 +230,9 @@ def get_available_llms() -> list[dict[str, Any]]:
         elif provider == "openai" and OPENAI_API_KEY:
             filtered_llms.append(llm)
         elif provider == "openrouter" and OPENROUTER_API_KEY:
+            filtered_llms.append(llm)
+        elif provider == "custom":
+            # Custom models are always shown (no API key requirement)
             filtered_llms.append(llm)
     
     # Remove provider key from output (not needed by frontend)

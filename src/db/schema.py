@@ -203,8 +203,34 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Create available_llms table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS available_llms (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    model_id VARCHAR(255) NOT NULL UNIQUE,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    prompt_price DECIMAL(10, 6) NOT NULL DEFAULT 0.0,
+                    completion_price DECIMAL(10, 6) NOT NULL DEFAULT 0.0,
+                    display_order INT NOT NULL DEFAULT 0,
+                    provider VARCHAR(50) NOT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_display_order (display_order),
+                    INDEX idx_provider (provider)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             conn.commit()
             logger.info("Database schema created successfully")
+            
+            # Migrate existing LLM data to available_llms table
+            try:
+                from db.available_llms import migrate_llm_data_to_database
+                migrate_llm_data_to_database()
+            except Exception as e:
+                # Don't fail schema creation if migration fails
+                logger.warning(f"Failed to migrate LLM data during schema creation: {e}")
             
             # Clean up any existing Telegram system user (777000) entries from agent_activity
             try:

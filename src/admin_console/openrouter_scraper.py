@@ -352,6 +352,7 @@ def _format_model_entry(model: dict[str, Any], model_id: str, name: str) -> dict
         "value": model_id,
         "label": label,
         "provider": "openrouter",
+        "description": model.get("description"),  # Include description from API
     }
 
 
