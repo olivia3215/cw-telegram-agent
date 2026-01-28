@@ -38,6 +38,59 @@ OPENAI_DEBUG_LOGGING: bool = os.environ.get("OPENAI_DEBUG_LOGGING", "").lower() 
 _TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 
 
+def _normalize_schema_for_openai_strict(schema: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize a JSON schema to meet OpenAI's strict mode requirements.
+    
+    OpenAI's strict mode requires:
+    1. Top-level schema must be type "object" (not "array")
+    2. All properties in an object schema must be in the "required" array
+    
+    This function recursively normalizes the schema to meet these requirements.
+    """
+    schema = copy.deepcopy(schema)
+    
+    def normalize_object(obj: dict[str, Any]) -> None:
+        """Recursively normalize object schemas to include all properties in required."""
+        if not isinstance(obj, dict):
+            return
+        
+        # Handle anyOf/oneOf/allOf - normalize each option
+        for key in ["anyOf", "oneOf", "allOf"]:
+            if key in obj:
+                for sub_schema in obj[key]:
+                    if isinstance(sub_schema, dict):
+                        normalize_object(sub_schema)
+        
+        # Handle object schemas with properties
+        if obj.get("type") == "object" and "properties" in obj:
+            properties = obj["properties"]
+            required = set(obj.get("required", []))
+            # Add all property keys to required for strict mode
+            required.update(properties.keys())
+            obj["required"] = list(required)
+            
+            # Recursively normalize nested object properties
+            for prop_schema in properties.values():
+                if isinstance(prop_schema, dict):
+                    normalize_object(prop_schema)
+        
+        # Handle array schemas with items
+        if obj.get("type") == "array" and "items" in obj:
+            items = obj["items"]
+            if isinstance(items, dict):
+                normalize_object(items)
+            elif isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        normalize_object(item)
+    
+    # Start normalization from the top level
+    normalize_object(schema)
+    
+    return schema
+
+
 class OpenAILLM(LLM):
     prompt_name = "Instructions"
 
@@ -389,13 +442,18 @@ class OpenAILLM(LLM):
             schema_dict = get_task_response_schema_dict(allowed_task_types=allowed_task_types)
             
             # OpenAI requires the schema to be type "object", but our schema is type "array"
-            # Wrap the array schema in an object schema if needed
+            # Also, OpenAI's strict mode requires all properties to be in the "required" array
+            # Normalize the schema to meet these requirements
             if schema_dict.get("type") == "array":
                 needs_unwrapping = True
+                
+                # Normalize the schema: ensure all properties in each task schema are in required
+                normalized_schema = _normalize_schema_for_openai_strict(schema_dict)
+                
                 wrapped_schema = {
                     "type": "object",
                     "properties": {
-                        "tasks": schema_dict,
+                        "tasks": normalized_schema,
                     },
                     "required": ["tasks"],
                     "additionalProperties": False,
@@ -488,19 +546,25 @@ class OpenAILLM(LLM):
         model_name = model or self.model_name
 
         # OpenAI requires the schema to be type "object", but schemas can be type "array"
-        # Wrap the array schema in an object schema if needed
+        # Also, OpenAI's strict mode requires all properties to be in the "required" array
+        # Normalize and wrap the schema if needed
         needs_unwrapping = False
         schema_to_use = json_schema
         if json_schema.get("type") == "array":
             needs_unwrapping = True
+            # Normalize the schema to ensure all properties are in required arrays
+            normalized_schema = _normalize_schema_for_openai_strict(json_schema)
             schema_to_use = {
                 "type": "object",
                 "properties": {
-                    "tasks": json_schema,
+                    "tasks": normalized_schema,
                 },
                 "required": ["tasks"],
                 "additionalProperties": False,
             }
+        else:
+            # Even if not an array, normalize to ensure strict mode compliance
+            schema_to_use = _normalize_schema_for_openai_strict(json_schema)
 
         # Optional comprehensive logging for debugging
         if OPENAI_DEBUG_LOGGING:
