@@ -58,7 +58,6 @@ class OpenRouterLLM(LLM):
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1",
         )
-        self.history_size = 100
 
         # Safety settings for Gemini models (OpenRouter format uses "BLOCK_NONE" instead of "OFF")
         self.safety_settings = [
@@ -296,11 +295,12 @@ class OpenRouterLLM(LLM):
         self,
         history: Iterable[ChatMsg],
         system_prompt: str | None = None,
+        history_size: int = 500,
     ) -> list[dict[str, Any]]:
         """
         Construct OpenAI-compatible messages from history.
           - System message (if provided)
-          - Chronological user/assistant turns for prior messages (bounded by history_size),
+          - Chronological user/assistant turns for prior messages (limited to last history_size messages),
             each with combined text parts.
 
         Pure function: no I/O, no network, no mutation of inputs.
@@ -311,8 +311,13 @@ class OpenRouterLLM(LLM):
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
+        # Convert history to list and limit to last history_size messages
+        history_list = list(history)
+        if history_size > 0:
+            history_list = history_list[-history_size:]
+
         # Add history turns
-        for m in history:
+        for m in history_list:
             is_agent = bool(m.get("is_agent"))
             role = "assistant" if is_agent else "user"
             parts = self._normalize_parts_for_message(m, is_agent=is_agent)
@@ -366,7 +371,7 @@ class OpenRouterLLM(LLM):
         """
         Build messages using the parts-aware builder and call OpenRouter with structured output.
         """
-        messages = self._build_messages(history, system_prompt=system_prompt)
+        messages = self._build_messages(history, system_prompt=system_prompt, history_size=history_size)
 
         total_turns = len(messages)
         logger.debug(
