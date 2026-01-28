@@ -14,49 +14,29 @@
 [
   {
     "kind": "think",
-    "id": "think-1",
     "text": "Plan to respond warmly, mention the event, and ask a follow-up."
   },
   {
     "kind": "send",
-    "id": "send-1",
     "text": "Thanks for the invite! I'm __so excited__ to join you this evening."
   }
 ]
 ```
-
-## Text formatting in `send` tasks
-
-- Formatting guidance for `text`:
-  Format the text your response using the Telegram-specific variant of markdown.
-  - Bold: `**bold**` (two asterisks)
-  - Italic: `__italic__` (two underscores)
-  - Code: `` `inline` `` (a backtick)
-  - Strikethrough: `~~text~~` (two tilde characters)
-  - Mention users with `@username` or `tg://user?id=NNNN`.
-
-## Task Identifiers and Revisions
-
-- `id` values are optional, but recommended for `send` and `sticker`. Any string is allowed.
-- Reuse the same `id` to replace a previous task. When the runtime sees a new task
-  with an existing `id`, it removes the earlier task before adding the new one.
-- To cancel a task, emit a `think` task with the same `id`. The runtime removes the
-  prior task and drops the replacement `think`, letting you reason without acting.
 
 ## Supported Task Types
 
 ### `think`
 - Purpose: internal reasoning. The content is never shown to the user.
 - Fields: `text` (string).
-- Think freely to plan, explain why no action was taken, or to replace existing tasks.
+- Think freely to plan or explain why no action was taken.
 
 ### `send`
 - Sends your text as a message in the current channel.
 - Fields:
   - `text`: Message body (Markdown 2.0 for Telegram). Use separate tasks for paragraphs.
-  - `id`: Task identifier. You should always produce an identifier for a `send` task in case you decide to revise it.
   - `reply_to` (optional): Message ID to reply to (integer).
 - Formatting guidance for `text`:
+  Format the text your response using the Telegram-specific variant of markdown.
   - Bold: `**bold**` (two asterisks)
   - Italic: `__italic__` (two underscores)
   - Code: `inline` (a single backtick)
@@ -70,9 +50,7 @@
 - Fields:
   - `emoji`: The emoji reaction to send.
   - `message_id`: Telegram message ID to react to (integer). This is required.
-  - `id` (optional): Identifier so you can revise or cancel this reaction.
-- Suggested common emoji: ❤, 👍, 🔥, 🥰, 🤣, 💯, 😍, 👀, 👏, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🖕, 💋, 💔, 😇, 😭, 😘, 🤪, 🥳, 😡, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 🎉, 💩, ✍, 🤗, 🤝, 😈, 🏆, 🤩
-- Not all emoji are supported. Use one of these or one you've seen used.
+- Emoji: one of: ❤, 👍, 🔥, 🥰, 🤣, 💯, 😍, 👀, 👏, 👎, 🤯, 🤔, 😁, 😢, 🤬, 😱, 👌, 🙏, 🖕, 💋, 💔, 😇, 😭, 😘, 🤪, 🥳, 😡, 😥, 🤭, 🙄, 🥱, 🤤, 🤐, 🤮, 🎉, 💩, ✍, 🤗, 🤝, 😈, 🏆, 🤩
 
 ### `sticker`
 - Sends a sticker in the current channel.
@@ -95,7 +73,6 @@ Use `think` tasks to:
 - Plan response structure and emotional tone.
 - Explore options before committing.
 - Explain why no outward action is taken.
-- Cancel a previously emitted task by reusing its `id`.
 - Review an already emitted `send` task for coherence.
 
 Think tasks are dropped before execution. You may include as many as needed, before,
