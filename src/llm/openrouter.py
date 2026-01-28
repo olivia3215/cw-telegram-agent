@@ -20,7 +20,6 @@ from media.mime_utils import (
 )
 
 from .base import LLM, ChatMsg, MsgPart
-from .task_schema import get_task_response_schema_dict
 from .utils import format_string_for_logging as _format_string_for_logging
 
 logger = logging.getLogger(__name__)
@@ -32,8 +31,6 @@ OPENROUTER_DEBUG_LOGGING: bool = os.environ.get("OPENROUTER_DEBUG_LOGGING", "").
     "yes",
     "on",
 )
-
-_TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
 
 
 class OpenRouterLLM(LLM):
