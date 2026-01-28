@@ -383,9 +383,25 @@ class OpenAILLM(LLM):
 
         # Build response format with JSON schema if task types are specified
         response_format = None
+        needs_unwrapping = False
         if allowed_task_types is not None:
             from .task_schema import get_task_response_schema_dict
             schema_dict = get_task_response_schema_dict(allowed_task_types=allowed_task_types)
+            
+            # OpenAI requires the schema to be type "object", but our schema is type "array"
+            # Wrap the array schema in an object schema if needed
+            if schema_dict.get("type") == "array":
+                needs_unwrapping = True
+                wrapped_schema = {
+                    "type": "object",
+                    "properties": {
+                        "tasks": schema_dict,
+                    },
+                    "required": ["tasks"],
+                    "additionalProperties": False,
+                }
+                schema_dict = wrapped_schema
+            
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
@@ -429,6 +445,18 @@ class OpenAILLM(LLM):
                     "Temporary error: response starts with a metadata placeholder - will retry"
                 )
 
+            # Unwrap the response if we wrapped the schema
+            if needs_unwrapping:
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict) and "tasks" in parsed:
+                        # Extract the tasks array from the wrapped object
+                        text = json.dumps(parsed["tasks"])
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    # If unwrapping fails, log a warning but return the original text
+                    # The parser will handle the error appropriately
+                    logger.warning(f"Failed to unwrap OpenAI response: {e}. Returning original response.")
+
             return text or ""
 
         except Exception as e:
@@ -459,11 +487,26 @@ class OpenAILLM(LLM):
         """
         model_name = model or self.model_name
 
+        # OpenAI requires the schema to be type "object", but schemas can be type "array"
+        # Wrap the array schema in an object schema if needed
+        needs_unwrapping = False
+        schema_to_use = json_schema
+        if json_schema.get("type") == "array":
+            needs_unwrapping = True
+            schema_to_use = {
+                "type": "object",
+                "properties": {
+                    "tasks": json_schema,
+                },
+                "required": ["tasks"],
+                "additionalProperties": False,
+            }
+
         # Optional comprehensive logging for debugging
         if OPENAI_DEBUG_LOGGING:
             logger.info("=== OPENAI_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
             logger.info(f"System Prompt: {system_prompt}")
-            logger.info(f"JSON Schema: {json.dumps(json_schema, indent=2)}")
+            logger.info(f"JSON Schema: {json.dumps(schema_to_use, indent=2)}")
             logger.info("=== END OPENAI_DEBUG_LOGGING: JSON SCHEMA QUERY ===")
 
         try:
@@ -480,7 +523,7 @@ class OpenAILLM(LLM):
                     "json_schema": {
                         "name": "response",
                         "strict": True,
-                        "schema": json_schema,
+                        "schema": schema_to_use,
                     },
                 },
                 timeout=timeout_s or 60.0,
@@ -508,6 +551,18 @@ class OpenAILLM(LLM):
                 raise Exception(
                     "Temporary error: response starts with a metadata placeholder - will retry"
                 )
+
+            # Unwrap the response if we wrapped the schema
+            if needs_unwrapping:
+                try:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict) and "tasks" in parsed:
+                        # Extract the tasks array from the wrapped object
+                        text = json.dumps(parsed["tasks"])
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    # If unwrapping fails, log a warning but return the original text
+                    # The caller will handle the error appropriately
+                    logger.warning(f"Failed to unwrap OpenAI response: {e}. Returning original response.")
 
             return text or ""
 
