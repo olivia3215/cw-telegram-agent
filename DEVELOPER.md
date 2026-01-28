@@ -281,8 +281,9 @@ class Agent(
 
 4. **`AgentTelegramMixin`** (`agent/telegram.py`)
    - Telegram client creation and management
-   - Entity caching and resolution
+   - Entity caching and resolution (with contacts fallback)
    - Channel name resolution
+   - Automatic contact addition for new DM conversations
 
 **Benefits:**
 

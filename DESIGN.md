@@ -481,12 +481,37 @@ The system uses multiple caches to minimize API calls and improve performance.
 | Cache | TTL | Purpose | Invalidation |
 |-------|-----|---------|--------------|
 | Entity cache | 5 minutes | Telegram entities (users, chats) | On `PeerIdInvalidError` |
+| Contacts cache | 5 minutes | Agent's contacts list (for entity resolution fallback) | On contact addition or expiration |
 | Mute cache | 60 seconds | Mute status per peer | Automatic expiration |
 | Blocklist cache | 60 seconds | Blocked users | Automatic expiration |
 | Media description cache | Persistent | AI-generated descriptions | Manual cache clear |
 | Sticker cache | Session | Sticker documents | Session restart |
 
 **Rationale:** Different TTLs balance freshness with API call minimization. Shorter TTLs for frequently changing data, longer for stable data.
+
+### Entity Resolution with Contacts Fallback
+
+The entity cache implements a contacts fallback mechanism to improve entity resolution reliability:
+
+**Primary Resolution:**
+- First attempts to resolve entities via `client.get_entity()`
+- Caches successful lookups for 5 minutes
+
+**Contacts Fallback:**
+- When `get_entity()` fails for positive user IDs (individual users, not groups/channels) with "Could not find the input entity" error, the system:
+  1. Checks the agent's contacts list (cached for 5 minutes)
+  2. If found in contacts, returns the user entity and caches it normally
+  3. If not found, caches the "not found" result with a shorter TTL (5 minutes) to allow retries if the contact is added later
+
+**Automatic Contact Addition:**
+- When processing new direct message conversations, the system automatically adds users to the agent's contacts if they're not already present
+- This helps ensure future entity resolution succeeds even if the user's account becomes temporarily inaccessible via normal entity lookup
+- Contact addition is best-effort and failures are logged but don't block message processing
+
+**Benefits:**
+- Improves reliability when resolving users who may have privacy settings that prevent normal entity lookup
+- Reduces failed entity resolution errors in conversations
+- Maintains conversation continuity even when user accounts have temporary accessibility issues
 
 ## Error Recovery
 
