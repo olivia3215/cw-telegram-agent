@@ -35,6 +35,7 @@ Conversational Telegram agents powered by an LLM. This README covers how to **se
 * A Telegram account (for each agent persona you run)
 * A Google Gemini API key (for image/sticker descriptions and video analysis, and for composing LLM responses if using Gemini)
 * A Grok API key (optional, only required if using Grok LLM for agent responses)
+* An OpenRouter API key (optional, only required if using OpenRouter LLM for agent responses)
 
 ---
 
@@ -65,6 +66,7 @@ export CINDY_AGENT_STATE_DIR="$(pwd)/state"
 export CINDY_AGENT_CONFIG_PATH="$(pwd)/samples:$(pwd)/configdir"
 export GOOGLE_GEMINI_API_KEY="your_api_key_here"
 export GROK_API_KEY="your_api_key_here"  # Optional, only needed if using Grok LLM
+export OPENROUTER_API_KEY="your_api_key_here"  # Optional, only needed if using OpenRouter LLM
 export TELEGRAM_API_ID="your_api_id_here"
 export TELEGRAM_API_HASH="your_api_hash_here"
 ```
@@ -100,6 +102,18 @@ Required only if using Grok LLM for agent responses. To obtain:
 4. Set it as an environment variable:
    ```bash
    export GROK_API_KEY="your_actual_api_key_here"
+   ```
+
+**OpenRouter API Key (`OPENROUTER_API_KEY`)**
+
+Required only if using OpenRouter LLM for agent responses. OpenRouter provides access to multiple LLM providers through a unified API. To obtain:
+
+1. Visit [OpenRouter](https://openrouter.ai) and create an account
+2. Generate an API key from your account settings
+3. Copy the generated API key
+4. Set it as an environment variable:
+   ```bash
+   export OPENROUTER_API_KEY="your_actual_api_key_here"
    ```
 
 See the [samples/README.md](samples/README.md) documentation for how to specify which LLM to use in agent configurations.
@@ -303,7 +317,7 @@ Wendy
 America/Los_Angeles   # optional; IANA timezone (e.g., America/New_York, Pacific/Honolulu)
 
 # LLM
-gemini-2.0-flash   # optional; LLM to use (gemini, grok, or specific model name)
+gemini-2.0-flash   # optional; LLM to use (gemini, grok, openrouter, or specific model name)
 
 # Role Prompt
 Chatbot
@@ -361,6 +375,8 @@ Notes:
   The `LLM` field specifies which LLM to use:
   - `gemini` or names starting with `gemini` (e.g., `gemini-2.0-flash`) - uses Gemini LLM
   - `grok` or names starting with `grok` (e.g., `grok-4-fast-non-reasoning`) - uses Grok LLM
+  - `openrouter` or models with `/` in the name (e.g., `anthropic/claude-sonnet-4.5`) - uses OpenRouter LLM
+  - Available LLMs are managed via the admin console Global/LLMs page
   - If omitted, defaults to Gemini with `gemini-3-flash-preview`
 * **Reserved names:** Agent display names and config file names (the filename without `.md`) cannot be `media` (reserved for system directories).
 * **Uniqueness:** Both agent display names (from the `Agent Name` field) and config file names (the filename without `.md`) must be unique across all config directories. If two config files have the same filename but different display names, only the first one will be registered to prevent state directory conflicts.

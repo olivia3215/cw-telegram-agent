@@ -122,15 +122,43 @@ The system uses MySQL for storing agent data (memories, intentions, plans, summa
 
 ## LLM integration
 
-The system supports multiple LLM providers (Gemini and Grok) with a unified interface. Each LLM implementation follows the same pattern while adapting to each provider's API requirements.
+The system supports multiple LLM providers (Gemini, Grok, and OpenRouter) with a unified interface. Each LLM implementation follows the same pattern while adapting to each provider's API requirements.
 
 ### LLM Routing
 
 The `llm.factory.create_llm_from_name()` function routes LLM creation based on the name prefix:
 - `gemini` prefix → `GeminiLLM` (uses Google Gemini API)
 - `grok` prefix → `GrokLLM` (uses xAI Grok API via OpenAI-compatible interface)
+- `openrouter` prefix or models with `/` in the name → `OpenRouterLLM` (uses OpenRouter API)
+- Models matching `provider/model` format (e.g., `anthropic/claude-sonnet-4.5`) → `OpenRouterLLM`
 
 Agents specify their LLM via the `LLM` field in their configuration file.
+
+### LLM List Management
+
+Available LLMs are stored in the MySQL `available_llms` table and managed through the admin console's Global/LLMs page.
+
+**Database Schema:**
+- `model_id` (VARCHAR, UNIQUE): Canonical model identifier (e.g., `gemini-3-flash-preview`, `anthropic/claude-sonnet-4.5`)
+- `name` (VARCHAR): Display name
+- `description` (TEXT): Model description
+- `prompt_price` (DECIMAL): Price per 1M prompt tokens
+- `completion_price` (DECIMAL): Price per 1M completion tokens
+- `display_order` (INT): Order for display in comboboxes
+- `provider` (VARCHAR): Provider name (gemini, grok, openrouter, openai, custom)
+
+**Access:**
+- `db.available_llms.get_all_llms()`: Get all LLMs ordered by display_order
+- `admin_console.helpers.get_available_llms()`: Get filtered LLMs based on API key availability
+- Admin console UI: Global → LLMs tab for full CRUD operations
+
+**Migration:**
+- On schema creation, existing LLMs are automatically migrated from:
+  - Hardcoded lists in `admin_console/helpers.py`
+  - `state/openrouter_roleplay_models.json` cache file
+  - Agent configurations
+  - Conversation LLM overrides
+  - Global parameters
 
 ### Gemini LLM
 
@@ -185,6 +213,42 @@ Emits:
 **Logging:**
 * Set `GROK_DEBUG_LOGGING=true` for comprehensive prompt/response logging.
 
+### OpenRouter LLM
+
+**Builder: `_build_messages(...)`**
+
+Located in `llm/openrouter.py`. Emits:
+
+1. **System message** (if provided)
+2. **Chronological history** (user/assistant turns with combined text parts)
+
+**Call path: `OpenRouterLLM.query_structured(...)`**
+
+* Builds messages using OpenAI-compatible format (system, user, assistant roles)
+* Uses OpenRouter API endpoint (`https://openrouter.ai/api/v1`)
+* Supports JSON schema structured output via `response_format` parameter
+* Supports multimodal inputs (images) via base64 encoding
+* Conditionally applies safety settings for Gemini models (when model ID starts with `google/` or contains `gemini`)
+* Combines message parts into single content strings per message
+* Response should be JSON array per Instructions.md prompt
+
+**Roles:**
+* **system**: system instructions
+* **user**: all non-agent speakers (can include image parts for multimodal)
+* **assistant**: the agent's prior turns
+
+**Safety Settings:**
+* For Gemini models accessed via OpenRouter, safety settings are applied using OpenRouter's format
+* Uses `BLOCK_NONE` threshold (equivalent to Gemini's `OFF`) for sexually explicit and harassment categories
+
+**Logging:**
+* Set `OPENROUTER_DEBUG_LOGGING=true` for comprehensive prompt/response logging.
+
+**Configuration:**
+* Requires `OPENROUTER_API_KEY` environment variable
+* Model must be specified in `provider/model` format (e.g., `anthropic/claude-sonnet-4.5`)
+* Models are managed via the admin console Global/LLMs page
+
 ### Shared Prompt System
 
 All LLMs use the shared `Instructions.md` prompt (formerly `Gemini.md`) which contains task format instructions and response guidelines. This ensures consistent behavior across LLM providers. These shared prompts (including `Task-*.md`) are located in `configdir/prompts` and must be included on the configuration path. Agent-specific role prompts are located in `samples/prompts`.
@@ -197,18 +261,30 @@ At startup, the agent performs a check to ensure `Instructions.md` is available 
 * Update the model string in agent configuration (`LLM` field)
 * Gemini defaults to `gemini-3-flash-preview` if name is just `gemini`
 * Grok defaults to `grok-4-fast-non-reasoning` if name is just `grok`
+* OpenRouter models use the full `provider/model` format (e.g., `anthropic/claude-sonnet-4.5`)
+
+**Managing LLMs via Admin Console:**
+* Use the Global → LLMs tab to add, edit, delete, and reorder LLMs
+* Add models from OpenRouter's popular roleplay models via the pulldown menu
+* Create custom models with the "Custom..." option
+* All changes are stored in the MySQL `available_llms` table
 
 **For new LLM providers:**
 1. Create `llm/{provider}.py` implementing the `LLM` base class
 2. Set `prompt_name = "Instructions"` to use shared prompt
 3. Add routing logic in `llm.factory.create_llm_from_name()`
 4. Export in `llm/__init__.py`
+5. Add provider models to the database via admin console or migration script
 
 **Debugging:**
 * If you see an empty reply, consult logs:
   - Gemini: `gemini.contents built: turns=… (history=…, target=…)`
   - Grok: `grok.messages: turns=… (history=…)`
-* Enable debug logging for the respective LLM provider.
+  - OpenRouter: Check OpenRouter API responses in logs
+* Enable debug logging for the respective LLM provider:
+  - `GEMINI_DEBUG_LOGGING=true`
+  - `GROK_DEBUG_LOGGING=true`
+  - `OPENROUTER_DEBUG_LOGGING=true`
 
 ### Channel-Specific LLM Model Override
 
@@ -223,6 +299,7 @@ The `llm_model` value specifies which LLM model to use for that channel. Can be 
 **Supported values:**
 - `"gemini"` or `"grok"` - Uses the default model from `GEMINI_MODEL` or `GROK_MODEL` environment variable
 - Specific model names like `"gemini-2.0-flash"` or `"grok-4-fast-non-reasoning"`
+- OpenRouter models in `provider/model` format (e.g., `"anthropic/claude-sonnet-4.5"`)
 
 **Behavior:**
 - When processing `received` tasks for a channel, the system checks for `llm_model` in MySQL
