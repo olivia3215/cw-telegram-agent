@@ -725,6 +725,12 @@ Prompts are searched for across all directories in `CINDY_AGENT_CONFIG_PATH` (de
 
 The system routes LLM requests based on the `LLM` field in agent configuration:
 
+- **OpenRouter LLMs**: Models with `/` in the name or starting with `openrouter` route through `llm/openrouter.py`
+  - Format: `provider/model` (e.g., `anthropic/claude-sonnet-4.5`, `google/gemini-3-flash-preview`)
+  - Requires `OPENROUTER_API_KEY` environment variable
+  - Supports JSON schema structured output and multimodal inputs
+  - Models managed via admin console Global/LLMs page
+
 - **Gemini LLMs**: Names starting with `gemini` route through `llm/gemini.py`
   - Default model: `gemini-3-flash-preview` (if name is just `gemini`)
   - Specific models: `gemini-2.0-flash`, `gemini-3-flash-preview`, etc.
@@ -735,7 +741,7 @@ The system routes LLM requests based on the `LLM` field in agent configuration:
 
 - **Default**: If `LLM` field is omitted, defaults to Gemini
 
-**Implementation:** The `llm.factory.create_llm_from_name()` function handles routing and model selection.
+**Implementation:** The `llm.factory.create_llm_from_name()` function handles routing and model selection. OpenRouter models are checked first (before other prefix checks) to ensure proper routing for models like `openai/gpt-oss-120b`.
 
 ### Channel-Specific LLM Model Override
 
@@ -746,6 +752,7 @@ Agents can override the default LLM model for specific channels using the `llm_m
 **Configuration:**
 - The `llm_model` property specifies which LLM model to use for that specific channel
 - Can be a provider name (`"gemini"`, `"grok"`) or a specific model name
+- OpenRouter models must use `provider/model` format (e.g., `"anthropic/claude-sonnet-4.5"`)
 - Overrides the agent's default LLM when processing `received` tasks for that channel
 - Can be set via the admin console or programmatically
 
@@ -772,6 +779,13 @@ Agents can override the default LLM model for specific channels using the `llm_m
 - **Input/Output**: `assistant` role (agent's prior messages)
 - **User messages**: Remain as `user` role
 - **System instructions**: Passed as `system` role message (OpenAI-compatible format)
+
+**OpenRouter API (OpenAI-compatible):**
+- **Input/Output**: `assistant` role (agent's prior messages)
+- **User messages**: Remain as `user` role (can include image parts for multimodal)
+- **System instructions**: Passed as `system` role message (OpenAI-compatible format)
+- **Structured output**: Uses `response_format` with JSON schema
+- **Safety settings**: Applied for Gemini models (when model ID contains `google/` or `gemini`)
 
 **Purpose:** Each LLM provider has different API requirements, and the implementation adapts to each provider's format.
 

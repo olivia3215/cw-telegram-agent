@@ -215,7 +215,15 @@ def api_global_parameters_get():
                 "comment": metadata.get("comment", ""),
                 "default": metadata.get("default"),
             })
-        return jsonify({"parameters": parameters})
+        
+        # Include available LLMs for DEFAULT_AGENT_LLM combobox
+        from admin_console.helpers import get_available_llms
+        available_llms = get_available_llms()
+        
+        return jsonify({
+            "parameters": parameters,
+            "available_llms": available_llms,
+        })
     except Exception as e:
         logger.exception("Error getting global parameters")
         return jsonify({"error": str(e)}), 500

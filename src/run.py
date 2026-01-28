@@ -56,7 +56,13 @@ from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
 from telepathic import TELEPATHIC_PREFIXES
-from config import GOOGLE_GEMINI_API_KEY, GROK_API_KEY, OPENAI_API_KEY, TELEGRAM_SYSTEM_USER_ID
+from config import (
+    GOOGLE_GEMINI_API_KEY,
+    GROK_API_KEY,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    TELEGRAM_SYSTEM_USER_ID,
+)
 
 # Configure logging level from environment variable, default to INFO
 log_level_str = os.getenv("CINDY_LOG_LEVEL", "INFO").upper()
@@ -988,7 +994,13 @@ async def main():
                 missing_keys.append(f"Agent '{agent.name}' uses default Gemini model but GOOGLE_GEMINI_API_KEY is not set")
         else:
             llm_name_lower = llm_name.strip().lower()
-            if llm_name_lower.startswith("gemini"):
+            # Check for OpenRouter format FIRST (before other prefix checks)
+            # OpenRouter models use "provider/model" format (e.g., "openai/gpt-oss-120b")
+            # This must come before other checks since "openai/gpt-oss-120b" starts with "openai"
+            if "/" in llm_name_lower or llm_name_lower.startswith("openrouter"):
+                if not OPENROUTER_API_KEY:
+                    missing_keys.append(f"Agent '{agent.name}' uses OpenRouter model '{llm_name}' but OPENROUTER_API_KEY is not set")
+            elif llm_name_lower.startswith("gemini"):
                 if not GOOGLE_GEMINI_API_KEY:
                     missing_keys.append(f"Agent '{agent.name}' uses Gemini model '{llm_name}' but GOOGLE_GEMINI_API_KEY is not set")
             elif llm_name_lower.startswith("grok"):

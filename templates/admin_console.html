@@ -128,6 +128,7 @@
         .header h1 {
             margin: 0;
             font-size: 24px;
+            text-align: center;
         }
         .tab-bar {
             display: flex !important;
@@ -507,6 +508,7 @@
                 <button class="tab-button" data-subtab="documents-global">Documents</button>
                 <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
                 <button class="tab-button" data-subtab="parameters-global">Parameters</button>
+                <button class="tab-button" data-subtab="llms-global">LLMs</button>
             </nav>
             <div id="global-container" class="main-container">
                 <!-- Media Editor Subtab -->
@@ -623,6 +625,15 @@
                     <div class="main-container" style="margin-top: 16px;">
                         <div id="global-parameters-container">
                             <div class="loading">Loading parameters...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- LLMs Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="llms-global">
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="global-llms-container">
+                            <div class="loading">Loading LLMs...</div>
                         </div>
                     </div>
                 </div>
@@ -2452,6 +2463,8 @@
                     loadGlobalPromptsConfigDirectories();
                 } else if (subtabName === 'parameters-global') {
                     loadGlobalParameters();
+                } else if (subtabName === 'llms-global') {
+                    loadGlobalLLMs();
                 }
             } else if (mainTabName === 'conversations') {
                 // Reload conversation partners dropdown to update asterisks for new subtab
@@ -4595,11 +4608,19 @@
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
                                     <h3>Agent LLM</h3>
-                                    <select id="agent-llm-select" class="agent-param-input" onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
+                                    <input 
+                                        id="agent-llm-select" 
+                                        type="text" 
+                                        class="agent-param-input" 
+                                        value="${escapeHtml(currentLLM || '')}"
+                                        list="agent-llm-datalist-${escJsAttr(agentName)}"
+                                        placeholder="Type or select an LLM model..."
+                                        onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
+                                    <datalist id="agent-llm-datalist-${escJsAttr(agentName)}">
                                         ${availableLLMs.map(llm => {
-                                            return `<option value="${escapeHtml(llm.value)}" ${llm.value === currentLLM ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
+                                            return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                         }).join('')}
-                                    </select>
+                                    </datalist>
                                 </div>
                             </div>
 
@@ -4882,6 +4903,38 @@
             });
         }
 
+        async function refreshOpenRouterModels() {
+            const statusEl = document.getElementById('openrouter-status-global');
+            if (!statusEl) return;
+            
+            statusEl.textContent = 'Refreshing...';
+            statusEl.style.color = '#666';
+            
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/openrouter/refresh-models`, {
+                    method: 'POST',
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to refresh models');
+                }
+                
+                const data = await response.json();
+                statusEl.textContent = `✓ Refreshed ${data.model_count} models`;
+                statusEl.style.color = '#4CAF50';
+                
+                // Reload the page to show updated models
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } catch (error) {
+                statusEl.textContent = `✗ Error: ${error.message}`;
+                statusEl.style.color = '#f44336';
+                console.error('Error refreshing OpenRouter models:', error);
+            }
+        }
+        
         function updateAgentLLM(agentName, llmName) {
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/llm`, {
                 method: 'PUT',
@@ -5347,12 +5400,19 @@
                             <div style="margin-bottom: 24px;">
                                 <label style="display: block; margin-bottom: 8px; font-weight: bold;">LLM Model:</label>
                                 <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
-                                <select id="conversation-llm-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 300px;" onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
+                                <input 
+                                    id="conversation-llm-select" 
+                                    type="text" 
+                                    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; max-width: 100%; box-sizing: border-box;" 
+                                    value="${escapeHtml(conversationLLM || agentDefaultLLM)}"
+                                    list="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}"
+                                    placeholder="Type or select an LLM model..."
+                                    onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
+                                <datalist id="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}">
                                     ${availableLLMs.map(llm => {
-                                        const isSelected = (conversationLLM === llm.value || (!conversationLLM && llm.value === agentDefaultLLM));
-                                        return `<option value="${escapeHtml(llm.value)}" ${isSelected ? 'selected' : ''}>${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
+                                        return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
                                     }).join('')}
-                                </select>
+                                </datalist>
                             </div>
                             
                             <div style="margin-bottom: 24px;">
@@ -8295,14 +8355,54 @@
                 }
                 
                 const parameters = data.parameters || [];
+                const availableLLMs = data.available_llms || [];
                 
                 container.innerHTML = `
                     <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin-top: 0;">Global Parameters</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0;">Global Parameters</h3>
+                            <div>
+                                <button onclick="refreshOpenRouterModels()" style="padding: 6px 12px; font-size: 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                    Refresh OpenRouter Models
+                                </button>
+                                <span id="openrouter-status-global" style="margin-left: 8px; font-size: 12px; color: #666;"></span>
+                            </div>
+                        </div>
                         <div class="agent-param-grid">
                             ${parameters.map(param => {
                                 const inputType = (param.type === 'float' || param.type === 'int') ? 'number' : 'text';
                                 const stepAttr = param.type === 'float' ? 'step="0.1"' : (param.type === 'int' ? 'step="1"' : '');
+                                
+                                // Special handling for LLM model parameters - use combobox (datalist + input)
+                                const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
+                                if (llmModelParams.includes(param.name)) {
+                                    const datalistId = `global-param-${param.name}-datalist`;
+                                    return `
+                                        <div class="agent-param-section">
+                                            <h3>${escapeHtml(param.name)}</h3>
+                                            <input 
+                                                id="global-param-${escapeHtml(param.name)}" 
+                                                type="text" 
+                                                class="agent-param-input" 
+                                                value="${escapeHtml(param.value)}"
+                                                list="${datalistId}"
+                                                placeholder="Type or select an LLM model..."
+                                                onchange="updateGlobalParameter('${escJsAttr(param.name)}', this.value)">
+                                            <datalist id="${datalistId}">
+                                                ${availableLLMs.map(llm => `
+                                                    <option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}</option>
+                                                `).join('')}
+                                            </datalist>
+                                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                                ${escapeHtml(param.comment || '')}
+                                                ${param.default ? ` (Default: ${escapeHtml(param.default)})` : ''}
+                                            </div>
+                                            <div id="global-param-status-${escapeHtml(param.name)}" style="margin-top: 4px; font-size: 12px; color: #28a745;"></div>
+                                        </div>
+                                    `;
+                                }
+                                
+                                // Regular input for other parameters
                                 return `
                                     <div class="agent-param-section">
                                         <h3>${escapeHtml(param.name)}</h3>
@@ -8370,6 +8470,479 @@
                 alert(`Error updating ${parameterName}: ${error.message || error}`);
             }
         }
+
+        // Global LLMs functions
+        let draggedLLMId = null;
+        let openrouterModelsCache = null;
+        
+        async function loadGlobalLLMs() {
+            const container = document.getElementById('global-llms-container');
+            container.innerHTML = '<div class="loading">Loading LLMs...</div>';
+            
+            try {
+                const response = await fetchWithAuth('/admin/api/global/llms');
+                const data = await response.json();
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                    return;
+                }
+                
+                const llms = data.llms || [];
+                
+                container.innerHTML = `
+                    <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0;">Available LLMs</h3>
+                            <div>
+                                <select id="add-llm-select" style="padding: 6px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; margin-right: 8px;">
+                                    <option value="">Add LLM...</option>
+                                </select>
+                                <button onclick="addLLMFromSelect()" style="padding: 6px 12px; font-size: 14px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                        <div id="llms-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            ${llms.map(llm => renderLLMItem(llm)).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                // Load OpenRouter models for the add pulldown (after DOM is created)
+                loadOpenRouterModelsForAdd();
+                
+                // Initialize drag and drop
+                initializeLLMDragAndDrop();
+            } catch (error) {
+                console.error('Error loading LLMs:', error);
+                container.innerHTML = `<div class="error">Error loading LLMs: ${escapeHtml(error.message || error)}</div>`;
+            }
+        }
+        
+        function renderLLMItem(llm) {
+            const promptPrice = llm.prompt_price ? parseFloat(llm.prompt_price).toFixed(2) : '0.00';
+            const completionPrice = llm.completion_price ? parseFloat(llm.completion_price).toFixed(2) : '0.00';
+            const description = llm.description || '';
+            
+            return `
+                <div class="llm-item" data-llm-id="${llm.id}" draggable="true" style="padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; cursor: move;">
+                    <div style="flex: 1;">
+                        <!-- First line: Model ID and Prices -->
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                            <label style="font-size: 12px; color: #666; white-space: nowrap; margin-right: 8px;">Model ID:</label>
+                                <div style="flex: 1;">
+                                    <input 
+                                        type="text" 
+                                        class="llm-field" 
+                                        data-field="model_id"
+                                        data-llm-id="${llm.id}"
+                                        value="${escapeHtml(llm.model_id)}"
+                                        style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                                        onblur="updateLLMField(${llm.id}, 'model_id', this.value)">
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px;">
+                                    <label style="font-size: 12px; color: #666; white-space: nowrap; margin-left: 8px;">Prices:</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        class="llm-field" 
+                                        data-field="prompt_price"
+                                        data-llm-id="${llm.id}"
+                                        value="${promptPrice}"
+                                        placeholder="0.00"
+                                        style="width: 60px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;"
+                                        onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'prompt_price', parseFloat(this.value) || 0)">
+                                    <span style="color: #666;">/</span>
+                                    <input 
+                                        type="number" 
+                                        step="0.01"
+                                        class="llm-field" 
+                                        data-field="completion_price"
+                                        data-llm-id="${llm.id}"
+                                        value="${completionPrice}"
+                                        placeholder="0.00"
+                                        style="width: 60px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;"
+                                        onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
+                                </div>
+                                <div>
+                                    <button onclick="deleteLLM(${llm.id})" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        <!-- Second line: Name -->
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                            <label style="font-size: 12px; color: #666; white-space: nowrap;">Name:</label>
+                            <input 
+                                type="text" 
+                                class="llm-field" 
+                                data-field="name"
+                                data-llm-id="${llm.id}"
+                                value="${escapeHtml(llm.name)}"
+                                style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                                onblur="updateLLMField(${llm.id}, 'name', this.value)">
+                        </div>
+                        <!-- Third line: Description -->
+                        <div>
+                            <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Description:</label>
+                            <textarea 
+                                class="llm-field" 
+                                data-field="description"
+                                data-llm-id="${llm.id}"
+                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-height: 50px; resize: vertical;"
+                                onblur="updateLLMField(${llm.id}, 'description', this.value)">${escapeHtml(description)}</textarea>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function initializeLLMDragAndDrop() {
+            const llmsList = document.getElementById('llms-list');
+            if (!llmsList) return;
+            
+            let draggedElement = null;
+            
+            const items = llmsList.querySelectorAll('.llm-item');
+            items.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggedElement = item;
+                    item.style.opacity = '0.5';
+                    item.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                
+                item.addEventListener('dragend', (e) => {
+                    item.style.opacity = '1';
+                    item.classList.remove('dragging');
+                    // Remove any drag-over classes
+                    items.forEach(i => i.classList.remove('drag-over'));
+                    draggedElement = null;
+                });
+                
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    if (draggedElement && draggedElement !== item) {
+                        const afterElement = getDragAfterElement(llmsList, e.clientY);
+                        const dragging = draggedElement;
+                        if (afterElement == null) {
+                            llmsList.appendChild(dragging);
+                        } else {
+                            llmsList.insertBefore(dragging, afterElement);
+                        }
+                    }
+                });
+                
+                item.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    if (draggedElement && draggedElement !== item) {
+                        item.classList.add('drag-over');
+                    }
+                });
+                
+                item.addEventListener('dragleave', (e) => {
+                    item.classList.remove('drag-over');
+                });
+                
+                item.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    item.classList.remove('drag-over');
+                    if (draggedElement) {
+                        await saveLLMOrder();
+                    }
+                });
+            });
+        }
+        
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.llm-item:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+        
+        async function saveLLMOrder() {
+            const llmsList = document.getElementById('llms-list');
+            if (!llmsList) return;
+            
+            const items = llmsList.querySelectorAll('.llm-item');
+            const orderMapping = {};
+            items.forEach((item, index) => {
+                const llmId = parseInt(item.dataset.llmId);
+                orderMapping[llmId] = index;
+            });
+            
+            try {
+                const response = await fetchWithAuth('/admin/api/global/llms/reorder', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: orderMapping })
+                });
+                
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error reordering LLMs:', data.error);
+                    alert(`Error reordering LLMs: ${data.error}`);
+                    // Reload to restore correct order
+                    await loadGlobalLLMs();
+                }
+            } catch (error) {
+                console.error('Error reordering LLMs:', error);
+                alert(`Error reordering LLMs: ${error.message || error}`);
+                // Reload to restore correct order
+                await loadGlobalLLMs();
+            }
+        }
+        
+        async function updateLLMField(llmId, field, value) {
+            try {
+                const updateData = { [field]: value };
+                
+                // If model_id is being updated and contains "/", trigger OpenRouter validation
+                if (field === 'model_id' && value.includes('/')) {
+                    // This will be handled by the backend
+                }
+                
+                const response = await fetchWithAuth(`/admin/api/global/llms/${llmId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                });
+                
+                const data = await response.json();
+                if (data.error) {
+                    alert(`Error updating ${field}: ${data.error}`);
+                    // Reload to restore correct values
+                    await loadGlobalLLMs();
+                } else {
+                    // Update the displayed values if the response includes updated data
+                    if (data.model_id !== undefined) {
+                        const item = document.querySelector(`.llm-item[data-llm-id="${llmId}"]`);
+                        if (item) {
+                            // Update fields if they changed (e.g., auto-filled from OpenRouter)
+                            if (data.name !== undefined) {
+                                const nameInput = item.querySelector(`input[data-field="name"]`);
+                                if (nameInput) nameInput.value = data.name;
+                            }
+                            if (data.description !== undefined) {
+                                const descTextarea = item.querySelector(`textarea[data-field="description"]`);
+                                if (descTextarea) descTextarea.value = data.description || '';
+                            }
+                            if (data.prompt_price !== undefined) {
+                                const promptInput = item.querySelector(`input[data-field="prompt_price"]`);
+                                if (promptInput) promptInput.value = parseFloat(data.prompt_price).toFixed(2);
+                            }
+                            if (data.completion_price !== undefined) {
+                                const completionInput = item.querySelector(`input[data-field="completion_price"]`);
+                                if (completionInput) completionInput.value = parseFloat(data.completion_price).toFixed(2);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error updating LLM field ${field}:`, error);
+                alert(`Error updating ${field}: ${error.message || error}`);
+                await loadGlobalLLMs();
+            }
+        }
+        
+        async function deleteLLM(llmId) {
+            if (!confirm('Are you sure you want to delete this LLM?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetchWithAuth(`/admin/api/global/llms/${llmId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                if (data.error) {
+                    alert(`Error deleting LLM: ${data.error}`);
+                } else {
+                    await loadGlobalLLMs();
+                }
+            } catch (error) {
+                console.error('Error deleting LLM:', error);
+                alert(`Error deleting LLM: ${error.message || error}`);
+            }
+        }
+        
+        async function loadOpenRouterModelsForAdd() {
+            const select = document.getElementById('add-llm-select');
+            if (!select) return;
+            
+            // Clear existing options except the first one
+            while (select.children.length > 1) {
+                select.removeChild(select.lastChild);
+            }
+            
+            try {
+                // Get both OpenRouter models and existing LLMs in parallel
+                const [openrouterResponse, existingLLMsResponse] = await Promise.all([
+                    fetchWithAuth('/admin/api/global/llms/openrouter-models'),
+                    fetchWithAuth('/admin/api/global/llms')
+                ]);
+                
+                const openrouterData = await openrouterResponse.json();
+                const existingLLMsData = await existingLLMsResponse.json();
+                
+                if (openrouterData.error) {
+                    console.error('Error loading OpenRouter models:', openrouterData.error);
+                    return;
+                }
+                
+                // Build set of existing model IDs for quick lookup
+                const existingModelIds = new Set();
+                if (existingLLMsData.llms) {
+                    existingLLMsData.llms.forEach(llm => {
+                        existingModelIds.add(llm.model_id);
+                    });
+                }
+                
+                const models = openrouterData.models || [];
+                // Filter out models that already exist
+                const availableModels = models.filter(model => !existingModelIds.has(model.value));
+                
+                availableModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.value;
+                    option.textContent = model.label;
+                    select.appendChild(option);
+                });
+                
+                // Add "Custom" option
+                const customOption = document.createElement('option');
+                customOption.value = '__custom__';
+                customOption.textContent = 'Custom...';
+                select.appendChild(customOption);
+                
+                openrouterModelsCache = models; // Keep full cache for reference
+            } catch (error) {
+                console.error('Error loading OpenRouter models:', error);
+            }
+        }
+        
+        async function addLLMFromSelect() {
+            const select = document.getElementById('add-llm-select');
+            if (!select || !select.value) {
+                alert('Please select an LLM to add');
+                return;
+            }
+            
+            const selectedValue = select.value;
+            
+            if (selectedValue === '__custom__') {
+                // Add custom LLM
+                const modelId = prompt('Enter model ID (canonical name):');
+                if (!modelId) return;
+                
+                const name = prompt('Enter display name:', modelId);
+                if (name === null) return;
+                
+                const description = prompt('Enter description (optional):', '') || null;
+                
+                const promptPriceStr = prompt('Enter prompt price per 1M tokens (e.g., 0.50):', '0.0');
+                const promptPrice = parseFloat(promptPriceStr) || 0.0;
+                
+                const completionPriceStr = prompt('Enter completion price per 1M tokens (e.g., 3.00):', '0.0');
+                const completionPrice = parseFloat(completionPriceStr) || 0.0;
+                
+                try {
+                    const response = await fetchWithAuth('/admin/api/global/llms', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model_id: modelId,
+                            name: name,
+                            description: description,
+                            prompt_price: promptPrice,
+                            completion_price: completionPrice,
+                            provider: modelId.includes('/') ? 'openrouter' : 'custom'
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: `HTTP error! status: ${response.status}` }));
+                        alert(`Error adding LLM: ${errorData.error || `HTTP error! status: ${response.status}`}`);
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        alert(`Error adding LLM: ${data.error}`);
+                    } else {
+                        select.value = '';
+                        await loadGlobalLLMs();
+                    }
+                } catch (error) {
+                    console.error('Error adding custom LLM:', error);
+                    alert(`Error adding LLM: ${error.message || error}`);
+                }
+            } else {
+                // Add from OpenRouter
+                const selectedModel = openrouterModelsCache?.find(m => m.value === selectedValue);
+                if (!selectedModel) {
+                    alert('Selected model not found');
+                    return;
+                }
+                
+                // Parse pricing from label
+                const priceMatch = selectedModel.label.match(/\$([\d.]+)\s*\/\s*\$([\d.]+)/);
+                const promptPrice = priceMatch ? parseFloat(priceMatch[1]) : 0.0;
+                const completionPrice = priceMatch ? parseFloat(priceMatch[2]) : 0.0;
+                
+                // Extract name (remove pricing)
+                const name = selectedModel.label.replace(/\s*\(\$[\d.]+\s*\/\s*\$[\d.]+\)\s*$/, '').trim();
+                
+                // Use description from OpenRouter API, fallback to generic text
+                const description = selectedModel.description || 'Model via OpenRouter';
+                
+                try {
+                    const response = await fetchWithAuth('/admin/api/global/llms', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model_id: selectedValue,
+                            name: name,
+                            description: description,
+                            prompt_price: promptPrice,
+                            completion_price: completionPrice,
+                            provider: 'openrouter'
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: `HTTP error! status: ${response.status}` }));
+                        alert(`Error adding LLM: ${errorData.error || `HTTP error! status: ${response.status}`}`);
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        alert(`Error adding LLM: ${data.error}`);
+                    } else {
+                        select.value = '';
+                        await loadGlobalLLMs();
+                    }
+                } catch (error) {
+                    console.error('Error adding LLM:', error);
+                    alert(`Error adding LLM: ${error.message || error}`);
+                }
+            }
+        }
+        
 
         async function loadAllDestinationsForMove(selectId, currentConfigDir, currentAgentConfigName) {
             try {

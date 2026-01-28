@@ -42,7 +42,12 @@ Start the agent with your normal workflow (`./run.sh`), then open `http://HOST:P
 
 The admin console provides three main tabs:
 
-- **Media Editor** — The full sticker/media management experience (details below).
+- **Global** — Global system management with subtabs:
+  - **Media Editor** — The full sticker/media management experience (details below)
+  - **Documents** — Document management
+  - **Role Prompts** — Role prompt editing
+  - **Parameters** — Global system parameters (DEFAULT_AGENT_LLM, MEDIA_MODEL, TRANSLATION_MODEL, etc.)
+  - **LLMs** — Manage available LLM models in the database (add, edit, delete, reorder)
 - **Agents** — Agent management with subtabs:
   - **Parameters** — View and manage agent configuration parameters
   - **Memories** — View and manage global agent memories (visible across all conversations)
@@ -68,6 +73,35 @@ The Media Editor provides visual browsing, editing, and management of media desc
 
 **See [MEDIA_EDITOR.md](MEDIA_EDITOR.md) for comprehensive Media Editor documentation.**
 
+### LLMs Tab
+
+The **LLMs** tab (under Global) provides a centralized interface for managing all available LLM models stored in the MySQL database.
+
+**Features:**
+- **View all LLMs**: See all available models with their canonical names, descriptions, and pricing (per 1M tokens)
+- **Add LLMs**: Add new models from OpenRouter's popular roleplay models or create custom models
+- **Edit LLMs**: Inline editing of model ID, name, description, and pricing
+- **Reorder LLMs**: Drag and drop to reorder the list (affects display order in comboboxes)
+- **Delete LLMs**: Remove models from the database
+
+**Adding Models:**
+- Select from the "Add LLM..." pulldown to choose from OpenRouter's popular roleplay models
+- Models already in the database are automatically filtered out
+- Select "Custom..." to add a model manually with custom fields
+- OpenRouter models automatically populate with pricing and descriptions from the API
+
+**LLM List Usage:**
+- The LLM list in the database is used by all comboboxes throughout the admin console:
+  - Agent LLM selection
+  - Conversation LLM override
+  - Global parameters (DEFAULT_AGENT_LLM, MEDIA_MODEL, TRANSLATION_MODEL)
+- Models are filtered based on API key availability (e.g., OpenRouter models only shown if OPENROUTER_API_KEY is set)
+
+**Storage:**
+- LLMs are stored in the MySQL `available_llms` table
+- Migration automatically populates the database from existing hardcoded lists, state files, and agent configurations
+- The `state/openrouter_roleplay_models.json` cache file is no longer used for the main LLM list
+
 ---
 
 ## Troubleshooting
@@ -88,8 +122,10 @@ The Media Editor provides visual browsing, editing, and management of media desc
 For developers, the implementation lives under:
 
 - `src/admin_console/app.py` — Flask factory + background server helper
+- `src/admin_console/llms.py` — LLM management routes and API endpoints
+- `src/db/available_llms.py` — Database operations for LLM management
 - `src/media_editor.py` — Blueprint, routes, and AI integrations
-- `templates/admin_console.html` — Full admin console interface with tabs (Media Editor, Agents, Conversations)
+- `templates/admin_console.html` — Full admin console interface with tabs (Global, Agents, Conversations)
 
 Feel free to update this document as new capabilities are added. ***
 

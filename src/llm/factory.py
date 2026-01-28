@@ -6,7 +6,15 @@
 import logging
 from typing import TYPE_CHECKING
 
-from config import GEMINI_MODEL, GOOGLE_GEMINI_API_KEY, GROK_API_KEY, GROK_MODEL, OPENAI_API_KEY
+from config import (
+    GEMINI_MODEL,
+    GOOGLE_GEMINI_API_KEY,
+    GROK_API_KEY,
+    GROK_MODEL,
+    OPENAI_API_KEY,
+    OPENROUTER_API_KEY,
+    OPENROUTER_MODEL,
+)
 
 if TYPE_CHECKING:
     from .base import LLM
@@ -28,7 +36,8 @@ def resolve_llm_name_to_model(llm_name: str | None) -> str:
     - "gemini" → GEMINI_MODEL if set, otherwise "gemini-3-flash-preview"
     - "grok" → GROK_MODEL if set, otherwise "grok-4-fast-non-reasoning"
     - "gpt" or "openai" → "gpt-5-mini"
-    - Specific model names (e.g., "gemini-3-flash-preview") → returned as-is
+    - "openrouter" → OPENROUTER_MODEL if set, otherwise raises ValueError (must specify model)
+    - Specific model names (e.g., "gemini-3-flash-preview", "anthropic/claude-sonnet-4.5") → returned as-is
     
     Args:
         llm_name: The LLM name (provider identifier or specific model name), or None/empty
@@ -63,6 +72,15 @@ def resolve_llm_name_to_model(llm_name: str | None) -> str:
     elif llm_name_normalized in ("gpt", "openai"):
         # Default to gpt-5-mini when just "gpt" or "openai" is specified
         return "gpt-5-mini"
+    elif llm_name_normalized == "openrouter":
+        # OpenRouter requires explicit model specification (provider/model format)
+        if OPENROUTER_MODEL:
+            return OPENROUTER_MODEL
+        else:
+            raise ValueError(
+                "OpenRouter requires explicit model specification. "
+                "Set OPENROUTER_MODEL or use a full model name (e.g., 'anthropic/claude-sonnet-4.5')."
+            )
     else:
         # Already a specific model name, return as-is (preserve original case)
         return llm_name.strip()
@@ -72,7 +90,11 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
     """
     Create an LLM instance based on the LLM name.
 
-    Routing rules:
+    Routing rules (checked in order):
+    - Models containing "/" (OpenRouter format: provider/model) route through OpenRouterLLM
+      - Examples: "openai/gpt-oss-120b", "anthropic/claude-sonnet-4.5"
+      - If name is exactly "openrouter", uses OPENROUTER_MODEL env variable if set, otherwise raises ValueError
+      - This check happens FIRST to catch OpenRouter models even if they start with "openai" or "gpt"
     - Names starting with "gemini" route through GeminiLLM
       - If name is exactly "gemini", uses GEMINI_MODEL env variable if set, otherwise defaults to "gemini-3-flash-preview"
       - Otherwise uses the specified model name
@@ -100,7 +122,25 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
     # Determine the provider from the model name
     model_lower = model.lower()
     
-    if model_lower.startswith("gemini"):
+    # Check for OpenRouter format FIRST (before other prefix checks)
+    # OpenRouter models use "provider/model" format (e.g., "openai/gpt-oss-120b", "anthropic/claude-sonnet-4.5")
+    # This must come before OpenAI check since "openai/gpt-oss-120b" starts with "openai" but should route to OpenRouter
+    if "/" in model or model_lower.startswith("openrouter"):
+        # Lazy import to avoid errors if openrouter module is not ready
+        try:
+            from .openrouter import OpenRouterLLM
+        except ImportError as e:
+            raise ImportError(
+                "OpenRouterLLM is not available. Ensure llm/openrouter.py is properly implemented."
+            ) from e
+
+        if not OPENROUTER_API_KEY:
+            raise ValueError(
+                "Missing OpenRouter API key. Set OPENROUTER_API_KEY to use OpenRouter models."
+            )
+        return OpenRouterLLM(model=model, api_key=OPENROUTER_API_KEY)
+    
+    elif model_lower.startswith("gemini"):
         if not GOOGLE_GEMINI_API_KEY:
             raise ValueError(
                 "Missing Gemini API key. Set GOOGLE_GEMINI_API_KEY to use Gemini models."
@@ -139,5 +179,6 @@ def create_llm_from_name(llm_name: str | None) -> "LLM":
 
     else:
         raise ValueError(
-            f"Unknown LLM model: {model}. Model names must start with 'gemini', 'grok', 'gpt', or 'openai'."
+            f"Unknown LLM model: {model}. Model names must start with 'gemini', 'grok', 'gpt', 'openai', "
+            f"or use OpenRouter format (provider/model, e.g., 'anthropic/claude-sonnet-4.5')."
         )

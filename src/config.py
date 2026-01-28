@@ -44,12 +44,14 @@ def _get_optional_str(env_name: str) -> str | None:
 GOOGLE_GEMINI_API_KEY: str | None = os.environ.get("GOOGLE_GEMINI_API_KEY")
 GROK_API_KEY: str | None = os.environ.get("GROK_API_KEY")
 OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY")
+OPENROUTER_API_KEY: str | None = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_API_ID: str | None = os.environ.get("TELEGRAM_API_ID")
 TELEGRAM_API_HASH: str | None = os.environ.get("TELEGRAM_API_HASH")
 
 # Model configuration
 GEMINI_MODEL: str | None = _get_optional_str("GEMINI_MODEL")
 GROK_MODEL: str | None = _get_optional_str("GROK_MODEL")
+OPENROUTER_MODEL: str | None = _get_optional_str("OPENROUTER_MODEL")
 MEDIA_MODEL: str | None = os.environ.get("MEDIA_MODEL")
 TRANSLATION_MODEL: str | None = os.environ.get("TRANSLATION_MODEL")
 
