@@ -419,9 +419,10 @@ class OpenRouterLLM(LLM):
             if response_format is not None:
                 create_kwargs["response_format"] = response_format
             
-            # Add safety_settings for Gemini models
+            # Add safety_settings for Gemini models via extra_body
+            # OpenRouter requires provider-specific parameters to be passed via extra_body
             if self._is_gemini_model(model_name):
-                create_kwargs["safety_settings"] = self.safety_settings
+                create_kwargs["extra_body"] = {"safety_settings": self.safety_settings}
             
             response = await self.client.chat.completions.create(**create_kwargs)
 
@@ -505,9 +506,10 @@ class OpenRouterLLM(LLM):
                 "timeout": timeout_s or 60.0,
             }
             
-            # Add safety_settings for Gemini models
+            # Add safety_settings for Gemini models via extra_body
+            # OpenRouter requires provider-specific parameters to be passed via extra_body
             if self._is_gemini_model(model_name):
-                create_kwargs["safety_settings"] = self.safety_settings
+                create_kwargs["extra_body"] = {"safety_settings": self.safety_settings}
             
             response = await self.client.chat.completions.create(**create_kwargs)
 
