@@ -28,6 +28,8 @@ import logging
 from datetime import UTC, timedelta
 
 import httpx  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.contacts import AddContactRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
 
 from agent import get_agent_for_id
 from clock import clock
@@ -587,6 +589,55 @@ async def parse_llm_reply(
 # Summarization functions moved to handlers.received_helpers.summarization
 
 
+async def _ensure_user_in_contacts(agent, client, user_entity: User):
+    """
+    Ensure a user is added to the agent's contacts if not already present.
+    
+    This helps with future entity resolution by ensuring users are in the contacts list.
+    
+    Args:
+        agent: The agent instance
+        client: The Telegram client
+        user_entity: The User entity to add to contacts
+    """
+    # Check if user is already a contact
+    is_contact = getattr(user_entity, "contact", False)
+    if is_contact:
+        return  # Already a contact, nothing to do
+    
+    # Only add users (positive IDs), not groups/channels
+    user_id = getattr(user_entity, "id", None)
+    if not user_id or user_id <= 0:
+        return
+    
+    try:
+        # Get user details for AddContactRequest
+        first_name = getattr(user_entity, "first_name", None) or ""
+        last_name = getattr(user_entity, "last_name", None) or ""
+        phone = getattr(user_entity, "phone", None) or ""
+        
+        # Get input entity for the user
+        input_user = await client.get_input_entity(user_entity)
+        
+        # Add user to contacts
+        await client(AddContactRequest(
+            id=input_user,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+        ))
+        
+        logger.info(f"[{agent.name}] Added user {user_id} to contacts (name: {first_name} {last_name}, phone: {phone or 'N/A'})")
+        
+        # Clear contacts cache in entity cache so it will refresh on next lookup
+        if agent.entity_cache:
+            agent.entity_cache._contacts_cache = None
+            agent.entity_cache._contacts_cache_expiration = None
+    except Exception as e:
+        # Log but don't fail - contact addition is best-effort
+        logger.debug(f"[{agent.name}] Failed to add user {user_id} to contacts: {e}")
+
+
 @register_task_handler("received")
 async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     """
@@ -703,6 +754,11 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     entity = await agent.get_cached_entity(channel_id_int)
     if not entity:
         raise ValueError(f"Cannot resolve entity for channel_id {channel_id_int}")
+    
+    # For new DM conversations, ensure the user is added to contacts
+    # This helps with future entity resolution
+    if isinstance(entity, User) and channel_id_int > 0:
+        await _ensure_user_in_contacts(agent, client, entity)
 
     # Check if summaries exist to determine how many messages to fetch
     # If no summaries exist, fetch messages based on chat type:
