@@ -180,23 +180,6 @@ def _parse_models_from_html(html: str) -> list[dict[str, Any]]:
     return models
 
 
-async def _get_popularity_order() -> list[str]:
-    """
-    Get model popularity order from rankings page (optional).
-    
-    Returns:
-        List of model IDs/slugs in popularity order
-    """
-    try:
-        html = await _fetch_rankings_page_with_playwright()
-        models = _parse_models_from_html(html)
-        # Return list of model IDs in order
-        return [m["model_id"] for m in models]
-    except Exception as e:
-        logger.warning(f"Could not fetch popularity order from rankings page: {e}")
-        return []
-
-
 async def _match_rankings_to_api_models(
     rankings_models: list[dict[str, Any]], 
     api_models: list[dict[str, Any]]
