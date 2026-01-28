@@ -110,6 +110,35 @@ async def _fetch_rankings_page_with_playwright() -> str:
         raise
 
 
+def _extract_base_model_name(model_id: str) -> str:
+    """
+    Extract base model name by removing date suffixes (like -20250929).
+    
+    For models with provider/model format (e.g., "anthropic/claude-4.5-sonnet-20250929"),
+    removes numeric suffixes from the model name part to get the base name
+    (e.g., "anthropic/claude-4.5-sonnet").
+    
+    Args:
+        model_id: Model ID in provider/model format
+        
+    Returns:
+        Base model name with date suffix removed, or original model_id if no suffix found
+    """
+    if "/" not in model_id:
+        return model_id
+    
+    parts = model_id.split("/")
+    model_name_parts = parts[1].split("-")
+    if len(model_name_parts) > 1:
+        last_part = model_name_parts[-1]
+        if last_part.isdigit() or (len(last_part) >= 4 and last_part[:4].isdigit()):
+            return parts[0] + "/" + "-".join(model_name_parts[:-1])
+        else:
+            return model_id
+    else:
+        return model_id
+
+
 def _parse_models_from_html(html: str) -> list[dict[str, Any]]:
     """
     Parse model information from the rankings page HTML.
@@ -217,17 +246,7 @@ async def _match_rankings_to_api_models(
         
         # Create base model name (remove date suffixes like -20250929)
         if "/" in model_id:
-            parts = model_id.split("/")
-            model_name_parts = parts[1].split("-")
-            if len(model_name_parts) > 1:
-                last_part = model_name_parts[-1]
-                if last_part.isdigit() or (len(last_part) >= 4 and last_part[:4].isdigit()):
-                    base_name = parts[0] + "/" + "-".join(model_name_parts[:-1])
-                else:
-                    base_name = model_id
-            else:
-                base_name = model_id
-            
+            base_name = _extract_base_model_name(model_id)
             if base_name not in base_to_models:
                 base_to_models[base_name] = []
             base_to_models[base_name].append(model)
@@ -261,17 +280,7 @@ async def _match_rankings_to_api_models(
         
         # Strategy 3: Match by base name
         elif "/" in scraped_id:
-            parts = scraped_id.split("/")
-            model_name_parts = parts[1].split("-")
-            if len(model_name_parts) > 1:
-                last_part = model_name_parts[-1]
-                if last_part.isdigit() or (len(last_part) >= 4 and last_part[:4].isdigit()):
-                    base_name = parts[0] + "/" + "-".join(model_name_parts[:-1])
-                else:
-                    base_name = scraped_id
-            else:
-                base_name = scraped_id
-            
+            base_name = _extract_base_model_name(scraped_id)
             if base_name in base_to_models:
                 matched_model = base_to_models[base_name][0]
         
