@@ -17,6 +17,11 @@ def _write_dummy_tgs(path):
         handle.write(b"{}")
 
 
+def _write_dummy_webm(path):
+    """Write minimal .webm (EBML header) so detect_mime_type_from_bytes returns video/webm."""
+    path.write_bytes(b"\x1a\x45\xdf\xa3\x93\x42\x82\x88")
+
+
 @pytest.mark.usefixtures("reset_media_sources")
 def test_api_media_list_detects_missing_tgs_mime(monkeypatch, tmp_path):
     media_dir = tmp_path / "media"
@@ -58,6 +63,51 @@ def test_api_media_list_detects_missing_tgs_mime(monkeypatch, tmp_path):
         assert entry["kind"] == "animated_sticker"
         assert payload["grouped_media"]["SamplePack"][0]["mime_type"] == "application/x-tgsticker"
         assert entry["emoji_description"] == "face with finger covering closed lips"
+
+
+@pytest.mark.usefixtures("reset_media_sources")
+def test_api_media_list_unnamed_video_sticker_grouped_as_other_media_videos(monkeypatch, tmp_path):
+    """Unnamed sticker (no sticker_set_name) with video/webm is grouped under Other Media - Videos."""
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+
+    unique_id = "vid_sticker_1"
+    _write_json(
+        media_dir / f"{unique_id}.json",
+        {
+            "unique_id": unique_id,
+            "kind": "sticker",
+            "sticker_name": "🎬",
+            "description": None,
+            "status": "generated",
+        },
+    )
+    _write_dummy_webm(media_dir / f"{unique_id}.webm")
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
+
+    app = create_admin_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session[SESSION_VERIFIED_KEY] = True
+
+        response = client.get(f"/admin/api/media?directory={media_dir}")
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload["media_files"], "Expected at least one media entry"
+        entry = payload["media_files"][0]
+        assert entry["unique_id"] == unique_id
+        assert entry["mime_type"] == "video/webm"
+        assert "Other Media - Videos" in payload["grouped_media"]
+        bucket = payload["grouped_media"]["Other Media - Videos"]
+        assert len(bucket) >= 1
+        match = next(e for e in bucket if e["unique_id"] == unique_id)
+        assert match["mime_type"] == "video/webm"
 
 
 @pytest.fixture
