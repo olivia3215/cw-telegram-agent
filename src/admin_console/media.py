@@ -47,7 +47,11 @@ from media.media_source import (
     get_emoji_unicode_name,
 )
 from media.media_sources import get_directory_media_source
-from media.mime_utils import detect_mime_type_from_bytes, is_tgs_mime_type
+from media.mime_utils import (
+    detect_mime_type_from_bytes,
+    get_mime_type_from_file_extension,
+    is_tgs_mime_type,
+)
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
 from telegram.client_factory import get_telegram_client
@@ -247,6 +251,17 @@ def api_media_list():
                                 mime_error,
                             )
                             mime_type = record.get("mime_type")
+                            if mime_type is None and media_file_path:
+                                ext_mime = get_mime_type_from_file_extension(
+                                    media_file_path
+                                )
+                                if ext_mime:
+                                    mime_type = ext_mime
+                                    logger.debug(
+                                        "Used extension fallback MIME %s for %s",
+                                        mime_type,
+                                        media_file_path.name,
+                                    )
                     elif (
                         mime_type == "application/gzip"
                         and media_file_path
@@ -639,7 +654,6 @@ def api_refresh_from_ai(unique_id: str):
         
         # If MIME type is not in data but we have a Path, try to get it from file extension
         if not mime_type and hasattr(fake_doc, "suffix"):
-            from media.mime_utils import get_mime_type_from_file_extension
             mime_type = get_mime_type_from_file_extension(fake_doc)
         
         # Determine kind from MIME type if not already set
