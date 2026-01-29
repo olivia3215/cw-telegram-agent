@@ -12,7 +12,7 @@ from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetID
 
 from llm.base import MsgPart
-from telegram_media import iter_media_parts
+from telegram_media import get_unique_id, iter_media_parts
 from utils.telegram import get_channel_name  # for sender/channel names
 from utils.ids import extract_user_id_from_peer
 
@@ -27,6 +27,25 @@ logger = logging.getLogger(__name__)
 
 
 # ---------- sticker helpers ----------
+
+
+def _try_sticker_cache_lookup(agent, doc) -> tuple[str | None, str | None]:
+    """
+    Try to find sticker set name from agent's loaded sticker cache.
+    Returns (set_short, None) if found, else (None, None).
+    """
+    if agent is None or doc is None:
+        return None, None
+    stickers = getattr(agent, "stickers", None) or {}
+    doc_uid = get_unique_id(doc)
+    if not doc_uid:
+        return None, None
+    for (set_short, _), cached_doc in stickers.items():
+        if get_unique_id(cached_doc) == doc_uid:
+            return set_short, None
+    return None, None
+
+
 async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | None]:
     """
     Resolve sticker set metadata (short_name and title) from the MediaItem.file_ref (Telethon doc).
@@ -77,7 +96,8 @@ async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | 
                     )
                 )
             else:
-                return short_name, title
+                cached = _try_sticker_cache_lookup(agent, doc)
+                return cached if cached[0] else (short_name, title)
 
         st = getattr(result, "set", None)
         if not st:
@@ -90,7 +110,8 @@ async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | 
 
     except Exception as e:
         logger.exception(f"Failed to get sticker set metadata: {e}")
-        return short_name, title
+        cached = _try_sticker_cache_lookup(agent, doc)
+        return cached if cached[0] else (short_name, title)
 
 
 # ---------- service message helpers ----------
@@ -341,6 +362,13 @@ async def inject_media_descriptions(
                         sticker_set_name, sticker_set_title = await _maybe_get_sticker_set_metadata(
                             agent, it
                         )
+                        # Fallback to MediaItem values from iter_media_parts (document attributes)
+                        # when API resolution fails - e.g. InputStickerSetShortName has short_name
+                        # on the attribute, but GetStickerSetRequest might fail
+                        if not sticker_set_name:
+                            sticker_set_name = getattr(it, "sticker_set_name", None)
+                        if not sticker_set_title:
+                            sticker_set_title = getattr(it, "sticker_set_title", None)
                         sticker_name = getattr(it, "sticker_name", None)
 
                     # Get provenance metadata

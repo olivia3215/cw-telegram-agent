@@ -218,6 +218,9 @@ class AIChainMediaSource(MediaSource):
                 "kind": metadata.get("kind", "photo"),
                 "status": MediaStatus.BUDGET_EXHAUSTED.value,
                 "description": None,
+                "sticker_set_name": metadata.get("sticker_set_name"),
+                "sticker_name": metadata.get("sticker_name"),
+                "mime_type": metadata.get("mime_type"),
             }
 
         if record_to_store and (
