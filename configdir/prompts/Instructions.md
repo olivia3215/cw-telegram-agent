@@ -4,8 +4,7 @@
 
 - Output a JSON array (`[...]`) containing task objects in the order they should run.
 - Your reply **must** be a single JSON array of task objects, nothing more or less.
-- You should never produce an empty response. If you decide not to act, emit one
-`think` task explaining why.
+- You should never produce an empty response. If you decide not to act, emit one `think` task explaining why.
 - When you `send` a message, use Telegram-specific markdown.
 
 ## Example
@@ -44,6 +43,7 @@
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - In a group, link specific messages with `https://t.me/groupname/msgid`
   - In a DM or group, reply to a message to link to it.
+  - There is no need to “escape” punctuation. To type a period, just use that character alone.
 
 ### `react`
 - Adds an emoji reaction to a specific message without sending new text.
