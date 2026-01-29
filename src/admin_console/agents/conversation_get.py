@@ -5,8 +5,11 @@
 import asyncio
 import html
 import logging
+from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
+
+from clock import clock
 
 from flask import jsonify  # pyright: ignore[reportMissingImports]
 
@@ -19,6 +22,7 @@ from media.media_source import get_default_media_source_chain
 from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
 from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
 
 # Import markdown_to_html from conversation module
 from admin_console.agents.conversation import markdown_to_html
@@ -532,41 +536,67 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         )
                         continue
                     
-                    # Try multiple ways to extract sender_id (for compatibility with different message types)
+                    # Try multiple ways to extract sender_id and sender entity
+                    # For group messages, message.sender often contains the User object directly
+                    sender_entity = getattr(message, "sender", None)
                     from_id = getattr(message, "from_id", None)
                     sender_id = None
+                    sender_name = None
+                    
+                    # First, try to get sender_id from from_id
                     if from_id:
                         sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
                     
-                    # Fallback: try message.sender.id if from_id didn't work
-                    if not sender_id:
-                        sender = getattr(message, "sender", None)
-                        if sender:
-                            sender_id = getattr(sender, "id", None)
+                    # If we have sender_entity, use it to get both ID and name
+                    # This is especially useful for group participants where get_entity() fails
+                    if sender_entity and isinstance(sender_entity, User):
+                        sender_id = sender_entity.id
+                        # Extract name directly from the sender entity
+                        first_name = getattr(sender_entity, "first_name", None)
+                        last_name = getattr(sender_entity, "last_name", None)
+                        username = getattr(sender_entity, "username", None)
+                        
+                        # Build sender name from available fields
+                        if first_name and last_name:
+                            sender_name = f"{first_name} {last_name}"
+                        elif first_name:
+                            sender_name = first_name
+                        elif last_name:
+                            sender_name = last_name
+                        elif username:
+                            sender_name = username
+                        else:
+                            sender_name = None  # Will fall back to get_channel_name below
+                        
+                        # Cache the sender entity so future lookups work
+                        if agent.entity_cache and sender_id:
+                            try:
+                                agent.entity_cache._cache[sender_id] = (
+                                    sender_entity,
+                                    clock.now(UTC) + timedelta(seconds=agent.entity_cache.ttl_seconds)
+                                )
+                            except Exception as e:
+                                logger.debug(f"Failed to cache sender entity {sender_id}: {e}")
+                    
+                    # Fallback: try message.sender.id if we don't have sender_id yet
+                    if not sender_id and sender_entity:
+                        sender_id = getattr(sender_entity, "id", None)
                     
                     is_from_agent = sender_id == agent.agent_id
                     
-                    # Get sender name - ensure it's never None so frontend can display it properly
-                    # The frontend expects format: sender_name (sender_id), so we provide the name part
-                    # get_channel_name should always return a non-empty string, but we handle failures gracefully
-                    sender_name = None
-                    if sender_id and isinstance(sender_id, int):
+                    # If we didn't get sender_name from sender_entity, try get_channel_name
+                    # This handles DMs and cases where sender_entity wasn't available
+                    if not sender_name and sender_id and isinstance(sender_id, int):
                         try:
                             sender_name = await get_channel_name(agent, sender_id)
                             # get_channel_name should never return None or empty, but be defensive
                             if not sender_name or not sender_name.strip():
-                                # This shouldn't happen, but if it does, use a fallback
                                 sender_name = "User"
                         except Exception as e:
                             logger.warning(f"Failed to get sender name for {sender_id}: {e}")
-                            # Fallback: use generic name (frontend will append ID)
                             sender_name = "User"
-                    elif sender_id:
-                        # sender_id exists but isn't an int - use generic name
-                        sender_name = "User"
-                    else:
-                        # No sender_id - this shouldn't happen for regular messages, but handle gracefully
-                        # For messages without sender_id, we can't show the ID, so just show "User"
+                    elif not sender_name:
+                        # No sender_id or sender_id isn't an int - use generic name
                         sender_name = "User"
                     
                     # Final safety check: ensure sender_name is never None

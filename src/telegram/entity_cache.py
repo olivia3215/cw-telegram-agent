@@ -7,6 +7,7 @@
 Telegram entity caching utility.
 """
 
+import asyncio
 import logging
 from datetime import UTC, timedelta
 
@@ -46,6 +47,7 @@ class TelegramEntityCache:
         self._cache = {}  # {entity_id: (entity, expiration_time)}
         self._contacts_cache = None  # Cached contacts list
         self._contacts_cache_expiration = None  # When contacts cache expires
+        self._contacts_fetch_locks = {}  # {loop_id: Lock} - locks per event loop to handle cross-loop usage
 
     async def get(self, entity_id: int):
         """
@@ -118,9 +120,36 @@ class TelegramEntityCache:
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
         return entity
 
+    def _get_contacts_fetch_lock(self):
+        """
+        Get or create a lock for the current event loop.
+        
+        Locks are bound to event loops, so we need to create one per loop
+        to handle cases where the cache is used across different loops.
+        
+        Returns:
+            An asyncio.Lock bound to the current running event loop
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            loop_id = id(loop)
+            if loop_id not in self._contacts_fetch_locks:
+                self._contacts_fetch_locks[loop_id] = asyncio.Lock()
+            return self._contacts_fetch_locks[loop_id]
+        except RuntimeError:
+            # No running loop - this shouldn't happen in async context, but handle gracefully
+            # Create a lock anyway (will be bound to the default loop if one exists)
+            logger.warning(f"[{self.name}] No running event loop when getting contacts fetch lock")
+            if None not in self._contacts_fetch_locks:
+                self._contacts_fetch_locks[None] = asyncio.Lock()
+            return self._contacts_fetch_locks[None]
+
     async def _try_resolve_from_contacts(self, user_id: int):
         """
         Try to resolve a user ID from the agent's contacts list.
+        
+        Uses a lock to prevent concurrent contacts fetches when multiple
+        lookups happen simultaneously (e.g., when loading group conversations).
         
         Args:
             user_id: The user ID to look up
@@ -130,38 +159,54 @@ class TelegramEntityCache:
         """
         # Check if contacts cache is still valid (5 minute TTL)
         now = clock.now(UTC)
-        if (
-            self._contacts_cache is None
-            or self._contacts_cache_expiration is None
-            or now > self._contacts_cache_expiration
-        ):
-            # Fetch contacts
-            if not self.client:
-                return None
-            
-            try:
-                if self.agent:
-                    await self.agent.ensure_client_connected()
-                result = await self.client(GetContactsRequest(hash=0))
-                # Build a dict mapping user_id -> User entity
-                self._contacts_cache = {}
-                if hasattr(result, "users"):
-                    for user in result.users:
-                        user_id_val = getattr(user, "id", None)
-                        if user_id_val:
-                            self._contacts_cache[user_id_val] = user
-                # Cache for 5 minutes
-                self._contacts_cache_expiration = now + timedelta(minutes=5)
-                logger.debug(f"[{self.name}] Loaded {len(self._contacts_cache)} contacts")
-            except Exception as e:
-                logger.debug(f"[{self.name}] Failed to fetch contacts: {e}")
-                # Cache empty result for 1 minute to avoid repeated failures
-                self._contacts_cache = {}
-                self._contacts_cache_expiration = now + timedelta(minutes=1)
-                return None
+        cache_valid = (
+            self._contacts_cache is not None
+            and self._contacts_cache_expiration is not None
+            and now <= self._contacts_cache_expiration
+        )
+        
+        if not cache_valid:
+            # Use lock to ensure only one contacts fetch happens at a time
+            # Get lock for current event loop (handles cross-loop usage)
+            lock = self._get_contacts_fetch_lock()
+            async with lock:
+                # Double-check cache validity after acquiring lock
+                # (another coroutine may have fetched it while we were waiting)
+                now = clock.now(UTC)
+                cache_valid = (
+                    self._contacts_cache is not None
+                    and self._contacts_cache_expiration is not None
+                    and now <= self._contacts_cache_expiration
+                )
+                
+                if not cache_valid:
+                    # Fetch contacts
+                    if not self.client:
+                        return None
+                    
+                    try:
+                        if self.agent:
+                            await self.agent.ensure_client_connected()
+                        result = await self.client(GetContactsRequest(hash=0))
+                        # Build a dict mapping user_id -> User entity
+                        self._contacts_cache = {}
+                        if hasattr(result, "users"):
+                            for user in result.users:
+                                user_id_val = getattr(user, "id", None)
+                                if user_id_val:
+                                    self._contacts_cache[user_id_val] = user
+                        # Cache for 5 minutes
+                        self._contacts_cache_expiration = now + timedelta(minutes=5)
+                        logger.debug(f"[{self.name}] Loaded {len(self._contacts_cache)} contacts")
+                    except Exception as e:
+                        logger.debug(f"[{self.name}] Failed to fetch contacts: {e}")
+                        # Cache empty result for 1 minute to avoid repeated failures
+                        self._contacts_cache = {}
+                        self._contacts_cache_expiration = now + timedelta(minutes=1)
+                        return None
         
         # Look up user in contacts cache
-        return self._contacts_cache.get(user_id)
+        return self._contacts_cache.get(user_id) if self._contacts_cache else None
 
     def clear(self):
         """Clear all cached entities and contacts cache."""
