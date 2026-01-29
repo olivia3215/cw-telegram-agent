@@ -67,6 +67,24 @@ class AIChainMediaSource(MediaSource):
         self.budget_source = budget_source
         self.ai_source = ai_source
 
+    async def _store_record(
+        self,
+        unique_id: str,
+        record: dict[str, Any],
+        media_bytes: bytes | None,
+        file_extension: str | None,
+        agent: Any,
+    ) -> None:
+        """Store record and optional media file to cache source."""
+        if inspect.iscoroutinefunction(self.cache_source.put):
+            await self.cache_source.put(
+                unique_id, record, media_bytes, file_extension, agent=agent
+            )
+        else:
+            self.cache_source.put(
+                unique_id, record, media_bytes, file_extension, agent=agent
+            )
+
     async def get(
         self,
         unique_id: str,
@@ -88,8 +106,39 @@ class AIChainMediaSource(MediaSource):
         # 2. If we have a cached record, decide whether to return it or retry
         if cached_record:
             status = cached_record.get("status")
-            # If successful or permanent failure, always return cached record
+            # If successful or permanent failure, we will return cached record
+            # BUT first check if media file exists on disk - if not and we have doc,
+            # download and store it (metadata may exist without the actual file)
             if not MediaStatus.is_temporary_failure(status):
+                # Check if media file exists - may have metadata but no file
+                cache_dir = None
+                if isinstance(self.cache_source, DirectoryMediaSource):
+                    cache_dir = self.cache_source.directory
+                else:
+                    cache_dir = Path(STATE_DIRECTORY) / "media"
+                media_file_exists = False
+                if cache_dir:
+                    for ext in MEDIA_FILE_EXTENSIONS:
+                        if (cache_dir / f"{unique_id}{ext}").exists():
+                            media_file_exists = True
+                            break
+                if not media_file_exists and doc is not None and agent is not None:
+                    try:
+                        logger.debug(
+                            f"AIChainMediaSource: downloading missing media file for cached {unique_id}"
+                        )
+                        media_bytes = await download_media_bytes(agent.client, doc)
+                        mime_type = getattr(doc, "mime_type", None)
+                        file_extension = get_file_extension_from_mime_or_bytes(
+                            mime_type, media_bytes
+                        )
+                        await self._store_record(
+                            unique_id, cached_record, media_bytes, file_extension, agent
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"AIChainMediaSource: failed to download missing media for {unique_id}: {e}"
+                        )
                 return cached_record
 
             # If it's a temporary failure, we only retry if we have a document
@@ -125,8 +174,6 @@ class AIChainMediaSource(MediaSource):
         else:
             # For MySQLMediaSource or other sources, check the default AI cache directory
             # (media files are always stored on disk, not in MySQL)
-            from config import STATE_DIRECTORY
-            from pathlib import Path
             cache_dir = Path(STATE_DIRECTORY) / "media"
         
         if cache_dir:
@@ -162,13 +209,27 @@ class AIChainMediaSource(MediaSource):
         # 5. Store metadata record if we got a new record or if we downloaded media file
         # Always store if we downloaded the media file (even if replacing a cached record)
         # Also store if we got a new record that's not already on disk
-        if record and (media_bytes is not None or not record.get("_on_disk", False)):
+        # If we downloaded media but have no record (all sources returned None), create
+        # a minimal record so the file gets saved for later description generation
+        record_to_store = record
+        if record is None and media_bytes is not None:
+            record_to_store = {
+                "unique_id": unique_id,
+                "kind": metadata.get("kind", "photo"),
+                "status": MediaStatus.BUDGET_EXHAUSTED.value,
+                "description": None,
+            }
+
+        if record_to_store and (
+            media_bytes is not None or not record_to_store.get("_on_disk", False)
+        ):
             should_store = True
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
             # UNLESS we downloaded the media file (in which case we want to preserve it)
             if (
-                cached_record
+                record is not None
+                and cached_record
                 and MediaStatus.is_temporary_failure(cached_record.get("status"))
                 and MediaStatus.is_temporary_failure(record.get("status"))
                 and media_bytes is None  # Only skip if we didn't download media
@@ -176,14 +237,9 @@ class AIChainMediaSource(MediaSource):
                 should_store = False
 
             if should_store:
-                # Store record with optional media file
-                # If we have media_bytes, this will add media_file to the record
-                # Handle both sync and async put methods
-                import inspect
-                if inspect.iscoroutinefunction(self.cache_source.put):
-                    await self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
-                else:
-                    self.cache_source.put(unique_id, record, media_bytes, file_extension, agent=agent)
+                await self._store_record(
+                    unique_id, record_to_store, media_bytes, file_extension, agent
+                )
 
         return record
 
