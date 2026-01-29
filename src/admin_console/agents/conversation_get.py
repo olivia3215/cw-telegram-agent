@@ -541,6 +541,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     sender_entity = getattr(message, "sender", None)
                     from_id = getattr(message, "from_id", None)
                     sender_id = None
+                    sender_name = None
                     
                     # First, try to get sender_id from from_id
                     if from_id:
