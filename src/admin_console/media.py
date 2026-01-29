@@ -269,7 +269,9 @@ def api_media_list():
                         # If sticker has no set name, treat it as regular media based on type
                         if not sticker_set:
                             # Unnamed stickers are treated as images or videos
-                            if kind == "animated_sticker" or is_tgs_mime_type(mime_type):
+                            # Check if it's an animated sticker (TGS) or a video format (like converted WebM)
+                            from media.mime_utils import is_video_mime_type
+                            if kind == "animated_sticker" or is_tgs_mime_type(mime_type) or (mime_type and is_video_mime_type(mime_type)):
                                 sticker_set = "Other Media - Videos"
                             else:
                                 sticker_set = "Other Media - Images"
@@ -360,24 +362,24 @@ def api_media_list():
                         except Exception as e:
                             logger.debug(f"Failed to get file creation time for {media_file_path}: {e}")
                     
-                    media_files.append(
-                        {
-                            "unique_id": unique_id,
-                            "json_file": str(json_file_path) if json_file_path else None,
-                            "media_file": media_file,
-                            "description": record.get("description"),
-                            "kind": kind,
-                            "sticker_set_name": sticker_set,
-                            "sticker_set_title": sticker_set_title,
-                            "sticker_name": sticker_name,
-                            "emoji_description": emoji_description,
-                            "is_emoji_set": is_emoji_set,
-                            "status": record.get("status", "unknown"),
-                            "failure_reason": record.get("failure_reason"),
-                            "mime_type": mime_type,
-                            "_file_creation_time": file_creation_time,  # Internal field for sorting
-                        }
-                    )
+                    media_item = {
+                        "unique_id": unique_id,
+                        "json_file": str(json_file_path) if json_file_path else None,
+                        "media_file": media_file,
+                        "description": record.get("description"),
+                        "kind": kind,
+                        "sticker_set_name": sticker_set,
+                        "sticker_set_title": sticker_set_title,
+                        "sticker_name": sticker_name,
+                        "emoji_description": emoji_description,
+                        "is_emoji_set": is_emoji_set,
+                        "status": record.get("status", "unknown"),
+                        "failure_reason": record.get("failure_reason"),
+                        "mime_type": mime_type,
+                        "_file_creation_time": file_creation_time,  # Internal field for sorting
+                    }
+                    
+                    media_files.append(media_item)
 
                 except Exception as e:
                     logger.error(f"Error processing {unique_id}: {e}")
