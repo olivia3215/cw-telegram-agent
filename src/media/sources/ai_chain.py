@@ -15,6 +15,7 @@ This source manages the flow between:
 4. AI generating source (for actual description generation)
 """
 
+import glob as glob_module
 import inspect
 import logging
 from pathlib import Path
@@ -24,7 +25,7 @@ from config import STATE_DIRECTORY
 from telegram_download import download_media_bytes
 
 from ..mime_utils import get_file_extension_from_mime_or_bytes
-from .base import MediaSource, MediaStatus, MEDIA_FILE_EXTENSIONS
+from .base import MediaSource, MediaStatus
 from .directory import DirectoryMediaSource
 
 logger = logging.getLogger(__name__)
@@ -119,14 +120,17 @@ class AIChainMediaSource(MediaSource):
                     cache_dir = Path(STATE_DIRECTORY) / "media"
                 media_file_exists = False
                 if cache_dir:
+                    # Prefer media_file from record (handles any extension the writer emits)
                     media_file_name = cached_record.get("media_file")
                     if media_file_name:
                         media_path = cache_dir / media_file_name
                         if media_path.exists() and media_path.is_file():
                             media_file_exists = True
                     if not media_file_exists:
-                        for ext in MEDIA_FILE_EXTENSIONS:
-                            if (cache_dir / f"{unique_id}{ext}").exists():
+                        # Fallback: glob for unique_id.* (any extension except .json)
+                        escaped = glob_module.escape(unique_id)
+                        for path in cache_dir.glob(f"{escaped}.*"):
+                            if path.suffix.lower() != ".json":
                                 media_file_exists = True
                                 break
                 if not media_file_exists and doc is not None and agent is not None:
@@ -172,7 +176,7 @@ class AIChainMediaSource(MediaSource):
         # Always check if media file exists on disk, even for cached records
         # (records might have _on_disk=True but no actual media file)
         # Note: Media files are always stored on disk, even when MySQL is used for metadata
-        # Prefer media_file from record (handles .flac, .zip, .bin etc. not in MEDIA_FILE_EXTENSIONS)
+        # Prefer media_file from record; fallback glob handles any extension
         media_file_exists = False
         
         # Determine the cache directory to check
@@ -185,7 +189,7 @@ class AIChainMediaSource(MediaSource):
             cache_dir = Path(STATE_DIRECTORY) / "media"
         
         if cache_dir:
-            # Check media_file from record first (handles all extensions the writer can emit)
+            # Prefer media_file from record (handles any extension the writer emits)
             for rec in (cached_record, record):
                 if rec:
                     media_file_name = rec.get("media_file")
@@ -195,9 +199,10 @@ class AIChainMediaSource(MediaSource):
                             media_file_exists = True
                             break
             if not media_file_exists:
-                for ext in MEDIA_FILE_EXTENSIONS:
-                    media_file = cache_dir / f"{unique_id}{ext}"
-                    if media_file.exists():
+                # Fallback: glob for unique_id.* (any extension except .json)
+                escaped = glob_module.escape(unique_id)
+                for path in cache_dir.glob(f"{escaped}.*"):
+                    if path.suffix.lower() != ".json":
                         media_file_exists = True
                         break
 
