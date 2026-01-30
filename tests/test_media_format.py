@@ -154,7 +154,9 @@ async def test_format_sticker_sentence_with_existing_attributes():
     assert result == expected
 
     # Verify media_chain.get was called
-    media_chain.get.assert_called_once_with("test_123", agent=agent)
+    media_chain.get.assert_called_once_with(
+        "test_123", agent=agent, update_last_used=True
+    )
 
     # Verify resolve_sticker_metadata was NOT called (since we already have the name)
     resolve_sticker_metadata.assert_not_called()
@@ -186,7 +188,9 @@ async def test_format_sticker_sentence_resolves_missing_set_name():
     assert result == expected
 
     # Verify both functions were called
-    media_chain.get.assert_called_once_with("test_456", agent=agent)
+    media_chain.get.assert_called_once_with(
+        "test_456", agent=agent, update_last_used=True
+    )
     resolve_sticker_metadata.assert_called_once_with(agent, media_item)
 
 

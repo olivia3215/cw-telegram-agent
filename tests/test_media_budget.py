@@ -507,3 +507,232 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
     # Assert: LLM was called with the cached media bytes (not downloaded bytes)
     assert len(received_bytes) == 1
     assert received_bytes[0] == cached_media_bytes, "LLM should receive cached bytes, not downloaded bytes"
+
+
+@pytest.mark.asyncio
+async def test_ai_chain_retry_limit_prevents_retry(tmp_path):
+    """
+    When description_retry_count >= MAX_DESCRIPTION_RETRIES, AIChainMediaSource
+    should not retry temporary failures and return the cached record.
+    """
+    from media.sources.base import get_max_description_retries
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "retry-limit-uid"
+    max_retries = get_max_description_retries()
+    record = {
+        "unique_id": unique_id,
+        "kind": "photo",
+        "description": None,
+        "status": MediaStatus.TEMPORARY_FAILURE.value,
+        "failure_reason": "timeout",
+        "retryable": True,
+        "description_retry_count": max_retries,  # At limit
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    cache_source = DirectoryMediaSource(cache_dir)
+    ai_chain = AIChainMediaSource(
+        cache_source=cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=NothingMediaSource(),
+        ai_source=NothingMediaSource(),
+    )
+
+    doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
+    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM())
+
+    result = await ai_chain.get(
+        unique_id,
+        agent=agent,
+        doc=doc,
+        kind="photo",
+    )
+
+    # Should return cached record without retrying (ai_source never called)
+    assert result["unique_id"] == unique_id
+    assert result["status"] == MediaStatus.TEMPORARY_FAILURE.value
+    assert result["description_retry_count"] == max_retries
+
+
+@pytest.mark.asyncio
+async def test_ai_chain_increments_retry_count_on_temp_failure(monkeypatch, tmp_path):
+    """
+    When storing a TEMPORARY_FAILURE record, description_retry_count should
+    be incremented from the cached record.
+    """
+    llm = FakeLLM()
+    client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
+
+    async def _fake_download_media_bytes(client, doc):
+        return b"\x89PNG..."
+
+    monkeypatch.setattr(
+        "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
+    )
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "retry-increment-uid"
+    # Cached record with previous temp failure (retry_count=2)
+    record = {
+        "unique_id": unique_id,
+        "kind": "photo",
+        "description": None,
+        "status": MediaStatus.TEMPORARY_FAILURE.value,
+        "failure_reason": "timeout",
+        "retryable": True,
+        "description_retry_count": 2,
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    # No media file - triggers download, which allows storing the new temp failure
+
+    # AI source that returns another temp failure
+    class TempFailureAISource:
+        async def get(self, unique_id, agent=None, doc=None, **metadata):
+            from media.sources.helpers import make_error_record
+            return make_error_record(
+                unique_id,
+                MediaStatus.TEMPORARY_FAILURE,
+                "timeout again",
+                retryable=True,
+                kind="photo",
+            )
+
+    cache_source = DirectoryMediaSource(cache_dir)
+    ai_chain = AIChainMediaSource(
+        cache_source=cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=NothingMediaSource(),
+        ai_source=TempFailureAISource(),
+    )
+
+    reset_description_budget(1)
+    doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
+
+    result = await ai_chain.get(
+        unique_id,
+        agent=agent,
+        doc=doc,
+        kind="photo",
+    )
+
+    assert result["status"] == MediaStatus.TEMPORARY_FAILURE.value
+    assert result["description_retry_count"] == 3  # 2 + 1
+
+    # Verify stored record has incremented count
+    stored = json.loads((cache_dir / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert stored["description_retry_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_ai_chain_updates_last_used_when_chain_returns(monkeypatch, tmp_path):
+    """
+    When AIChainMediaSource returns a record from the chain (not cache) and
+    update_last_used=True, it should call update_media_last_used.
+    """
+    llm = FakeLLM("generated desc")
+    client = FakeClient()
+    agent = SimpleNamespace(client=client, llm=llm)
+
+    async def _fake_download_media_bytes(client, doc):
+        return b"\x89PNG..."
+
+    monkeypatch.setattr(
+        "media.sources.ai_generating.download_media_bytes", _fake_download_media_bytes
+    )
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "last-used-uid"
+
+    cache_source = DirectoryMediaSource(cache_dir)
+    ai_chain = AIChainMediaSource(
+        cache_source=cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=NothingMediaSource(),
+        ai_source=AIGeneratingMediaSource(cache_directory=cache_dir),
+    )
+
+    reset_description_budget(1)
+    doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
+
+    update_calls = []
+
+    def mock_update_last_used(uid):
+        update_calls.append(uid)
+
+    with patch("media.sources.ai_generating.get_media_llm", return_value=llm), \
+         patch("db.media_metadata.update_media_last_used", side_effect=mock_update_last_used):
+        result = await ai_chain.get(
+            unique_id,
+            agent=agent,
+            doc=doc,
+            kind="photo",
+            update_last_used=True,
+        )
+
+    assert result["description"] == "generated desc"
+    assert update_calls == [unique_id]
+
+
+@pytest.mark.asyncio
+async def test_directory_media_source_preserves_description_retry_count(tmp_path):
+    """
+    DirectoryMediaSource should preserve description_retry_count in JSON format.
+    """
+    import json
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "retry-count-json-uid"
+    record = {
+        "unique_id": unique_id,
+        "kind": "photo",
+        "description": "test",
+        "status": MediaStatus.TEMPORARY_FAILURE.value,
+        "failure_reason": "timeout",
+        "description_retry_count": 2,
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    source = DirectoryMediaSource(cache_dir)
+    result = await source.get(unique_id, kind="photo")
+
+    assert result is not None
+    assert result["description_retry_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_directory_media_source_stores_description_retry_count(tmp_path):
+    """
+    DirectoryMediaSource.put should store description_retry_count in JSON.
+    """
+    import json
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "retry-count-store-uid"
+    record = {
+        "unique_id": unique_id,
+        "kind": "photo",
+        "description": "test",
+        "status": MediaStatus.GENERATED.value,
+        "description_retry_count": 0,
+    }
+
+    source = DirectoryMediaSource(cache_dir)
+    source.put(unique_id, record)
+
+    stored = json.loads(
+        (cache_dir / f"{unique_id}.json").read_text(encoding="utf-8")
+    )
+    assert stored["description_retry_count"] == 0

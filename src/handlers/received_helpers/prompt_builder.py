@@ -419,6 +419,7 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
                         kind="sticker",
                         sticker_set_name=set_short,
                         sticker_name=name,
+                        update_last_used=True,
                     )
                     desc = cache_record.get("description") if cache_record else None
                 else:
@@ -476,6 +477,7 @@ async def _build_photo_list(agent, media_chain) -> str | None:
                     agent=agent,
                     doc=photo,
                     kind="photo",
+                    update_last_used=True,
                 )
                 desc = cache_record.get("description") if cache_record else None
             except Exception as e:

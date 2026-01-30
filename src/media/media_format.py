@@ -120,7 +120,9 @@ async def format_sticker_sentence(
     # Check if we already have cached metadata
     meta = None
     try:
-        meta = await media_chain.get(media_item.unique_id, agent=agent)
+        meta = await media_chain.get(
+            media_item.unique_id, agent=agent, update_last_used=True
+        )
         if isinstance(meta, dict):
             # If we got a cached title, prefer it over what we just resolved
             # (cached title might be from a previous successful API call)

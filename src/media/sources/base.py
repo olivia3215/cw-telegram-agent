@@ -43,6 +43,9 @@ MEDIA_FILE_EXTENSIONS = [
 # Timeout for LLM description
 _DESCRIBE_TIMEOUT_SECS = 12
 
+# Max retries for temporary description failures before giving up
+MAX_DESCRIPTION_RETRIES = 5
+
 
 class MediaStatus(Enum):
     """Standardized status values for media records."""
@@ -172,4 +175,9 @@ def fallback_sticker_description(
 def get_describe_timeout_secs() -> int:
     """Get the timeout for LLM description calls."""
     return _DESCRIBE_TIMEOUT_SECS
+
+
+def get_max_description_retries() -> int:
+    """Get the max retry count for temporary description failures."""
+    return MAX_DESCRIPTION_RETRIES
 
