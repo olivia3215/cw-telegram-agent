@@ -241,7 +241,8 @@ class DirectoryMediaSource(MediaSource):
                 # if they exist (needed for pipeline health)
                 excluded_fields_config = {
                     "ts", "sender_id", "sender_name", "channel_id", "channel_name",
-                    "media_ts", "skip_fallback", "_on_disk", "agent_telegram_id"
+                    "media_ts", "skip_fallback", "_on_disk", "agent_telegram_id",
+                    "update_last_used",
                 }
                 
                 # Merge new metadata fields into the cached record if provided
