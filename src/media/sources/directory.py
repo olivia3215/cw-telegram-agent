@@ -21,6 +21,7 @@ from typing import Any
 
 from clock import clock
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
+from media.state_path import get_resolved_state_media_path
 
 from ..mime_utils import is_tgs_mime_type
 from .base import MediaSource, MediaStatus, MEDIA_FILE_EXTENSIONS, fallback_sticker_description
@@ -92,15 +93,15 @@ class DirectoryMediaSource(MediaSource):
     def _is_state_media_directory(self) -> bool:
         """
         Check if this media directory is state/media.
-        
+
         State/media stores metadata in MySQL, not JSON files. This source must never
         write JSON to state/media regardless of how put() was invoked.
         """
         try:
-            if not STATE_DIRECTORY:
+            state_media = get_resolved_state_media_path()
+            if state_media is None:
                 return False
-            abs_dir = self.directory.resolve()
-            state_media = (Path(STATE_DIRECTORY) / "media").resolve()
+            abs_dir = self.directory.expanduser().resolve()
             return abs_dir == state_media
         except Exception:
             return False

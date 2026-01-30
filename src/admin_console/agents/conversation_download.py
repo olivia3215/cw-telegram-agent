@@ -4,6 +4,7 @@
 
 import copy
 import glob
+import gzip
 import html
 import io
 import json as json_lib
@@ -544,11 +545,15 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             except Exception as e:
                                 logger.warning(f"Error downloading emoji {doc_id}: {e}")
                         
+                        # Build lottie_data_map for TGS files (embedded JSON works with file:// and http)
+                        lottie_data_map = _build_lottie_data_map(media_dir, media_map)
+
                         # Generate HTML
                         agent_tz_id = agent.get_timezone_identifier()
                         html_content = _generate_standalone_html(
-                            agent_config_name, user_id, messages, translations, 
-                            agent_tz_id, media_map, mime_map, emoji_map, include_translations
+                            agent_config_name, user_id, messages, translations,
+                            agent_tz_id, media_map, mime_map, emoji_map, lottie_data_map,
+                            include_translations,
                         )
                         
                         # Write HTML
@@ -609,10 +614,33 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             return jsonify({"error": str(e)}), 500
 
 
+def _build_lottie_data_map(media_dir: Path, media_map: dict) -> dict:
+    """
+    Build a map of unique_id -> decompressed Lottie JSON for TGS files.
+
+    Embedding the JSON inline allows the export to work when opened via file://
+    (browsers block fetch() from file:// due to CORS) or served over http.
+    """
+    lottie_data_map = {}
+    for unique_id, filename in media_map.items():
+        if not filename.lower().endswith(".tgs"):
+            continue
+        tgs_path = media_dir / filename
+        if not tgs_path.exists():
+            continue
+        try:
+            with gzip.open(tgs_path, "rb") as f:
+                decompressed = f.read().decode("utf-8")
+            lottie_data_map[unique_id] = json_lib.loads(decompressed)
+        except (gzip.BadGzipFile, json_lib.JSONDecodeError, OSError) as e:
+            logger.debug(f"Could not decompress TGS for {unique_id}: {e}")
+    return lottie_data_map
+
+
 def _generate_standalone_html(
-    agent_name: str, user_id: str, messages: list, 
+    agent_name: str, user_id: str, messages: list,
     translations: dict, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
-    show_translations: bool
+    lottie_data_map: dict, show_translations: bool,
 ) -> str:
     """Generate standalone HTML file for conversation display."""
     # This will be a large HTML string with embedded CSS and JavaScript
@@ -626,7 +654,6 @@ def _generate_standalone_html(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conversation: {html.escape(agent_name)} / {html.escape(user_id)}</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -839,24 +866,27 @@ def _generate_standalone_html(
             html_content += f'        <div class="reactions">Reactions: {reactions_local}</div>\n'
         html_content += "    </div>\n"
     
-    # Add JavaScript for TGS animations
-    html_content += """
+    # Embed Lottie JSON inline so TGS works with file:// (CORS blocks fetch) and http
+    lottie_json = json_lib.dumps(lottie_data_map)
+    # Escape </ to prevent closing script tag when embedding in HTML
+    lottie_json_safe = lottie_json.replace("</", "<\\/")
+
+    html_content += (
+        f'<script id="lottie-data" type="application/json">{lottie_json_safe}</script>\n'
+        """
     <script>
-        // Load TGS animations
+        // Load TGS animations - use embedded LOTTIE_DATA (works with file:// and http)
         document.addEventListener('DOMContentLoaded', function() {
+            const lottieDataEl = document.getElementById('lottie-data');
+            const LOTTIE_DATA = lottieDataEl ? JSON.parse(lottieDataEl.textContent) : {};
+
             const tgsContainers = document.querySelectorAll('.tgs-container');
             tgsContainers.forEach(function(container) {
                 const uniqueId = container.getAttribute('data-unique-id');
-                const mediaPath = container.getAttribute('data-path');
-                
-                fetch(mediaPath)
-                    .then(response => response.arrayBuffer())
-                    .then(function(tgsData) {
-                        // Decompress with pako
-                        const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
-                        const jsonData = JSON.parse(decompressed);
-                        
-                        // Initialize Lottie
+                const jsonData = LOTTIE_DATA[uniqueId];
+
+                if (jsonData) {
+                    try {
                         lottie.loadAnimation({
                             container: container,
                             renderer: 'svg',
@@ -864,17 +894,20 @@ def _generate_standalone_html(
                             autoplay: true,
                             animationData: jsonData
                         });
-                    })
-                    .catch(function(error) {
-                        console.error('Failed to load TGS animation:', error);
+                    } catch (e) {
+                        console.error('Failed to load TGS animation:', e);
                         container.innerHTML = '<div style="text-align: center; color: #dc3545;">⚠️ Animation Error</div>';
-                    });
+                    }
+                } else {
+                    container.innerHTML = '<div style="text-align: center; color: #dc3545;">⚠️ Animation Error</div>';
+                }
             });
         });
     </script>
 </body>
 </html>
 """
+    )
     
     return html_content
 

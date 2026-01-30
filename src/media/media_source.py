@@ -65,7 +65,7 @@ def _create_default_chain() -> CompositeMediaSource:
     Internal helper for get_default_media_source_chain.
     """
 
-    from .media_sources import get_directory_media_source
+    from .media_sources import get_directory_media_source, get_resolved_state_media_path
 
     sources: list[MediaSource] = []
 
@@ -79,8 +79,9 @@ def _create_default_chain() -> CompositeMediaSource:
     # Set up AI cache - always use MySQL for metadata (media files stay on disk)
     # Always set up filesystem directory for AIGeneratingMediaSource (for debug saves)
     # Also always register it so it appears in the media editor directory list
-    state_dir = Path(STATE_DIRECTORY)
-    ai_cache_dir = state_dir / "media"
+    ai_cache_dir = get_resolved_state_media_path()
+    if ai_cache_dir is None:
+        ai_cache_dir = (Path(STATE_DIRECTORY or "state").expanduser().resolve() / "media").resolve()
     ai_cache_dir.mkdir(parents=True, exist_ok=True)
     
     # Always register the directory source so it appears in scan_media_directories()

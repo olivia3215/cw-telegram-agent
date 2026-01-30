@@ -224,7 +224,7 @@ def test_put_refuses_to_write_json_to_state_media(tmp_path, monkeypatch):
     # Make tmp_path/media resolve as state/media
     state_media = tmp_path / "media"
     state_media.mkdir()
-    monkeypatch.setattr("media.sources.directory.STATE_DIRECTORY", str(tmp_path))
+    monkeypatch.setattr("media.state_path.STATE_DIRECTORY", str(tmp_path))
 
     source = get_directory_media_source(state_media)
     unique_id = "state-media-test"
