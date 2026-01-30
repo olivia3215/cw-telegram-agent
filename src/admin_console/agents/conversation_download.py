@@ -67,6 +67,19 @@ _TRANSLATION_SCHEMA = {
 }
 
 
+def _cache_media_to_state(unique_id: str, filename: str, media_bytes: bytes) -> None:
+    """Cache downloaded media to state/media for future conversation downloads."""
+    try:
+        state_media_dir = Path(STATE_DIRECTORY) / "media"
+        state_media_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = state_media_dir / filename
+        if not cache_path.exists():
+            cache_path.write_bytes(media_bytes)
+            logger.debug(f"Cached media {unique_id} to {cache_path} for future downloads")
+    except Exception as e:
+        logger.warning(f"Failed to cache media {unique_id} to state: {e}")
+
+
 def register_conversation_download_routes(agents_bp: Blueprint):
     """Register conversation download route."""
     
@@ -456,6 +469,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                         f.write(media_bytes)
                                                     media_map[unique_id] = filename
                                                     mime_map[unique_id] = mime_type
+                                                    # Cache to persistent storage for future downloads
+                                                    _cache_media_to_state(unique_id, filename, media_bytes)
                                                     break
                                         except Exception as e:
                                             logger.warning(f"Error downloading media {unique_id}: {e}")
@@ -542,6 +557,9 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                             with open(emoji_path, "wb") as f:
                                                 f.write(emoji_bytes)
                                             emoji_map[doc_id] = filename
+                                            # Cache to persistent storage (use unique_id for lookup)
+                                            emoji_cache_filename = f"{unique_id_emoji}{ext}"
+                                            _cache_media_to_state(unique_id_emoji, emoji_cache_filename, emoji_bytes)
                             except Exception as e:
                                 logger.warning(f"Error downloading emoji {doc_id}: {e}")
                         
