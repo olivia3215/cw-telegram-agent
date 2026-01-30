@@ -9,6 +9,7 @@ agents_bp = Blueprint("agents", __name__)
 
 # Import and register all submodule routes using normal imports
 from admin_console.agents import (
+    contacts,
     configuration,
     conversation,
     conversation_llm,
@@ -25,6 +26,7 @@ from admin_console.agents import (
 
 # Register all routes
 configuration.register_configuration_routes(agents_bp)
+contacts.register_contact_routes(agents_bp)
 conversation.register_conversation_routes(agents_bp)
 conversation_llm.register_conversation_llm_routes(agents_bp)
 intentions.register_intention_routes(agents_bp)

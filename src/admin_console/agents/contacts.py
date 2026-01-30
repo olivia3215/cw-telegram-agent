@@ -1,0 +1,253 @@
+import base64
+import logging
+from typing import Any
+
+from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.contacts import (  # pyright: ignore[reportMissingImports]
+    AddContactRequest,
+    DeleteContactsRequest,
+    GetContactsRequest,
+)
+from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import Chat, Channel, User  # pyright: ignore[reportMissingImports]
+
+from admin_console.helpers import get_agent_by_name, resolve_user_id_and_handle_errors
+from telegram_download import download_media_bytes
+
+logger = logging.getLogger(__name__)
+
+
+async def _get_profile_photo_data_url(client, entity) -> str | None:
+    try:
+        photos = await client.get_profile_photos(entity, limit=1)
+        if not photos:
+            return None
+        photo = photos[0]
+        photo_bytes = await download_media_bytes(client, photo)
+        mime_type = "image/jpeg"
+        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+        return f"data:{mime_type};base64,{base64_data}"
+    except Exception as e:
+        logger.debug(f"Error getting profile photo: {e}")
+        return None
+
+
+def _extract_username(entity) -> str | None:
+    username = getattr(entity, "username", None)
+    if username:
+        return username
+    usernames = getattr(entity, "usernames", None)
+    if usernames:
+        for handle in usernames:
+            handle_value = getattr(handle, "username", None)
+            if handle_value:
+                return handle_value
+    return None
+
+
+async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
+    is_user = isinstance(entity, User)
+    is_deleted = bool(getattr(entity, "deleted", False)) if is_user else False
+    is_contact = bool(getattr(entity, "contact", False)) if is_user else False
+
+    first_name = ""
+    last_name = ""
+    bio = ""
+    birthday = None
+
+    if is_user:
+        first_name = getattr(entity, "first_name", None) or ""
+        last_name = getattr(entity, "last_name", None) or ""
+
+        try:
+            input_user = await client.get_input_entity(entity)
+            full_user_response = await client(GetFullUserRequest(input_user))
+        except Exception as e:
+            logger.warning(f"Failed to fetch full user profile: {e}")
+            full_user_response = None
+
+        if full_user_response:
+            bio = getattr(full_user_response, "about", None) or ""
+            birthday_obj = getattr(full_user_response, "birthday", None)
+            if bio is None and hasattr(full_user_response, "full_user"):
+                full_user = getattr(full_user_response, "full_user")
+                if full_user:
+                    bio = getattr(full_user, "about", None) or ""
+                    if birthday_obj is None:
+                        birthday_obj = getattr(full_user, "birthday", None)
+
+            if birthday_obj:
+                day = getattr(birthday_obj, "day", None)
+                month = getattr(birthday_obj, "month", None)
+                year = getattr(birthday_obj, "year", None)
+                if day and month:
+                    birthday = {"day": day, "month": month, "year": year}
+    else:
+        title = getattr(entity, "title", None)
+        if title:
+            first_name = title
+
+    profile_photo = await _get_profile_photo_data_url(client, entity)
+    username = _extract_username(entity) or ""
+
+    return {
+        "first_name": first_name,
+        "last_name": last_name,
+        "username": username,
+        "telegram_id": getattr(entity, "id", None),
+        "bio": bio,
+        "birthday": birthday,
+        "profile_photo": profile_photo,
+        "is_contact": is_contact,
+        "is_deleted": is_deleted,
+        "can_edit_contact": is_user,
+    }
+
+
+def register_contact_routes(agents_bp: Blueprint):
+    @agents_bp.route("/api/agents/<agent_config_name>/contacts", methods=["GET"])
+    def api_get_contacts(agent_config_name: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            async def _get_contacts():
+                result = await agent.client(GetContactsRequest(hash=0))
+                users_by_id = {user.id: user for user in (result.users or [])}
+                contact_ids = {contact.user_id for contact in (result.contacts or [])}
+                contacts = []
+                for user_id in contact_ids:
+                    user = users_by_id.get(user_id)
+                    if not user:
+                        continue
+                    first = getattr(user, "first_name", None) or ""
+                    last = getattr(user, "last_name", None) or ""
+                    username = _extract_username(user)
+                    display_name = f"{first} {last}".strip() or username or str(user_id)
+                    contacts.append(
+                        {
+                            "user_id": str(user_id),
+                            "name": display_name,
+                            "username": username,
+                            "is_deleted": bool(getattr(user, "deleted", False)),
+                        }
+                    )
+                return contacts
+
+            contacts = agent.execute(_get_contacts(), timeout=15.0)
+            return jsonify({"contacts": contacts})
+        except Exception as e:
+            logger.error(f"Error fetching contacts for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/contacts/<user_id>", methods=["DELETE"])
+    def api_delete_contact(agent_config_name: str, user_id: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+
+            async def _delete_contact():
+                entity = await agent.client.get_entity(channel_id)
+                if not isinstance(entity, User):
+                    raise ValueError("Only user contacts can be deleted")
+                input_user = await agent.client.get_input_entity(entity)
+                await agent.client(DeleteContactsRequest(id=[input_user]))
+                if agent.entity_cache:
+                    agent.entity_cache._contacts_cache = None
+                    agent.entity_cache._contacts_cache_expiration = None
+                return True
+
+            agent.execute(_delete_contact(), timeout=15.0)
+            return jsonify({"success": True})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error deleting contact for {agent_config_name}/{user_id}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/partner-profile/<user_id>", methods=["GET"])
+    def api_get_partner_profile(agent_config_name: str, user_id: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+
+            async def _get_profile():
+                entity = await agent.client.get_entity(channel_id)
+                return await _build_partner_profile(agent.client, entity)
+
+            profile = agent.execute(_get_profile(), timeout=15.0)
+            return jsonify(profile)
+        except Exception as e:
+            logger.error(f"Error getting partner profile for {agent_config_name}/{user_id}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/partner-profile/<user_id>", methods=["PUT"])
+    def api_update_partner_profile(agent_config_name: str, user_id: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+
+            data = request.get_json() or {}
+            if "is_contact" not in data:
+                return jsonify({"error": "Missing is_contact in request"}), 400
+
+            is_contact = bool(data.get("is_contact"))
+            first_name = (data.get("first_name") or "").strip()
+            last_name = (data.get("last_name") or "").strip()
+
+            async def _update_contact():
+                entity = await agent.client.get_entity(channel_id)
+                if not isinstance(entity, User):
+                    raise ValueError("Only users can be added or removed as contacts")
+                input_user = await agent.client.get_input_entity(entity)
+
+                if is_contact:
+                    await agent.client(
+                        AddContactRequest(
+                            id=input_user,
+                            first_name=first_name or getattr(entity, "first_name", "") or "",
+                            last_name=last_name or getattr(entity, "last_name", "") or "",
+                            phone=getattr(entity, "phone", "") or "",
+                        )
+                    )
+                else:
+                    await agent.client(DeleteContactsRequest(id=[input_user]))
+
+                if agent.entity_cache:
+                    agent.entity_cache._contacts_cache = None
+                    agent.entity_cache._contacts_cache_expiration = None
+
+                updated_entity = await agent.client.get_entity(channel_id)
+                return await _build_partner_profile(agent.client, updated_entity)
+
+            profile = agent.execute(_update_contact(), timeout=20.0)
+            return jsonify(profile)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error updating partner profile for {agent_config_name}/{user_id}: {e}")
+            return jsonify({"error": str(e)}), 500
