@@ -111,6 +111,7 @@ class AIChainMediaSource(MediaSource):
             # download and store it (metadata may exist without the actual file)
             if not MediaStatus.is_temporary_failure(status):
                 # Check if media file exists - may have metadata but no file
+                # Prefer media_file from record (handles .flac, .zip, .bin etc.)
                 cache_dir = None
                 if isinstance(self.cache_source, DirectoryMediaSource):
                     cache_dir = self.cache_source.directory
@@ -118,10 +119,16 @@ class AIChainMediaSource(MediaSource):
                     cache_dir = Path(STATE_DIRECTORY) / "media"
                 media_file_exists = False
                 if cache_dir:
-                    for ext in MEDIA_FILE_EXTENSIONS:
-                        if (cache_dir / f"{unique_id}{ext}").exists():
+                    media_file_name = cached_record.get("media_file")
+                    if media_file_name:
+                        media_path = cache_dir / media_file_name
+                        if media_path.exists() and media_path.is_file():
                             media_file_exists = True
-                            break
+                    if not media_file_exists:
+                        for ext in MEDIA_FILE_EXTENSIONS:
+                            if (cache_dir / f"{unique_id}{ext}").exists():
+                                media_file_exists = True
+                                break
                 if not media_file_exists and doc is not None and agent is not None:
                     try:
                         logger.debug(
@@ -165,6 +172,7 @@ class AIChainMediaSource(MediaSource):
         # Always check if media file exists on disk, even for cached records
         # (records might have _on_disk=True but no actual media file)
         # Note: Media files are always stored on disk, even when MySQL is used for metadata
+        # Prefer media_file from record (handles .flac, .zip, .bin etc. not in MEDIA_FILE_EXTENSIONS)
         media_file_exists = False
         
         # Determine the cache directory to check
@@ -177,12 +185,21 @@ class AIChainMediaSource(MediaSource):
             cache_dir = Path(STATE_DIRECTORY) / "media"
         
         if cache_dir:
-            # Check if media file already exists
-            for ext in MEDIA_FILE_EXTENSIONS:
-                media_file = cache_dir / f"{unique_id}{ext}"
-                if media_file.exists():
-                    media_file_exists = True
-                    break
+            # Check media_file from record first (handles all extensions the writer can emit)
+            for rec in (cached_record, record):
+                if rec:
+                    media_file_name = rec.get("media_file")
+                    if media_file_name:
+                        media_path = cache_dir / media_file_name
+                        if media_path.exists() and media_path.is_file():
+                            media_file_exists = True
+                            break
+            if not media_file_exists:
+                for ext in MEDIA_FILE_EXTENSIONS:
+                    media_file = cache_dir / f"{unique_id}{ext}"
+                    if media_file.exists():
+                        media_file_exists = True
+                        break
 
         # Download media if we have a doc and media file doesn't exist
         # Always attempt download if we have doc, regardless of budget status or _on_disk flag
