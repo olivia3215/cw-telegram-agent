@@ -51,6 +51,7 @@ from media.mime_utils import (
     detect_mime_type_from_bytes,
     get_mime_type_from_file_extension,
     is_tgs_mime_type,
+    is_video_mime_type,
 )
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
@@ -220,8 +221,31 @@ def api_media_list():
                         logger.warning(f"No record found for {unique_id}")
                         continue
 
-                    # Look for associated media file
-                    media_file_path = find_media_file(media_dir, unique_id)
+                    # Look for associated media file: (1) use metadata first, (2) glob then patch
+                    media_file_path = None
+                    media_file_name = record.get("media_file")
+                    if media_file_name:
+                        for base in (media_dir, Path(STATE_DIRECTORY) / "media" if STATE_DIRECTORY else []):
+                            if not base or not base.exists():
+                                continue
+                            candidate = base / media_file_name
+                            if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
+                                media_file_path = candidate
+                                break
+                    if not media_file_path:
+                        media_file_path = find_media_file(media_dir, unique_id)
+                        if media_file_path and not record.get("media_file"):
+                            # Patch metadata so future lookups are fast (filename relative to metadata dir)
+                            try:
+                                record["media_file"] = media_file_path.name
+                                base_dir = media_file_path.parent
+                                if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                                    from db import media_metadata
+                                    media_metadata.save_media_metadata(record)
+                                else:
+                                    get_directory_media_source(base_dir).put(unique_id, record)
+                            except Exception as e:
+                                logger.debug(f"Could not patch media_file for {unique_id}: {e}")
                     media_file = str(media_file_path) if media_file_path else None
 
                     mime_type = record.get("mime_type")
@@ -271,8 +295,9 @@ def api_media_list():
 
                     # Group by sticker set for organization
                     kind = record.get("kind", "unknown")
-                    if is_tgs_mime_type(mime_type) and kind == "sticker":
-                        kind = "animated_sticker"
+                    if kind == "sticker" and mime_type:
+                        if is_tgs_mime_type(mime_type) or is_video_mime_type(mime_type):
+                            kind = "animated_sticker"
 
                     # Extract sticker_name early so we can use it for emoji set detection
                     sticker_name = record.get("sticker_name", "")
@@ -285,7 +310,6 @@ def api_media_list():
                         if not sticker_set:
                             # Unnamed stickers are treated as images or videos
                             # Check if it's an animated sticker (TGS) or a video format (like converted WebM)
-                            from media.mime_utils import is_video_mime_type
                             if kind == "animated_sticker" or is_tgs_mime_type(mime_type) or (mime_type and is_video_mime_type(mime_type)):
                                 sticker_set = "Other Media - Videos"
                             else:
@@ -452,8 +476,38 @@ def api_media_file(unique_id: str):
         if not isinstance(media_dir, Path):
             media_dir = Path(media_dir)
 
-        # Find the media file
-        media_file = find_media_file(media_dir, unique_id)
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
+
+        # (1) Use media_file from metadata first; (2) if missing, glob then patch
+        media_file = None
+        record = None
+        if is_state_media:
+            from db import media_metadata
+            record = media_metadata.load_media_metadata(unique_id)
+        else:
+            record = get_directory_media_source(media_dir).get_cached_record(unique_id)
+        if record and record.get("media_file"):
+            for base in (media_dir, state_media_path if STATE_DIRECTORY else []):
+                if not base or not base.exists():
+                    continue
+                candidate = base / record["media_file"]
+                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
+                    media_file = candidate
+                    break
+        if not media_file:
+            media_file = find_media_file(media_dir, unique_id)
+            if media_file and record and not record.get("media_file"):
+                try:
+                    record["media_file"] = media_file.name
+                    base_dir = media_file.parent
+                    if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                        from db import media_metadata
+                        media_metadata.save_media_metadata(record)
+                    else:
+                        get_directory_media_source(base_dir).put(unique_id, record)
+                except Exception as e:
+                    logger.debug(f"Could not patch media_file for {unique_id}: {e}")
         if media_file:
             # Use MIME sniffing to detect the correct MIME type
             try:
@@ -601,8 +655,30 @@ def api_refresh_from_ai(unique_id: str):
                 "error": f"Puppetmaster is required for media operations. {str(e)}"
             }), 400
         
-        # Find the media file
-        media_file = find_media_file(media_dir, unique_id)
+        # Find the media file: (1) use metadata first; (2) if missing, glob then patch
+        state_media_path = Path(STATE_DIRECTORY) / "media"
+        media_file = None
+        if data.get("media_file"):
+            for base in (media_dir, state_media_path if STATE_DIRECTORY else []):
+                if not base or not base.exists():
+                    continue
+                candidate = base / data["media_file"]
+                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
+                    media_file = candidate
+                    break
+        if not media_file:
+            media_file = find_media_file(media_dir, unique_id)
+            if media_file and not data.get("media_file"):
+                try:
+                    data["media_file"] = media_file.name
+                    base_dir = media_file.parent
+                    if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                        from db import media_metadata
+                        media_metadata.save_media_metadata(data)
+                    else:
+                        get_directory_media_source(base_dir).put(unique_id, data)
+                except Exception as e:
+                    logger.debug(f"Could not patch media_file for {unique_id}: {e}")
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
 

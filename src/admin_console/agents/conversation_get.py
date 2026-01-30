@@ -859,6 +859,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                                 "sticker_set_name": part.get("sticker_set_name"),
                                                 "sticker_name": part.get("sticker_name"),
                                                 "is_animated": part.get("is_animated", False),
+                                                "mime_type": part.get("mime_type"),
                                                 "message_id": str(message.id),
                                             })
                                 except Exception as e:
@@ -892,6 +893,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 "sticker_set_name": part.get("sticker_set_name"),
                                 "sticker_name": part.get("sticker_name"),
                                 "is_animated": part.get("is_animated", False),  # Include animated flag for stickers
+                                "mime_type": part.get("mime_type"),  # For video stickers (webm) - use <video> not <img>
                                 "message_id": str(message.id),  # Include message ID for media serving
                             })
                     

@@ -565,16 +565,16 @@ async def ensure_photo_cache(agent, client):
         agent.photos = {}
 
     try:
-        # Access saved messages using agent's own ID
-        saved_messages_id = agent.agent_id
+        # Use "me" for Saved Messages - Telethon resolves this to InputPeerSelf,
+        # which is the correct peer for the chat with self / Saved Messages
         photos_found = 0
         photos_new = 0
 
         # Track which unique_ids we see in this scan
         seen_unique_ids = set()
 
-        # Iterate through messages in saved messages
-        async for message in client.iter_messages(saved_messages_id, limit=None):
+        # Iterate through messages in saved messages (chat with self)
+        async for message in client.iter_messages("me", limit=None):
             photo = getattr(message, "photo", None)
             if not photo:
                 continue

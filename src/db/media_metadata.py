@@ -129,6 +129,51 @@ def save_media_metadata(record: dict[str, Any]) -> None:
             cursor.close()
 
 
+def update_sticker_set_metadata(
+    unique_id: str,
+    sticker_set_name: str | None,
+    sticker_set_title: str | None = None,
+) -> None:
+    """
+    Update sticker set metadata only when currently missing.
+    Used to patch records that were cached without sticker set info.
+
+    Args:
+        unique_id: Media unique ID
+        sticker_set_name: Sticker set short name to set
+        sticker_set_title: Sticker set title to set (optional)
+    """
+    if not unique_id or not str(unique_id).strip():
+        raise ValueError("unique_id is required and cannot be empty")
+    if not sticker_set_name or not str(sticker_set_name).strip():
+        return  # Nothing to update
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE media_metadata
+                SET sticker_set_name = %s,
+                    sticker_set_title = COALESCE(%s, sticker_set_title)
+                WHERE unique_id = %s
+                  AND (sticker_set_name IS NULL OR sticker_set_name = '')
+                """,
+                (sticker_set_name, sticker_set_title, unique_id),
+            )
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.debug(
+                    f"Patched sticker_set_name for {unique_id}: {sticker_set_name}"
+                )
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to update sticker set metadata for {unique_id}: {e}")
+            raise
+        finally:
+            cursor.close()
+
+
 def delete_media_metadata(unique_id: str) -> None:
     """
     Delete media metadata.

@@ -15,9 +15,11 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from ..mime_utils import is_tgs_mime_type
+from ..mime_utils import is_tgs_mime_type, is_video_mime_type
 
 # Media file extensions supported by the system
+# Must include all extensions get_file_extension_from_mime_or_bytes can produce
+# (e.g. .flac, .zip, .bin) to avoid repeated re-downloads on cache hit
 MEDIA_FILE_EXTENSIONS = [
     ".webp",
     ".tgs",
@@ -33,6 +35,9 @@ MEDIA_FILE_EXTENSIONS = [
     ".m4a",
     ".wav",
     ".ogg",
+    ".flac",
+    ".zip",
+    ".bin",
 ]
 
 # Timeout for LLM description
@@ -115,11 +120,12 @@ def _needs_video_analysis(kind: str | None, mime_type: str | None) -> bool:
     Returns True for:
     - Videos and animations (by kind)
     - TGS animated stickers (sticker kind + gzip mime)
+    - Video stickers (sticker kind + video mime, e.g. webm from "OSAKA's video pack")
     """
     if kind in ("video", "animation"):
         return True
     if kind == "sticker" and mime_type:
-        return is_tgs_mime_type(mime_type)
+        return is_tgs_mime_type(mime_type) or is_video_mime_type(mime_type)
     return False
 
 

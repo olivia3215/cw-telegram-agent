@@ -306,13 +306,12 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             for config_dir in CONFIG_DIRECTORIES:
                 config_media_dir = Path(config_dir) / "media"
                 if config_media_dir.exists() and config_media_dir.is_dir():
-                    # Search only in this config directory (no fallback)
                     for file_path in config_media_dir.glob(f"{escaped_unique_id}.*"):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break
-                    if cached_file:
-                        break
+                if cached_file:
+                    break
             
             # If not found in any config directory, check state/media/ directly
             if not cached_file:
@@ -326,6 +325,76 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             # If found in cache, serve from cache
             if cached_file and cached_file.exists():
                 try:
+                    # Patch missing sticker_set_name in metadata when serving from state/media
+                    # (e.g. records cached before resolution or when resolution failed).
+                    # Fire-and-forget: do not block the response on Telegram API calls.
+                    state_media_dir = Path(STATE_DIRECTORY) / "media"
+                    if str(cached_file.resolve()).startswith(
+                        str(state_media_dir.resolve())
+                    ):
+                        try:
+                            from db import media_metadata
+
+                            record = media_metadata.load_media_metadata(unique_id)
+                            if record and record.get("kind") in (
+                                "sticker",
+                                "animated_sticker",
+                            ):
+                                needs_patch = not record.get("sticker_set_name")
+                                if needs_patch and agent.client and agent.client.is_connected():
+                                    try:
+                                        client_loop = agent._get_client_loop()
+                                        if client_loop and client_loop.is_running():
+
+                                            async def _patch_sticker_metadata():
+                                                entity = await agent.client.get_entity(
+                                                    channel_id
+                                                )
+                                                message = await agent.client.get_messages(
+                                                    entity, ids=int(message_id)
+                                                )
+                                                if isinstance(message, list):
+                                                    message = message[0] if message else None
+                                                if message:
+                                                    for item in iter_media_parts(message):
+                                                        if item.unique_id == unique_id and item.is_sticker():
+                                                            from media.media_injector import (
+                                                                _maybe_get_sticker_set_metadata,
+                                                            )
+
+                                                            name, title = (
+                                                                await _maybe_get_sticker_set_metadata(
+                                                                    agent, item
+                                                                )
+                                                            )
+                                                            if name:
+                                                                media_metadata.update_sticker_set_metadata(
+                                                                    unique_id, name, title
+                                                                )
+                                                            return
+                                                return None
+
+                                            def _log_patch_exception(fut):
+                                                try:
+                                                    fut.result()
+                                                except Exception as e:
+                                                    logger.debug(
+                                                        f"Background sticker metadata patch failed for {unique_id}: {e}"
+                                                    )
+
+                                            fut = asyncio.run_coroutine_threadsafe(
+                                                _patch_sticker_metadata(), client_loop
+                                            )
+                                            fut.add_done_callback(_log_patch_exception)
+                                    except Exception as e:
+                                        logger.debug(
+                                            f"Could not schedule sticker metadata patch for {unique_id}: {e}"
+                                        )
+                        except Exception as e:
+                            logger.debug(
+                                f"Could not check/patch sticker metadata for {unique_id}: {e}"
+                            )
+
                     # Read the cached file
                     with open(cached_file, "rb") as f:
                         media_bytes = f.read()
@@ -403,6 +472,22 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     media_items = iter_media_parts(message)
                     for item in media_items:
                         if item.unique_id == unique_id:
+                            # Resolve sticker set metadata when missing (e.g. InputStickerSetID has no short_name)
+                            # so we can persist it when caching and display under proper set name in Media Library
+                            if item.is_sticker() and not getattr(item, "sticker_set_name", None):
+                                try:
+                                    from media.media_injector import _maybe_get_sticker_set_metadata
+                                    resolved_name, resolved_title = await _maybe_get_sticker_set_metadata(
+                                        agent, item
+                                    )
+                                    if resolved_name:
+                                        item.sticker_set_name = resolved_name
+                                    if resolved_title:
+                                        item.sticker_set_title = resolved_title
+                                except Exception as e:
+                                    logger.debug(
+                                        f"Could not resolve sticker set for {unique_id}: {e}"
+                                    )
                             # Download media bytes
                             media_bytes = await download_media_bytes(client, item.file_ref)
                             # Detect MIME type

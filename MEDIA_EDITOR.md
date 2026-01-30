@@ -169,6 +169,7 @@ The import process:
 4. **Generates descriptions** using the AI pipeline
 5. **Handles special cases**:
    - AnimatedEmojies: Uses emoji names as descriptions
+   - Video stickers (.webm): Receive video-level AI analysis and display with a video player
    - Unsupported formats (TGS): Marks as "unsupported_format"
    - Budget management: Allows 10 AI descriptions per import session
 
@@ -202,6 +203,7 @@ The AI integration follows this pipeline:
 ### Special Handling
 
 - **AnimatedEmojies**: Uses emoji names instead of AI descriptions
+- **Video stickers (.webm)**: Receive video-level AI analysis and display with a video player
 - **TGS files**: Marked as "unsupported_format" without AI processing
 - **Cached results**: Stored in `state/media` for performance
 - **Status tracking**: Distinguishes between AI-generated and curated content
@@ -264,6 +266,9 @@ When multiple directories contain the same media item:
 - Check that media files exist in the expected locations
 - Verify MIME types are correctly detected
 - Ensure the media editor has read access to the files
+
+**Stickers missing sticker set name**
+- Cached stickers that lack sticker set metadata will be auto-resolved when viewed in the Media Editor or conversation view; the system fetches the sticker set from Telegram and updates the metadata
 
 ### Debugging
 
