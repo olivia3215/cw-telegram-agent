@@ -486,6 +486,7 @@ async def format_message_for_prompt(
                     "sticker_set_name": getattr(it, "sticker_set_name", None),
                     "sticker_name": getattr(it, "sticker_name", None),
                     "is_animated": it.is_animated_sticker(),  # Flag to indicate animated stickers
+                    "mime_type": getattr(it, "mime", None),  # For video stickers (webm) - use <video> not <img>
                 }
             )
         else:

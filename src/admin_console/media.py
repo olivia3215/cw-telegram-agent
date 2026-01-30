@@ -51,6 +51,7 @@ from media.mime_utils import (
     detect_mime_type_from_bytes,
     get_mime_type_from_file_extension,
     is_tgs_mime_type,
+    is_video_mime_type,
 )
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
@@ -271,8 +272,9 @@ def api_media_list():
 
                     # Group by sticker set for organization
                     kind = record.get("kind", "unknown")
-                    if is_tgs_mime_type(mime_type) and kind == "sticker":
-                        kind = "animated_sticker"
+                    if kind == "sticker" and mime_type:
+                        if is_tgs_mime_type(mime_type) or is_video_mime_type(mime_type):
+                            kind = "animated_sticker"
 
                     # Extract sticker_name early so we can use it for emoji set detection
                     sticker_name = record.get("sticker_name", "")
@@ -285,7 +287,6 @@ def api_media_list():
                         if not sticker_set:
                             # Unnamed stickers are treated as images or videos
                             # Check if it's an animated sticker (TGS) or a video format (like converted WebM)
-                            from media.mime_utils import is_video_mime_type
                             if kind == "animated_sticker" or is_tgs_mime_type(mime_type) or (mime_type and is_video_mime_type(mime_type)):
                                 sticker_set = "Other Media - Videos"
                             else:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from .mime_utils import is_tgs_mime_type
+from .mime_utils import is_tgs_mime_type, is_video_mime_type
 
 
 class MediaKind(str, Enum):
@@ -74,6 +74,7 @@ class MediaItem:
         return (
             self.kind in (MediaKind.VIDEO, MediaKind.ANIMATION)
             or self.is_animated_sticker()
+            or (self.kind == MediaKind.STICKER and self.mime and is_video_mime_type(self.mime))
         )
 
     def is_video(self) -> bool:

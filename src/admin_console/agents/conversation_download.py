@@ -215,6 +215,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     "sticker_set_name": part.get("sticker_set_name"),
                                     "sticker_name": part.get("sticker_name"),
                                     "is_animated": part.get("is_animated", False),
+                                    "mime_type": part.get("mime_type"),
                                     "message_id": str(message.id),
                                 })
                         
