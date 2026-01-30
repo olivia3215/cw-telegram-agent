@@ -632,6 +632,73 @@ async def test_ai_chain_increments_retry_count_on_temp_failure(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
+async def test_ai_chain_persists_retry_count_when_skipping_temp_failure_overwrite(
+    monkeypatch, tmp_path
+):
+    """
+    When we would skip storing (cached temp failure + another temp failure + no download),
+    we MUST still persist description_retry_count so the retry limit works.
+    """
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    unique_id = "retry-persist-uid"
+    # Cached temp failure with media file already on disk (no download needed)
+    record = {
+        "unique_id": unique_id,
+        "kind": "photo",
+        "description": None,
+        "status": MediaStatus.TEMPORARY_FAILURE.value,
+        "failure_reason": "timeout",
+        "retryable": True,
+        "description_retry_count": 1,
+    }
+    (cache_dir / f"{unique_id}.json").write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+    (cache_dir / f"{unique_id}.png").write_bytes(b"\x89PNG...")
+
+    class TempFailureAISource:
+        async def get(self, unique_id, agent=None, doc=None, **metadata):
+            from media.sources.helpers import make_error_record
+            return make_error_record(
+                unique_id,
+                MediaStatus.TEMPORARY_FAILURE,
+                "timeout again",
+                retryable=True,
+                kind="photo",
+            )
+
+    cache_source = DirectoryMediaSource(cache_dir)
+    ai_chain = AIChainMediaSource(
+        cache_source=cache_source,
+        unsupported_source=NothingMediaSource(),
+        budget_source=NothingMediaSource(),
+        ai_source=TempFailureAISource(),
+    )
+
+    reset_description_budget(1)
+    doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
+    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM())
+
+    result = await ai_chain.get(
+        unique_id,
+        agent=agent,
+        doc=doc,
+        kind="photo",
+    )
+
+    assert result["status"] == MediaStatus.TEMPORARY_FAILURE.value
+    assert result["description_retry_count"] == 2
+
+    # Critical: description_retry_count must be persisted even when we would
+    # normally skip (same temp failure, no new download)
+    stored = json.loads((cache_dir / f"{unique_id}.json").read_text(encoding="utf-8"))
+    assert stored["description_retry_count"] == 2, (
+        "description_retry_count must be persisted for retry limit to work"
+    )
+
+
+@pytest.mark.asyncio
 async def test_ai_chain_updates_last_used_when_chain_returns(monkeypatch, tmp_path):
     """
     When AIChainMediaSource returns a record from the chain (not cache) and

@@ -276,12 +276,15 @@ class AIChainMediaSource(MediaSource):
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
             # UNLESS we downloaded the media file (in which case we want to preserve it)
+            # OR description_retry_count increased (we must persist the increment for retry limit)
             if (
                 record is not None
                 and cached_record
                 and MediaStatus.is_temporary_failure(cached_record.get("status"))
                 and MediaStatus.is_temporary_failure(record.get("status"))
                 and media_bytes is None  # Only skip if we didn't download media
+                and record_to_store.get("description_retry_count", 0)
+                <= cached_record.get("description_retry_count", 0)
             ):
                 should_store = False
 
