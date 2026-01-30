@@ -558,12 +558,13 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         with open(html_path, "w", encoding="utf-8") as f:
                             f.write(html_content)
                         
-                        # Create zip file
+                        # Create zip file (omit .tgs from media/ - base64 is embedded in HTML)
                         zip_buffer = io.BytesIO()
                         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                             zip_file.write(html_path, "index.html")
                             for media_file in media_dir.iterdir():
-                                zip_file.write(media_file, f"media/{media_file.name}")
+                                if media_file.suffix.lower() != ".tgs":
+                                    zip_file.write(media_file, f"media/{media_file.name}")
                         
                         zip_buffer.seek(0)
                         return zip_buffer.getvalue()
@@ -703,6 +704,9 @@ def _generate_standalone_html(
     <h1>Conversation: {html.escape(agent_name)} / {html.escape(user_id)}</h1>
 """
     
+    # Build TGS base64 cache per unique_id (avoids duplicating same sticker in HTML)
+    tgs_base64_map: dict[str, str] = {}
+
     # Add messages
     html_content += '<h2>Messages</h2>\n'
     for msg in messages:
@@ -780,20 +784,19 @@ def _generate_standalone_html(
                             sticker_name = part.get("sticker_name") or unique_id
                             content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
                         elif is_animated:
-                            # TGS animation - embed as base64 so it works when opened from file://
-                            # (fetch() is blocked by CORS when page is loaded from file://)
+                            # TGS animation - cache base64 per unique_id to avoid duplicating
+                            # same sticker in HTML (sticker-heavy chats would inflate index.html)
                             escaped_unique_id = html.escape(unique_id)
-                            tgs_base64 = ""
-                            if media_dir:
+                            if unique_id not in tgs_base64_map and media_dir:
                                 tgs_path = media_dir / media_map[unique_id]
                                 if tgs_path.exists():
                                     try:
                                         tgs_bytes = tgs_path.read_bytes()
-                                        tgs_base64 = base64.b64encode(tgs_bytes).decode("ascii")
+                                        tgs_base64_map[unique_id] = base64.b64encode(tgs_bytes).decode("ascii")
                                     except Exception as e:
                                         logger.warning(f"Failed to read TGS file {tgs_path}: {e}")
-                            if tgs_base64:
-                                content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-tgs-base64="{tgs_base64}"></div></div>\n'
+                            if unique_id in tgs_base64_map:
+                                content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-tgs-id="{escaped_unique_id}"></div></div>\n'
                             else:
                                 # Fallback: use data-path (works only when served via HTTP)
                                 content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
@@ -858,14 +861,19 @@ def _generate_standalone_html(
         html_content += "    </div>\n"
     
     # Add JavaScript for TGS animations
-    # Use embedded base64 when present (works with file://); fallback to fetch for HTTP
+    # Shared tgs-data map: unique_id -> base64 (avoids duplicating same sticker per message)
+    tgs_data_json = json_lib.dumps(tgs_base64_map)
+    html_content += f'    <script type="application/json" id="tgs-data">{tgs_data_json}</script>\n'
     html_content += """
     <script>
         // Load TGS animations - supports both embedded base64 (file://) and fetch (http/https)
         document.addEventListener('DOMContentLoaded', function() {
+            const tgsDataEl = document.getElementById('tgs-data');
+            const tgsMap = tgsDataEl ? JSON.parse(tgsDataEl.textContent) : {};
             const tgsContainers = document.querySelectorAll('.tgs-container');
             tgsContainers.forEach(function(container) {
-                const tgsBase64 = container.getAttribute('data-tgs-base64');
+                const tgsId = container.getAttribute('data-tgs-id');
+                const tgsBase64 = tgsId ? tgsMap[tgsId] : null;
                 const mediaPath = container.getAttribute('data-path');
                 let tgsPromise;
                 if (tgsBase64) {
