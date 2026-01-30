@@ -20,8 +20,8 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
-from config import CONFIG_DIRECTORIES, STATE_DIRECTORY, TRANSLATION_MODEL
+from admin_console.helpers import get_agent_by_name, get_state_media_path
+from config import CONFIG_DIRECTORIES, TRANSLATION_MODEL
 from llm.factory import create_llm_from_name
 
 # Import markdown_to_html and placeholder functions from conversation module
@@ -70,7 +70,9 @@ _TRANSLATION_SCHEMA = {
 def _cache_media_to_state(unique_id: str, filename: str, media_bytes: bytes) -> None:
     """Cache downloaded media to state/media for future conversation downloads."""
     try:
-        state_media_dir = Path(STATE_DIRECTORY) / "media"
+        state_media_dir = get_state_media_path()
+        if state_media_dir is None:
+            return
         state_media_dir.mkdir(parents=True, exist_ok=True)
         cache_path = state_media_dir / filename
         if not cache_path.exists():
@@ -419,8 +421,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                 break
                                     
                                     if not cached_file:
-                                        state_media_dir = Path(STATE_DIRECTORY) / "media"
-                                        if state_media_dir.exists():
+                                        state_media_dir = get_state_media_path()
+                                        if state_media_dir is not None and state_media_dir.exists():
                                             for file_path in state_media_dir.glob(f"{escaped_unique_id}.*"):
                                                 if file_path.suffix.lower() != ".json":
                                                     cached_file = file_path
@@ -530,8 +532,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     break
                                         
                                         if not cached_emoji:
-                                            state_media_dir = Path(STATE_DIRECTORY) / "media"
-                                            if state_media_dir.exists():
+                                            state_media_dir = get_state_media_path()
+                                            if state_media_dir is not None and state_media_dir.exists():
                                                 for file_path in state_media_dir.glob(f"{escaped_uid}.*"):
                                                     if file_path.suffix.lower() != ".json":
                                                         cached_emoji = file_path
@@ -835,8 +837,8 @@ def _generate_standalone_html(
                             inferred_type, _ = mimetypes.guess_type(media_path)
                             mime_type = inferred_type or ""
 
-                        # Use file format to choose element: .webm/.mp4/.gif need <video>, .tgs needs Lottie, audio needs <audio>, else <img>
-                        is_video_format = ext in (".webm", ".mp4", ".gif") or (
+                        # Use file format to choose element: .webm/.mp4 need <video>, .tgs needs Lottie, audio needs <audio>, else <img>
+                        is_video_format = ext in (".webm", ".mp4") or (
                             mime_type and mime_type.startswith("video/")
                         )
                         is_tgs_format = ext == ".tgs" or (
