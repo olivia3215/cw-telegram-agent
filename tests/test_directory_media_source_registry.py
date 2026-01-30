@@ -214,3 +214,24 @@ async def test_get_updates_provenance_fields_when_none(tmp_path):
     assert stored["channel_name"] == "Asmodeus"
     assert stored["media_ts"] == "2025-12-24T19:09:53+00:00"
 
+
+def test_put_refuses_to_write_json_to_state_media(tmp_path, monkeypatch):
+    """
+    DirectoryMediaSource must never write JSON to state/media.
+    Metadata for state/media belongs in MySQL.
+    """
+    reset_media_source_registry()
+    # Make tmp_path/media resolve as state/media
+    state_media = tmp_path / "media"
+    state_media.mkdir()
+    monkeypatch.setattr("media.sources.directory.STATE_DIRECTORY", str(tmp_path))
+
+    source = get_directory_media_source(state_media)
+    unique_id = "state-media-test"
+    record = {"unique_id": unique_id, "description": "should not be written"}
+
+    with pytest.raises(RuntimeError, match="Cannot write JSON to state/media"):
+        source.put(unique_id, record.copy())
+
+    assert not (state_media / f"{unique_id}.json").exists()
+

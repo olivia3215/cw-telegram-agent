@@ -164,6 +164,35 @@ def test_api_media_list_unnamed_video_sticker_infers_mime_from_extension_when_de
         assert match["mime_type"] == "video/webm"
 
 
+def test_is_state_media_directory_matches_absolute_and_relative_paths(monkeypatch, tmp_path):
+    """
+    When the same physical directory is state/media, both absolute and relative
+    path formats should be recognized (fixes path resolution mismatch bug).
+    """
+    from pathlib import Path
+
+    from admin_console.helpers import get_state_media_path, is_state_media_directory
+
+    state_media = tmp_path / "media"
+    state_media.mkdir()
+    monkeypatch.setattr("admin_console.helpers.STATE_DIRECTORY", str(tmp_path))
+
+    # Absolute path (as from config with CINDY_AGENT_CONFIG_PATH)
+    abs_path = state_media.resolve()
+    assert is_state_media_directory(abs_path), "Absolute path should be recognized as state/media"
+
+    # Relative path that resolves to same directory (as from STATE_DIRECTORY)
+    rel_path = Path("media")
+    # Resolve relative to tmp_path to simulate cwd
+    rel_resolved = (tmp_path / rel_path).resolve()
+    assert is_state_media_directory(rel_resolved), "Resolved relative path should match"
+
+    # get_state_media_path should return the canonical path
+    state_path = get_state_media_path()
+    assert state_path is not None
+    assert state_path == abs_path
+
+
 @pytest.fixture
 def reset_media_sources():
     reset_media_source_registry()

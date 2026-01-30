@@ -101,6 +101,31 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     return None
 
 
+def get_state_media_path() -> Path | None:
+    """Return the canonical resolved path for state/media, or None if not configured."""
+    if not STATE_DIRECTORY:
+        return None
+    return (Path(STATE_DIRECTORY) / "media").resolve()
+
+
+def is_state_media_directory(media_dir: Path) -> bool:
+    """
+    Check if the given path is the state/media directory.
+
+    Uses the same resolution as media_sources._normalize_path so that paths
+    from the directory registry (which may be absolute from config) match
+    paths from STATE_DIRECTORY (which may be relative). Both resolve to
+    canonical absolute paths before comparison.
+    """
+    if not STATE_DIRECTORY:
+        return False
+    try:
+        resolved = Path(media_dir).expanduser().resolve()
+        return resolved == get_state_media_path()
+    except (OSError, RuntimeError):
+        return False
+
+
 def resolve_media_path(directory_path: str) -> Path:
     """Resolve a media directory path relative to the project root."""
     # If it's an absolute path, use it as-is
