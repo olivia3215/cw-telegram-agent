@@ -705,6 +705,17 @@ def _generate_standalone_html(
             width: 200px;
             height: 200px;
             position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+            overflow: hidden;
+        }}
+        .tgs-container svg {{
+            max-width: 100%;
+            max-height: 100%;
         }}
         .reactions {{
             font-size: 11px;
@@ -798,44 +809,47 @@ def _generate_standalone_html(
                     
                     if unique_id in media_map:
                         media_path = f"media/{media_map[unique_id]}"
-                        
-                        if media_kind == "photo" or (media_kind == "sticker" and not is_animated):
-                            sticker_name = part.get("sticker_name") or unique_id
-                            content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
-                        elif is_animated:
-                            # TGS animation - will be loaded by JavaScript
+                        filename = media_map[unique_id]
+                        ext = Path(filename).suffix.lower()
+                        mime_type = mime_map.get(unique_id, "")
+                        if not mime_type:
+                            inferred_type, _ = mimetypes.guess_type(media_path)
+                            mime_type = inferred_type or ""
+
+                        # Use file format to choose element: .webm/.mp4/.gif need <video>, .tgs needs Lottie, audio needs <audio>, else <img>
+                        is_video_format = ext in (".webm", ".mp4", ".gif") or (
+                            mime_type and mime_type.startswith("video/")
+                        )
+                        is_tgs_format = ext == ".tgs" or (
+                            mime_type and "tgsticker" in mime_type.lower()
+                        )
+                        is_audio_format = ext in (".ogg", ".opus", ".m4a", ".mp3", ".wav", ".flac") or (
+                            mime_type and mime_type.startswith("audio/")
+                        )
+
+                        if is_tgs_format:
+                            # TGS (Lottie) - will be loaded by JavaScript
                             escaped_unique_id = html.escape(unique_id)
                             content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
-                        elif media_kind in ("video", "animation", "gif"):
-                            mime_type = mime_map.get(unique_id, "")
-                            # If MIME type is missing, try to infer it from file extension
-                            if not mime_type:
-                                inferred_type, _ = mimetypes.guess_type(media_path)
-                                if inferred_type:
-                                    mime_type = inferred_type
+                        elif is_video_format:
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><video controls autoplay loop muted><source src="{html.escape(media_path)}"{type_attr}></video></div>\n'
-                        elif media_kind == "audio":
-                            mime_type = mime_map.get(unique_id, "")
-                            # If MIME type is missing, try to infer it from file extension
-                            if not mime_type:
-                                inferred_type, _ = mimetypes.guess_type(media_path)
-                                if inferred_type:
-                                    mime_type = inferred_type
+                        elif is_audio_format:
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"{type_attr}></audio></div>\n'
+                        elif ext in (".webp", ".png", ".jpg", ".jpeg", ".gif"):
+                            # Static images
+                            sticker_name = part.get("sticker_name") or unique_id
+                            content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
                         else:
-                            # Unknown media type - rendered_text is already included in the media div below
+                            # Unknown media type - rendered_text with download link
                             rendered_text = part.get("rendered_text", "")
                             content_html += f'<div class="message-media" style="color: #666; font-style: italic;">{html.escape(rendered_text)} <a href="{html.escape(media_path)}" download>[Download]</a></div>\n'
                         
                         # Add caption for known media types only (unknown types already include rendered_text in the else branch)
                         is_unknown_media_type = not (
-                            media_kind == "photo" or 
-                            (media_kind == "sticker" and not is_animated) or 
-                            is_animated or 
-                            media_kind in ("video", "animation", "gif") or 
-                            media_kind == "audio"
+                            is_tgs_format or is_video_format or is_audio_format or
+                            ext in (".webp", ".png", ".jpg", ".jpeg", ".gif")
                         )
                         if part.get("rendered_text") and not is_unknown_media_type:
                             content_html += f'<div style="color: #666; font-size: 11px; margin-top: 2px; font-style: italic;">{html.escape(part.get("rendered_text", ""))}</div>\n'
@@ -887,8 +901,18 @@ def _generate_standalone_html(
 
                 if (jsonData) {
                     try {
+                        container.innerHTML = '';
+                        const animationContainer = document.createElement('div');
+                        animationContainer.style.width = '100%';
+                        animationContainer.style.height = '100%';
+                        animationContainer.style.display = 'flex';
+                        animationContainer.style.alignItems = 'center';
+                        animationContainer.style.justifyContent = 'center';
+                        animationContainer.style.backgroundColor = '#ffffff';
+                        container.appendChild(animationContainer);
+
                         lottie.loadAnimation({
-                            container: container,
+                            container: animationContainer,
                             renderer: 'svg',
                             loop: true,
                             autoplay: true,
