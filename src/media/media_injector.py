@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from datetime import UTC
 from typing import Any
 
+from telethon.errors.rpcerrorlist import StickersetInvalidError
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputStickerSetID
 
@@ -73,10 +74,12 @@ async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | 
     short_name = getattr(ss, "short_name", None)
     title = getattr(ss, "title", None)
 
-    # If we have both, we can return early
-    if short_name and title:
-        return short_name, title
+    # InputStickerSetShortName has short_name; use it without API call to avoid
+    # StickersetInvalidError for deleted/invalid sets (common with old stickers)
+    if short_name:
+        return short_name, title or short_name
 
+    # InputStickerSetID has id+access_hash but no short_name; need API to resolve
     try:
         try:
             result = await agent.client(GetStickerSetRequest(stickerset=ss, hash=0))
@@ -108,6 +111,11 @@ async def _maybe_get_sticker_set_metadata(agent, it) -> tuple[str | None, str | 
 
         return api_short_name or short_name, api_title or title
 
+    except StickersetInvalidError:
+        # Expected for deleted/invalid sets; avoid noisy ERROR logs
+        logger.debug("Sticker set invalid or inaccessible (skipping API resolution)")
+        cached = _try_sticker_cache_lookup(agent, doc)
+        return cached if cached[0] else (short_name, title)
     except Exception as e:
         logger.exception(f"Failed to get sticker set metadata: {e}")
         cached = _try_sticker_cache_lookup(agent, doc)
