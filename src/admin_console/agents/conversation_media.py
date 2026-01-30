@@ -328,7 +328,8 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             if cached_file and cached_file.exists():
                 try:
                     # Patch missing sticker_set_name in metadata when serving from state/media
-                    # (e.g. records cached before resolution or when resolution failed)
+                    # (e.g. records cached before resolution or when resolution failed).
+                    # Fire-and-forget: do not block the response on Telegram API calls.
                     state_media_dir = Path(STATE_DIRECTORY) / "media"
                     if str(cached_file.resolve()).startswith(
                         str(state_media_dir.resolve())
@@ -375,12 +376,21 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                                             return
                                                 return None
 
-                                            agent.execute(
-                                                _patch_sticker_metadata(), timeout=10
+                                            def _log_patch_exception(fut):
+                                                try:
+                                                    fut.result()
+                                                except Exception as e:
+                                                    logger.debug(
+                                                        f"Background sticker metadata patch failed for {unique_id}: {e}"
+                                                    )
+
+                                            fut = asyncio.run_coroutine_threadsafe(
+                                                _patch_sticker_metadata(), client_loop
                                             )
+                                            fut.add_done_callback(_log_patch_exception)
                                     except Exception as e:
                                         logger.debug(
-                                            f"Could not patch sticker metadata for {unique_id}: {e}"
+                                            f"Could not schedule sticker metadata patch for {unique_id}: {e}"
                                         )
                         except Exception as e:
                             logger.debug(
