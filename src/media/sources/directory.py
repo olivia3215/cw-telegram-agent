@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from clock import clock
-from config import CONFIG_DIRECTORIES
+from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
+from media.state_path import get_resolved_state_media_path
 
 from ..mime_utils import is_tgs_mime_type
 from .base import MediaSource, MediaStatus, MEDIA_FILE_EXTENSIONS, fallback_sticker_description
@@ -87,6 +88,22 @@ class DirectoryMediaSource(MediaSource):
             return False
         except Exception:
             # If we can't determine, assume it's not a config directory to be safe
+            return False
+
+    def _is_state_media_directory(self) -> bool:
+        """
+        Check if this media directory is state/media.
+
+        State/media stores metadata in MySQL, not JSON files. This source must never
+        write JSON to state/media regardless of how put() was invoked.
+        """
+        try:
+            state_media = get_resolved_state_media_path()
+            if state_media is None:
+                return False
+            abs_dir = self.directory.expanduser().resolve()
+            return abs_dir == state_media
+        except Exception:
             return False
 
     def _filter_config_fields(self, record: dict[str, Any]) -> dict[str, Any]:
@@ -385,6 +402,20 @@ class DirectoryMediaSource(MediaSource):
     def _write_to_disk(self, unique_id: str, record: dict[str, Any]) -> None:
         """Write a record to disk cache and update in-memory cache."""
         try:
+            # State/media stores metadata in MySQL only; never write JSON there.
+            # This guard prevents JSON files from appearing in state/media regardless
+            # of which code path invoked put() (e.g. path resolution mismatch, or
+            # config+state directory overlap).
+            if self._is_state_media_directory():
+                logger.warning(
+                    "DirectoryMediaSource: refusing to write JSON for %s to state/media "
+                    "(metadata belongs in MySQL). Caller should use MySQLMediaSource.",
+                    unique_id,
+                )
+                raise RuntimeError(
+                    "Cannot write JSON to state/media; use MySQLMediaSource for metadata."
+                )
+
             file_path = self.directory / f"{unique_id}.json"
             temp_path = self.directory / f"{unique_id}.json.tmp"
 
@@ -401,12 +432,8 @@ class DirectoryMediaSource(MediaSource):
             )
             temp_path.replace(file_path)
 
-            # Log with stack trace to diagnose when JSON files are written to state/media
-            import traceback
-            stack_trace = "".join(traceback.format_stack())
-            logger.info(
-                f"DirectoryMediaSource: cached {unique_id} to disk at {file_path}\n"
-                f"Stack trace:\n{stack_trace}"
+            logger.debug(
+                "DirectoryMediaSource: cached %s to disk at %s", unique_id, file_path
             )
 
             # Update the in-memory cache

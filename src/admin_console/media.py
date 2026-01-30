@@ -21,11 +21,13 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from clock import clock
-from config import MEDIA_DESC_BUDGET_PER_TICK, STATE_DIRECTORY
+from config import MEDIA_DESC_BUDGET_PER_TICK
 from datetime import UTC
 from admin_console.helpers import (
     add_cache_busting_headers,
     find_media_file,
+    get_state_media_path,
+    is_state_media_directory,
     resolve_media_path,
 )
 from admin_console.sticker_import import import_sticker_set_async
@@ -134,10 +136,8 @@ def api_media_list():
             return jsonify({"error": "Directory not found"}), 404
 
         # Check if this is the state/media directory (always use MySQL for state/media)
-        state_media_path = Path(STATE_DIRECTORY) / "media"
-        if not isinstance(state_media_path, Path):
-            state_media_path = Path(state_media_path)
-        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
+        is_state_media = is_state_media_directory(media_dir)
+        state_media_path = get_state_media_path()
 
         # Use MediaSource API to read media descriptions
         # For state/media, use the default chain (includes MySQLMediaSource)
@@ -225,7 +225,10 @@ def api_media_list():
                     media_file_path = None
                     media_file_name = record.get("media_file")
                     if media_file_name:
-                        for base in (media_dir, Path(STATE_DIRECTORY) / "media" if STATE_DIRECTORY else []):
+                        bases = [media_dir]
+                        if state_media_path:
+                            bases.append(state_media_path)
+                        for base in bases:
                             if not base or not base.exists():
                                 continue
                             candidate = base / media_file_name
@@ -239,7 +242,7 @@ def api_media_list():
                             try:
                                 record["media_file"] = media_file_path.name
                                 base_dir = media_file_path.parent
-                                if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                                if is_state_media_directory(base_dir):
                                     from db import media_metadata
                                     media_metadata.save_media_metadata(record)
                                 else:
@@ -476,8 +479,8 @@ def api_media_file(unique_id: str):
         if not isinstance(media_dir, Path):
             media_dir = Path(media_dir)
 
-        state_media_path = Path(STATE_DIRECTORY) / "media"
-        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
+        is_state_media = is_state_media_directory(media_dir)
+        state_media_path = get_state_media_path()
 
         # (1) Use media_file from metadata first; (2) if missing, glob then patch
         media_file = None
@@ -488,7 +491,10 @@ def api_media_file(unique_id: str):
         else:
             record = get_directory_media_source(media_dir).get_cached_record(unique_id)
         if record and record.get("media_file"):
-            for base in (media_dir, state_media_path if STATE_DIRECTORY else []):
+            bases = [media_dir]
+            if state_media_path:
+                bases.append(state_media_path)
+            for base in bases:
                 if not base or not base.exists():
                     continue
                 candidate = base / record["media_file"]
@@ -501,7 +507,7 @@ def api_media_file(unique_id: str):
                 try:
                     record["media_file"] = media_file.name
                     base_dir = media_file.parent
-                    if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                    if is_state_media_directory(base_dir):
                         from db import media_metadata
                         media_metadata.save_media_metadata(record)
                     else:
@@ -543,10 +549,7 @@ def api_update_description(unique_id: str):
         
         # Check if this is the state/media directory and MySQL backend is enabled
         # Always use MySQL for state/media
-        state_media_path = Path(STATE_DIRECTORY) / "media"
-        if not isinstance(state_media_path, Path):
-            state_media_path = Path(state_media_path)
-        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
+        is_state_media = is_state_media_directory(media_dir)
         
         if is_state_media:
             # Load from MySQL
@@ -606,7 +609,7 @@ def api_refresh_from_ai(unique_id: str):
             media_dir = Path(media_dir)
         
         # Always use MySQL for state/media
-        is_state_media = str(media_dir.resolve()) == str((Path(STATE_DIRECTORY) / "media").resolve())
+        is_state_media = is_state_media_directory(media_dir)
         
         # Load the record - use MySQL for state/media, otherwise filesystem
         if is_state_media:
@@ -656,10 +659,13 @@ def api_refresh_from_ai(unique_id: str):
             }), 400
         
         # Find the media file: (1) use metadata first; (2) if missing, glob then patch
-        state_media_path = Path(STATE_DIRECTORY) / "media"
+        state_media_path = get_state_media_path()
         media_file = None
         if data.get("media_file"):
-            for base in (media_dir, state_media_path if STATE_DIRECTORY else []):
+            bases = [media_dir]
+            if state_media_path:
+                bases.append(state_media_path)
+            for base in bases:
                 if not base or not base.exists():
                     continue
                 candidate = base / data["media_file"]
@@ -672,7 +678,7 @@ def api_refresh_from_ai(unique_id: str):
                 try:
                     data["media_file"] = media_file.name
                     base_dir = media_file.parent
-                    if str(base_dir.resolve()) == str(state_media_path.resolve()):
+                    if is_state_media_directory(base_dir):
                         from db import media_metadata
                         media_metadata.save_media_metadata(data)
                     else:
@@ -838,11 +844,8 @@ def api_move_media(unique_id: str):
             to_dir = Path(to_dir)
 
         # Check if source or destination is state/media (which uses MySQL)
-        state_media_path = Path(STATE_DIRECTORY) / "media"
-        if not isinstance(state_media_path, Path):
-            state_media_path = Path(state_media_path)
-        is_from_state_media = str(from_dir.resolve()) == str(state_media_path.resolve())
-        is_to_state_media = str(to_dir.resolve()) == str(state_media_path.resolve())
+        is_from_state_media = is_state_media_directory(from_dir)
+        is_to_state_media = is_state_media_directory(to_dir)
 
         # Handle no-op case (moving state/media to itself)
         if is_from_state_media and is_to_state_media:
@@ -1025,12 +1028,10 @@ def api_delete_media(unique_id: str):
         
         # Check if this is the state/media directory and MySQL backend is enabled
         # Always use MySQL for state/media
-        state_media_path = Path(STATE_DIRECTORY) / "media"
-        if not isinstance(state_media_path, Path):
-            state_media_path = Path(state_media_path)
-        is_state_media = str(media_dir.resolve()) == str(state_media_path.resolve())
+        is_state_media = is_state_media_directory(media_dir)
+        state_media_path = get_state_media_path()
         
-        if is_state_media:
+        if is_state_media and state_media_path:
             # Delete from MySQL and also delete the media file from disk
             from db import media_metadata
             record = media_metadata.load_media_metadata(unique_id)
