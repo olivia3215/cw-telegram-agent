@@ -404,6 +404,7 @@ async def inject_media_descriptions(
                         channel_name=chan_name,
                         media_ts=media_ts,
                         duration=getattr(it, "duration", None),
+                        update_last_used=True,
                     )
 
                     if record:
@@ -493,7 +494,9 @@ async def format_message_for_prompt(
             # For non-stickers, get description from cache record
             meta = None
             try:
-                meta = await media_chain.get(it.unique_id, agent=agent)
+                meta = await media_chain.get(
+                    it.unique_id, agent=agent, update_last_used=True
+                )
             except Exception:
                 meta = None
             desc_text = meta.get("description") if isinstance(meta, dict) else None

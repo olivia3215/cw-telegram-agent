@@ -32,7 +32,7 @@ def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
                 """
                 SELECT unique_id, kind, description, status, duration, mime_type,
                        media_file, sticker_set_name, sticker_name, is_emoji_set,
-                       sticker_set_title
+                       sticker_set_title, description_retry_count, last_used_at
                 FROM media_metadata
                 WHERE unique_id = %s
                 """,
@@ -67,6 +67,10 @@ def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
                 record["is_emoji_set"] = bool(row["is_emoji_set"])
             if row["sticker_set_title"]:
                 record["sticker_set_title"] = row["sticker_set_title"]
+            if row.get("description_retry_count") is not None:
+                record["description_retry_count"] = int(row["description_retry_count"])
+            if row.get("last_used_at") is not None:
+                record["last_used_at"] = row["last_used_at"]
             
             return record
         finally:
@@ -92,8 +96,8 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                 INSERT INTO media_metadata (
                     unique_id, kind, description, status, duration, mime_type,
                     media_file, sticker_set_name, sticker_name, is_emoji_set,
-                    sticker_set_title
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    sticker_set_title, description_retry_count
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     kind = VALUES(kind),
                     description = VALUES(description),
@@ -104,7 +108,8 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                     sticker_set_name = VALUES(sticker_set_name),
                     sticker_name = VALUES(sticker_name),
                     is_emoji_set = VALUES(is_emoji_set),
-                    sticker_set_title = VALUES(sticker_set_title)
+                    sticker_set_title = VALUES(sticker_set_title),
+                    description_retry_count = VALUES(description_retry_count)
                 """,
                 (
                     unique_id,
@@ -118,6 +123,7 @@ def save_media_metadata(record: dict[str, Any]) -> None:
                     record.get("sticker_name"),
                     record.get("is_emoji_set"),
                     record.get("sticker_set_title"),
+                    record.get("description_retry_count", 0),
                 ),
             )
             conn.commit()
@@ -170,6 +176,37 @@ def update_sticker_set_metadata(
             conn.rollback()
             logger.error(f"Failed to update sticker set metadata for {unique_id}: {e}")
             raise
+        finally:
+            cursor.close()
+
+
+def update_media_last_used(unique_id: str) -> None:
+    """
+    Update the last_used_at timestamp for media metadata.
+    Called when media is used (e.g. in prompts, inject_media_descriptions).
+    Does not include viewing in the media editor.
+
+    Args:
+        unique_id: Media unique ID to update
+    """
+    if not unique_id or not str(unique_id).strip():
+        return
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE media_metadata
+                SET last_used_at = CURRENT_TIMESTAMP
+                WHERE unique_id = %s
+                """,
+                (unique_id,),
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.debug(f"Failed to update last_used_at for {unique_id}: {e}")
         finally:
             cursor.close()
 

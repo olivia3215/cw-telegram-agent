@@ -122,6 +122,7 @@ class DirectoryMediaSource(MediaSource):
         - retryable: Used to mark temporary failures that should be retried
         - failure_reason: Used to prevent fallback descriptions and track errors
         - original_mime_type: Used to correctly determine if TGS stickers are animated
+        - description_retry_count: Retry count for temporary description failures
         
         Preserves the original field order from the record.
         """

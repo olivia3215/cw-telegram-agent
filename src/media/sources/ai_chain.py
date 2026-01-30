@@ -25,7 +25,7 @@ from config import STATE_DIRECTORY
 from telegram_download import download_media_bytes
 
 from ..mime_utils import get_file_extension_from_mime_or_bytes
-from .base import MediaSource, MediaStatus
+from .base import MediaSource, MediaStatus, get_max_description_retries
 from .directory import DirectoryMediaSource
 
 logger = logging.getLogger(__name__)
@@ -158,6 +158,14 @@ class AIChainMediaSource(MediaSource):
             if doc is None:
                 return cached_record
 
+            # Don't retry if we've exceeded the retry limit
+            retry_count = cached_record.get("description_retry_count", 0)
+            if retry_count >= get_max_description_retries():
+                logger.debug(
+                    f"AIChainMediaSource: {unique_id} at retry limit ({retry_count}), not retrying"
+                )
+                return cached_record
+
         # 3. Chain through sources
         record = None
 
@@ -243,7 +251,23 @@ class AIChainMediaSource(MediaSource):
                 "sticker_set_name": metadata.get("sticker_set_name"),
                 "sticker_name": metadata.get("sticker_name"),
                 "mime_type": metadata.get("mime_type"),
+                "description_retry_count": 0,
             }
+
+        # Set description_retry_count: 0 on success, increment only on TEMPORARY_FAILURE
+        # (BUDGET_EXHAUSTED preserves count - we didn't actually attempt description)
+        if record_to_store:
+            prev_count = (cached_record or {}).get("description_retry_count", 0)
+            if MediaStatus.is_successful(record_to_store.get("status")):
+                record_to_store["description_retry_count"] = 0
+            elif record_to_store.get("status") in (
+                MediaStatus.TEMPORARY_FAILURE.value,
+                MediaStatus.TEMPORARY_FAILURE,
+            ):
+                record_to_store["description_retry_count"] = prev_count + 1
+            else:
+                # BUDGET_EXHAUSTED etc - preserve count
+                record_to_store["description_retry_count"] = prev_count
 
         if record_to_store and (
             media_bytes is not None or not record_to_store.get("_on_disk", False)
@@ -252,12 +276,15 @@ class AIChainMediaSource(MediaSource):
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
             # UNLESS we downloaded the media file (in which case we want to preserve it)
+            # OR description_retry_count increased (we must persist the increment for retry limit)
             if (
                 record is not None
                 and cached_record
                 and MediaStatus.is_temporary_failure(cached_record.get("status"))
                 and MediaStatus.is_temporary_failure(record.get("status"))
                 and media_bytes is None  # Only skip if we didn't download media
+                and record_to_store.get("description_retry_count", 0)
+                <= cached_record.get("description_retry_count", 0)
             ):
                 should_store = False
 
@@ -265,6 +292,15 @@ class AIChainMediaSource(MediaSource):
                 await self._store_record(
                     unique_id, record_to_store, media_bytes, file_extension, agent
                 )
+
+        # Update last_used_at when returning a record from chain (cache hit was
+        # already updated by MySQLMediaSource.get)
+        if record and metadata.get("update_last_used"):
+            try:
+                from db import media_metadata
+                media_metadata.update_media_last_used(unique_id)
+            except Exception as e:
+                logger.debug(f"AIChainMediaSource: failed to update last_used for {unique_id}: {e}")
 
         return record
 

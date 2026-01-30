@@ -29,6 +29,24 @@ def _table_exists(cursor, table_name: str) -> bool:
     return result["count"] > 0 if result else False
 
 
+def _column_exists(cursor, table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table."""
+    if not _table_exists(cursor, table_name):
+        return False
+    cursor.execute(
+        """
+        SELECT COUNT(*) as count
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = %s
+          AND COLUMN_NAME = %s
+        """,
+        (table_name, column_name),
+    )
+    result = cursor.fetchone()
+    return result["count"] > 0 if result else False
+
+
 def create_schema() -> None:
     """Create all database tables if they don't exist."""
     with get_db_connection() as conn:
@@ -133,11 +151,36 @@ def create_schema() -> None:
                     sticker_name VARCHAR(255),
                     is_emoji_set BOOLEAN,
                     sticker_set_title VARCHAR(255),
+                    description_retry_count INT NOT NULL DEFAULT 0,
+                    last_used_at DATETIME NULL,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_kind (kind),
-                    INDEX idx_sticker_set (sticker_set_name)
+                    INDEX idx_sticker_set (sticker_set_name),
+                    INDEX idx_last_used_at (last_used_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
+
+            # Migrate media_metadata: add description_retry_count and last_used_at if missing
+            for col, col_def in [
+                ("description_retry_count", "INT NOT NULL DEFAULT 0"),
+                ("last_used_at", "DATETIME NULL"),
+            ]:
+                if not _column_exists(cursor, "media_metadata", col):
+                    logger.info(f"Adding column {col} to media_metadata...")
+                    cursor.execute(
+                        f"ALTER TABLE media_metadata ADD COLUMN {col} {col_def}"
+                    )
+                    if col == "last_used_at":
+                        try:
+                            cursor.execute(
+                                "CREATE INDEX idx_last_used_at ON media_metadata (last_used_at)"
+                            )
+                        except Exception as e:
+                            if "Duplicate" in str(e) or "already exists" in str(e).lower():
+                                logger.debug("Index idx_last_used_at already exists")
+                            else:
+                                raise
+                    logger.info(f"Successfully added column {col} to media_metadata")
 
             # Create agent_activity table
             cursor.execute("""

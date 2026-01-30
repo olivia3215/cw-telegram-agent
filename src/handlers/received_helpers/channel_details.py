@@ -105,6 +105,7 @@ async def _describe_profile_photo(agent, entity, media_chain):
                 channel_name=getattr(entity, "title", None)
                 or getattr(entity, "first_name", None)
                 or getattr(entity, "username", None),
+                update_last_used=True,
             )
             if isinstance(record, dict):
                 description = record.get("description")

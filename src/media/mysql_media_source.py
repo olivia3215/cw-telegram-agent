@@ -66,6 +66,8 @@ class MySQLMediaSource(MediaSource):
             record = media_metadata.load_media_metadata(unique_id)
             if record:
                 logger.debug(f"MySQLMediaSource: cache hit for {unique_id}")
+                if metadata.get("update_last_used"):
+                    media_metadata.update_media_last_used(unique_id)
                 return record
         except Exception as e:
             logger.debug(f"MySQLMediaSource: error loading {unique_id}: {e}")
@@ -193,6 +195,7 @@ class MySQLMediaSource(MediaSource):
             "skip_fallback",
             "_on_disk",
             "agent_telegram_id",
+            "update_last_used",
         }
         
         # Sticker-specific fields (only keep if kind is sticker or animated_sticker)
