@@ -303,23 +303,21 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             escaped_unique_id = glob.escape(unique_id)
             
             # Check all config directories first (without fallback to state/media/)
-            # Use rglob to find media in subdirectories (e.g. stickers imported by set name)
             for config_dir in CONFIG_DIRECTORIES:
                 config_media_dir = Path(config_dir) / "media"
                 if config_media_dir.exists() and config_media_dir.is_dir():
-                    for file_path in config_media_dir.rglob(f"{escaped_unique_id}.*"):
+                    for file_path in config_media_dir.glob(f"{escaped_unique_id}.*"):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break
-                    if cached_file:
-                        break
+                if cached_file:
+                    break
             
             # If not found in any config directory, check state/media/ directly
-            # Use rglob to find media in subdirectories (e.g. stickers imported by set name)
             if not cached_file:
                 state_media_dir = Path(STATE_DIRECTORY) / "media"
                 if state_media_dir.exists() and state_media_dir.is_dir():
-                    for file_path in state_media_dir.rglob(f"{escaped_unique_id}.*"):
+                    for file_path in state_media_dir.glob(f"{escaped_unique_id}.*"):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break

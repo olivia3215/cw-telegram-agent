@@ -67,7 +67,7 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     """Find a media file for the given unique_id in the specified directory.
 
     Looks for any file with the unique_id prefix that is not a .json file.
-    Searches recursively to find media in subdirectories (e.g. stickers by set name).
+    Searches only in the directory root (no subdirectories).
 
     Args:
         media_dir: Directory to search in
@@ -88,7 +88,7 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
 
     escaped_unique_id = glob_module.escape(unique_id)
     for directory in search_dirs:
-        for file_path in directory.rglob(f"{escaped_unique_id}.*"):
+        for file_path in directory.glob(f"{escaped_unique_id}.*"):
             if file_path.suffix.lower() != ".json":
                 if directory != media_dir:
                     logger.debug(
