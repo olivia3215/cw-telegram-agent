@@ -2,6 +2,7 @@
 #
 # Download conversation route for exporting conversations as zip files.
 
+import base64
 import copy
 import glob
 import html
@@ -547,8 +548,9 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         # Generate HTML
                         agent_tz_id = agent.get_timezone_identifier()
                         html_content = _generate_standalone_html(
-                            agent_config_name, user_id, messages, translations, 
-                            agent_tz_id, media_map, mime_map, emoji_map, include_translations
+                            agent_config_name, user_id, messages, translations,
+                            agent_tz_id, media_map, mime_map, emoji_map, include_translations,
+                            media_dir=media_dir,
                         )
                         
                         # Write HTML
@@ -610,9 +612,11 @@ def register_conversation_download_routes(agents_bp: Blueprint):
 
 
 def _generate_standalone_html(
-    agent_name: str, user_id: str, messages: list, 
+    agent_name: str, user_id: str, messages: list,
     translations: dict, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
-    show_translations: bool
+    show_translations: bool,
+    *,
+    media_dir: Path | None = None,
 ) -> str:
     """Generate standalone HTML file for conversation display."""
     # This will be a large HTML string with embedded CSS and JavaScript
@@ -776,9 +780,23 @@ def _generate_standalone_html(
                             sticker_name = part.get("sticker_name") or unique_id
                             content_html += f'<div class="message-media"><img src="{html.escape(media_path)}" alt="{html.escape(sticker_name)}"></div>\n'
                         elif is_animated:
-                            # TGS animation - will be loaded by JavaScript
+                            # TGS animation - embed as base64 so it works when opened from file://
+                            # (fetch() is blocked by CORS when page is loaded from file://)
                             escaped_unique_id = html.escape(unique_id)
-                            content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
+                            tgs_base64 = ""
+                            if media_dir:
+                                tgs_path = media_dir / media_map[unique_id]
+                                if tgs_path.exists():
+                                    try:
+                                        tgs_bytes = tgs_path.read_bytes()
+                                        tgs_base64 = base64.b64encode(tgs_bytes).decode("ascii")
+                                    except Exception as e:
+                                        logger.warning(f"Failed to read TGS file {tgs_path}: {e}")
+                            if tgs_base64:
+                                content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-tgs-base64="{tgs_base64}"></div></div>\n'
+                            else:
+                                # Fallback: use data-path (works only when served via HTTP)
+                                content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
                         elif media_kind in ("video", "animation", "gif"):
                             mime_type = mime_map.get(unique_id, "")
                             # If MIME type is missing, try to infer it from file extension
@@ -840,23 +858,39 @@ def _generate_standalone_html(
         html_content += "    </div>\n"
     
     # Add JavaScript for TGS animations
+    # Use embedded base64 when present (works with file://); fallback to fetch for HTTP
     html_content += """
     <script>
-        // Load TGS animations
+        // Load TGS animations - supports both embedded base64 (file://) and fetch (http/https)
         document.addEventListener('DOMContentLoaded', function() {
             const tgsContainers = document.querySelectorAll('.tgs-container');
             tgsContainers.forEach(function(container) {
-                const uniqueId = container.getAttribute('data-unique-id');
+                const tgsBase64 = container.getAttribute('data-tgs-base64');
                 const mediaPath = container.getAttribute('data-path');
-                
-                fetch(mediaPath)
-                    .then(response => response.arrayBuffer())
-                    .then(function(tgsData) {
-                        // Decompress with pako
-                        const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
-                        const jsonData = JSON.parse(decompressed);
-                        
-                        // Initialize Lottie
+                let tgsPromise;
+                if (tgsBase64) {
+                    // Decode base64 -> decompress -> JSON (works when opened from file://)
+                    try {
+                        const binary = atob(tgsBase64);
+                        const bytes = new Uint8Array(binary.length);
+                        for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+                        const decompressed = pako.inflate(bytes, { to: 'string' });
+                        tgsPromise = Promise.resolve(JSON.parse(decompressed));
+                    } catch (e) {
+                        tgsPromise = Promise.reject(e);
+                    }
+                } else if (mediaPath) {
+                    tgsPromise = fetch(mediaPath)
+                        .then(function(r) { return r.arrayBuffer(); })
+                        .then(function(buf) {
+                            const decompressed = pako.inflate(new Uint8Array(buf), { to: 'string' });
+                            return JSON.parse(decompressed);
+                        });
+                } else {
+                    tgsPromise = Promise.reject(new Error('No TGS data'));
+                }
+                tgsPromise
+                    .then(function(jsonData) {
                         lottie.loadAnimation({
                             container: container,
                             renderer: 'svg',
