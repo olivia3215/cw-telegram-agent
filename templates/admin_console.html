@@ -1641,7 +1641,8 @@
             // Video stickers (webm) must use <video> - they fail with TGS decompression
             const isVideoSticker = (media.kind === 'sticker' || media.kind === 'animated_sticker') &&
                 effectiveMime.startsWith('video/');
-            if (isVideoSticker || effectiveMime.startsWith('video') || effectiveMime === 'image/gif') {
+            // Exclude audio files: audio/mp4 or mis-detected video/mp4 for .m4a must render as <audio>
+            if (!isAudioFile && (isVideoSticker || effectiveMime.startsWith('video') || effectiveMime === 'image/gif')) {
                     // Video content (mp4/webm/gif) - including video stickers
                     const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
                     mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;"${poster}>
