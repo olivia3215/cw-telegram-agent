@@ -29,14 +29,13 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 
 from agent import Agent, all_agents as get_all_agents, _agent_registry
 from config import (
-    STATE_DIRECTORY,
     GOOGLE_GEMINI_API_KEY,
     GROK_API_KEY,
     OPENAI_API_KEY,
     OPENROUTER_API_KEY,
     TELEGRAM_SYSTEM_USER_ID,
 )
-from media.media_sources import iter_directory_media_sources
+from media.media_sources import get_resolved_state_media_path, iter_directory_media_sources
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
 
@@ -81,10 +80,9 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     search_dirs: list[Path] = [media_dir]
 
     # Fallback to AI cache directory if media not present in curated directory
-    if STATE_DIRECTORY:
-        fallback_dir = Path(STATE_DIRECTORY) / "media"
-        if fallback_dir != media_dir:
-            search_dirs.append(fallback_dir)
+    fallback_dir = get_state_media_path()
+    if fallback_dir is not None and fallback_dir != media_dir:
+        search_dirs.append(fallback_dir)
 
     escaped_unique_id = glob_module.escape(unique_id)
     for directory in search_dirs:
@@ -99,6 +97,30 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
                 return file_path
 
     return None
+
+
+def get_state_media_path() -> Path | None:
+    """Return the canonical resolved path for state/media, or None if not configured."""
+    return get_resolved_state_media_path()
+
+
+def is_state_media_directory(media_dir: Path) -> bool:
+    """
+    Check if the given path is the state/media directory.
+
+    Uses the same resolution as media_sources._normalize_path so that paths
+    from the directory registry (which may be absolute from config) match
+    paths from STATE_DIRECTORY (which may be relative or contain ~). Both
+    resolve to canonical absolute paths before comparison.
+    """
+    state_path = get_state_media_path()
+    if state_path is None:
+        return False
+    try:
+        resolved = Path(media_dir).expanduser().resolve()
+        return resolved == state_path
+    except (OSError, RuntimeError):
+        return False
 
 
 def resolve_media_path(directory_path: str) -> Path:

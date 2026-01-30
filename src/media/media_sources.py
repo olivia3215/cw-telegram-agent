@@ -4,10 +4,14 @@ import threading
 from pathlib import Path
 from typing import Dict, Tuple
 
+from .state_path import get_resolved_state_media_path
 from .sources.directory import DirectoryMediaSource
 
 _registry_lock = threading.RLock()
 _directory_sources: Dict[Path, DirectoryMediaSource] = {}
+
+# Re-export for callers that import from media_sources
+__all__ = ["get_resolved_state_media_path", "get_directory_media_source", "iter_directory_media_sources", "reset_media_source_registry"]
 
 
 def _normalize_path(path: str | Path) -> Path:

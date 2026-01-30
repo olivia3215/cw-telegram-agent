@@ -164,6 +164,88 @@ def test_api_media_list_unnamed_video_sticker_infers_mime_from_extension_when_de
         assert match["mime_type"] == "video/webm"
 
 
+def test_is_state_media_directory_matches_absolute_and_relative_paths(monkeypatch, tmp_path):
+    """
+    When the same physical directory is state/media, both absolute and relative
+    path formats should be recognized (fixes path resolution mismatch bug).
+    """
+    from pathlib import Path
+
+    from admin_console.helpers import get_state_media_path, is_state_media_directory
+
+    state_media = tmp_path / "media"
+    state_media.mkdir()
+    monkeypatch.setattr("media.state_path.STATE_DIRECTORY", str(tmp_path))
+
+    # Absolute path (as from config with CINDY_AGENT_CONFIG_PATH)
+    abs_path = state_media.resolve()
+    assert is_state_media_directory(abs_path), "Absolute path should be recognized as state/media"
+
+    # Relative path that resolves to same directory (as from STATE_DIRECTORY)
+    rel_path = Path("media")
+    # Resolve relative to tmp_path to simulate cwd
+    rel_resolved = (tmp_path / rel_path).resolve()
+    assert is_state_media_directory(rel_resolved), "Resolved relative path should match"
+
+    # get_state_media_path should return the canonical path
+    state_path = get_state_media_path()
+    assert state_path is not None
+    assert state_path == abs_path
+
+
+def test_is_state_media_directory_with_tilde_path(monkeypatch):
+    """
+    STATE_DIRECTORY with ~ (e.g. ~/state) should be normalized via expanduser()
+    so is_state_media_directory() correctly identifies the state/media directory.
+    """
+    from pathlib import Path
+
+    from admin_console.helpers import get_state_media_path, is_state_media_directory
+
+    state_dir = Path.home() / "cindy_agent_test_state"
+    media_dir = state_dir / "media"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    media_dir.mkdir(exist_ok=True)
+    try:
+        monkeypatch.setattr("media.state_path.STATE_DIRECTORY", "~/cindy_agent_test_state")
+
+        state_path = get_state_media_path()
+        assert state_path is not None
+        assert state_path == media_dir.resolve()
+
+        assert is_state_media_directory(media_dir), "~ path should be recognized as state/media"
+        assert is_state_media_directory(Path.home() / "cindy_agent_test_state" / "media")
+    finally:
+        media_dir.rmdir()
+        state_dir.rmdir()
+
+
+def test_is_state_media_directory_with_relative_path_and_non_repo_cwd(monkeypatch, tmp_path):
+    """
+    When STATE_DIRECTORY is relative (e.g. "state") and CWD is not repo root,
+    get_state_media_path and is_state_media_directory should still resolve correctly.
+    """
+    import os
+    from pathlib import Path
+
+    from admin_console.helpers import get_state_media_path, is_state_media_directory
+
+    orig_cwd = os.getcwd()
+    state_media = tmp_path / "state" / "media"
+    state_media.mkdir(parents=True)
+    monkeypatch.setattr("media.state_path.STATE_DIRECTORY", "state")
+    monkeypatch.chdir(tmp_path)
+
+    try:
+        state_path = get_state_media_path()
+        assert state_path is not None
+        assert state_path == state_media.resolve()
+
+        assert is_state_media_directory(state_media)
+    finally:
+        monkeypatch.chdir(orig_cwd)
+
+
 @pytest.fixture
 def reset_media_sources():
     reset_media_source_registry()
