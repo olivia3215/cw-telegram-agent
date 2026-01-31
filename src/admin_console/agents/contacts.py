@@ -175,6 +175,49 @@ def register_contact_routes(agents_bp: Blueprint):
             logger.error(f"Error deleting contact for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @agents_bp.route("/api/agents/<agent_config_name>/contacts/bulk-delete", methods=["POST"])
+    def api_bulk_delete_contacts(agent_config_name: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            data = request.get_json() or {}
+            user_ids = data.get("user_ids") or []
+            if not isinstance(user_ids, list) or not user_ids:
+                return jsonify({"error": "user_ids must be a non-empty list"}), 400
+
+            async def _delete_contacts():
+                input_users = []
+                for user_id in user_ids:
+                    try:
+                        channel_id = int(user_id)
+                    except (TypeError, ValueError):
+                        raise ValueError(f"Invalid user ID: {user_id}")
+                    entity = await agent.client.get_entity(channel_id)
+                    if not isinstance(entity, User):
+                        raise ValueError(f"Only user contacts can be deleted: {user_id}")
+                    input_users.append(await agent.client.get_input_entity(entity))
+
+                if input_users:
+                    await agent.client(DeleteContactsRequest(id=input_users))
+
+                if agent.entity_cache:
+                    agent.entity_cache._contacts_cache = None
+                    agent.entity_cache._contacts_cache_expiration = None
+
+                return len(input_users)
+
+            deleted_count = agent.execute(_delete_contacts(), timeout=20.0)
+            return jsonify({"success": True, "deleted": deleted_count})
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error bulk deleting contacts for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
     @agents_bp.route("/api/agents/<agent_config_name>/partner-profile/<user_id>", methods=["GET"])
     def api_get_partner_profile(agent_config_name: str, user_id: str):
         try:
