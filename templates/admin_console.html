@@ -883,6 +883,7 @@
                                 </div>
                                 <div style="display: flex; gap: 8px; margin-top: 8px;">
                                     <button onclick="saveConversationProfile()" id="conversation-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;" disabled>Save Contact</button>
+                                    <button onclick="cancelConversationProfileEdit()" id="conversation-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
                                     <div id="conversation-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
                                 </div>
                             </div>
@@ -3551,15 +3552,14 @@
                 }
             });
 
-            if (saveBtn) {
+            if (saveBtn && !isEditable) {
                 saveBtn.disabled = true;
             }
         }
 
         function conversationProfileFieldChanged() {
             const checkbox = document.getElementById('conversation-profile-contact-checkbox');
-            const saveBtn = document.getElementById('conversation-profile-save-btn');
-            if (!checkbox || !saveBtn || !checkbox.checked || !originalConversationProfile) {
+            if (!checkbox || !checkbox.checked || !originalConversationProfile) {
                 return;
             }
 
@@ -3568,12 +3568,43 @@
             const originalFirst = originalConversationProfile.first_name || '';
             const originalLast = originalConversationProfile.last_name || '';
             const hasChanges = firstName !== originalFirst || lastName !== originalLast;
-            saveBtn.disabled = !hasChanges;
+            setConversationProfileNeedsSave(hasChanges);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = hasChanges ? 'inline-block' : 'none';
+            }
+        }
+
+        function setConversationProfileNeedsSave(needsSave) {
+            const saveBtn = document.getElementById('conversation-profile-save-btn');
+            if (!saveBtn) return;
+            saveBtn.disabled = !needsSave;
+            if (needsSave) {
+                saveBtn.style.background = '#ffc107';
+                saveBtn.style.color = '#2c3e50';
+                saveBtn.style.boxShadow = '0 0 0 2px rgba(255, 193, 7, 0.4)';
+            } else {
+                saveBtn.style.background = '#007bff';
+                saveBtn.style.color = 'white';
+                saveBtn.style.boxShadow = 'none';
+            }
+        }
+
+        function cancelConversationProfileEdit() {
+            if (!originalConversationProfile) {
+                return;
+            }
+            document.getElementById('conversation-profile-first-name').value = originalConversationProfile.first_name || '';
+            document.getElementById('conversation-profile-last-name').value = originalConversationProfile.last_name || '';
+            setConversationProfileNeedsSave(false);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
         }
 
         function handleConversationContactToggle() {
             const checkbox = document.getElementById('conversation-profile-contact-checkbox');
-            const saveBtn = document.getElementById('conversation-profile-save-btn');
             if (!checkbox || checkbox.disabled) {
                 return;
             }
@@ -3584,9 +3615,12 @@
                 document.getElementById('conversation-profile-last-name').value = originalConversationProfile.last_name || '';
             }
             setConversationProfileEditable(isContact);
-            if (saveBtn) {
-                saveBtn.disabled = false;
+            setConversationProfileNeedsSave(true);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
             }
+            saveConversationProfile();
         }
 
         async function loadConversationProfile() {
@@ -3705,8 +3739,12 @@
 
                 const saveBtn = document.getElementById('conversation-profile-save-btn');
                 const statusDiv = document.getElementById('conversation-profile-save-status');
-                if (saveBtn) saveBtn.disabled = true;
+                setConversationProfileNeedsSave(false);
                 if (statusDiv) statusDiv.textContent = '';
+                const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none';
+                }
             } catch (error) {
                 if (error && error.message === 'unauthorized') {
                     return;
@@ -3788,6 +3826,11 @@
                 if (statusDiv) {
                     statusDiv.textContent = 'Saved';
                     statusDiv.style.color = '#28a745';
+                }
+                setConversationProfileNeedsSave(false);
+                const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none';
                 }
             } catch (error) {
                 if (statusDiv) {
@@ -4790,6 +4833,20 @@
             }
         }
 
+        function setAgentProfileNeedsSave(needsSave) {
+            const saveBtn = document.getElementById('agent-profile-save-btn');
+            if (!saveBtn) return;
+            if (needsSave) {
+                saveBtn.style.background = '#ffc107';
+                saveBtn.style.color = '#2c3e50';
+                saveBtn.style.boxShadow = '0 0 0 2px rgba(255, 193, 7, 0.4)';
+            } else {
+                saveBtn.style.background = '#007bff';
+                saveBtn.style.color = 'white';
+                saveBtn.style.boxShadow = 'none';
+            }
+        }
+
         // Load agent profile
         async function loadAgentProfile(agentName) {
             const profileSection = document.getElementById('agent-profile-section');
@@ -4910,6 +4967,7 @@
                 // Hide cancel button
                 document.getElementById('agent-profile-cancel-btn').style.display = 'none';
                 document.getElementById('agent-profile-save-status').textContent = '';
+                setAgentProfileNeedsSave(false);
                 
             } catch (error) {
                 // Only log error if this request is still relevant
@@ -5040,6 +5098,7 @@
                 statusDiv.textContent = 'Profile saved successfully';
                 statusDiv.style.color = '#28a745';
                 cancelBtn.style.display = 'none';
+                setAgentProfileNeedsSave(false);
                 
                 // Clear status message after 3 seconds
                 setTimeout(() => {
@@ -5087,6 +5146,7 @@
                 validateBio();
                 document.getElementById('agent-profile-cancel-btn').style.display = 'none';
                 document.getElementById('agent-profile-save-status').textContent = '';
+                setAgentProfileNeedsSave(false);
             }
         }
 
@@ -5113,9 +5173,11 @@
                 if (field) {
                     field.addEventListener('input', () => {
                         document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                        setAgentProfileNeedsSave(true);
                     });
                     field.addEventListener('change', () => {
                         document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                        setAgentProfileNeedsSave(true);
                     });
                 }
             });
