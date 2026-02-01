@@ -3847,14 +3847,30 @@
                 selectedAgentContacts = new Set();
                 selectedAgentContactsAgent = null;
                 currentAgentContactsUserIds = [];
+                expectedAgentContacts = null;
                 container.innerHTML = '<div class="loading">Select an agent to view contacts</div>';
                 return;
             }
 
+            const agentSelect = document.getElementById('agents-agent-select');
+            const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            if (currentAgentName !== agentName) {
+                return;
+            }
+
             container.innerHTML = '<div class="loading">Loading contacts...</div>';
+            const requestKey = agentName;
+            expectedAgentContacts = requestKey;
             try {
                 const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts`);
                 const data = await response.json();
+                if (expectedAgentContacts !== requestKey) {
+                    return;
+                }
+                const refreshedAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                if (refreshedAgentName !== agentName) {
+                    return;
+                }
                 if (data.error) {
                     container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
                     return;
@@ -4738,6 +4754,7 @@
         let selectedAgentContacts = new Set();
         let selectedAgentContactsAgent = null;
         let currentAgentContactsUserIds = [];
+        let expectedAgentContacts = null; // Track current agent contacts request
 
         // Profile photo fullscreen functions
         function showProfilePhotoFullscreen() {
