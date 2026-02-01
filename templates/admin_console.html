@@ -2686,11 +2686,6 @@
                     const hasBirthday = data.birthday && (data.birthday.day || data.birthday.month);
                     const hasProfilePhoto = data.profile_photo && data.profile_photo.length > 0;
                     return hasFirstName || hasLastName || hasUsername || hasBio || hasBirthday || hasProfilePhoto;
-                } else if (subtabName === 'contacts') {
-                    const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts`);
-                    const data = await response.json();
-                    if (data.error) return false;
-                    return data.contacts && data.contacts.length > 0;
                 }
             } catch (error) {
                 if (error && error.message === 'unauthorized') {
