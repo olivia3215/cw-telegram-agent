@@ -644,6 +644,7 @@
         <section class="tab-panel" data-tab-panel="agents">
             <nav class="tab-bar" style="margin-bottom: 16px;">
                 <button class="tab-button active" data-subtab="profile">Profile</button>
+                <button class="tab-button" data-subtab="contacts">Contacts</button>
                 <button class="tab-button" data-subtab="parameters">Parameters</button>
                 <button class="tab-button" data-subtab="memories">Memories</button>
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
@@ -735,6 +736,11 @@
                         <div class="loading">Select an agent to view profile</div>
                     </div>
                 </div>
+                <div class="subtab-panel" data-subtab-panel="contacts">
+                    <div id="agent-contacts-container">
+                        <div class="loading">Select an agent to view contacts</div>
+                    </div>
+                </div>
                 <div class="subtab-panel" data-subtab-panel="parameters">
                     <div id="parameters-container">
                         <div class="loading">Select an agent to configure</div>
@@ -780,7 +786,8 @@
         <!-- Conversations Tab -->
         <section class="tab-panel" data-tab-panel="conversations">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="notes-conv">Notes</button>
+                <button class="tab-button active" data-subtab="profile-conv">Profile</button>
+                <button class="tab-button" data-subtab="notes-conv">Notes</button>
                 <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
@@ -809,7 +816,84 @@
                 </div>
             </div>
             <div id="conversations-container" class="main-container">
-                <div class="subtab-panel active" data-subtab-panel="notes-conv">
+                <div class="subtab-panel active" data-subtab-panel="profile-conv">
+                    <div id="conversation-profile-section" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0; margin-bottom: 12px;">
+                            <h3 style="margin: 0; font-size: 18px; color: #2c3e50;">Conversation Profile</h3>
+                            <label style="display: flex; align-items: center; gap: 6px; font-weight: 500; color: #2c3e50;">
+                                <input type="checkbox" id="conversation-profile-contact-checkbox" onchange="handleConversationContactToggle()">
+                                Contact
+                            </label>
+                        </div>
+                        <div id="conversation-profile-deleted" style="display: none; margin-bottom: 12px; color: #dc3545; font-weight: 500;">Deleted account</div>
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
+                            <div style="text-align: center;">
+                                <img id="conversation-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showConversationProfilePhotoFullscreen()">
+                                <div style="margin-top: 8px; font-size: 12px; color: #666;">Click to enlarge</div>
+                            </div>
+                            <div id="conversation-profile-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer;" onclick="closeConversationProfilePhotoFullscreen()">
+                                <img id="conversation-profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
+                            </div>
+                            <div style="display: grid; gap: 16px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                    <div>
+                                        <label for="conversation-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
+                                        <input type="text" id="conversation-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
+                                    </div>
+                                    <div>
+                                        <label for="conversation-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
+                                        <input type="text" id="conversation-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="conversation-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
+                                    <input type="text" id="conversation-profile-username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
+                                </div>
+                                <div>
+                                    <label for="conversation-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
+                                    <input type="text" id="conversation-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+                                </div>
+                                <div>
+                                    <label for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
+                                    <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
+                                </div>
+                                <div>
+                                    <label for="conversation-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
+                                    <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
+                                        <select id="conversation-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
+                                            <option value="">Month</option>
+                                            <option value="1">January</option>
+                                            <option value="2">February</option>
+                                            <option value="3">March</option>
+                                            <option value="4">April</option>
+                                            <option value="5">May</option>
+                                            <option value="6">June</option>
+                                            <option value="7">July</option>
+                                            <option value="8">August</option>
+                                            <option value="9">September</option>
+                                            <option value="10">October</option>
+                                            <option value="11">November</option>
+                                            <option value="12">December</option>
+                                        </select>
+                                        <select id="conversation-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
+                                            <option value="">Day</option>
+                                        </select>
+                                        <input type="number" id="conversation-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <button onclick="saveConversationProfile()" id="conversation-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;" disabled>Save Contact</button>
+                                    <button onclick="cancelConversationProfileEdit()" id="conversation-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
+                                    <div id="conversation-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="conversation-profile-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="notes-conv">
                     <div id="notes-conv-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
@@ -2338,7 +2422,7 @@
                 switchSubtab('profile');
             } else if (tabName === 'conversations') {
                 // Show first subtab (which will also call loadAgents)
-                switchSubtab('notes-conv');
+                switchSubtab('profile-conv');
                 // Load recent conversations
                 loadRecentConversations();
                 // If an agent is already selected, load conversation partners
@@ -2442,6 +2526,8 @@
                     // This ensures fresh data when clicking the same tab again
                     if (subtabName === 'profile') {
                         loadAgentProfile(agentName);
+                    } else if (subtabName === 'contacts') {
+                        loadAgentContacts(agentName);
                     } else if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
@@ -2482,7 +2568,9 @@
                 const userIdInput = document.getElementById('conversations-user-id');
                 const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
                 
-                if (agentName && userId) {
+                if (subtabName === 'profile-conv') {
+                    loadConversationProfile();
+                } else if (agentName && userId) {
                     if (subtabName === 'notes-conv') {
                         loadNotesForPartner();
                     } else if (subtabName === 'conversation-parameters') {
@@ -2541,12 +2629,15 @@
         // Helper function to get current subtab name for conversations tab
         function getCurrentConversationsSubtab() {
             const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
-            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'notes-conv';
+            return activeSubtab ? activeSubtab.getAttribute('data-subtab') : 'profile-conv';
         }
 
         // Helper function to check if agent has nontrivial content for a subtab
         async function agentHasContent(agentName, subtabName) {
             try {
+                if (subtabName === 'contacts') {
+                    return false;
+                }
                 if (subtabName === 'parameters') {
                     // Check if agent has custom LLM or non-empty prompt
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`);
@@ -2608,6 +2699,9 @@
         // Helper function to check if conversation partner has nontrivial content for a subtab
         async function partnerHasContent(agentName, userId, subtabName) {
             try {
+                if (subtabName === 'profile-conv') {
+                    return false;
+                }
                 if (subtabName === 'notes-conv') {
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}`);
                     const data = await response.json();
@@ -3166,6 +3260,8 @@
                     const subtabName = activeSubtab.getAttribute('data-subtab');
                     if (subtabName === 'profile') {
                         loadAgentProfile(agentName);
+                    } else if (subtabName === 'contacts') {
+                        loadAgentContacts(agentName);
                     } else if (subtabName === 'parameters') {
                         loadAgentConfiguration(agentName);
                     } else if (subtabName === 'memories') {
@@ -3185,6 +3281,8 @@
                     const subtabName = activeSubtab.getAttribute('data-subtab');
                     if (subtabName === 'profile') {
                         loadAgentProfile('');
+                    } else if (subtabName === 'contacts') {
+                        loadAgentContacts('');
                     }
                 }
             }
@@ -3416,6 +3514,562 @@
                 const subtabName = activeSubtab.getAttribute('data-subtab');
                 switchSubtab(subtabName);
             }
+        }
+
+        function showConversationProfilePhotoFullscreen() {
+            const photo = document.getElementById('conversation-profile-photo');
+            const fullscreenPhoto = document.getElementById('conversation-profile-photo-fullscreen');
+            const modal = document.getElementById('conversation-profile-photo-modal');
+            if (photo && photo.src && modal && fullscreenPhoto) {
+                fullscreenPhoto.src = photo.src;
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeConversationProfilePhotoFullscreen() {
+            const modal = document.getElementById('conversation-profile-photo-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function setConversationProfileEditable(isEditable) {
+            const firstNameInput = document.getElementById('conversation-profile-first-name');
+            const lastNameInput = document.getElementById('conversation-profile-last-name');
+            const saveBtn = document.getElementById('conversation-profile-save-btn');
+
+            [firstNameInput, lastNameInput].forEach(input => {
+                if (!input) return;
+                input.readOnly = !isEditable;
+                if (isEditable) {
+                    input.style.background = '#ffffff';
+                    input.style.color = '#2c3e50';
+                } else {
+                    input.style.background = '#f5f5f5';
+                    input.style.color = '#666';
+                }
+            });
+
+            if (saveBtn && !isEditable) {
+                saveBtn.disabled = true;
+            }
+        }
+
+        function conversationProfileFieldChanged() {
+            const checkbox = document.getElementById('conversation-profile-contact-checkbox');
+            if (!checkbox || !checkbox.checked || !originalConversationProfile) {
+                return;
+            }
+
+            const firstName = document.getElementById('conversation-profile-first-name').value.trim();
+            const lastName = document.getElementById('conversation-profile-last-name').value.trim();
+            const originalFirst = originalConversationProfile.first_name || '';
+            const originalLast = originalConversationProfile.last_name || '';
+            const hasChanges = firstName !== originalFirst || lastName !== originalLast;
+            setConversationProfileNeedsSave(hasChanges);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = hasChanges ? 'inline-block' : 'none';
+            }
+        }
+
+        function setConversationProfileNeedsSave(needsSave) {
+            const saveBtn = document.getElementById('conversation-profile-save-btn');
+            if (!saveBtn) return;
+            saveBtn.disabled = !needsSave;
+            if (needsSave) {
+                saveBtn.style.background = '#ffc107';
+                saveBtn.style.color = '#2c3e50';
+                saveBtn.style.boxShadow = '0 0 0 2px rgba(255, 193, 7, 0.4)';
+            } else {
+                saveBtn.style.background = '#007bff';
+                saveBtn.style.color = 'white';
+                saveBtn.style.boxShadow = 'none';
+            }
+        }
+
+        function cancelConversationProfileEdit() {
+            if (!originalConversationProfile) {
+                return;
+            }
+            document.getElementById('conversation-profile-first-name').value = originalConversationProfile.first_name || '';
+            document.getElementById('conversation-profile-last-name').value = originalConversationProfile.last_name || '';
+            setConversationProfileNeedsSave(false);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+        }
+
+        function handleConversationContactToggle() {
+            const checkbox = document.getElementById('conversation-profile-contact-checkbox');
+            if (!checkbox || checkbox.disabled) {
+                return;
+            }
+
+            const isContact = checkbox.checked;
+            if (!isContact && originalConversationProfile) {
+                document.getElementById('conversation-profile-first-name').value = originalConversationProfile.first_name || '';
+                document.getElementById('conversation-profile-last-name').value = originalConversationProfile.last_name || '';
+            }
+            setConversationProfileEditable(isContact);
+            setConversationProfileNeedsSave(true);
+            const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+            saveConversationProfile();
+        }
+
+        async function loadConversationProfile() {
+            const profileSection = document.getElementById('conversation-profile-section');
+            const profileContainer = document.getElementById('conversation-profile-container');
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+            if (!agentName || !userId) {
+                if (profileSection) {
+                    profileSection.style.display = 'none';
+                }
+                if (profileContainer) {
+                    profileContainer.style.display = 'block';
+                }
+                expectedConversationProfile = null;
+                return;
+            }
+
+            if (profileSection) {
+                profileSection.style.display = 'block';
+            }
+            if (profileContainer) {
+                profileContainer.style.display = 'none';
+            }
+
+            const requestKey = `${agentName}:${userId}`;
+            expectedConversationProfile = requestKey;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}`);
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error loading conversation profile:', data.error);
+                    if (profileSection) {
+                        profileSection.style.display = 'none';
+                    }
+                    if (profileContainer) {
+                        profileContainer.style.display = 'block';
+                    }
+                    expectedConversationProfile = null;
+                    return;
+                }
+
+                if (expectedConversationProfile !== requestKey) {
+                    return;
+                }
+
+                const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                const currentUserId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+                if (currentAgentName !== agentName || currentUserId !== userId) {
+                    return;
+                }
+
+                originalConversationProfile = JSON.parse(JSON.stringify(data));
+                currentConversationProfile = data;
+
+                document.getElementById('conversation-profile-first-name').value = data.first_name || '';
+                document.getElementById('conversation-profile-last-name').value = data.last_name || '';
+                document.getElementById('conversation-profile-username').value = data.username || '';
+                document.getElementById('conversation-profile-telegram-id').value = data.telegram_id || '';
+                document.getElementById('conversation-profile-bio').value = data.bio || '';
+
+                const photoImg = document.getElementById('conversation-profile-photo');
+                if (data.profile_photo) {
+                    photoImg.src = data.profile_photo;
+                    photoImg.style.display = 'block';
+                } else {
+                    photoImg.src = '';
+                    photoImg.style.display = 'none';
+                }
+
+                const monthSelect = document.getElementById('conversation-profile-birthday-month');
+                const daySelect = document.getElementById('conversation-profile-birthday-day');
+                const yearInput = document.getElementById('conversation-profile-birthday-year');
+                monthSelect.value = '';
+                daySelect.innerHTML = '<option value="">Day</option>';
+                yearInput.value = '';
+
+                if (data.birthday) {
+                    monthSelect.value = data.birthday.month || '';
+                    const days = data.birthday.month === 2
+                        ? 29
+                        : [4, 6, 9, 11].includes(data.birthday.month)
+                            ? 30
+                            : 31;
+                    for (let day = 1; day <= days; day++) {
+                        const option = document.createElement('option');
+                        option.value = day;
+                        option.textContent = day;
+                        daySelect.appendChild(option);
+                    }
+                    if (data.birthday.day) {
+                        daySelect.value = data.birthday.day;
+                    }
+                    if (data.birthday.year) {
+                        yearInput.value = data.birthday.year;
+                    }
+                }
+
+                const deletedIndicator = document.getElementById('conversation-profile-deleted');
+                if (deletedIndicator) {
+                    deletedIndicator.style.display = data.is_deleted ? 'block' : 'none';
+                }
+
+                const contactCheckbox = document.getElementById('conversation-profile-contact-checkbox');
+                if (contactCheckbox) {
+                    contactCheckbox.checked = !!data.is_contact;
+                    contactCheckbox.disabled = !data.can_edit_contact;
+                }
+                setConversationProfileEditable(!!data.is_contact && !!data.can_edit_contact);
+
+                const saveBtn = document.getElementById('conversation-profile-save-btn');
+                const statusDiv = document.getElementById('conversation-profile-save-status');
+                setConversationProfileNeedsSave(false);
+                if (statusDiv) statusDiv.textContent = '';
+                const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none';
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                console.error('Error loading conversation profile:', error);
+                if (profileSection) {
+                    profileSection.style.display = 'none';
+                }
+                if (profileContainer) {
+                    profileContainer.style.display = 'block';
+                }
+                expectedConversationProfile = null;
+            }
+        }
+
+        async function saveConversationProfile() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+            if (!agentName || !userId) {
+                alert('Please select an agent and conversation partner');
+                return;
+            }
+
+            const saveBtn = document.getElementById('conversation-profile-save-btn');
+            const statusDiv = document.getElementById('conversation-profile-save-status');
+            const contactCheckbox = document.getElementById('conversation-profile-contact-checkbox');
+            if (!contactCheckbox || contactCheckbox.disabled) {
+                return;
+            }
+
+            const firstName = document.getElementById('conversation-profile-first-name').value.trim();
+            const lastName = document.getElementById('conversation-profile-last-name').value.trim();
+
+            if (saveBtn) saveBtn.disabled = true;
+            if (statusDiv) {
+                statusDiv.textContent = 'Saving...';
+                statusDiv.style.color = '#007bff';
+            }
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        is_contact: contactCheckbox.checked,
+                        first_name: firstName,
+                        last_name: lastName
+                    })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    if (statusDiv) {
+                        statusDiv.textContent = `Error: ${data.error}`;
+                        statusDiv.style.color = '#dc3545';
+                    }
+                    if (saveBtn) saveBtn.disabled = false;
+                    return;
+                }
+
+                originalConversationProfile = JSON.parse(JSON.stringify(data));
+                currentConversationProfile = data;
+
+                document.getElementById('conversation-profile-first-name').value = data.first_name || '';
+                document.getElementById('conversation-profile-last-name').value = data.last_name || '';
+
+                contactCheckbox.checked = !!data.is_contact;
+                contactCheckbox.disabled = !data.can_edit_contact;
+                setConversationProfileEditable(!!data.is_contact && !!data.can_edit_contact);
+
+                const deletedIndicator = document.getElementById('conversation-profile-deleted');
+                if (deletedIndicator) {
+                    deletedIndicator.style.display = data.is_deleted ? 'block' : 'none';
+                }
+
+                if (statusDiv) {
+                    statusDiv.textContent = 'Saved';
+                    statusDiv.style.color = '#28a745';
+                }
+                setConversationProfileNeedsSave(false);
+                const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none';
+                }
+            } catch (error) {
+                if (statusDiv) {
+                    statusDiv.textContent = `Error: ${error}`;
+                    statusDiv.style.color = '#dc3545';
+                }
+                if (saveBtn) saveBtn.disabled = false;
+            }
+        }
+
+        async function loadAgentContacts(agentName) {
+            const container = document.getElementById('agent-contacts-container');
+            if (!container) return;
+
+            if (!agentName) {
+                selectedAgentContacts = new Set();
+                selectedAgentContactsAgent = null;
+                currentAgentContactsUserIds = [];
+                expectedAgentContacts = null;
+                container.innerHTML = '<div class="loading">Select an agent to view contacts</div>';
+                return;
+            }
+
+            const agentSelect = document.getElementById('agents-agent-select');
+            const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            if (currentAgentName !== agentName) {
+                return;
+            }
+
+            container.innerHTML = '<div class="loading">Loading contacts...</div>';
+            const requestKey = agentName;
+            expectedAgentContacts = requestKey;
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts`);
+                const data = await response.json();
+                if (expectedAgentContacts !== requestKey) {
+                    return;
+                }
+                const refreshedAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                if (refreshedAgentName !== agentName) {
+                    return;
+                }
+                if (data.error) {
+                    container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                    return;
+                }
+
+                const contacts = data.contacts || [];
+                if (contacts.length === 0) {
+                    selectedAgentContacts = new Set();
+                    selectedAgentContactsAgent = agentName;
+                    currentAgentContactsUserIds = [];
+                    container.innerHTML = '<div class="placeholder-card">No contacts found.</div>';
+                    return;
+                }
+
+                currentAgentContactsUserIds = contacts.map(contact => String(contact.user_id));
+                if (selectedAgentContactsAgent !== agentName) {
+                    selectedAgentContactsAgent = agentName;
+                    selectedAgentContacts = new Set();
+                } else {
+                    selectedAgentContacts = new Set(
+                        [...selectedAgentContacts].filter(id => currentAgentContactsUserIds.includes(id))
+                    );
+                }
+
+                const bulkControlsHtml = `
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-weight: 500; color: #2c3e50;">
+                            <input type="checkbox" id="agent-contacts-select-all" onchange="toggleAgentContactsSelectAll(this.checked)">
+                            Select all
+                        </label>
+                        <button onclick="bulkDeleteAgentContacts('${escJsAttr(agentName)}')" id="agent-contacts-delete-selected" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete selected</button>
+                        <div id="agent-contacts-selected-count" style="font-size: 12px; color: #666;">0 selected</div>
+                    </div>
+                `;
+
+                const contactsHtml = contacts.map(contact => {
+                    const deletedBadge = contact.is_deleted
+                        ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Deleted account</span>'
+                        : '';
+                    const usernameLine = contact.username ? `<div><strong>Username:</strong> @${escapeHtml(contact.username)}</div>` : '';
+                    const userId = String(contact.user_id);
+                    const isChecked = selectedAgentContacts.has(userId) ? 'checked' : '';
+                    return `
+                        <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="display: flex; gap: 12px;">
+                                    <label style="margin-top: 2px;">
+                                        <input type="checkbox" data-contact-checkbox="true" ${isChecked} onchange="toggleAgentContactSelection('${escJsAttr(userId)}', this.checked)">
+                                    </label>
+                                    <div>
+                                    <div><strong>Name:</strong> ${escapeHtml(contact.name || contact.user_id)}${deletedBadge}</div>
+                                    <div><strong>ID:</strong> ${escapeHtml(contact.user_id)}</div>
+                                    ${usernameLine}
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="openConversationFromContacts('${escJsAttr(agentName)}', '${escJsAttr(contact.user_id)}')" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Open in Conversations</button>
+                                    <button onclick="deleteAgentContact('${escJsAttr(agentName)}', '${escJsAttr(contact.user_id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                container.innerHTML = bulkControlsHtml + contactsHtml;
+                updateAgentContactsSelectionUI();
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                container.innerHTML = `<div class="error">Error loading contacts: ${escapeHtml(error)}</div>`;
+            }
+        }
+
+        async function deleteAgentContact(agentName, userId) {
+            if (!agentName || !userId) {
+                alert('Please select an agent and contact');
+                return;
+            }
+            const confirmation = confirm(`Delete contact ${userId}?`);
+            if (!confirmation) {
+                return;
+            }
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts/${encodeURIComponent(userId)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error deleting contact: ' + data.error);
+                } else {
+                    selectedAgentContacts.delete(String(userId));
+                    loadAgentContacts(agentName);
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting contact: ' + error);
+            }
+        }
+
+        function toggleAgentContactSelection(userId, isChecked) {
+            if (!selectedAgentContactsAgent) {
+                return;
+            }
+            const contactId = String(userId);
+            if (isChecked) {
+                selectedAgentContacts.add(contactId);
+            } else {
+                selectedAgentContacts.delete(contactId);
+            }
+            updateAgentContactsSelectionUI();
+        }
+
+        function toggleAgentContactsSelectAll(isChecked) {
+            if (!selectedAgentContactsAgent) {
+                return;
+            }
+            if (isChecked) {
+                selectedAgentContacts = new Set(currentAgentContactsUserIds);
+            } else {
+                selectedAgentContacts.clear();
+            }
+            document.querySelectorAll('input[data-contact-checkbox="true"]').forEach(input => {
+                input.checked = isChecked;
+            });
+            updateAgentContactsSelectionUI();
+        }
+
+        function updateAgentContactsSelectionUI() {
+            const selectedCount = selectedAgentContacts.size;
+            const totalCount = currentAgentContactsUserIds.length;
+            const countEl = document.getElementById('agent-contacts-selected-count');
+            const deleteBtn = document.getElementById('agent-contacts-delete-selected');
+            const selectAll = document.getElementById('agent-contacts-select-all');
+
+            if (countEl) {
+                countEl.textContent = `${selectedCount} selected`;
+            }
+            if (deleteBtn) {
+                deleteBtn.disabled = selectedCount === 0;
+                deleteBtn.style.opacity = selectedCount === 0 ? '0.6' : '1';
+                deleteBtn.style.cursor = selectedCount === 0 ? 'not-allowed' : 'pointer';
+            }
+            if (selectAll) {
+                selectAll.checked = selectedCount > 0 && selectedCount === totalCount;
+                selectAll.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+            }
+        }
+
+        async function bulkDeleteAgentContacts(agentName) {
+            if (!agentName || selectedAgentContacts.size === 0) {
+                return;
+            }
+            const userIds = Array.from(selectedAgentContacts);
+            const confirmation = confirm(`Delete ${userIds.length} selected contact(s)?`);
+            if (!confirmation) {
+                return;
+            }
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts/bulk-delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_ids: userIds })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error deleting contacts: ' + data.error);
+                } else {
+                    selectedAgentContacts = new Set();
+                    loadAgentContacts(agentName);
+                }
+            } catch (error) {
+                if (error && error.message === 'unauthorized') {
+                    return;
+                }
+                alert('Error deleting contacts: ' + error);
+            }
+        }
+
+        async function openConversationFromContacts(agentName, userId) {
+            if (!agentName || !userId) return;
+            const conversationsTab = document.querySelector('nav.tab-bar:first-of-type .tab-button[data-tab="conversations"]');
+            if (conversationsTab) {
+                conversationsTab.click();
+            }
+
+            const conversationsSelect = document.getElementById('conversations-agent-select');
+            if (conversationsSelect) {
+                conversationsSelect.value = agentName;
+                conversationsSelect.dispatchEvent(new Event('change'));
+            }
+
+            const userIdInput = document.getElementById('conversations-user-id');
+            if (userIdInput) {
+                userIdInput.value = userId;
+            }
+
+            await loadConversationData();
         }
 
         // Load memories
@@ -4094,6 +4748,13 @@
         let originalAgentProfile = null;
         let bioLimit = 70;
         let expectedProfileAgent = null; // Track which agent we're expecting a profile response for
+        let currentConversationProfile = null;
+        let originalConversationProfile = null;
+        let expectedConversationProfile = null; // Track current conversation profile request
+        let selectedAgentContacts = new Set();
+        let selectedAgentContactsAgent = null;
+        let currentAgentContactsUserIds = [];
+        let expectedAgentContacts = null; // Track current agent contacts request
 
         // Profile photo fullscreen functions
         function showProfilePhotoFullscreen() {
@@ -4184,6 +4845,20 @@
                 statusDiv.style.color = remaining < 20 ? '#ffc107' : '#28a745';
                 bioTextarea.style.borderColor = '#28a745';
                 saveBtn.disabled = false;
+            }
+        }
+
+        function setAgentProfileNeedsSave(needsSave) {
+            const saveBtn = document.getElementById('agent-profile-save-btn');
+            if (!saveBtn) return;
+            if (needsSave) {
+                saveBtn.style.background = '#ffc107';
+                saveBtn.style.color = '#2c3e50';
+                saveBtn.style.boxShadow = '0 0 0 2px rgba(255, 193, 7, 0.4)';
+            } else {
+                saveBtn.style.background = '#007bff';
+                saveBtn.style.color = 'white';
+                saveBtn.style.boxShadow = 'none';
             }
         }
 
@@ -4307,6 +4982,7 @@
                 // Hide cancel button
                 document.getElementById('agent-profile-cancel-btn').style.display = 'none';
                 document.getElementById('agent-profile-save-status').textContent = '';
+                setAgentProfileNeedsSave(false);
                 
             } catch (error) {
                 // Only log error if this request is still relevant
@@ -4437,6 +5113,7 @@
                 statusDiv.textContent = 'Profile saved successfully';
                 statusDiv.style.color = '#28a745';
                 cancelBtn.style.display = 'none';
+                setAgentProfileNeedsSave(false);
                 
                 // Clear status message after 3 seconds
                 setTimeout(() => {
@@ -4484,6 +5161,7 @@
                 validateBio();
                 document.getElementById('agent-profile-cancel-btn').style.display = 'none';
                 document.getElementById('agent-profile-save-status').textContent = '';
+                setAgentProfileNeedsSave(false);
             }
         }
 
@@ -4510,9 +5188,11 @@
                 if (field) {
                     field.addEventListener('input', () => {
                         document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                        setAgentProfileNeedsSave(true);
                     });
                     field.addEventListener('change', () => {
                         document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                        setAgentProfileNeedsSave(true);
                     });
                 }
             });
@@ -5176,7 +5856,11 @@
                         'conversation': 'conversation'  // Special case, uses different endpoint
                     };
                     
-                    if (subtabName === 'conversation') {
+                    if (subtabName === 'profile-conv') {
+                        userIds.forEach(userId => {
+                            partnerContentChecks[userId] = false;
+                        });
+                    } else if (subtabName === 'conversation') {
                         // For conversation subtab, use conversation-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-content-check`, {
