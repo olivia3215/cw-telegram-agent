@@ -250,6 +250,7 @@ def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
             data = response.get_json()
             assert "error" in data
             assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
+
             
             # Test negative
             response = client.post(
@@ -290,6 +291,135 @@ def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
         import os
         if "TYPING_SPEED" in os.environ:
             del os.environ["TYPING_SPEED"]
+
+
+def test_contacts_profile_fallback_reads_full_user(monkeypatch):
+    from admin_console.agents import contacts as contacts_module
+
+    class FakeBirthday:
+        day = 4
+        month = 7
+        year = 1999
+
+    class FakeFullUser:
+        def __init__(self):
+            self.full_user = type("Nested", (), {"about": "Nested bio", "birthday": FakeBirthday()})()
+
+    class FakeUser:
+        def __init__(self, user_id):
+            self.id = user_id
+            self.first_name = "Ada"
+            self.last_name = "Lovelace"
+            self.username = "ada"
+            self.deleted = False
+            self.contact = True
+
+    class FakeClient:
+        def __init__(self):
+            self.user = FakeUser(123)
+
+        async def get_input_entity(self, entity):
+            return entity
+
+        async def get_entity(self, user_id):
+            return self.user
+
+        async def __call__(self, request):
+            return FakeFullUser()
+
+    class FakeAgent:
+        def __init__(self):
+            self.client = FakeClient()
+
+        def execute(self, coro, timeout=30.0):
+            import asyncio
+
+            return asyncio.run(coro)
+
+    monkeypatch.setattr(contacts_module, "User", FakeUser)
+    monkeypatch.setattr("admin_console.agents.contacts.get_agent_by_name", lambda _: FakeAgent())
+    monkeypatch.setattr(
+        "admin_console.helpers.resolve_user_id_and_handle_errors",
+        lambda agent, user_id, logger: (123, None),
+    )
+
+    client = _make_client()
+    response = client.get("/admin/api/agents/test/partner-profile/123")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["bio"] == "Nested bio"
+    assert data["birthday"] == {"day": 4, "month": 7, "year": 1999}
+
+
+def test_contacts_list_and_bulk_delete(monkeypatch):
+    from admin_console.agents import contacts as contacts_module
+
+    class FakeContact:
+        def __init__(self, user_id):
+            self.user_id = user_id
+
+    class FakeUser:
+        def __init__(self, user_id, deleted=False):
+            self.id = user_id
+            self.first_name = "First"
+            self.last_name = "Last"
+            self.username = "user"
+            self.deleted = deleted
+
+    class FakeContactsResult:
+        def __init__(self):
+            self.users = [FakeUser(10), FakeUser(20, deleted=True)]
+            self.contacts = [FakeContact(10), FakeContact(20)]
+
+    class FakeClient:
+        def __init__(self):
+            self.deleted_ids = []
+
+        async def get_entity(self, user_id):
+            return FakeUser(user_id)
+
+        async def get_input_entity(self, entity):
+            return entity
+
+        async def __call__(self, request):
+            from telethon.tl.functions.contacts import GetContactsRequest, DeleteContactsRequest
+
+            if isinstance(request, GetContactsRequest):
+                return FakeContactsResult()
+            if isinstance(request, DeleteContactsRequest):
+                self.deleted_ids = [user.id for user in request.id]
+                return True
+            raise AssertionError(f"Unexpected request: {request}")
+
+    class FakeAgent:
+        def __init__(self):
+            self.client = FakeClient()
+            self.entity_cache = type(
+                "Cache", (), {"_contacts_cache": None, "_contacts_cache_expiration": None}
+            )()
+
+        def execute(self, coro, timeout=30.0):
+            import asyncio
+
+            return asyncio.run(coro)
+
+    monkeypatch.setattr(contacts_module, "User", FakeUser)
+    monkeypatch.setattr("admin_console.agents.contacts.get_agent_by_name", lambda _: FakeAgent())
+
+    client = _make_client()
+    response = client.get("/admin/api/agents/test/contacts")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["contacts"][0]["user_id"] == "10"
+    assert data["contacts"][1]["is_deleted"] is True
+
+    response = client.post(
+        "/admin/api/agents/test/contacts/bulk-delete",
+        json={"user_ids": ["10", "20"]},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["deleted"] == 2
 
 
 def test_global_parameters_reject_negative_delays(tmp_path):

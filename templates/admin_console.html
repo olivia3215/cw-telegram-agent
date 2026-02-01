@@ -2635,6 +2635,9 @@
         // Helper function to check if agent has nontrivial content for a subtab
         async function agentHasContent(agentName, subtabName) {
             try {
+                if (subtabName === 'contacts') {
+                    return false;
+                }
                 if (subtabName === 'parameters') {
                     // Check if agent has custom LLM or non-empty prompt
                     const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`);

@@ -67,14 +67,18 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
             full_user_response = None
 
         if full_user_response:
-            bio = getattr(full_user_response, "about", None) or ""
+            bio_value = getattr(full_user_response, "about", None)
             birthday_obj = getattr(full_user_response, "birthday", None)
-            if bio is None and hasattr(full_user_response, "full_user"):
+            if (bio_value is None or birthday_obj is None) and hasattr(
+                full_user_response, "full_user"
+            ):
                 full_user = getattr(full_user_response, "full_user")
                 if full_user:
-                    bio = getattr(full_user, "about", None) or ""
+                    if bio_value is None:
+                        bio_value = getattr(full_user, "about", None)
                     if birthday_obj is None:
                         birthday_obj = getattr(full_user, "birthday", None)
+            bio = bio_value or ""
 
             if birthday_obj:
                 day = getattr(birthday_obj, "day", None)
