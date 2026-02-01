@@ -131,7 +131,7 @@ def test_conversation_media_caching_does_not_emit_unawaited_coroutine_warning(
 
     # Bypass channel resolution.
     monkeypatch.setattr(
-        "admin_console.agents.contacts.resolve_user_id_and_handle_errors",
+        "admin_console.helpers.resolve_user_id_and_handle_errors",
         lambda agent, user_id, logger: (123, None),
     )
 
