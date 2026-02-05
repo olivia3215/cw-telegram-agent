@@ -43,7 +43,7 @@
   - Mention users with `@username` or `tg://user?id=NNNN`.
   - In a group, link specific messages with `https://t.me/groupname/msgid`
   - In a DM or group, reply to a message to link to it.
-  - There is no need to “escape” punctuation. To type a period, just use that character alone.
+  - There is no need to “escape” punctuation. To type a period or question mark at the end of a sentence, just use that character alone.
 
 ### `react`
 - Adds an emoji reaction to a specific message without sending new text.
