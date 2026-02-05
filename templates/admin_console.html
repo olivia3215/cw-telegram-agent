@@ -854,7 +854,7 @@
                                     <input type="text" id="conversation-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
                                 </div>
                                 <div>
-                                    <label for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
+                                    <label id="conversation-profile-bio-label" for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
                                     <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
                                 </div>
                                 <div>
@@ -3690,6 +3690,17 @@
                 const conversationBioTextarea = document.getElementById('conversation-profile-bio');
                 conversationBioTextarea.value = data.bio || '';
                 autoGrowTextarea(conversationBioTextarea);
+                const bioLabel = document.getElementById('conversation-profile-bio-label');
+                if (bioLabel) {
+                    let isGroup = data.partner_type && data.partner_type !== 'user';
+                    if (data.partner_type === undefined || data.partner_type === null) {
+                        const telegramId = Number(data.telegram_id);
+                        if (!Number.isNaN(telegramId)) {
+                            isGroup = telegramId < 0;
+                        }
+                    }
+                    bioLabel.textContent = isGroup ? 'Description:' : 'Bio:';
+                }
 
                 const photoImg = document.getElementById('conversation-profile-photo');
                 if (data.profile_photo) {
@@ -4527,6 +4538,38 @@
             });
         }
 
+        async function openMembershipConversationProfile(agentName, channelId) {
+            if (!agentName || !channelId) {
+                return;
+            }
+
+            const conversationsTabButton = document.querySelector('nav.tab-bar:first-of-type .tab-button[data-tab="conversations"]');
+            if (conversationsTabButton) {
+                conversationsTabButton.click();
+            }
+
+            await loadAgents();
+
+            const conversationsAgentSelect = document.getElementById('conversations-agent-select');
+            if (conversationsAgentSelect) {
+                conversationsAgentSelect.value = agentName;
+                conversationsAgentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            if (partnerSelect) {
+                partnerSelect.value = '';
+            }
+
+            const userIdInput = document.getElementById('conversations-user-id');
+            if (userIdInput) {
+                userIdInput.value = String(channelId);
+            }
+
+            switchSubtab('profile-conv');
+            loadConversationData();
+        }
+
         // Load memberships
         function loadMemberships(agentName) {
             const container = document.getElementById('memberships-container');
@@ -4583,7 +4626,12 @@
                             
                             html += '<div style="padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; align-items: center; gap: 12px;">';
                             html += '<div style="flex: 1; min-width: 0;">';
-                            html += '<div style="font-weight: 500; margin-bottom: 4px;">' + escapeHtml(name) + '</div>';
+                            const nameLabel = escapeHtml(name);
+                            let nameHtml = nameLabel;
+                            if (channelId) {
+                                nameHtml = '<a href="#" onclick="openMembershipConversationProfile(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\'); return false;" style="color: #007bff; text-decoration: underline;">' + nameLabel + '</a>';
+                            }
+                            html += '<div style="font-weight: 500; margin-bottom: 4px;">' + nameHtml + '</div>';
                             html += '<div style="font-size: 12px; color: #666;">';
                             html += 'ID: ' + escapeHtml(channelId);
                             if (username) {

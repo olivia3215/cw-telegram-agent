@@ -3,11 +3,14 @@ import logging
 from typing import Any
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
+from telethon import utils as tg_utils  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.channels import GetFullChannelRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.contacts import (  # pyright: ignore[reportMissingImports]
     AddContactRequest,
     DeleteContactsRequest,
     GetContactsRequest,
 )
+from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import Chat, Channel, User  # pyright: ignore[reportMissingImports]
 
@@ -47,6 +50,8 @@ def _extract_username(entity) -> str | None:
 
 async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
     is_user = isinstance(entity, User)
+    is_chat = isinstance(entity, Chat)
+    is_channel = isinstance(entity, Channel)
     is_deleted = bool(getattr(entity, "deleted", False)) if is_user else False
     is_contact = bool(getattr(entity, "contact", False)) if is_user else False
 
@@ -90,21 +95,47 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
         title = getattr(entity, "title", None)
         if title:
             first_name = title
+        if is_chat:
+            try:
+                full_chat_result = await client(GetFullChatRequest(entity.id))
+                full_chat = getattr(full_chat_result, "full_chat", None)
+                bio = getattr(full_chat, "about", None) or ""
+            except Exception as e:
+                logger.debug(f"Failed to fetch full chat info for {entity.id}: {e}")
+        elif is_channel:
+            try:
+                input_channel = await client.get_input_entity(entity)
+                full_result = await client(GetFullChannelRequest(input_channel))
+                full_chat = getattr(full_result, "full_chat", None)
+                bio = getattr(full_chat, "about", None) or ""
+            except Exception as e:
+                logger.debug(f"Failed to fetch full channel info for {entity.id}: {e}")
 
     profile_photo = await _get_profile_photo_data_url(client, entity)
     username = _extract_username(entity) or ""
+    partner_type = "user"
+    if is_chat:
+        partner_type = "group"
+    elif is_channel:
+        partner_type = "channel"
+
+    try:
+        telegram_id = tg_utils.get_peer_id(entity)
+    except Exception:
+        telegram_id = getattr(entity, "id", None)
 
     return {
         "first_name": first_name,
         "last_name": last_name,
         "username": username,
-        "telegram_id": getattr(entity, "id", None),
+        "telegram_id": telegram_id,
         "bio": bio,
         "birthday": birthday,
         "profile_photo": profile_photo,
         "is_contact": is_contact,
         "is_deleted": is_deleted,
         "can_edit_contact": is_user,
+        "partner_type": partner_type,
     }
 
 
