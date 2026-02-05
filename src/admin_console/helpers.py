@@ -14,6 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from flask import Response, jsonify  # pyright: ignore[reportMissingImports]
+from telethon import utils as tg_utils  # pyright: ignore[reportMissingImports]
 from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
     UsernameInvalidError,
     UsernameNotOccupiedError,
@@ -364,7 +365,25 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     if parsed_id is not None:
         if parsed_id == TELEGRAM_SYSTEM_USER_ID:
             raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
-        return parsed_id
+        if parsed_id < 0:
+            return parsed_id
+        # Attempt to normalize positive IDs to a group/channel peer ID if applicable.
+        try:
+            client_loop = agent._get_client_loop()
+        except Exception:
+            return parsed_id
+        if not client_loop or not client_loop.is_running():
+            return parsed_id
+        try:
+            async def _resolve_numeric():
+                entity = await agent.client.get_entity(parsed_id)
+                if isinstance(entity, (Chat, Channel)):
+                    return tg_utils.get_peer_id(entity)
+                return parsed_id
+            return agent.execute(_resolve_numeric(), timeout=10.0)
+        except Exception as e:
+            logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
+            return parsed_id
     
     # If it's a phone number (starts with +) or username, we need the async function
     # This requires the Telegram client, so we need to check event loop
@@ -637,6 +656,14 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     if parsed_id is not None:
         if parsed_id == TELEGRAM_SYSTEM_USER_ID:
             raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+        if parsed_id < 0:
+            return parsed_id
+        try:
+            entity = await agent.client.get_entity(parsed_id)
+            if isinstance(entity, (Chat, Channel)):
+                return tg_utils.get_peer_id(entity)
+        except Exception as e:
+            logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
         return parsed_id
     
     # Check if it's a phone number (starts with + and the rest is all digits)
