@@ -8,8 +8,6 @@
 import logging
 from typing import TYPE_CHECKING
 
-from config import MEDIA_MODEL
-
 if TYPE_CHECKING:
     from .base import LLM
 
@@ -32,6 +30,9 @@ def get_media_llm() -> "LLM":
     Raises:
         ValueError: If MEDIA_MODEL is not set or invalid
     """
+    # Read at call time to reflect runtime config updates
+    from config import MEDIA_MODEL
+
     if not MEDIA_MODEL:
         raise ValueError(
             "MEDIA_MODEL environment variable is required. Set MEDIA_MODEL to specify the model for media descriptions."

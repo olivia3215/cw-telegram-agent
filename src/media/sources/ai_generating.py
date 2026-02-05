@@ -98,6 +98,13 @@ class AIGeneratingMediaSource(MediaSource):
 
         # Use the media LLM for descriptions (from MEDIA_MODEL), not the agent's LLM
         media_llm = get_media_llm()
+        model_name = getattr(media_llm, "model_name", None) or type(media_llm).__name__
+        agent_name = getattr(agent, "name", None) or "unknown-agent"
+        logger.info(
+            "[%s] Media description using model: %s",
+            agent_name,
+            model_name,
+        )
 
         t0 = time.perf_counter()
 

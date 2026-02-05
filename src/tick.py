@@ -18,7 +18,6 @@ from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction  
 
 from agent import get_agent_for_id
 from clock import clock
-from config import MEDIA_DESC_BUDGET_PER_TICK
 from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
@@ -151,7 +150,8 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         work_queue._state_file_path = state_file_path
 
     # Reset per-tick AI description budget at start of each tick
-    reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+    import config
+    reset_description_budget(config.MEDIA_DESC_BUDGET_PER_TICK)
 
     # Check and extend schedules if needed (non-blocking)
     # Trigger typing indicators for pending wait tasks

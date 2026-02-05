@@ -78,6 +78,12 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
     now_iso = clock.now(agent.timezone).isoformat()
     
     try:
+        model_name = getattr(llm, "model_name", None) or type(llm).__name__
+        logger.info(
+            "[%s] Schedule extension using model: %s",
+            agent.name,
+            model_name,
+        )
         reply = await llm.query_structured(
             system_prompt=system_prompt,
             now_iso=now_iso,

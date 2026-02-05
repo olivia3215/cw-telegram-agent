@@ -21,7 +21,6 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from clock import clock
-from config import MEDIA_DESC_BUDGET_PER_TICK
 from datetime import UTC
 from admin_console.helpers import (
     add_cache_busting_headers,
@@ -691,9 +690,10 @@ def api_refresh_from_ai(unique_id: str):
         # Reset the media description budget for this refresh request
         # When user explicitly requests refresh, they should be able to get a description
         # regardless of the current budget state
-        reset_description_budget(MEDIA_DESC_BUDGET_PER_TICK)
+        import config
+        reset_description_budget(config.MEDIA_DESC_BUDGET_PER_TICK)
         logger.info(
-            f"Refresh-from-AI: reset budget to {MEDIA_DESC_BUDGET_PER_TICK} for {unique_id}"
+            f"Refresh-from-AI: reset budget to {config.MEDIA_DESC_BUDGET_PER_TICK} for {unique_id}"
         )
 
         # Pass the media file Path directly as the doc parameter
