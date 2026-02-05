@@ -14,6 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from flask import Response, jsonify  # pyright: ignore[reportMissingImports]
+from telethon import utils as tg_utils  # pyright: ignore[reportMissingImports]
 from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
     UsernameInvalidError,
     UsernameNotOccupiedError,
@@ -364,7 +365,21 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
     if parsed_id is not None:
         if parsed_id == TELEGRAM_SYSTEM_USER_ID:
             raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
-        return parsed_id
+        if parsed_id < 0:
+            return parsed_id
+        # Attempt to normalize positive IDs to a group/channel peer ID if applicable.
+        # Use cache-only resolution to avoid network latency on numeric IDs.
+        try:
+            client = agent.client
+            if not client or not client.session:
+                return parsed_id
+            input_entity = client.session.get_input_entity(parsed_id)
+            peer_id = tg_utils.get_peer_id(input_entity)
+            if peer_id < 0:
+                return peer_id
+        except Exception as e:
+            logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
+            return parsed_id
     
     # If it's a phone number (starts with +) or username, we need the async function
     # This requires the Telegram client, so we need to check event loop
@@ -637,6 +652,18 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     if parsed_id is not None:
         if parsed_id == TELEGRAM_SYSTEM_USER_ID:
             raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+        if parsed_id < 0:
+            return parsed_id
+        try:
+            client = agent.client
+            if not client or not client.session:
+                return parsed_id
+            input_entity = client.session.get_input_entity(parsed_id)
+            peer_id = tg_utils.get_peer_id(input_entity)
+            if peer_id < 0:
+                return peer_id
+        except Exception as e:
+            logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
         return parsed_id
     
     # Check if it's a phone number (starts with + and the rest is all digits)
@@ -677,6 +704,8 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     # Reject Telegram system user ID (777000) - should never be used as a conversation partner
     if channel_id == TELEGRAM_SYSTEM_USER_ID:
         raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+    if not isinstance(entity, User):
+        return tg_utils.get_peer_id(entity)
     return channel_id
 
 
