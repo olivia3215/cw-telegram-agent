@@ -3688,6 +3688,7 @@
                 document.getElementById('conversation-profile-username').value = data.username || '';
                 document.getElementById('conversation-profile-telegram-id').value = data.telegram_id || '';
                 const conversationBioTextarea = document.getElementById('conversation-profile-bio');
+                resetTextareaHeight(conversationBioTextarea);
                 conversationBioTextarea.value = data.bio || '';
                 autoGrowTextarea(conversationBioTextarea);
                 const bioLabel = document.getElementById('conversation-profile-bio-label');
@@ -5001,6 +5002,7 @@
                 document.getElementById('agent-profile-username').value = data.username || '';
                 document.getElementById('agent-profile-telegram-id').value = data.telegram_id || '';
                 const agentBioTextarea = document.getElementById('agent-profile-bio');
+                resetTextareaHeight(agentBioTextarea);
                 agentBioTextarea.value = data.bio || '';
                 autoGrowTextarea(agentBioTextarea);
                 
@@ -9991,15 +9993,19 @@
             return Number.isFinite(height) ? height : 0;
         }
 
+        function resetTextareaHeight(textarea) {
+            if (!textarea) return;
+            textarea.style.height = '';
+            textarea.style.overflowY = 'hidden';
+        }
+
         function autoGrowTextarea(textarea) {
             if (!textarea) return;
             textarea.style.overflowY = 'hidden';
+            textarea.style.height = '';
             const minHeight = getTextareaMinHeight(textarea);
-            const currentHeight = getTextareaHeight(textarea);
-            const nextHeight = Math.max(textarea.scrollHeight, minHeight, currentHeight);
-            if (nextHeight > currentHeight) {
-                textarea.style.height = `${nextHeight}px`;
-            }
+            const nextHeight = Math.max(textarea.scrollHeight, minHeight);
+            textarea.style.height = `${nextHeight}px`;
         }
 
         function initializeTextareaAutoGrow(textarea) {
