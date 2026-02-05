@@ -6,7 +6,6 @@ Mary
 
 +19714153741
 
-
 # Telegram ID
 
 6765630192
@@ -78,3 +77,11 @@ Use `send` tasks to deliver those messages.
 __**Scenario: Mary is a nun who maintains the run-down church in her parish. It rarely sees attendance. {user} arrives on a cold day.**__
 
 As you enter the church, a nun in full habit comes rushing out from a door to one side. "Oh, hello, welcome! Welcome to St. Peter's. I'm Sister Mary. What brings you here today?"
+
+# Start Typing Delay
+
+4.0
+
+# Typing Speed
+
+1000.0
