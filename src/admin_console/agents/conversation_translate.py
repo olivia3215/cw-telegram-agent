@@ -10,7 +10,6 @@ import re
 from flask import Blueprint, Response, jsonify, request, stream_with_context  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from config import TRANSLATION_MODEL
 from llm.factory import create_llm_from_name
 from llm.exceptions import RetryableLLMError
 
@@ -143,11 +142,16 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                     # If we have messages to translate, batch them (max 10 per batch)
                     if messages_to_translate:
                         # Use the translation LLM specified by TRANSLATION_MODEL environment variable
+                        from config import TRANSLATION_MODEL
                         if not TRANSLATION_MODEL:
                             raise ValueError(
                                 "TRANSLATION_MODEL environment variable is required for translation. "
                                 "Set TRANSLATION_MODEL to specify the model for translations."
                             )
+                        logger.info(
+                            "Conversation translate using model: %s",
+                            TRANSLATION_MODEL,
+                        )
                         translation_llm = create_llm_from_name(TRANSLATION_MODEL)
                         
                         # Batch size: max 10 messages

@@ -217,6 +217,12 @@ async def perform_summarization(
     allowed_task_types = extract_task_types_from_prompt(system_prompt)
     
     try:
+        model_name = getattr(llm, "model_name", None) or type(llm).__name__
+        logger.info(
+            "[%s] Summarization using model: %s",
+            agent.name,
+            model_name,
+        )
         reply = await llm.query_structured(
             system_prompt=system_prompt,
             now_iso=now_iso,

@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_state_media_path
-from config import CONFIG_DIRECTORIES, TRANSLATION_MODEL
+from config import CONFIG_DIRECTORIES
 from llm.factory import create_llm_from_name
 
 # Import markdown_to_html and placeholder functions from conversation module
@@ -295,9 +295,14 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         
                         # Translate remaining messages in batches
                         if messages_to_translate:
+                            from config import TRANSLATION_MODEL
                             if not TRANSLATION_MODEL:
                                 logger.warning("TRANSLATION_MODEL not set, skipping translations")
                             else:
+                                logger.info(
+                                    "Conversation download translation using model: %s",
+                                    TRANSLATION_MODEL,
+                                )
                                 translation_llm = create_llm_from_name(TRANSLATION_MODEL)
                                 batch_size = 10
                                 batches = [
