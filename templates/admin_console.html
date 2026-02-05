@@ -5415,7 +5415,7 @@
                     `;
 
                     const agentLlmInput = document.getElementById('agent-llm-select');
-                    setupLLMCombobox(agentLlmInput, null, availableLLMs, {
+                    setupLLMCombobox(agentLlmInput, availableLLMs, {
                         includeDefaultMarker: true,
                         onChange: (value) => updateAgentLLM(agentName, value),
                     });
@@ -6114,7 +6114,7 @@
                     `;
 
                     const conversationLlmInput = document.getElementById('conversation-llm-select');
-                    setupLLMCombobox(conversationLlmInput, null, availableLLMs, {
+                    setupLLMCombobox(conversationLlmInput, availableLLMs, {
                         includeDefaultMarker: true,
                         onChange: () => updateConversationParameters(agentName, userId),
                     });
@@ -9113,7 +9113,7 @@
                 const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
                 llmModelParams.forEach(paramName => {
                     const inputEl = document.getElementById(`global-param-${paramName}`);
-                    setupLLMCombobox(inputEl, null, availableLLMs, {
+                    setupLLMCombobox(inputEl, availableLLMs, {
                         onChange: (value) => updateGlobalParameter(paramName, value),
                     });
                 });
@@ -9797,7 +9797,7 @@
             });
         }
         
-        function setupLLMCombobox(inputEl, datalistEl, availableLLMs, options = {}) {
+        function setupLLMCombobox(inputEl, availableLLMs, options = {}) {
             if (!inputEl) return;
 
             if (inputEl._llmComboboxCleanup) {
