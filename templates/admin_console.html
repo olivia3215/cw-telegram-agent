@@ -6214,6 +6214,9 @@
                     // Reload to sync UI with server state (some operations may have succeeded)
                     loadConversationParameters();
                 } else {
+                    if (isBlocked !== null) {
+                        loadConversationParameters();
+                    }
                     // Success - no need to reload, UI is already updated
                 }
             })
