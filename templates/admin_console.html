@@ -9868,13 +9868,15 @@
         
             const handleInputChange = () => {
                 inputEl.dataset.lastValidValue = inputEl.value;
-                refreshOptions();
+                closeDropdown();
+                if (onChange) onChange(inputEl.value);
             };
         
             inputEl.dataset.lastValidValue = inputEl.value;
             inputEl.addEventListener('focus', refreshOptions, { signal });
             inputEl.addEventListener('input', refreshOptions, { signal });
             inputEl.addEventListener('change', handleInputChange, { signal });
+            inputEl.addEventListener('blur', () => closeDropdown(), { signal });
             document.addEventListener('mousedown', closeDropdown, { signal });
             window.addEventListener('resize', () => {
                 if (dropdownEl.style.display !== 'none') positionDropdown();
