@@ -7,6 +7,7 @@ import logging
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name, get_available_llms, get_default_llm
+from utils.telegram import can_agent_send_to_channel, is_dm, is_user_blocking_agent
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,32 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             # If override exists, use it; otherwise use global default
             is_gagged = gagged_override if gagged_override is not None else agent.is_gagged
 
+            async def _get_blocked_status():
+                try:
+                    entity = await agent.get_cached_entity(channel_id)
+                    if not entity and agent.client:
+                        entity = await agent.client.get_entity(channel_id)
+                    is_dm_conversation = bool(entity) and is_dm(entity)
+                    agent_blocked_user = False
+                    user_blocked_agent = False
+                    if is_dm_conversation:
+                        api_cache = agent.api_cache
+                        if api_cache:
+                            agent_blocked_user = await api_cache.is_blocked(channel_id, ttl_seconds=0)
+                        user_blocked_agent = await is_user_blocking_agent(agent, channel_id)
+                        can_send = not (agent_blocked_user or user_blocked_agent)
+                    else:
+                        can_send = await can_agent_send_to_channel(agent, channel_id)
+                    return is_dm_conversation, agent_blocked_user, user_blocked_agent, can_send
+                except Exception as e:
+                    logger.warning(f"Error getting block/send status: {e}")
+                    return False, False, False, True
+
+            is_dm_conversation, agent_blocked_user, user_blocked_agent, can_send = agent.execute(
+                _get_blocked_status(), timeout=10.0
+            )
+            is_blocked = agent_blocked_user or user_blocked_agent
+
             return jsonify({
                 "conversation_llm": conversation_llm,
                 "agent_default_llm": agent_default_llm,
@@ -75,6 +102,11 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                 # Expose override info so the UI can distinguish "global default" from a per-conversation override.
                 "gagged_override": gagged_override,
                 "agent_is_gagged": agent.is_gagged,
+                "is_blocked": is_blocked,
+                "is_dm": is_dm_conversation,
+                "agent_blocked_user": agent_blocked_user,
+                "user_blocked_agent": user_blocked_agent,
+                "can_send": can_send,
             })
         except Exception as e:
             logger.error(f"Error getting conversation parameters for {agent_config_name}/{user_id}: {e}")
@@ -106,6 +138,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                 llm_name = str(llm_name).strip() if llm_name else None
             is_muted = data.get("is_muted") if "is_muted" in data else None
             is_gagged = data.get("is_gagged") if "is_gagged" in data else None
+            is_blocked = data.get("is_blocked") if "is_blocked" in data else None
 
             # Update in MySQL/database
             if not agent.is_authenticated:
@@ -129,10 +162,31 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                     if agent.api_cache and hasattr(agent.api_cache, "_mute_cache"):
                         agent.api_cache._mute_cache.pop(channel_id, None)
 
+            async def _set_blocked_status(blocked: bool) -> None:
+                from telethon.tl.functions.contacts import BlockRequest, UnblockRequest  # pyright: ignore[reportMissingImports]
+
+                client = agent.client
+                if not client or not client.is_connected():
+                    raise RuntimeError("Agent client not connected")
+
+                entity = await agent.get_cached_entity(channel_id)
+                if not entity:
+                    entity = await client.get_entity(channel_id)
+                if not entity or not is_dm(entity):
+                    raise ValueError("Blocking is only supported for direct messages")
+
+                input_entity = await client.get_input_entity(entity)
+                if blocked:
+                    await client(BlockRequest(id=input_entity))
+                else:
+                    await client(UnblockRequest(id=input_entity))
+                if agent.api_cache:
+                    agent.api_cache.invalidate_blocklist_cache()
+
             # If we have DB changes and Telegram changes together, we want "all-or-nothing" behavior:
             # - Apply DB changes in a transaction
-            # - Apply Telegram muted
-            # - Only commit DB changes if Telegram step succeeds
+            # - Apply Telegram changes
+            # - Only commit DB changes if Telegram steps succeed
             #
             # This prevents the old behavior where LLM persisted even when muted failed.
             if has_db_changes:
@@ -163,7 +217,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                                     agent.agent_id, channel_id, bool(is_gagged), conn=conn
                                 )
 
-                        # Apply Telegram muted (external side-effect) before committing DB.
+                        # Apply Telegram updates (external side-effect) before committing DB.
                         if is_muted is not None:
                             try:
                                 agent.execute(_set_muted_status(bool(is_muted)), timeout=30.0)
@@ -173,6 +227,17 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                                 conn.rollback()
                                 logger.warning(f"Error setting muted status: {e}")
                                 return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
+                        if is_blocked is not None:
+                            try:
+                                agent.execute(_set_blocked_status(bool(is_blocked)), timeout=30.0)
+                                logger.info(f"Set blocked status to {is_blocked} for channel {channel_id}")
+                            except ValueError as e:
+                                conn.rollback()
+                                return jsonify({"error": str(e)}), 400
+                            except Exception as e:
+                                conn.rollback()
+                                logger.warning(f"Error setting blocked status: {e}")
+                                return jsonify({"error": f"Failed to set blocked status: {str(e)}"}), 500
 
                         # All good: commit staged DB changes.
                         conn.commit()
@@ -196,7 +261,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                         conn.rollback()
                         raise
             else:
-                # Only Telegram muted change (no DB transaction needed)
+                # Only Telegram changes (no DB transaction needed)
                 if is_muted is not None:
                     try:
                         agent.execute(_set_muted_status(bool(is_muted)), timeout=30.0)
@@ -204,6 +269,15 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
                     except Exception as e:
                         logger.warning(f"Error setting muted status: {e}")
                         return jsonify({"error": f"Failed to set muted status: {str(e)}"}), 500
+                if is_blocked is not None:
+                    try:
+                        agent.execute(_set_blocked_status(bool(is_blocked)), timeout=30.0)
+                        logger.info(f"Set blocked status to {is_blocked} for channel {channel_id}")
+                    except ValueError as e:
+                        return jsonify({"error": str(e)}), 400
+                    except Exception as e:
+                        logger.warning(f"Error setting blocked status: {e}")
+                        return jsonify({"error": f"Failed to set blocked status: {str(e)}"}), 500
 
             return jsonify({"success": True})
         except Exception as e:

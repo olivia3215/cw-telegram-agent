@@ -153,6 +153,10 @@ def register_contact_routes(agents_bp: Blueprint):
                 result = await agent.client(GetContactsRequest(hash=0))
                 users_by_id = {user.id: user for user in (result.users or [])}
                 contact_ids = {contact.user_id for contact in (result.contacts or [])}
+                blocked_ids: set[int] = set()
+                api_cache = getattr(agent, "api_cache", None)
+                if api_cache:
+                    blocked_ids = await api_cache.get_blocklist(ttl_seconds=60)
                 contacts = []
                 for user_id in contact_ids:
                     user = users_by_id.get(user_id)
@@ -168,6 +172,7 @@ def register_contact_routes(agents_bp: Blueprint):
                             "name": display_name,
                             "username": username,
                             "is_deleted": bool(getattr(user, "deleted", False)),
+                            "is_blocked": user_id in blocked_ids,
                         }
                     )
                 return contacts
