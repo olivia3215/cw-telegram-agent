@@ -9068,7 +9068,6 @@
                                 // Special handling for LLM model parameters - use combobox (datalist + input)
                                 const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
                                 if (llmModelParams.includes(param.name)) {
-                                    const datalistId = `global-param-${param.name}-datalist`;
                                     return `
                                         <div class="agent-param-section">
                                             <h3>${escapeHtml(param.name)}</h3>
