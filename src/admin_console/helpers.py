@@ -368,19 +368,15 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
         if parsed_id < 0:
             return parsed_id
         # Attempt to normalize positive IDs to a group/channel peer ID if applicable.
+        # Use cache-only resolution to avoid network latency on numeric IDs.
         try:
-            client_loop = agent._get_client_loop()
-        except Exception:
-            return parsed_id
-        if not client_loop or not client_loop.is_running():
-            return parsed_id
-        try:
-            async def _resolve_numeric():
-                entity = await agent.client.get_entity(parsed_id)
-                if isinstance(entity, (Chat, Channel)):
-                    return tg_utils.get_peer_id(entity)
+            client = agent.client
+            if not client or not client.session:
                 return parsed_id
-            return agent.execute(_resolve_numeric(), timeout=10.0)
+            input_entity = client.session.get_input_entity(parsed_id)
+            peer_id = tg_utils.get_peer_id(input_entity)
+            if peer_id < 0:
+                return peer_id
         except Exception as e:
             logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
             return parsed_id
@@ -659,9 +655,13 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         if parsed_id < 0:
             return parsed_id
         try:
-            entity = await agent.client.get_entity(parsed_id)
-            if isinstance(entity, (Chat, Channel)):
-                return tg_utils.get_peer_id(entity)
+            client = agent.client
+            if not client or not client.session:
+                return parsed_id
+            input_entity = client.session.get_input_entity(parsed_id)
+            peer_id = tg_utils.get_peer_id(input_entity)
+            if peer_id < 0:
+                return peer_id
         except Exception as e:
             logger.debug(f"Failed to normalize numeric ID {parsed_id}: {e}")
         return parsed_id
@@ -704,6 +704,8 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
     # Reject Telegram system user ID (777000) - should never be used as a conversation partner
     if channel_id == TELEGRAM_SYSTEM_USER_ID:
         raise ValueError(f"User ID {TELEGRAM_SYSTEM_USER_ID} (Telegram) is not allowed as a conversation partner")
+    if not isinstance(entity, User):
+        return tg_utils.get_peer_id(entity)
     return channel_id
 
 
