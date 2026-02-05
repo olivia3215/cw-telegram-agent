@@ -9799,9 +9799,16 @@
         
         function setupLLMCombobox(inputEl, datalistEl, availableLLMs, options = {}) {
             if (!inputEl) return;
+
+            if (inputEl._llmComboboxCleanup) {
+                inputEl._llmComboboxCleanup();
+            }
         
             const includeDefaultMarker = Boolean(options.includeDefaultMarker);
             const onChange = options.onChange;
+            const controller = new AbortController();
+            const { signal } = controller;
+            let isDestroyed = false;
         
             const dropdownEl = document.createElement('div');
             dropdownEl.style.position = 'absolute';
@@ -9814,6 +9821,21 @@
             dropdownEl.style.zIndex = '9999';
             dropdownEl.style.display = 'none';
             document.body.appendChild(dropdownEl);
+
+            const cleanup = () => {
+                if (isDestroyed) return;
+                isDestroyed = true;
+                controller.abort();
+                if (observer) observer.disconnect();
+                if (dropdownEl.parentNode) {
+                    dropdownEl.parentNode.removeChild(dropdownEl);
+                }
+                if (inputEl._llmComboboxCleanup === cleanup) {
+                    delete inputEl._llmComboboxCleanup;
+                }
+            };
+
+            inputEl._llmComboboxCleanup = cleanup;
         
             const positionDropdown = () => {
                 const rect = inputEl.getBoundingClientRect();
@@ -9823,6 +9845,10 @@
             };
         
             const refreshOptions = () => {
+                if (!document.body.contains(inputEl)) {
+                    cleanup();
+                    return;
+                }
                 const comboboxOptions = buildLLMComboboxOptions(availableLLMs || [], inputEl.value);
                 renderLLMComboboxOptions(dropdownEl, comboboxOptions, includeDefaultMarker, (value) => {
                     inputEl.value = value;
@@ -9846,16 +9872,23 @@
             };
         
             inputEl.dataset.lastValidValue = inputEl.value;
-            inputEl.addEventListener('focus', refreshOptions);
-            inputEl.addEventListener('input', refreshOptions);
-            inputEl.addEventListener('change', handleInputChange);
-            document.addEventListener('mousedown', closeDropdown);
+            inputEl.addEventListener('focus', refreshOptions, { signal });
+            inputEl.addEventListener('input', refreshOptions, { signal });
+            inputEl.addEventListener('change', handleInputChange, { signal });
+            document.addEventListener('mousedown', closeDropdown, { signal });
             window.addEventListener('resize', () => {
                 if (dropdownEl.style.display !== 'none') positionDropdown();
-            });
+            }, { signal });
             window.addEventListener('scroll', () => {
                 if (dropdownEl.style.display !== 'none') positionDropdown();
-            }, true);
+            }, { signal, capture: true });
+
+            const observer = new MutationObserver(() => {
+                if (!document.body.contains(inputEl)) {
+                    cleanup();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
         }
 
         function escapeHtml(text) {
