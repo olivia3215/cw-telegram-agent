@@ -5643,38 +5643,6 @@
             });
         }
 
-        async function refreshOpenRouterModels() {
-            const statusEl = document.getElementById('openrouter-status-global');
-            if (!statusEl) return;
-            
-            statusEl.textContent = 'Refreshing...';
-            statusEl.style.color = '#666';
-            
-            try {
-                const response = await fetchWithAuth(`${API_BASE}/openrouter/refresh-models`, {
-                    method: 'POST',
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to refresh models');
-                }
-                
-                const data = await response.json();
-                statusEl.textContent = `✓ Refreshed ${data.model_count} models`;
-                statusEl.style.color = '#4CAF50';
-                
-                // Reload the page to show updated models
-                setTimeout(() => {
-                    location.reload();
-                }, 1000);
-            } catch (error) {
-                statusEl.textContent = `✗ Error: ${error.message}`;
-                statusEl.style.color = '#f44336';
-                console.error('Error refreshing OpenRouter models:', error);
-            }
-        }
-        
         function updateAgentLLM(agentName, llmName) {
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/llm`, {
                 method: 'PUT',
@@ -9108,14 +9076,8 @@
                 
                 container.innerHTML = `
                     <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div style="margin-bottom: 16px;">
                             <h3 style="margin: 0;">Global Parameters</h3>
-                            <div>
-                                <button onclick="refreshOpenRouterModels()" style="padding: 6px 12px; font-size: 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                    Refresh OpenRouter Models
-                                </button>
-                                <span id="openrouter-status-global" style="margin-left: 8px; font-size: 12px; color: #666;"></span>
-                            </div>
                         </div>
                         <div class="agent-param-grid">
                             ${parameters.map(param => {
@@ -9540,6 +9502,12 @@
                 select.removeChild(select.lastChild);
             }
             
+            // Add "Custom" option first
+            const customOption = document.createElement('option');
+            customOption.value = '__custom__';
+            customOption.textContent = 'Custom...';
+            select.appendChild(customOption);
+            
             try {
                 // Get both OpenRouter models and existing LLMs in parallel
                 const [openrouterResponse, existingLLMsResponse] = await Promise.all([
@@ -9573,13 +9541,7 @@
                     option.textContent = model.label;
                     select.appendChild(option);
                 });
-                
-                // Add "Custom" option
-                const customOption = document.createElement('option');
-                customOption.value = '__custom__';
-                customOption.textContent = 'Custom...';
-                select.appendChild(customOption);
-                
+                                
                 openrouterModelsCache = models; // Keep full cache for reference
             } catch (error) {
                 console.error('Error loading OpenRouter models:', error);
