@@ -2127,6 +2127,7 @@
                     // Update the textarea with the new AI-generated description
                     if (textarea) {
                         textarea.value = data.description || '';
+                        autoGrowTextarea(textarea);
                     }
 
                     // Update all UI elements that might have changed
@@ -9437,7 +9438,10 @@
                             }
                             if (data.description !== undefined) {
                                 const descTextarea = item.querySelector(`textarea[data-field="description"]`);
-                                if (descTextarea) descTextarea.value = data.description || '';
+                                if (descTextarea) {
+                                    descTextarea.value = data.description || '';
+                                    autoGrowTextarea(descTextarea);
+                                }
                             }
                             if (data.prompt_price !== undefined) {
                                 const promptInput = item.querySelector(`input[data-field="prompt_price"]`);
