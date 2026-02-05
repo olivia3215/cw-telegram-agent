@@ -3926,6 +3926,9 @@
                     const deletedBadge = contact.is_deleted
                         ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Deleted account</span>'
                         : '';
+                    const blockedBadge = contact.is_blocked
+                        ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Blocked</span>'
+                        : '';
                     const usernameLine = contact.username ? `<div><strong>Username:</strong> @${escapeHtml(contact.username)}</div>` : '';
                     const userId = String(contact.user_id);
                     const isChecked = selectedAgentContacts.has(userId) ? 'checked' : '';
@@ -3937,7 +3940,7 @@
                                         <input type="checkbox" data-contact-checkbox="true" ${isChecked} onchange="toggleAgentContactSelection('${escJsAttr(userId)}', this.checked)">
                                     </label>
                                     <div>
-                                    <div><strong>Name:</strong> ${escapeHtml(contact.name || contact.user_id)}${deletedBadge}</div>
+                                    <div><strong>Name:</strong> ${escapeHtml(contact.name || contact.user_id)}${deletedBadge}${blockedBadge}</div>
                                     <div><strong>ID:</strong> ${escapeHtml(contact.user_id)}</div>
                                     ${usernameLine}
                                     </div>
@@ -6104,6 +6107,19 @@
                     const availableLLMs = data.available_llms || [];
                     const isMuted = data.is_muted || false;
                     const isGagged = data.is_gagged || false;
+                    const isBlocked = data.is_blocked || false;
+                    const isDmConversation = data.is_dm !== false;
+                    const canSend = data.can_send !== undefined ? data.can_send : true;
+                    const agentBlockedUser = data.agent_blocked_user || false;
+                    const userBlockedAgent = data.user_blocked_agent || false;
+                    let blockedStatusDetail = 'Not blocked';
+                    if (agentBlockedUser && userBlockedAgent) {
+                        blockedStatusDetail = 'Blocked by both sides';
+                    } else if (agentBlockedUser) {
+                        blockedStatusDetail = 'Blocked by agent';
+                    } else if (userBlockedAgent) {
+                        blockedStatusDetail = 'Blocked by user';
+                    }
                     
                     container.innerHTML = `
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -6135,6 +6151,21 @@
                                     <span>Gag this conversation (read messages but don't create received tasks)</span>
                                 </label>
                             </div>
+                            ${isDmConversation ? `
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: bold;">Blocked:</label>
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="conversation-blocked-toggle" ${isBlocked ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
+                                    <span>Block or unblock this conversation partner</span>
+                                </label>
+                                <div style="margin-top: 6px; color: #666; font-size: 12px;">${escapeHtml(blockedStatusDetail)}</div>
+                            </div>
+                            ` : `
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: bold;">Can Send Messages:</label>
+                                <div style="color: #666; font-size: 14px;">${canSend ? 'Yes' : 'No'}</div>
+                            </div>
+                            `}
                         </div>
                     `;
 
@@ -6156,15 +6187,18 @@
             const llmSelect = document.getElementById('conversation-llm-select');
             const mutedToggle = document.getElementById('conversation-muted-toggle');
             const gaggedToggle = document.getElementById('conversation-gagged-toggle');
+            const blockedToggle = document.getElementById('conversation-blocked-toggle');
             
             const llmName = llmSelect ? llmSelect.value : null;
             const isMuted = mutedToggle ? mutedToggle.checked : null;
             const isGagged = gaggedToggle ? gaggedToggle.checked : null;
+            const isBlocked = blockedToggle ? blockedToggle.checked : null;
             
             const updateData = {};
             if (llmName !== null) updateData.llm_name = llmName;
             if (isMuted !== null) updateData.is_muted = isMuted;
             if (isGagged !== null) updateData.is_gagged = isGagged;
+            if (isBlocked !== null) updateData.is_blocked = isBlocked;
             
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-parameters/${userId}`, {
                 method: 'PUT',
@@ -6180,6 +6214,9 @@
                     // Reload to sync UI with server state (some operations may have succeeded)
                     loadConversationParameters();
                 } else {
+                    if (isBlocked !== null) {
+                        loadConversationParameters();
+                    }
                     // Success - no need to reload, UI is already updated
                 }
             })

@@ -44,6 +44,10 @@ class TelegramAPICache:
         self._blocklist_cache = None
         self._blocklist_last_updated = None
 
+    def invalidate_blocklist_cache(self) -> None:
+        self._blocklist_cache = None
+        self._blocklist_last_updated = None
+
     async def is_muted(self, peer_id: int, ttl_seconds=60) -> bool:
         """
         Check if a peer is muted, using cache.
@@ -110,6 +114,61 @@ class TelegramAPICache:
         self._mute_cache[peer_id] = (is_currently_muted, now + timedelta(seconds=ttl_seconds))
         return is_currently_muted
 
+    async def get_blocklist(self, ttl_seconds=60, page_size=100) -> set[int]:
+        """
+        Fetch the blocklist, using cache when possible.
+        
+        Args:
+            ttl_seconds: Cache TTL in seconds (default: 60)
+            page_size: Page size for blocklist pagination
+            
+        Returns:
+            Set of blocked user IDs
+        """
+        now = clock.now()
+        if self._blocklist_cache is not None and self._blocklist_last_updated:
+            if (now - self._blocklist_last_updated) <= timedelta(seconds=ttl_seconds):
+                return self._blocklist_cache
+
+        if not self.client:
+            if self._blocklist_cache is None:
+                self._blocklist_cache = set()
+            return self._blocklist_cache
+
+        try:
+            # Check if agent is disabled - don't attempt reconnection if disabled
+            if self.agent and self.agent.is_disabled:
+                if self._blocklist_cache is None:
+                    self._blocklist_cache = set()
+                return self._blocklist_cache
+
+            # Attempt to ensure client is connected (will reconnect if needed)
+            if self.agent:
+                if not await self.agent.ensure_client_connected():
+                    if self._blocklist_cache is None:
+                        self._blocklist_cache = set()
+                    return self._blocklist_cache
+
+            blocked_ids: set[int] = set()
+            offset = 0
+            while True:
+                result = await self.client(GetBlockedRequest(offset=offset, limit=page_size))
+                blocked_batch = result.blocked or []
+                blocked_ids.update(item.peer_id.user_id for item in blocked_batch)
+                if len(blocked_batch) < page_size:
+                    break
+                offset += len(blocked_batch)
+
+            self._blocklist_cache = blocked_ids
+            self._blocklist_last_updated = now
+            logger.debug(f"[{self.name}] Updated blocklist cache.")
+        except Exception as e:
+            logger.exception(f"[{self.name}] Failed to update blocklist: {e}")
+            if self._blocklist_cache is None:
+                self._blocklist_cache = set()
+
+        return self._blocklist_cache
+
     async def is_blocked(self, user_id: int, ttl_seconds=60) -> bool:
         """
         Check if a user is blocked, using cache.
@@ -121,40 +180,5 @@ class TelegramAPICache:
         Returns:
             True if the user is blocked, False otherwise
         """
-        now = clock.now()
-        # Invalidate cache if expired
-        if self._blocklist_cache is None or (
-            self._blocklist_last_updated
-            and (now - self._blocklist_last_updated) > timedelta(seconds=ttl_seconds)
-        ):
-            if not self.client:
-                if self._blocklist_cache is None:
-                    self._blocklist_cache = set()
-                return user_id in self._blocklist_cache
-
-            try:
-                # Check if agent is disabled - don't attempt reconnection if disabled
-                if self.agent and self.agent.is_disabled:
-                    if self._blocklist_cache is None:
-                        self._blocklist_cache = set()
-                    return user_id in self._blocklist_cache
-                
-                # Attempt to ensure client is connected (will reconnect if needed)
-                if self.agent:
-                    if not await self.agent.ensure_client_connected():
-                        # Reconnection failed - return cached/default value
-                        if self._blocklist_cache is None:
-                            self._blocklist_cache = set()
-                        return user_id in self._blocklist_cache
-                result = await self.client(GetBlockedRequest(offset=0, limit=100))
-            except Exception as e:
-                logger.exception(f"[{self.name}] Failed to update blocklist: {e}")
-                if self._blocklist_cache is None:
-                    self._blocklist_cache = set()
-                return user_id in self._blocklist_cache
-
-            self._blocklist_cache = {item.peer_id.user_id for item in result.blocked}
-            self._blocklist_last_updated = now
-            logger.debug(f"[{self.name}] Updated blocklist cache.")
-
-        return user_id in self._blocklist_cache
+        blocklist = await self.get_blocklist(ttl_seconds=ttl_seconds)
+        return user_id in blocklist
