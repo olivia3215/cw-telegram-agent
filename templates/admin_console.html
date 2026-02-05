@@ -9876,7 +9876,14 @@
             inputEl.addEventListener('focus', refreshOptions, { signal });
             inputEl.addEventListener('input', refreshOptions, { signal });
             inputEl.addEventListener('change', handleInputChange, { signal });
-            inputEl.addEventListener('blur', () => closeDropdown(), { signal });
+            inputEl.addEventListener('blur', () => {
+                const lastValue = inputEl.dataset.lastValidValue || '';
+                if (inputEl.value !== lastValue) {
+                    handleInputChange();
+                    return;
+                }
+                closeDropdown();
+            }, { signal });
             document.addEventListener('mousedown', closeDropdown, { signal });
             window.addEventListener('resize', () => {
                 if (dropdownEl.style.display !== 'none') positionDropdown();
