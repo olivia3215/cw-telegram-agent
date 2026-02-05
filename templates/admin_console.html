@@ -3686,7 +3686,9 @@
                 document.getElementById('conversation-profile-last-name').value = data.last_name || '';
                 document.getElementById('conversation-profile-username').value = data.username || '';
                 document.getElementById('conversation-profile-telegram-id').value = data.telegram_id || '';
-                document.getElementById('conversation-profile-bio').value = data.bio || '';
+                const conversationBioTextarea = document.getElementById('conversation-profile-bio');
+                conversationBioTextarea.value = data.bio || '';
+                autoGrowTextarea(conversationBioTextarea);
 
                 const photoImg = document.getElementById('conversation-profile-photo');
                 if (data.profile_photo) {
@@ -4946,7 +4948,9 @@
                 document.getElementById('agent-profile-last-name').value = data.last_name || '';
                 document.getElementById('agent-profile-username').value = data.username || '';
                 document.getElementById('agent-profile-telegram-id').value = data.telegram_id || '';
-                document.getElementById('agent-profile-bio').value = data.bio || '';
+                const agentBioTextarea = document.getElementById('agent-profile-bio');
+                agentBioTextarea.value = data.bio || '';
+                autoGrowTextarea(agentBioTextarea);
                 
                 // Set profile photo
                 const photoImg = document.getElementById('agent-profile-photo');
@@ -5138,7 +5142,9 @@
                 document.getElementById('agent-profile-first-name').value = originalAgentProfile.first_name || '';
                 document.getElementById('agent-profile-last-name').value = originalAgentProfile.last_name || '';
                 document.getElementById('agent-profile-username').value = originalAgentProfile.username || '';
-                document.getElementById('agent-profile-bio').value = originalAgentProfile.bio || '';
+                const agentBioTextarea = document.getElementById('agent-profile-bio');
+                agentBioTextarea.value = originalAgentProfile.bio || '';
+                autoGrowTextarea(agentBioTextarea);
                 
                 // Restore birthday
                 const monthSelect = document.getElementById('agent-profile-birthday-month');
