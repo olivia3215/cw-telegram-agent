@@ -9929,13 +9929,20 @@
             return Number.isFinite(minHeight) ? minHeight : 0;
         }
 
+        function getTextareaHeight(textarea) {
+            const height = parseFloat(window.getComputedStyle(textarea).height);
+            return Number.isFinite(height) ? height : 0;
+        }
+
         function autoGrowTextarea(textarea) {
             if (!textarea) return;
             textarea.style.overflowY = 'hidden';
-            textarea.style.height = 'auto';
             const minHeight = getTextareaMinHeight(textarea);
-            const nextHeight = Math.max(textarea.scrollHeight, minHeight);
-            textarea.style.height = `${nextHeight}px`;
+            const currentHeight = getTextareaHeight(textarea);
+            const nextHeight = Math.max(textarea.scrollHeight, minHeight, currentHeight);
+            if (nextHeight > currentHeight) {
+                textarea.style.height = `${nextHeight}px`;
+            }
         }
 
         function initializeTextareaAutoGrow(textarea) {
