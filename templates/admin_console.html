@@ -2127,6 +2127,7 @@
                     // Update the textarea with the new AI-generated description
                     if (textarea) {
                         textarea.value = data.description || '';
+                        autoGrowTextarea(textarea);
                     }
 
                     // Update all UI elements that might have changed
@@ -2590,6 +2591,8 @@
                     }
                 }
             }
+
+            scheduleAutoGrowRefresh(activeMainTab);
         }
 
         // Subtab button click handlers - simple event delegation
@@ -3684,7 +3687,9 @@
                 document.getElementById('conversation-profile-last-name').value = data.last_name || '';
                 document.getElementById('conversation-profile-username').value = data.username || '';
                 document.getElementById('conversation-profile-telegram-id').value = data.telegram_id || '';
-                document.getElementById('conversation-profile-bio').value = data.bio || '';
+                const conversationBioTextarea = document.getElementById('conversation-profile-bio');
+                conversationBioTextarea.value = data.bio || '';
+                autoGrowTextarea(conversationBioTextarea);
                 const bioLabel = document.getElementById('conversation-profile-bio-label');
                 if (bioLabel) {
                     let isGroup = data.partner_type && data.partner_type !== 'user';
@@ -4992,7 +4997,9 @@
                 document.getElementById('agent-profile-last-name').value = data.last_name || '';
                 document.getElementById('agent-profile-username').value = data.username || '';
                 document.getElementById('agent-profile-telegram-id').value = data.telegram_id || '';
-                document.getElementById('agent-profile-bio').value = data.bio || '';
+                const agentBioTextarea = document.getElementById('agent-profile-bio');
+                agentBioTextarea.value = data.bio || '';
+                autoGrowTextarea(agentBioTextarea);
                 
                 // Set profile photo
                 const photoImg = document.getElementById('agent-profile-photo');
@@ -5184,7 +5191,9 @@
                 document.getElementById('agent-profile-first-name').value = originalAgentProfile.first_name || '';
                 document.getElementById('agent-profile-last-name').value = originalAgentProfile.last_name || '';
                 document.getElementById('agent-profile-username').value = originalAgentProfile.username || '';
-                document.getElementById('agent-profile-bio').value = originalAgentProfile.bio || '';
+                const agentBioTextarea = document.getElementById('agent-profile-bio');
+                agentBioTextarea.value = originalAgentProfile.bio || '';
+                autoGrowTextarea(agentBioTextarea);
                 
                 // Restore birthday
                 const monthSelect = document.getElementById('agent-profile-birthday-month');
@@ -9477,7 +9486,10 @@
                             }
                             if (data.description !== undefined) {
                                 const descTextarea = item.querySelector(`textarea[data-field="description"]`);
-                                if (descTextarea) descTextarea.value = data.description || '';
+                                if (descTextarea) {
+                                    descTextarea.value = data.description || '';
+                                    autoGrowTextarea(descTextarea);
+                                }
                             }
                             if (data.prompt_price !== undefined) {
                                 const promptInput = item.querySelector(`input[data-field="prompt_price"]`);
@@ -9969,6 +9981,79 @@
                       .replace(/`/g, '\\`')
                       .replace(/\$/g, '\\$');
         }
+
+        function getTextareaMinHeight(textarea) {
+            const minHeight = parseFloat(window.getComputedStyle(textarea).minHeight);
+            return Number.isFinite(minHeight) ? minHeight : 0;
+        }
+
+        function getTextareaHeight(textarea) {
+            const height = parseFloat(window.getComputedStyle(textarea).height);
+            return Number.isFinite(height) ? height : 0;
+        }
+
+        function autoGrowTextarea(textarea) {
+            if (!textarea) return;
+            textarea.style.overflowY = 'hidden';
+            const minHeight = getTextareaMinHeight(textarea);
+            const currentHeight = getTextareaHeight(textarea);
+            const nextHeight = Math.max(textarea.scrollHeight, minHeight, currentHeight);
+            if (nextHeight > currentHeight) {
+                textarea.style.height = `${nextHeight}px`;
+            }
+        }
+
+        function initializeTextareaAutoGrow(textarea) {
+            if (!textarea || textarea.dataset.autogrowInitialized) return;
+            textarea.dataset.autogrowInitialized = 'true';
+            autoGrowTextarea(textarea);
+        }
+
+        function refreshAutoGrowTextareas(root = document) {
+            const textareas = root.querySelectorAll('textarea');
+            textareas.forEach(initializeTextareaAutoGrow);
+            textareas.forEach(autoGrowTextarea);
+        }
+
+        function scheduleAutoGrowRefresh(root = document) {
+            window.requestAnimationFrame(() => refreshAutoGrowTextareas(root));
+        }
+
+        document.addEventListener('input', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        document.addEventListener('change', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        document.addEventListener('focusin', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        const autoGrowObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+                    if (node.tagName === 'TEXTAREA') {
+                        initializeTextareaAutoGrow(node);
+                    } else if (node.querySelectorAll) {
+                        node.querySelectorAll('textarea').forEach(initializeTextareaAutoGrow);
+                    }
+                });
+            });
+        });
+
+        autoGrowObserver.observe(document.body, { childList: true, subtree: true });
         
         // Ensure subtab bars are visible for active tab panels on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -9981,6 +10066,7 @@
                     subtabBar.style.opacity = '1';
                 }
             }
+            refreshAutoGrowTextareas();
         });
     </script>
 </body>
