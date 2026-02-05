@@ -230,6 +230,11 @@ def add_llm(
                 result = cursor.fetchone()
                 # DictCursor returns a dict, so access by column name
                 display_order = result["max_order"] if result else 0
+            else:
+                cursor.execute(
+                    "UPDATE available_llms SET display_order = display_order + 1 WHERE display_order >= %s",
+                    (display_order,),
+                )
             
             cursor.execute("""
                 INSERT INTO available_llms 

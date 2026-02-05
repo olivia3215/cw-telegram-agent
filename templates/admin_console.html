@@ -5297,14 +5297,7 @@
                                         type="text" 
                                         class="agent-param-input" 
                                         value="${escapeHtml(currentLLM || '')}"
-                                        list="agent-llm-datalist-${escJsAttr(agentName)}"
-                                        placeholder="Type or select an LLM model..."
-                                        onchange="updateAgentLLM('${escJsAttr(agentName)}', this.value)">
-                                    <datalist id="agent-llm-datalist-${escJsAttr(agentName)}">
-                                        ${availableLLMs.map(llm => {
-                                            return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
-                                        }).join('')}
-                                    </datalist>
+                                        placeholder="Type or select an LLM model...">
                                 </div>
                             </div>
 
@@ -5420,6 +5413,12 @@
                             </div>
                         </div>
                     `;
+
+                    const agentLlmInput = document.getElementById('agent-llm-select');
+                    setupLLMCombobox(agentLlmInput, availableLLMs, {
+                        includeDefaultMarker: true,
+                        onChange: (value) => updateAgentLLM(agentName, value),
+                    });
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -6093,14 +6092,7 @@
                                     type="text" 
                                     style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; max-width: 100%; box-sizing: border-box;" 
                                     value="${escapeHtml(conversationLLM || agentDefaultLLM)}"
-                                    list="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}"
-                                    placeholder="Type or select an LLM model..."
-                                    onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')">
-                                <datalist id="conversation-llm-datalist-${escJsAttr(agentName)}-${escJsAttr(userId)}">
-                                    ${availableLLMs.map(llm => {
-                                        return `<option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}${llm.is_default ? ' *' : ''}</option>`;
-                                    }).join('')}
-                                </datalist>
+                                    placeholder="Type or select an LLM model...">
                             </div>
                             
                             <div style="margin-bottom: 24px;">
@@ -6120,6 +6112,12 @@
                             </div>
                         </div>
                     `;
+
+                    const conversationLlmInput = document.getElementById('conversation-llm-select');
+                    setupLLMCombobox(conversationLlmInput, availableLLMs, {
+                        includeDefaultMarker: true,
+                        onChange: () => updateConversationParameters(agentName, userId),
+                    });
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -9070,7 +9068,6 @@
                                 // Special handling for LLM model parameters - use combobox (datalist + input)
                                 const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
                                 if (llmModelParams.includes(param.name)) {
-                                    const datalistId = `global-param-${param.name}-datalist`;
                                     return `
                                         <div class="agent-param-section">
                                             <h3>${escapeHtml(param.name)}</h3>
@@ -9079,14 +9076,7 @@
                                                 type="text" 
                                                 class="agent-param-input" 
                                                 value="${escapeHtml(param.value)}"
-                                                list="${datalistId}"
-                                                placeholder="Type or select an LLM model..."
-                                                onchange="updateGlobalParameter('${escJsAttr(param.name)}', this.value)">
-                                            <datalist id="${datalistId}">
-                                                ${availableLLMs.map(llm => `
-                                                    <option value="${escapeHtml(llm.value)}">${escapeHtml(llm.label)}</option>
-                                                `).join('')}
-                                            </datalist>
+                                                placeholder="Type or select an LLM model...">
                                             <div style="font-size: 12px; color: #666; margin-top: 4px;">
                                                 ${escapeHtml(param.comment || '')}
                                                 ${param.default ? ` (Default: ${escapeHtml(param.default)})` : ''}
@@ -9118,6 +9108,14 @@
                         </div>
                     </div>
                 `;
+
+                const llmModelParams = ['DEFAULT_AGENT_LLM', 'MEDIA_MODEL', 'TRANSLATION_MODEL'];
+                llmModelParams.forEach(paramName => {
+                    const inputEl = document.getElementById(`global-param-${paramName}`);
+                    setupLLMCombobox(inputEl, availableLLMs, {
+                        onChange: (value) => updateGlobalParameter(paramName, value),
+                    });
+                });
             } catch (error) {
                 console.error('Error loading global parameters:', error);
                 container.innerHTML = `<div class="error">Error loading parameters: ${escapeHtml(error.message || error)}</div>`;
@@ -9538,21 +9536,9 @@
             const selectedValue = select.value;
             
             if (selectedValue === '__custom__') {
-                // Add custom LLM
-                const modelId = prompt('Enter model ID (canonical name):');
-                if (!modelId) return;
-                
-                const name = prompt('Enter display name:', modelId);
-                if (name === null) return;
-                
-                const description = prompt('Enter description (optional):', '') || null;
-                
-                const promptPriceStr = prompt('Enter prompt price per 1M tokens (e.g., 0.50):', '0.0');
-                const promptPrice = parseFloat(promptPriceStr) || 0.0;
-                
-                const completionPriceStr = prompt('Enter completion price per 1M tokens (e.g., 3.00):', '0.0');
-                const completionPrice = parseFloat(completionPriceStr) || 0.0;
-                
+                // Add custom LLM (modeless entry with defaults)
+                const modelId = `new-llm-${Date.now()}`;
+                const name = 'New LLM name';
                 try {
                     const response = await fetchWithAuth('/admin/api/global/llms', {
                         method: 'POST',
@@ -9560,10 +9546,11 @@
                         body: JSON.stringify({
                             model_id: modelId,
                             name: name,
-                            description: description,
-                            prompt_price: promptPrice,
-                            completion_price: completionPrice,
-                            provider: modelId.includes('/') ? 'openrouter' : 'custom'
+                            description: null,
+                            prompt_price: 0.0,
+                            completion_price: 0.0,
+                            provider: 'custom',
+                            display_order: 0
                         })
                     });
                     
@@ -9733,6 +9720,185 @@
             }
         }
         
+        const LLM_COMBOBOX_SEPARATOR_VALUE = '__llm_all__';
+        const LLM_COMBOBOX_SEPARATOR_LABEL = '--- All models ---';
+
+        function buildLLMComboboxOptions(availableLLMs, currentValue) {
+            const normalizedValue = (currentValue || '').trim();
+            const options = [];
+            const seen = new Set();
+
+            if (normalizedValue) {
+                const selected = availableLLMs.find(llm => (llm.value || '') === normalizedValue);
+                if (selected) {
+                    options.push(selected);
+                    seen.add(selected.value);
+                } else {
+                    options.push({ value: normalizedValue, label: normalizedValue });
+                    seen.add(normalizedValue);
+                }
+
+                const needle = normalizedValue.toLowerCase();
+                availableLLMs.forEach(llm => {
+                    const value = llm.value || '';
+                    const label = llm.label || value;
+                    if (!seen.has(value) && (value.toLowerCase().includes(needle) || label.toLowerCase().includes(needle))) {
+                        options.push(llm);
+                        seen.add(value);
+                    }
+                });
+
+                options.push({
+                    value: LLM_COMBOBOX_SEPARATOR_VALUE,
+                    label: LLM_COMBOBOX_SEPARATOR_LABEL,
+                    is_separator: true,
+                });
+            }
+
+            availableLLMs.forEach(llm => {
+                const value = llm.value || '';
+                if (!seen.has(value)) {
+                    options.push(llm);
+                    seen.add(value);
+                }
+            });
+
+            return options;
+        }
+
+        function renderLLMComboboxOptions(dropdownEl, options, includeDefaultMarker, onSelect) {
+            dropdownEl.innerHTML = '';
+            options.forEach(llm => {
+                const item = document.createElement('div');
+                item.style.padding = '6px 10px';
+                item.style.cursor = llm.is_separator ? 'default' : 'pointer';
+                item.style.fontSize = '14px';
+                item.style.color = llm.is_separator ? '#888' : '#333';
+                item.style.borderTop = llm.is_separator ? '1px solid #eee' : 'none';
+                item.style.marginTop = llm.is_separator ? '4px' : '0';
+                item.style.paddingTop = llm.is_separator ? '8px' : '6px';
+        
+                let label = llm.label || llm.value || '';
+                if (llm.is_separator) {
+                    label = LLM_COMBOBOX_SEPARATOR_LABEL;
+                } else if (includeDefaultMarker && llm.is_default) {
+                    label = `${label} *`;
+                }
+        
+                item.textContent = label;
+                if (!llm.is_separator) {
+                    item.addEventListener('mousedown', event => {
+                        event.preventDefault();
+                        onSelect(llm.value || '');
+                    });
+                }
+                dropdownEl.appendChild(item);
+            });
+        }
+        
+        function setupLLMCombobox(inputEl, availableLLMs, options = {}) {
+            if (!inputEl) return;
+
+            if (inputEl._llmComboboxCleanup) {
+                inputEl._llmComboboxCleanup();
+            }
+        
+            const includeDefaultMarker = Boolean(options.includeDefaultMarker);
+            const onChange = options.onChange;
+            const controller = new AbortController();
+            const { signal } = controller;
+            let isDestroyed = false;
+        
+            const dropdownEl = document.createElement('div');
+            dropdownEl.style.position = 'absolute';
+            dropdownEl.style.background = '#fff';
+            dropdownEl.style.border = '1px solid #ddd';
+            dropdownEl.style.borderRadius = '6px';
+            dropdownEl.style.boxShadow = '0 8px 20px rgba(0,0,0,0.12)';
+            dropdownEl.style.maxHeight = '260px';
+            dropdownEl.style.overflowY = 'auto';
+            dropdownEl.style.zIndex = '9999';
+            dropdownEl.style.display = 'none';
+            document.body.appendChild(dropdownEl);
+
+            const cleanup = () => {
+                if (isDestroyed) return;
+                isDestroyed = true;
+                controller.abort();
+                if (observer) observer.disconnect();
+                if (dropdownEl.parentNode) {
+                    dropdownEl.parentNode.removeChild(dropdownEl);
+                }
+                if (inputEl._llmComboboxCleanup === cleanup) {
+                    delete inputEl._llmComboboxCleanup;
+                }
+            };
+
+            inputEl._llmComboboxCleanup = cleanup;
+        
+            const positionDropdown = () => {
+                const rect = inputEl.getBoundingClientRect();
+                dropdownEl.style.minWidth = `${rect.width}px`;
+                dropdownEl.style.left = `${rect.left + window.scrollX}px`;
+                dropdownEl.style.top = `${rect.bottom + window.scrollY + 4}px`;
+            };
+        
+            const refreshOptions = () => {
+                if (!document.body.contains(inputEl)) {
+                    cleanup();
+                    return;
+                }
+                const comboboxOptions = buildLLMComboboxOptions(availableLLMs || [], inputEl.value);
+                renderLLMComboboxOptions(dropdownEl, comboboxOptions, includeDefaultMarker, (value) => {
+                    inputEl.value = value;
+                    inputEl.dataset.lastValidValue = value;
+                    dropdownEl.style.display = 'none';
+                    if (onChange) onChange(value);
+                });
+                positionDropdown();
+                dropdownEl.style.display = comboboxOptions.length ? 'block' : 'none';
+            };
+        
+            const closeDropdown = (event) => {
+                if (!event || (event.target !== inputEl && !dropdownEl.contains(event.target))) {
+                    dropdownEl.style.display = 'none';
+                }
+            };
+        
+            const handleInputChange = () => {
+                inputEl.dataset.lastValidValue = inputEl.value;
+                closeDropdown();
+                if (onChange) onChange(inputEl.value);
+            };
+        
+            inputEl.dataset.lastValidValue = inputEl.value;
+            inputEl.addEventListener('focus', refreshOptions, { signal });
+            inputEl.addEventListener('input', refreshOptions, { signal });
+            inputEl.addEventListener('change', handleInputChange, { signal });
+            inputEl.addEventListener('blur', () => {
+                const lastValue = inputEl.dataset.lastValidValue || '';
+                if (inputEl.value !== lastValue) {
+                    handleInputChange();
+                    return;
+                }
+                closeDropdown();
+            }, { signal });
+            document.addEventListener('mousedown', closeDropdown, { signal });
+            window.addEventListener('resize', () => {
+                if (dropdownEl.style.display !== 'none') positionDropdown();
+            }, { signal });
+            window.addEventListener('scroll', () => {
+                if (dropdownEl.style.display !== 'none') positionDropdown();
+            }, { signal, capture: true });
+
+            const observer = new MutationObserver(() => {
+                if (!document.body.contains(inputEl)) {
+                    cleanup();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
