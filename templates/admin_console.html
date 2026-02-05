@@ -2590,6 +2590,8 @@
                     }
                 }
             }
+
+            scheduleAutoGrowRefresh(activeMainTab);
         }
 
         // Subtab button click handlers - simple event delegation
@@ -9921,6 +9923,72 @@
                       .replace(/`/g, '\\`')
                       .replace(/\$/g, '\\$');
         }
+
+        function getTextareaMinHeight(textarea) {
+            const minHeight = parseFloat(window.getComputedStyle(textarea).minHeight);
+            return Number.isFinite(minHeight) ? minHeight : 0;
+        }
+
+        function autoGrowTextarea(textarea) {
+            if (!textarea) return;
+            textarea.style.overflowY = 'hidden';
+            textarea.style.height = 'auto';
+            const minHeight = getTextareaMinHeight(textarea);
+            const nextHeight = Math.max(textarea.scrollHeight, minHeight);
+            textarea.style.height = `${nextHeight}px`;
+        }
+
+        function initializeTextareaAutoGrow(textarea) {
+            if (!textarea || textarea.dataset.autogrowInitialized) return;
+            textarea.dataset.autogrowInitialized = 'true';
+            autoGrowTextarea(textarea);
+        }
+
+        function refreshAutoGrowTextareas(root = document) {
+            const textareas = root.querySelectorAll('textarea');
+            textareas.forEach(initializeTextareaAutoGrow);
+            textareas.forEach(autoGrowTextarea);
+        }
+
+        function scheduleAutoGrowRefresh(root = document) {
+            window.requestAnimationFrame(() => refreshAutoGrowTextareas(root));
+        }
+
+        document.addEventListener('input', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        document.addEventListener('change', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        document.addEventListener('focusin', (event) => {
+            const target = event.target;
+            if (target && target.tagName === 'TEXTAREA') {
+                autoGrowTextarea(target);
+            }
+        });
+
+        const autoGrowObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+                    if (node.tagName === 'TEXTAREA') {
+                        initializeTextareaAutoGrow(node);
+                    } else if (node.querySelectorAll) {
+                        node.querySelectorAll('textarea').forEach(initializeTextareaAutoGrow);
+                    }
+                });
+            });
+        });
+
+        autoGrowObserver.observe(document.body, { childList: true, subtree: true });
         
         // Ensure subtab bars are visible for active tab panels on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -9933,6 +10001,7 @@
                     subtabBar.style.opacity = '1';
                 }
             }
+            refreshAutoGrowTextareas();
         });
     </script>
 </body>
