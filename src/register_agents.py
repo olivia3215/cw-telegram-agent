@@ -253,6 +253,55 @@ def parse_agent_markdown(path):
         return None
 
 
+def build_register_kwargs(
+    parsed: dict,
+    config_directory: str,
+    config_name: str,
+) -> dict:
+    """Build kwargs for register_telegram_agent from parsed config."""
+    return {
+        "name": parsed["name"],
+        "phone": parsed["phone"],
+        "instructions": parsed["instructions"],
+        "role_prompt_names": parsed["role_prompt_names"],
+        "sticker_set_names": parsed.get("sticker_set_names") or [],
+        "explicit_stickers": parsed.get("explicit_stickers") or [],
+        "config_directory": config_directory,
+        "config_name": config_name,
+        "timezone": parsed.get("timezone"),
+        "llm_name": parsed.get("llm_name"),
+        "start_typing_delay": parsed.get("start_typing_delay"),
+        "typing_speed": parsed.get("typing_speed"),
+        "daily_schedule_description": parsed.get("daily_schedule_description"),
+        "reset_context_on_first_message": parsed.get("reset_context_on_first_message", False),
+        "is_disabled": parsed.get("is_disabled", False),
+        "is_gagged": parsed.get("is_gagged", False),
+    }
+
+
+def register_agent_from_config_file(
+    config_file: Path,
+    config_directory: str | None = None,
+):
+    """Parse and register a single agent from a config file."""
+    parsed = parse_agent_markdown(config_file)
+    if not parsed:
+        return None
+
+    config_name = config_file.stem
+    if not config_directory:
+        config_directory = str(config_file.parent.parent)
+
+    register_telegram_agent(**build_register_kwargs(parsed, config_directory, config_name))
+    telegram_id = parsed.get("telegram_id")
+    if telegram_id:
+        from agent import _agent_registry
+        agent = _agent_registry.get_by_config_name(config_name)
+        if agent:
+            agent.agent_id = telegram_id
+    return parsed
+
+
 def register_all_agents(force: bool = False):
     global _AGENTS_LOADED
     with _REGISTER_LOCK:
@@ -317,22 +366,7 @@ def register_all_agents(force: bool = False):
                         continue
 
                     register_telegram_agent(
-                        name=agent_name,
-                        phone=parsed["phone"],
-                        instructions=parsed["instructions"],
-                        role_prompt_names=parsed["role_prompt_names"],
-                        sticker_set_names=parsed.get("sticker_set_names") or [],
-                        explicit_stickers=parsed.get("explicit_stickers") or [],
-                        config_directory=config_dir,
-                        config_name=config_name,
-                        timezone=parsed.get("timezone"),
-                        llm_name=parsed.get("llm_name"),
-                        start_typing_delay=parsed.get("start_typing_delay"),
-                        typing_speed=parsed.get("typing_speed"),
-                        daily_schedule_description=parsed.get("daily_schedule_description"),
-                        reset_context_on_first_message=parsed.get("reset_context_on_first_message", False),
-                        is_disabled=parsed.get("is_disabled", False),
-                        is_gagged=parsed.get("is_gagged", False),
+                        **build_register_kwargs(parsed, config_dir, config_name)
                     )
                     # Set agent_id from config file if available
                     telegram_id = parsed.get("telegram_id")

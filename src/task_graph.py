@@ -237,7 +237,7 @@ class TaskGraph:
 @dataclass
 class WorkQueue:
     _task_graphs: list[TaskGraph] = field(default_factory=list)
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _last_index: int = field(default=0, init=False, repr=False)
     _state_file_path: str | None = field(default=None, init=False, repr=False)
 

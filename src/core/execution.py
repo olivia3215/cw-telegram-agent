@@ -79,6 +79,8 @@ class EventLoopExecutor:
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:
+            # Cancel the coroutine to avoid leaving it running on the event loop.
+            future.cancel()
             raise TimeoutError(
                 f"{self.name}: Operation timed out after {timeout} seconds"
             )

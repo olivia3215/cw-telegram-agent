@@ -509,6 +509,7 @@
                 <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
                 <button class="tab-button" data-subtab="parameters-global">Parameters</button>
                 <button class="tab-button" data-subtab="llms-global">LLMs</button>
+                <button class="tab-button" data-subtab="new-agent">New Agent</button>
             </nav>
             <div id="global-container" class="main-container">
                 <!-- Media Editor Subtab -->
@@ -634,6 +635,111 @@
                     <div class="main-container" style="margin-top: 16px;">
                         <div id="global-llms-container">
                             <div class="loading">Loading LLMs...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Agent Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="new-agent">
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                <button id="new-agent-create-btn" onclick="createNewAgentFromForm()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>Create</button>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Config Directory</h3>
+                                    <select id="new-agent-config-directory" class="agent-param-input" style="min-width: 220px;">
+                                        <option value="">Choose a config directory...</option>
+                                    </select>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Must be selected</div>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Config Name (filename)</h3>
+                                    <input id="new-agent-config-name" type="text" class="agent-param-input" value="Untitled">
+                                    <div id="new-agent-config-name-status" style="font-size: 12px; color: #666; margin-top: 4px;"></div>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent Name (display)</h3>
+                                    <input id="new-agent-display-name" type="text" class="agent-param-input" value="Untitled Agent">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Must not be empty</div>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Agent Phone</h3>
+                                    <input id="new-agent-phone" type="text" class="agent-param-input" value="+1234567890">
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <h3>Agent Instructions</h3>
+                                <textarea id="new-agent-prompt" class="agent-param-input" rows="6" style="resize: vertical;"></textarea>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Agent LLM</h3>
+                                    <input id="new-agent-llm" type="text" class="agent-param-input" list="new-agent-llm-options" placeholder="Type or select an LLM model...">
+                                    <datalist id="new-agent-llm-options"></datalist>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Agent Timezone</h3>
+                                    <select id="new-agent-timezone" class="agent-param-input"></select>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Role Prompts (one per line)</h3>
+                                    <textarea id="new-agent-role-prompts" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Sticker Sets (one per line)</h3>
+                                    <textarea id="new-agent-sticker-sets" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <h3>Explicit Stickers (one per line, SET :: STICKER)</h3>
+                                <textarea id="new-agent-explicit-stickers" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                            </div>
+
+                            <div class="agent-param-section">
+                                <h3>Daily Schedule</h3>
+                                <textarea id="new-agent-daily-schedule" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Reset Context On First Message</h3>
+                                    <label style="display: inline-flex; align-items: center; gap: 8px;">
+                                        <input id="new-agent-reset-context" type="checkbox">
+                                        Enabled
+                                    </label>
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Gagged</h3>
+                                    <label style="display: inline-flex; align-items: center; gap: 8px;">
+                                        <input id="new-agent-gagged" type="checkbox">
+                                        Enabled
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
+                                    <h3>Start Typing Delay (seconds)</h3>
+                                    <input id="new-agent-start-typing-delay" type="number" class="agent-param-input" min="1" max="3600" step="0.1">
+                                </div>
+                                <div class="agent-param-section">
+                                    <h3>Typing Speed (chars/sec)</h3>
+                                    <input id="new-agent-typing-speed" type="number" class="agent-param-input" min="1" max="1000" step="0.1">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2556,6 +2662,8 @@
                     loadGlobalParameters();
                 } else if (subtabName === 'llms-global') {
                     loadGlobalLLMs();
+                } else if (subtabName === 'new-agent') {
+                    initializeNewAgentForm();
                 }
             } else if (mainTabName === 'conversations') {
                 // Reload conversation partners dropdown to update asterisks for new subtab
@@ -2749,29 +2857,6 @@
                 console.error(`Error checking content for partner ${userId}, subtab ${subtabName}:`, error);
             }
             return false;
-        }
-
-        // Load agents list
-        async function createNewAgent(configDir) {
-            try {
-                const response = await fetchWithAuth(`${API_BASE}/agents/new`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ config_directory: configDir })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    await loadAgents();
-                    document.getElementById('agents-agent-select').value = data.config_name;
-                    // Trigger change to load the new agent's config
-                    document.getElementById('agents-agent-select').dispatchEvent(new Event('change'));
-                } else {
-                    alert('Error creating agent: ' + data.error);
-                }
-            } catch (error) {
-                console.error('Error creating agent:', error);
-                alert('Error creating agent');
-            }
         }
 
         async function toggleAgentDisabled(agentName, isDisabled) {
@@ -3075,23 +3160,47 @@
             }
 
             try {
-                const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}`, {
-                    method: 'DELETE',
+                const deleteButton = document.getElementById('delete-agent-button');
+                const deleteStatus = document.getElementById('agent-delete-status');
+                if (deleteButton) {
+                    deleteButton.disabled = true;
+                    deleteButton.style.opacity = '0.7';
+                    deleteButton.textContent = 'Deleting...';
+                }
+                if (deleteStatus) {
+                    deleteStatus.textContent = 'Delete request in progress...';
+                }
+
+                const deleteUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/delete?confirmation=${encodeURIComponent(confirmation)}`;
+                const response = await fetch(deleteUrl, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirmation: confirmation })
+                    body: JSON.stringify({ confirmation: confirmation }),
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
                 const data = await response.json();
-                if (data.success) {
+                if (response.ok && data.success) {
                     alert('Agent deleted successfully.');
                     await loadAgents();
                     document.getElementById('agents-agent-select').value = '';
                     document.getElementById('parameters-container').innerHTML = '<div class="loading">Select an agent to configure</div>';
                 } else {
-                    alert('Error deleting agent: ' + data.error);
+                    alert('Error deleting agent: ' + (data.error || `HTTP ${response.status}`));
                 }
             } catch (error) {
-                console.error('Error deleting agent:', error);
                 alert('Error deleting agent');
+            } finally {
+                const deleteButton = document.getElementById('delete-agent-button');
+                const deleteStatus = document.getElementById('agent-delete-status');
+                if (deleteButton) {
+                    deleteButton.disabled = false;
+                    deleteButton.style.opacity = '';
+                    deleteButton.textContent = 'Delete Agent';
+                }
+                if (deleteStatus) {
+                    deleteStatus.textContent = '';
+                }
             }
         }
         async function loadAgents() {
@@ -3119,7 +3228,8 @@
                 
                 // Check content for each agent if we're on agents or conversations tab
                 const agentContentChecks = {};
-                if (subtabName) {
+                const shouldCheckContent = subtabName && subtabName !== 'profile';
+                if (shouldCheckContent) {
                     // For subtabs that have fields in the agents list, use those (already fetched)
                     if (subtabName === 'plans') {
                         agents.forEach(agent => {
@@ -3151,16 +3261,6 @@
                     }
                 }
                 
-                // Fetch config directories once for the "New Agent" options
-                let configDirs = [];
-                try {
-                    const configDirsResponse = await fetchWithAuth(`${API_BASE}/config-directories`);
-                    const configDirsData = await configDirsResponse.json();
-                    configDirs = configDirsData.directories || [];
-                } catch (e) {
-                    console.error('Error loading config directories:', e);
-                }
-
                 // Populate all agent selects
                 ['agents-agent-select', 'conversations-agent-select'].forEach(selectId => {
                     const select = document.getElementById(selectId);
@@ -3168,25 +3268,6 @@
                         const currentValue = select.value;
                         select.innerHTML = '<option value="">Choose an agent...</option>';
                         
-                        // Add "New Agent" entries for each config directory (only in agents tab)
-                        if (selectId === 'agents-agent-select' && configDirs.length > 0) {
-                            configDirs.forEach(dir => {
-                                const option = document.createElement('option');
-                                // Use dir.path if dir is an object, otherwise use dir itself
-                                const path = (typeof dir === 'object') ? dir.path : dir;
-                                const display = (typeof dir === 'object') ? dir.display_path : dir;
-                                option.value = `NEW_AGENT|${path}`;
-                                option.textContent = `+ New Agent in ${display}`;
-                                option.style.fontWeight = 'bold';
-                                option.style.color = '#28a745';
-                                select.appendChild(option);
-                            });
-                            const divider = document.createElement('option');
-                            divider.disabled = true;
-                            divider.textContent = '────────────────────';
-                            select.appendChild(divider);
-                        }
-
                         agents.forEach(agent => {
                             const option = document.createElement('option');
                             option.value = agent.config_name;
@@ -3219,6 +3300,7 @@
                             option.textContent = displayName;
                             select.appendChild(option);
                         });
+
                         // When setting value, strip asterisk if present for comparison
                         if (currentValue) {
                             const strippedValue = stripAsterisk(currentValue);
@@ -3237,14 +3319,6 @@
         // Set up agent select change handlers with synchronization
         document.getElementById('agents-agent-select')?.addEventListener('change', (e) => {
             const rawValue = e.target.value;
-            if (rawValue.startsWith('NEW_AGENT|')) {
-                const configDir = rawValue.split('|')[1];
-                createNewAgent(configDir);
-                // Reset select until creation is complete
-                e.target.value = '';
-                return;
-            }
-
             const agentName = stripAsterisk(rawValue);
             
             // Synchronize with conversations agent select
@@ -5303,7 +5377,7 @@
                                             ${isDisabled ? 'Enable Agent' : 'Disable Agent'}
                                         </button>
                                         ${isDisabled ? `
-                                            <button onclick="deleteAgent('${escJsAttr(agentName)}', '${escJsAttr(data.name || agentName)}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            <button id="delete-agent-button" onclick="deleteAgent('${escJsAttr(agentName)}', '${escJsAttr(data.name || agentName)}')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                                 Delete Agent
                                             </button>
                                         ` : ''}
@@ -5335,6 +5409,8 @@
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Status: <span style="color: ${isDisabled ? '#dc3545' : '#28a745'}; font-weight: bold;">${isDisabled ? 'Disabled' : 'Enabled'}</span></div>
                                 </div>
                             </div>
+
+                            <div id="agent-delete-status" style="margin-top: 8px; font-size: 13px; color: #666;"></div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
@@ -5852,6 +5928,238 @@
                     return;
                 }
                 console.error('Error loading recent conversations:', error);
+            }
+        }
+
+        let newAgentFormInitialized = false;
+        let newAgentConfigNames = new Set();
+
+        async function initializeNewAgentForm() {
+            if (newAgentFormInitialized) {
+                await refreshNewAgentConfigNames();
+                updateNewAgentCreateState();
+                return;
+            }
+            newAgentFormInitialized = true;
+            const configSelect = document.getElementById('new-agent-config-directory');
+            const configNameInput = document.getElementById('new-agent-config-name');
+            const displayNameInput = document.getElementById('new-agent-display-name');
+
+            try {
+                const [configResponse, agentsResponse] = await Promise.all([
+                    fetchWithAuth(`${API_BASE}/config-directories`),
+                    fetchWithAuth(`${API_BASE}/agents`)
+                ]);
+                const configData = await configResponse.json();
+                const agentsData = await agentsResponse.json();
+                newAgentConfigNames = new Set((agentsData.agents || []).map(agent => agent.config_name));
+
+                if (configSelect) {
+                    configSelect.innerHTML = '<option value="">Choose a config directory...</option>';
+                    (configData.directories || []).forEach(dir => {
+                        const option = document.createElement('option');
+                        const path = (typeof dir === 'object') ? dir.path : dir;
+                        const display = (typeof dir === 'object') ? dir.display_path : dir;
+                        option.value = path;
+                        option.textContent = display;
+                        configSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error initializing new agent form:', error);
+                alert('Failed to load config directories.');
+            }
+
+            const handleConfigChange = async () => {
+                const configDir = configSelect?.value || '';
+                if (!configDir) {
+                    updateNewAgentCreateState();
+                    return;
+                }
+                await loadNewAgentDefaults(configDir);
+                updateNewAgentCreateState();
+            };
+
+            configSelect?.addEventListener('change', handleConfigChange);
+            configNameInput?.addEventListener('input', updateNewAgentCreateState);
+            displayNameInput?.addEventListener('input', updateNewAgentCreateState);
+            updateNewAgentCreateState();
+        }
+
+        async function refreshNewAgentConfigNames() {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/agents`);
+                const data = await response.json();
+                newAgentConfigNames = new Set((data.agents || []).map(agent => agent.config_name));
+            } catch (error) {
+                console.error('Error refreshing agent list for new agent form:', error);
+            }
+        }
+
+        async function loadNewAgentDefaults(configDirectory) {
+            try {
+                const response = await fetchWithAuth(
+                    `${API_BASE}/agents/new-defaults?config_directory=${encodeURIComponent(configDirectory)}`
+                );
+                const data = await response.json();
+                if (data.error) {
+                    console.error('Error loading new agent defaults:', data.error);
+                    return;
+                }
+
+                const defaults = data.defaults || {};
+                document.getElementById('new-agent-config-name').value = defaults.config_name || 'Untitled';
+                document.getElementById('new-agent-display-name').value = defaults.name || 'Untitled Agent';
+                document.getElementById('new-agent-phone').value = defaults.phone || '+1234567890';
+                document.getElementById('new-agent-prompt').value = defaults.instructions || '';
+                document.getElementById('new-agent-role-prompts').value = (defaults.role_prompt_names || []).join('\n');
+                document.getElementById('new-agent-sticker-sets').value = (defaults.sticker_set_names || []).join('\n');
+                document.getElementById('new-agent-explicit-stickers').value = (defaults.explicit_stickers || []).join('\n');
+                document.getElementById('new-agent-daily-schedule').value = defaults.daily_schedule_description || '';
+                document.getElementById('new-agent-reset-context').checked = !!defaults.reset_context_on_first_message;
+                document.getElementById('new-agent-gagged').checked = !!defaults.is_gagged;
+                document.getElementById('new-agent-start-typing-delay').value = defaults.start_typing_delay ?? '';
+                document.getElementById('new-agent-typing-speed').value = defaults.typing_speed ?? '';
+
+                const llmInput = document.getElementById('new-agent-llm');
+                if (llmInput) {
+                    llmInput.value = defaults.llm || '';
+                }
+                const llmOptions = document.getElementById('new-agent-llm-options');
+                if (llmOptions) {
+                    llmOptions.innerHTML = '';
+                    (data.available_llms || []).forEach(llm => {
+                        const option = document.createElement('option');
+                        option.value = llm.value;
+                        llmOptions.appendChild(option);
+                    });
+                }
+                const timezoneSelect = document.getElementById('new-agent-timezone');
+                if (timezoneSelect) {
+                    timezoneSelect.innerHTML = '<option value="">Default</option>';
+                    (data.available_timezones || []).forEach(tz => {
+                        const option = document.createElement('option');
+                        option.value = tz.value;
+                        option.textContent = tz.label;
+                        if (defaults.timezone && tz.value === defaults.timezone) {
+                            option.selected = true;
+                        }
+                        timezoneSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading new agent defaults:', error);
+            }
+        }
+
+        function updateNewAgentCreateState() {
+            const configDir = document.getElementById('new-agent-config-directory')?.value.trim();
+            const configName = document.getElementById('new-agent-config-name')?.value.trim();
+            const displayName = document.getElementById('new-agent-display-name')?.value.trim();
+            const statusEl = document.getElementById('new-agent-config-name-status');
+            const createBtn = document.getElementById('new-agent-create-btn');
+
+            let statusText = '';
+            let isValid = true;
+
+            if (!configDir) {
+                isValid = false;
+            }
+
+            if (!configName) {
+                isValid = false;
+                statusText = 'Config name is required.';
+            } else if (!/^[A-Za-z0-9]+$/.test(configName)) {
+                isValid = false;
+                statusText = 'Config name must be alphanumeric.';
+            } else if (newAgentConfigNames.has(configName)) {
+                isValid = false;
+                statusText = 'Config name already exists.';
+            }
+
+            if (!displayName) {
+                isValid = false;
+            }
+
+            if (statusEl) {
+                statusEl.textContent = statusText;
+                statusEl.style.color = statusText ? '#dc3545' : '#666';
+            }
+            if (createBtn) {
+                createBtn.disabled = !isValid;
+                createBtn.style.opacity = isValid ? '1' : '0.6';
+                createBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+            }
+        }
+
+        async function createNewAgentFromForm() {
+            const createBtn = document.getElementById('new-agent-create-btn');
+            const configDirectory = document.getElementById('new-agent-config-directory')?.value.trim();
+            const configName = document.getElementById('new-agent-config-name')?.value.trim();
+            const displayName = document.getElementById('new-agent-display-name')?.value.trim();
+
+            if (!configDirectory || !configName || !displayName) {
+                updateNewAgentCreateState();
+                return;
+            }
+
+            try {
+                if (createBtn) {
+                    createBtn.disabled = true;
+                    createBtn.textContent = 'Creating...';
+                }
+
+                const payload = {
+                    config_directory: configDirectory,
+                    config_name: configName,
+                    name: displayName,
+                    phone: document.getElementById('new-agent-phone')?.value.trim(),
+                    instructions: document.getElementById('new-agent-prompt')?.value,
+                    role_prompt_names: document.getElementById('new-agent-role-prompts')?.value,
+                    llm: document.getElementById('new-agent-llm')?.value.trim(),
+                    timezone: document.getElementById('new-agent-timezone')?.value.trim(),
+                    sticker_set_names: document.getElementById('new-agent-sticker-sets')?.value,
+                    explicit_stickers: document.getElementById('new-agent-explicit-stickers')?.value,
+                    daily_schedule_description: document.getElementById('new-agent-daily-schedule')?.value,
+                    reset_context_on_first_message: document.getElementById('new-agent-reset-context')?.checked,
+                    start_typing_delay: document.getElementById('new-agent-start-typing-delay')?.value,
+                    typing_speed: document.getElementById('new-agent-typing-speed')?.value,
+                    is_gagged: document.getElementById('new-agent-gagged')?.checked
+                };
+
+                const response = await fetchWithAuth(`${API_BASE}/agents/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    const agentsTabButton = document.querySelector('.tab-button[data-tab="agents"]');
+                    if (agentsTabButton) {
+                        agentsTabButton.click();
+                    }
+                    await loadAgents();
+                    newAgentConfigNames.add(configName);
+                    const agentSelect = document.getElementById('agents-agent-select');
+                    if (agentSelect) {
+                        agentSelect.value = data.config_name;
+                    }
+                    switchSubtab('parameters');
+                    agentSelect?.dispatchEvent(new Event('change'));
+                } else {
+                    alert(data.error || 'Failed to create agent.');
+                    if (data.error && data.error.includes('already exists')) {
+                        newAgentConfigNames.add(configName);
+                    }
+                }
+            } catch (error) {
+                console.error('Error creating new agent:', error);
+                alert('Failed to create agent.');
+            } finally {
+                if (createBtn) {
+                    createBtn.disabled = false;
+                    createBtn.textContent = 'Create';
+                }
             }
         }
         

@@ -5,6 +5,7 @@
 import asyncio
 import logging
 import math
+import re
 import shutil
 from pathlib import Path
 
@@ -47,6 +48,26 @@ def _write_agent_markdown(agent, fields):
         
         lines.append("")
 
+    agent_file.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_agent_markdown_file(agent_file: Path, fields: dict):
+    """Write an agent markdown file to a specific path."""
+    lines = []
+    for field_name, field_value in fields.items():
+        lines.append(f"# {field_name}")
+        lines.append("")
+        if isinstance(field_value, (list, tuple)):
+            for item in field_value:
+                if isinstance(item, (list, tuple)):
+                    lines.append(" :: ".join(str(x).strip() for x in item))
+                else:
+                    lines.append(str(item).strip())
+        else:
+            val = str(field_value).strip()
+            if val:
+                lines.append(val)
+        lines.append("")
     agent_file.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -848,18 +869,20 @@ def register_configuration_routes(agents_bp: Blueprint):
                     error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
                 return jsonify({"error": error_msg}), 500
 
-            # Update agent config_name in registry
-            # This is tricky because the registry uses config_name as key.
-            # It's better to force a re-registration of all agents.
-            from register_agents import register_all_agents
+            # Update agent config_name in registry without clearing existing clients
             from agent import _agent_registry
-            
-            # Remove old entry from registry
-            if agent.config_name in _agent_registry._registry:
-                del _agent_registry._registry[agent.config_name]
-            
-            # Re-register all agents to pick up the rename
-            register_all_agents(force=True)
+            from register_agents import register_agent_from_config_file
+            existing_agent = _agent_registry._registry.pop(old_config_name, None)
+            if existing_agent:
+                existing_agent.config_name = new_config_name
+                _agent_registry._registry[new_config_name] = existing_agent
+            else:
+                parsed = register_agent_from_config_file(
+                    new_agent_file,
+                    config_directory=agent.config_directory,
+                )
+                if not parsed:
+                    return jsonify({"error": "Failed to parse renamed agent configuration"}), 400
 
             return jsonify({"success": True, "new_config_name": new_config_name})
         except Exception as e:
@@ -954,18 +977,15 @@ def register_configuration_routes(agents_bp: Blueprint):
                         error_msg += f". Additionally, rollback errors occurred: {'; '.join(rollback_errors)}"
                     return jsonify({"error": error_msg}), 500
 
-            # Re-register all agents to pick up the move
-            # This clears the registry and creates new agent objects, so the new config_directory
-            # will be read from the moved config file during re-registration
-            from register_agents import register_all_agents
-            register_all_agents(force=True)
+            # Update agent config_directory in registry without clearing clients
+            agent.config_directory = new_config_directory
 
             return jsonify({"success": True, "new_config_directory": new_config_directory})
         except Exception as e:
             logger.error(f"Error moving config directory for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @agents_bp.route("/api/agents/<agent_config_name>", methods=["DELETE"])
+    @agents_bp.route("/api/agents/<agent_config_name>", methods=["DELETE", "POST"])
     def api_delete_agent(agent_config_name: str):
         """Delete agent (only allowed if disabled)."""
         try:
@@ -976,8 +996,8 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not agent.is_disabled:
                 return jsonify({"error": "Agent must be disabled to delete"}), 400
 
-            data = request.json
-            confirmation = data.get("confirmation", "")
+            data = request.get_json(silent=True) or {}
+            confirmation = data.get("confirmation") or request.args.get("confirmation", "")
             if confirmation != f"DELETE {agent.name}":
                 return jsonify({"error": f"Incorrect confirmation string. Expected 'DELETE {agent.name}'"}), 400
 
@@ -1002,15 +1022,12 @@ def register_configuration_routes(agents_bp: Blueprint):
                 import shutil
                 shutil.rmtree(agent_config_dir)
 
-            # 3. Delete {statedir}/{agent_name} directory
-            from config import STATE_DIRECTORY
-            if STATE_DIRECTORY:
-                state_dir = Path(STATE_DIRECTORY) / agent.config_name
-                if state_dir.exists() and state_dir.is_dir():
-                    import shutil
-                    shutil.rmtree(state_dir)
+            # Remove from registry
+            from agent import _agent_registry
+            if agent.config_name in _agent_registry._registry:
+                del _agent_registry._registry[agent.config_name]
 
-            # 4. Delete pending tasks graphs for the agent
+            # 3. Delete pending tasks graphs for the agent
             from task_graph import WorkQueue
             wq = WorkQueue.get_instance()
             wq.clear_tasks_for_agent(
@@ -1019,40 +1036,115 @@ def register_configuration_routes(agents_bp: Blueprint):
                 agent_display_name=agent.name
             )
 
+            # 4. Delete {statedir}/{agent_name} directory
+            from config import STATE_DIRECTORY
+            if STATE_DIRECTORY:
+                state_dir = Path(STATE_DIRECTORY) / agent.config_name
+                if state_dir.exists() and state_dir.is_dir():
+                    import shutil
+                    shutil.rmtree(state_dir)
+
             # 5. Delete MySQL data for the agent
             if telegram_id:
                 try:
                     from db.agent_deletion import delete_all_agent_data
-                    deleted_counts = delete_all_agent_data(telegram_id)
-                    logger.info(
-                        f"Deleted MySQL data for agent {agent.name} (telegram_id={telegram_id}): "
-                        f"{deleted_counts}"
-                    )
+                    delete_all_agent_data(telegram_id)
                 except Exception as e:
                     logger.error(
-                        f"Failed to delete MySQL data for agent {agent.name} "
-                        f"(telegram_id={telegram_id}): {e}"
+                        "Failed to delete MySQL data for agent %s (telegram_id=%s): %s",
+                        agent.name,
+                        telegram_id,
+                        e,
                     )
                     # Don't fail the deletion if MySQL cleanup fails
             else:
                 logger.warning(
-                    f"Could not determine Telegram ID for agent {agent.name} to delete MySQL data. "
-                    f"MySQL data may remain in the database."
+                    "Could not determine Telegram ID for agent %s; MySQL data may remain.",
+                    agent.name,
                 )
-
-            # Remove from registry
-            from agent import _agent_registry
-            if agent.config_name in _agent_registry._registry:
-                del _agent_registry._registry[agent.config_name]
 
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error deleting agent {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @agents_bp.route("/api/agents/<agent_config_name>/delete", methods=["POST"])
+    def api_delete_agent_alias(agent_config_name: str):
+        """Alias route for deleting agents via POST."""
+        return api_delete_agent(agent_config_name)
+
 def register_new_agent_routes(agents_bp: Blueprint):
     """Register routes for creating new agents."""
     
+    @agents_bp.route("/api/agents/new-defaults", methods=["GET"])
+    def api_get_new_agent_defaults():
+        """Get default values for new agent creation."""
+        try:
+            config_directory = request.args.get("config_directory", "").strip()
+            if not config_directory:
+                return jsonify({"error": "Config directory is required"}), 400
+
+            from config import CONFIG_DIRECTORIES
+            if config_directory not in CONFIG_DIRECTORIES:
+                return jsonify({"error": "Invalid config directory"}), 400
+
+            default_file = Path(config_directory) / "DefaultAgent.md"
+            parsed = None
+            if default_file.exists():
+                from register_agents import parse_agent_markdown
+                parsed = parse_agent_markdown(default_file)
+
+            if not parsed:
+                parsed = {
+                    "name": "Untitled Agent",
+                    "phone": "+1234567890",
+                    "instructions": "You are a helpful assistant.",
+                    "role_prompt_names": ["Person"],
+                    "sticker_set_names": [],
+                    "explicit_stickers": [],
+                    "timezone": None,
+                    "llm_name": None,
+                    "start_typing_delay": None,
+                    "typing_speed": None,
+                    "daily_schedule_description": None,
+                    "reset_context_on_first_message": False,
+                    "is_disabled": True,
+                    "is_gagged": False,
+                    "telegram_id": None,
+                }
+
+            default_llm = get_default_llm()
+            available_llms = get_available_llms()
+            for llm in available_llms:
+                llm["is_default"] = llm["value"] == default_llm
+
+            return jsonify({
+                "defaults": {
+                    "config_name": "Untitled",
+                    "name": parsed.get("name") or "Untitled Agent",
+                    "phone": parsed.get("phone") or "+1234567890",
+                    "instructions": parsed.get("instructions") or "",
+                    "role_prompt_names": parsed.get("role_prompt_names") or [],
+                    "sticker_set_names": parsed.get("sticker_set_names") or [],
+                    "explicit_stickers": [
+                        " :: ".join(sticker) if isinstance(sticker, (list, tuple)) else str(sticker)
+                        for sticker in (parsed.get("explicit_stickers") or [])
+                    ],
+                    "llm": parsed.get("llm_name") or "",
+                    "timezone": parsed.get("timezone") or "",
+                    "daily_schedule_description": parsed.get("daily_schedule_description") or "",
+                    "reset_context_on_first_message": bool(parsed.get("reset_context_on_first_message")),
+                    "start_typing_delay": parsed.get("start_typing_delay"),
+                    "typing_speed": parsed.get("typing_speed"),
+                    "is_gagged": bool(parsed.get("is_gagged")),
+                },
+                "available_llms": available_llms,
+                "available_timezones": get_available_timezones(),
+            })
+        except Exception as e:
+            logger.error(f"Error getting new agent defaults: {e}")
+            return jsonify({"error": str(e)}), 500
+
     @agents_bp.route("/api/agents/new", methods=["POST"])
     def api_create_agent():
         """Create a new agent in the specified config directory."""
@@ -1060,22 +1152,27 @@ def register_new_agent_routes(agents_bp: Blueprint):
             data = request.json
             config_dir = data.get("config_directory")
             if not config_dir:
-                from config import CONFIG_DIRECTORIES
-                config_dir = CONFIG_DIRECTORIES[0] if CONFIG_DIRECTORIES else None
+                return jsonify({"error": "Config directory is required"}), 400
             
-            if not config_dir:
-                return jsonify({"error": "No config directory available"}), 400
+            from config import CONFIG_DIRECTORIES
+            if config_dir not in CONFIG_DIRECTORIES:
+                return jsonify({"error": "Invalid config directory"}), 400
+
+            config_name = (data.get("config_name") or "Untitled").strip()
+            if not config_name:
+                return jsonify({"error": "Config name cannot be empty"}), 400
+            if not re.match(r"^[A-Za-z0-9]+$", config_name):
+                return jsonify({"error": "Config name must be alphanumeric"}), 400
 
             # 1. Find a unique name for the new config file
             agents_dir = Path(config_dir) / "agents"
             agents_dir.mkdir(parents=True, exist_ok=True)
             
-            base_name = "Untitled"
-            config_name = base_name
-            counter = 1
-            while (agents_dir / f"{config_name}.md").exists():
-                config_name = f"{base_name}_{counter}"
-                counter += 1
+            if (agents_dir / f"{config_name}.md").exists():
+                return jsonify({"error": f"Config name '{config_name}' already exists"}), 400
+            from agent import _agent_registry
+            if _agent_registry.get_by_config_name(config_name):
+                return jsonify({"error": f"Config name '{config_name}' already exists"}), 400
             
             new_file = agents_dir / f"{config_name}.md"
 
@@ -1086,12 +1183,109 @@ def register_new_agent_routes(agents_bp: Blueprint):
             else:
                 # Fallback content if DefaultAgent.md doesn't exist
                 content = "# Agent Name\n\nUntitled Agent\n\n# Agent Phone\n\n+1234567890\n\n# Agent Instructions\n\nYou are a helpful assistant.\n\n# Role Prompt\n\nPerson\n\n# Disabled\n\n"
-            
-            new_file.write_text(content, encoding="utf-8")
 
-            # 3. Force re-registration to pick up the new agent
-            from register_agents import register_all_agents
-            register_all_agents(force=True)
+            from register_agents import extract_fields_from_markdown
+            fields = extract_fields_from_markdown(content)
+            if not fields:
+                fields = {}
+
+            display_name = (data.get("name") or "Untitled Agent").strip()
+            if not display_name:
+                return jsonify({"error": "Agent name cannot be empty"}), 400
+
+            def _lines(value):
+                if value is None:
+                    return []
+                if isinstance(value, list):
+                    raw_lines = value
+                else:
+                    raw_lines = str(value).splitlines()
+                return [line.strip() for line in raw_lines if line.strip()]
+
+            fields["Agent Name"] = display_name
+            fields["Agent Phone"] = (data.get("phone") or fields.get("Agent Phone") or "+1234567890").strip()
+            fields["Agent Instructions"] = data.get("instructions") or fields.get("Agent Instructions") or ""
+
+            role_prompts = _lines(data.get("role_prompt_names"))
+            if role_prompts:
+                fields["Role Prompt"] = "\n".join(role_prompts)
+
+            llm_name = (data.get("llm") or "").strip()
+            if llm_name:
+                fields["LLM"] = llm_name
+            elif "LLM" in fields:
+                del fields["LLM"]
+
+            timezone = (data.get("timezone") or "").strip()
+            if timezone:
+                fields["Agent Timezone"] = timezone
+            elif "Agent Timezone" in fields:
+                del fields["Agent Timezone"]
+
+            sticker_sets = _lines(data.get("sticker_set_names"))
+            if sticker_sets:
+                fields["Agent Sticker Sets"] = "\n".join(sticker_sets)
+            elif "Agent Sticker Sets" in fields:
+                del fields["Agent Sticker Sets"]
+
+            explicit_stickers = _lines(data.get("explicit_stickers"))
+            if explicit_stickers:
+                fields["Agent Stickers"] = "\n".join(explicit_stickers)
+            elif "Agent Stickers" in fields:
+                del fields["Agent Stickers"]
+
+            daily_schedule = (data.get("daily_schedule_description") or "").strip()
+            if daily_schedule:
+                fields["Daily Schedule"] = daily_schedule
+            elif "Daily Schedule" in fields:
+                del fields["Daily Schedule"]
+
+            reset_context = bool(data.get("reset_context_on_first_message"))
+            if reset_context:
+                fields["Reset Context On First Message"] = ""
+            elif "Reset Context On First Message" in fields:
+                del fields["Reset Context On First Message"]
+
+            start_typing_delay = data.get("start_typing_delay")
+            if start_typing_delay is not None and str(start_typing_delay).strip() != "":
+                try:
+                    value = float(start_typing_delay)
+                except ValueError:
+                    return jsonify({"error": "Start Typing Delay must be a number"}), 400
+                if value < 1 or value > 3600:
+                    return jsonify({"error": "Start Typing Delay must be between 1 and 3600"}), 400
+                fields["Start Typing Delay"] = str(value)
+            elif "Start Typing Delay" in fields:
+                del fields["Start Typing Delay"]
+
+            typing_speed = data.get("typing_speed")
+            if typing_speed is not None and str(typing_speed).strip() != "":
+                try:
+                    value = float(typing_speed)
+                except ValueError:
+                    return jsonify({"error": "Typing Speed must be a number"}), 400
+                if value < 1 or value > 1000:
+                    return jsonify({"error": "Typing Speed must be between 1 and 1000"}), 400
+                fields["Typing Speed"] = str(value)
+            elif "Typing Speed" in fields:
+                del fields["Typing Speed"]
+
+            is_gagged = bool(data.get("is_gagged"))
+            if is_gagged:
+                fields["Gagged"] = ""
+            elif "Gagged" in fields:
+                del fields["Gagged"]
+
+            fields["Disabled"] = ""
+
+            # Write config file
+            _write_agent_markdown_file(new_file, fields)
+
+            # 3. Register the new agent without clearing existing registry
+            from register_agents import register_agent_from_config_file
+            parsed = register_agent_from_config_file(new_file, config_directory=config_dir)
+            if not parsed:
+                return jsonify({"error": "Failed to parse new agent configuration"}), 400
 
             return jsonify({"success": True, "config_name": config_name})
         except Exception as e:
