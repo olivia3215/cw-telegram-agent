@@ -180,18 +180,16 @@ def register_partner_routes(agents_bp: Blueprint):
                             async def _fetch_telegram_conversations():
                                 """Fetch Telegram conversations - runs in agent's event loop via agent.execute()."""
                                 telegram_partners = []
-                                dialog_count = 0
                                 try:
                                     if not await agent.ensure_client_connected():
                                         logger.warning(
                                             f"Agent {agent_config_name} client is not connected after reconnect attempt"
                                         )
-                                        return telegram_partners, dialog_count, first_dialog_latency
+                                        return telegram_partners
                                     # Use agent.client to get the client (already checked to be available and connected)
                                     client = agent.client
                                     # Iterate through dialogs - this runs in the client's event loop
                                     async for dialog in client.iter_dialogs(limit=200):
-                                        dialog_count += 1
                                         # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
                                         await asyncio.sleep(0.05)
                                         
