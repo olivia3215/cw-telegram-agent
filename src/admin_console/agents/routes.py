@@ -242,7 +242,7 @@ def register_main_routes(agents_bp: Blueprint):
                 
                 # Get agent instance directly by telegram ID (more reliable than config_name)
                 agent = get_agent_for_id(agent_telegram_id)
-                if not agent or not agent.is_authenticated or not agent.client:
+                if not agent or not agent.is_authenticated:
                     # Skip if agent not available or not authenticated
                     continue
                 
@@ -254,23 +254,24 @@ def register_main_routes(agents_bp: Blueprint):
                 
                 # Get channel name (requires async, so use agent.execute)
                 try:
-                    async def _get_channel_name():
-                        try:
-                            return await get_channel_name(agent, channel_telegram_id)
-                        except Exception as e:
-                            logger.debug(f"Error getting channel name for {channel_telegram_id}: {e}")
-                            return None
-                    
-                    channel_name = agent.execute(_get_channel_name(), timeout=5.0)
-                    
-                    if channel_name:
-                        recent_conversations.append({
-                            "agent_config_name": agent_config_name,
-                            "agent_name": agent.name,
-                            "channel_id": str(channel_telegram_id),
-                            "channel_name": channel_name,
-                            "last_send_time": last_send_time,
-                        })
+                    channel_name = None
+                    if agent.client:
+                        async def _get_channel_name():
+                            try:
+                                return await get_channel_name(agent, channel_telegram_id)
+                            except Exception as e:
+                                logger.debug(f"Error getting channel name for {channel_telegram_id}: {e}")
+                                return None
+                        channel_name = agent.execute(_get_channel_name(), timeout=5.0)
+
+                    display_name = channel_name or str(channel_telegram_id)
+                    recent_conversations.append({
+                        "agent_config_name": agent_config_name,
+                        "agent_name": agent.name,
+                        "channel_id": str(channel_telegram_id),
+                        "channel_name": display_name,
+                        "last_send_time": last_send_time,
+                    })
                 except Exception as e:
                     logger.debug(f"Error resolving channel name for agent {agent_telegram_id}, channel {channel_telegram_id}: {e}")
                     # Skip this conversation if we can't get the channel name

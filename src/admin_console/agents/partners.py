@@ -137,7 +137,10 @@ def register_partner_routes(agents_bp: Blueprint):
             cached_telegram_partners = None if force_refresh else get_cached_partner_recency(agent.config_name)
             
             if cached_telegram_partners is not None:
-                logger.info(f"Using cached partner recency for agent {agent_config_name} ({len(cached_telegram_partners)} partners)")
+                logger.info(
+                    f"Using cached partner recency for agent {agent_config_name} "
+                    f"({len(cached_telegram_partners)} partners)"
+                )
                 telegram_partners = list(cached_telegram_partners.values())
             else:
                 # Cache miss or expired - fetch from Telegram
@@ -145,7 +148,17 @@ def register_partner_routes(agents_bp: Blueprint):
                 client = agent.client
                 
                 if not client:
-                    logger.info(f"Agent {agent_config_name} has no client - skipping Telegram conversation fetch")
+                    if agent.is_authenticated and not agent.is_disabled:
+                        logger.warning(
+                            f"Agent {agent_config_name} has no client (enabled, authenticated) - "
+                            "skipping Telegram conversation fetch"
+                        )
+                    else:
+                        logger.info(
+                            f"Agent {agent_config_name} has no client "
+                            f"(disabled={agent.is_disabled}, authenticated={agent.is_authenticated}) - "
+                            "skipping Telegram conversation fetch"
+                        )
                     telegram_partners = []
                 elif not client.is_connected():
                     logger.info(f"Agent {agent_config_name} client is not connected - skipping Telegram conversation fetch")
@@ -167,11 +180,18 @@ def register_partner_routes(agents_bp: Blueprint):
                             async def _fetch_telegram_conversations():
                                 """Fetch Telegram conversations - runs in agent's event loop via agent.execute()."""
                                 telegram_partners = []
+                                dialog_count = 0
                                 try:
+                                    if not await agent.ensure_client_connected():
+                                        logger.warning(
+                                            f"Agent {agent_config_name} client is not connected after reconnect attempt"
+                                        )
+                                        return telegram_partners, dialog_count, first_dialog_latency
                                     # Use agent.client to get the client (already checked to be available and connected)
                                     client = agent.client
                                     # Iterate through dialogs - this runs in the client's event loop
-                                    async for dialog in client.iter_dialogs():
+                                    async for dialog in client.iter_dialogs(limit=200):
+                                        dialog_count += 1
                                         # Sleep 1/20 of a second (0.05s) between each dialog to avoid GetContactsRequest flood waits
                                         await asyncio.sleep(0.05)
                                         
