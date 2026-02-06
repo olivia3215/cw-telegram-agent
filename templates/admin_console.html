@@ -10003,9 +10003,9 @@
             if (!textarea) return;
             textarea.style.overflowY = 'hidden';
             const minHeight = getTextareaMinHeight(textarea);
-            const currentHeight = getTextareaHeight(textarea);
-            const nextHeight = Math.max(textarea.scrollHeight, minHeight, currentHeight);
-            if (nextHeight > currentHeight) {
+            const overflow = textarea.scrollHeight - textarea.clientHeight;
+            if (overflow > 1) {
+                const nextHeight = Math.max(textarea.offsetHeight + overflow, minHeight);
                 textarea.style.height = `${nextHeight}px`;
             }
         }
