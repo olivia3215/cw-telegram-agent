@@ -126,7 +126,7 @@ async def build_specific_instructions(
     messages,
     target_msg,
     xsend_intent: str | None = None,
-    reaction_msg=None,
+    reaction_messages=None,
     highest_summarized_id: int | None = None,
 ) -> str:
     """
@@ -138,7 +138,7 @@ async def build_specific_instructions(
         messages: List of Telegram messages (full visible history)
         target_msg: Optional target message to respond to
         xsend_intent: Optional intent from a cross-channel send
-        reaction_msg: Optional reaction message
+        reaction_messages: Optional list of messages that received reactions
         highest_summarized_id: Highest message ID that has been summarized, or None
 
     Returns:
@@ -186,12 +186,22 @@ async def build_specific_instructions(
         )
         any_instruction = True
     # Add reaction message instruction if this is a reaction-triggered task (and no new message)
-    elif reaction_msg is not None and getattr(reaction_msg, "id", ""):
-        instructions += (
-            "## Reaction Received\n\n"
-            f"Someone reacted to your message with message_id {reaction_msg.id}.\n"
-            "Consider responding to acknowledge the reaction or continue the conversation.\n"
-        )
+    elif reaction_messages:
+        if len(reaction_messages) == 1:
+            # Single reaction - keep existing format
+            instructions += (
+                "## Reaction Received\n\n"
+                f"Someone reacted to your message with message_id {reaction_messages[0].id}.\n"
+                "Consider responding to acknowledge the reaction or continue the conversation.\n"
+            )
+        else:
+            # Multiple reactions - show all message IDs
+            msg_ids = ", ".join(str(m.id) for m in reaction_messages)
+            instructions += (
+                "## Multiple Reactions Received\n\n"
+                f"People reacted to {len(reaction_messages)} of your messages (message_ids: {msg_ids}).\n"
+                "Consider responding to acknowledge the reactions or continue the conversation.\n"
+            )
         any_instruction = True
 
     if not any_instruction:
@@ -214,7 +224,7 @@ async def build_complete_system_prompt(
     dialog,
     target_msg,
     xsend_intent: str | None = None,
-    reaction_msg=None,
+    reaction_messages=None,
     graph=None,
     highest_summarized_id: int | None = None,
 ) -> str:
@@ -245,7 +255,7 @@ async def build_complete_system_prompt(
         messages=messages,
         target_msg=target_msg,
         xsend_intent=xsend_intent,
-        reaction_msg=reaction_msg,
+        reaction_messages=reaction_messages,
         highest_summarized_id=highest_summarized_id,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)

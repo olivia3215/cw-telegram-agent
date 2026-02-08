@@ -178,12 +178,13 @@ async def insert_received_task_for_conversation(
                     
                     # Check if this is a duplicate reaction for the same message
                     if reaction_message_id is not None:
-                        existing_reaction_id = task.params.get("reaction_message_id")
-                        if existing_reaction_id == reaction_message_id:
+                        existing_reaction_ids = task.params.get("reaction_message_ids", [])
+                        if reaction_message_id in existing_reaction_ids:
                             # This exact reaction is already being handled - skip duplicate
                             logger.info(
                                 f"[{agent.name}] Preventing duplicate received task - reaction on message "
-                                f"{reaction_message_id} already tracked in active task {task.id} (status: {task.status})"
+                                f"{reaction_message_id} already in tracked list {existing_reaction_ids} "
+                                f"for task {task.id} (status: {task.status})"
                             )
                             # Still update other flags if they're being set to True
                             updated = False
@@ -200,11 +201,11 @@ async def insert_received_task_for_conversation(
                                 work_queue.save()
                                 logger.debug(f"[{agent.name}] Updated flags on existing task {task.id}")
                             return
-                        elif existing_reaction_id is not None:
-                            # Different reaction message - this is a new reaction to handle
+                        else:
+                            # New reaction - will be added to the list below
                             logger.info(
-                                f"[{agent.name}] New reaction on message {reaction_message_id} detected "
-                                f"(existing task {task.id} tracking reaction on message {existing_reaction_id})"
+                                f"[{agent.name}] Adding reaction on message {reaction_message_id} "
+                                f"to existing tracked reactions {existing_reaction_ids} in task {task.id}"
                             )
                     
                     # Update existing task with new parameters
@@ -215,7 +216,10 @@ async def insert_received_task_for_conversation(
                     if xsend_intent is not None:
                         task.params["xsend_intent"] = xsend_intent
                     if reaction_message_id is not None:
-                        task.params["reaction_message_id"] = reaction_message_id
+                        existing_reaction_ids = task.params.get("reaction_message_ids", [])
+                        if reaction_message_id not in existing_reaction_ids:
+                            existing_reaction_ids.append(reaction_message_id)
+                            task.params["reaction_message_ids"] = existing_reaction_ids
                     if clear_mentions:
                         task.params["clear_mentions"] = True
                     if clear_reactions:
@@ -338,7 +342,7 @@ async def insert_received_task_for_conversation(
         if summarization_mode:
             task_params["summarization_mode"] = True
         if reaction_message_id is not None:
-            task_params["reaction_message_id"] = reaction_message_id
+            task_params["reaction_message_ids"] = [reaction_message_id]
         if clear_mentions:
             task_params["clear_mentions"] = True
         if clear_reactions:

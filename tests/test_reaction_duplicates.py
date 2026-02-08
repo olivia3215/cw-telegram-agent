@@ -68,7 +68,7 @@ async def test_duplicate_reaction_detection(work_queue, mock_agent, monkeypatch)
     received_tasks = [t for t in graph.tasks if t.type == "received"]
     assert len(received_tasks) == 1
     original_task = received_tasks[0]
-    assert original_task.params.get("reaction_message_id") == reaction_msg_id
+    assert original_task.params.get("reaction_message_ids") == [reaction_msg_id]
     assert original_task.params.get("clear_reactions") is True
     original_task_id = original_task.id
     
@@ -90,12 +90,12 @@ async def test_duplicate_reaction_detection(work_queue, mock_agent, monkeypatch)
     received_tasks = [t for t in graph.tasks if t.type == "received"]
     assert len(received_tasks) == 1  # Still only one received task
     assert received_tasks[0].id == original_task_id  # Same task ID
-    assert received_tasks[0].params.get("reaction_message_id") == reaction_msg_id
+    assert received_tasks[0].params.get("reaction_message_ids") == [reaction_msg_id]  # Still tracking same reaction
 
 
 @pytest.mark.asyncio
 async def test_different_reaction_updates_task(work_queue, mock_agent, monkeypatch):
-    """Test that a different reaction on a different message updates the existing task."""
+    """Test that a different reaction on a different message is added to the list."""
     # Mock get_agent_for_id to return our mock agent
     monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda _: mock_agent)
     
@@ -119,7 +119,7 @@ async def test_different_reaction_updates_task(work_queue, mock_agent, monkeypat
     graph = work_queue._task_graphs[0]
     received_tasks = [t for t in graph.tasks if t.type == "received"]
     assert len(received_tasks) == 1
-    assert received_tasks[0].params.get("reaction_message_id") == first_reaction_msg_id
+    assert received_tasks[0].params.get("reaction_message_ids") == [first_reaction_msg_id]
     
     # Second call: Add a different reaction (different message)
     await insert_received_task_for_conversation(
@@ -131,14 +131,14 @@ async def test_different_reaction_updates_task(work_queue, mock_agent, monkeypat
         clear_reactions=True,
     )
     
-    # Verify task was updated (not duplicated)
+    # Verify task was updated (not duplicated) - now tracks BOTH reactions
     assert len(work_queue._task_graphs) == 1  # Still only one graph
     graph = work_queue._task_graphs[0]
     
     received_tasks = [t for t in graph.tasks if t.type == "received"]
     assert len(received_tasks) == 1  # Still only one received task
-    # The task should now track the second reaction
-    assert received_tasks[0].params.get("reaction_message_id") == second_reaction_msg_id
+    # The task should now track BOTH reactions in the list
+    assert received_tasks[0].params.get("reaction_message_ids") == [first_reaction_msg_id, second_reaction_msg_id]
 
 
 @pytest.mark.asyncio
@@ -230,3 +230,57 @@ async def test_no_reaction_no_duplicate_check(work_queue, mock_agent, monkeypatc
     assert len(received_tasks) == 1
     assert received_tasks[0].id == original_task_id
     assert received_tasks[0].params.get("callout") is True  # Flag was updated
+
+
+@pytest.mark.asyncio
+async def test_multiple_reactions_tracked_in_list(work_queue, mock_agent, monkeypatch):
+    """Test that multiple reactions on different messages are all tracked in the list."""
+    # Mock get_agent_for_id to return our mock agent
+    monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda _: mock_agent)
+    
+    agent_id = "123456789"
+    channel_id = "987654321"
+    
+    # Add first reaction
+    await insert_received_task_for_conversation(
+        work_queue=work_queue,
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        is_callout=True,
+        reaction_message_id=42,
+        clear_reactions=True,
+    )
+    
+    # Add second reaction
+    await insert_received_task_for_conversation(
+        work_queue=work_queue,
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        is_callout=True,
+        reaction_message_id=43,
+        clear_reactions=True,
+    )
+    
+    # Add third reaction
+    await insert_received_task_for_conversation(
+        work_queue=work_queue,
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        is_callout=True,
+        reaction_message_id=45,
+        clear_reactions=True,
+    )
+    
+    # Verify all three reactions are tracked
+    assert len(work_queue._task_graphs) == 1
+    graph = work_queue._task_graphs[0]
+    received_tasks = [t for t in graph.tasks if t.type == "received"]
+    assert len(received_tasks) == 1  # Still only one task
+    
+    # Check that all three reaction IDs are in the list
+    reaction_ids = received_tasks[0].params.get("reaction_message_ids", [])
+    assert len(reaction_ids) == 3
+    assert 42 in reaction_ids
+    assert 43 in reaction_ids
+    assert 45 in reaction_ids
+
