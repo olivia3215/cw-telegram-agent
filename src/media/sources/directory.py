@@ -15,7 +15,7 @@ import contextlib
 import json
 import logging
 import threading
-from datetime import UTC
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -429,7 +429,13 @@ class DirectoryMediaSource(MediaSource):
 
             # Write to temporary file first, then atomically rename
             temp_path.write_text(
-                json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
+                json.dumps(
+                    record,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=self._json_default,
+                ),
+                encoding="utf-8",
             )
             temp_path.replace(file_path)
 
@@ -448,6 +454,14 @@ class DirectoryMediaSource(MediaSource):
                 f"DirectoryMediaSource: failed to cache {unique_id} to disk: {e}"
             )
             raise
+
+    @staticmethod
+    def _json_default(value: Any) -> str:
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        raise TypeError(
+            f"Object of type {value.__class__.__name__} is not JSON serializable"
+        )
 
     def get_cached_record(self, unique_id: str) -> dict[str, Any] | None:
         """Return a copy of the cached record without async helpers."""
