@@ -175,6 +175,39 @@ async def insert_received_task_for_conversation(
             for task in old_graph.tasks:
                 if task.type == "received" and not task.status.is_completed():
                     # There's already an active received task
+                    
+                    # Check if this is a duplicate reaction for the same message
+                    if reaction_message_id is not None:
+                        existing_reaction_id = task.params.get("reaction_message_id")
+                        if existing_reaction_id == reaction_message_id:
+                            # This exact reaction is already being handled - skip duplicate
+                            logger.info(
+                                f"[{agent.name}] Preventing duplicate received task - reaction on message "
+                                f"{reaction_message_id} already tracked in active task {task.id} (status: {task.status})"
+                            )
+                            # Still update other flags if they're being set to True
+                            updated = False
+                            if is_callout and not task.params.get("callout"):
+                                task.params["callout"] = is_callout
+                                updated = True
+                            if clear_mentions and not task.params.get("clear_mentions"):
+                                task.params["clear_mentions"] = True
+                                updated = True
+                            if clear_reactions and not task.params.get("clear_reactions"):
+                                task.params["clear_reactions"] = True
+                                updated = True
+                            if updated:
+                                work_queue.save()
+                                logger.debug(f"[{agent.name}] Updated flags on existing task {task.id}")
+                            return
+                        elif existing_reaction_id is not None:
+                            # Different reaction message - this is a new reaction to handle
+                            logger.info(
+                                f"[{agent.name}] New reaction on message {reaction_message_id} detected "
+                                f"(existing task {task.id} tracking reaction on message {existing_reaction_id})"
+                            )
+                    
+                    # Update existing task with new parameters
                     if is_callout:
                         task.params["callout"] = is_callout
                     if message_id:
