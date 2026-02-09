@@ -2668,6 +2668,9 @@
                     loadConversationPartners(agentName, 'conversations');
                 }
                 
+                // Reload recent conversations dropdown to update asterisks for new subtab
+                loadRecentConversations();
+                
                 const partnerSelect = document.getElementById('conversations-partner-select');
                 const userIdInput = document.getElementById('conversations-user-id');
                 const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
@@ -3249,6 +3252,11 @@
                         // Conversations tab: Parameters subtab
                         agents.forEach(agent => {
                             agentContentChecks[agent.config_name] = agent.has_conversation_llm || false;
+                        });
+                    } else if (subtabName === 'work-queue') {
+                        // Conversations tab: Work Queue subtab
+                        agents.forEach(agent => {
+                            agentContentChecks[agent.config_name] = agent.has_work_queues || false;
                         });
                     } else {
                         // For other subtabs, call agentHasContent
@@ -5902,6 +5910,10 @@
                     return;
                 }
                 
+                // Check if we're on work-queue subtab
+                const subtabName = getCurrentConversationsSubtab();
+                const isWorkQueueSubtab = subtabName === 'work-queue';
+                
                 // Clear existing options except the first one
                 select.innerHTML = '<option value="">Select a recent conversation...</option>';
                 
@@ -5909,9 +5921,15 @@
                     const option = document.createElement('option');
                     // Format: "Agent Name / Channel Name (date)"
                     const date = conv.last_send_time ? new Date(conv.last_send_time).toLocaleDateString() : '';
-                    const displayText = date 
+                    let displayText = date 
                         ? `${conv.agent_name} / ${conv.channel_name} (${date})`
                         : `${conv.agent_name} / ${conv.channel_name}`;
+                    
+                    // Add asterisk if on work-queue subtab and conversation has work queue
+                    if (isWorkQueueSubtab && conv.has_work_queue) {
+                        displayText += ' *';
+                    }
+                    
                     option.textContent = displayText;
                     // Store data in value as JSON
                     option.value = JSON.stringify({
@@ -6187,7 +6205,8 @@
                         // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
                         'conversation-parameters': 'conversation_parameters',
                         'plans': 'plans',
-                        'conversation': 'conversation'  // Special case, uses different endpoint
+                        'conversation': 'conversation',  // Special case, uses different endpoint
+                        'work-queue': 'work_queue'
                     };
                     
                     if (subtabName === 'profile-conv') {
@@ -6217,7 +6236,7 @@
                             }));
                         }
                     } else {
-                        // For notes, conversation-parameters, and plans, use partner-content-check endpoint
+                        // For notes, conversation-parameters, plans, and work-queue, use partner-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-content-check`, {
                                 method: 'POST',

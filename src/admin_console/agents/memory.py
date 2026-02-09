@@ -360,7 +360,8 @@ def register_memory_routes(agents_bp: Blueprint):
                     "conversation_llm": false,
                     "conversation_gagged": true,
                     "conversation_parameters": true,
-                    "plans": true
+                    "plans": true,
+                    "work_queue": true
                 },
                 ...
             }
@@ -399,7 +400,8 @@ def register_memory_routes(agents_bp: Blueprint):
                     "conversation_llm": False,
                     "conversation_gagged": False,
                     "conversation_parameters": False,
-                    "plans": False
+                    "plans": False,
+                    "work_queue": False
                 }
             
             if not agent.agent_id:
@@ -457,6 +459,15 @@ def register_memory_routes(agents_bp: Blueprint):
                     checks["plans"] = len(plans) > 0
                 except Exception:
                     checks["plans"] = False
+                
+                # Check work queue
+                try:
+                    from task_graph import WorkQueue
+                    work_queue = WorkQueue.get_instance()
+                    graph = work_queue.graph_for_conversation(agent.agent_id, channel_id)
+                    checks["work_queue"] = graph is not None and len(graph.tasks) > 0
+                except Exception:
+                    checks["work_queue"] = False
                 
             return jsonify({"content_checks": content_checks})
         except Exception as e:

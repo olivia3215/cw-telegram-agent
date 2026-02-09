@@ -111,6 +111,48 @@ def _agents_with_conversation_llm_overrides(agent_config_names: list[str], agent
         return set()
 
 
+def _agents_with_work_queues(agent_config_names: list[str], agents: list) -> set[str]:
+    """
+    Check which agents have conversations with nonempty work queues.
+    
+    Args:
+        agent_config_names: List of agent config names to check
+        agents: List of agent objects (to map config_name to agent_id)
+        
+    Returns:
+        Set of agent config names that have work queues
+    """
+    # Map agent config names to agent IDs
+    agent_id_by_config_name = _build_agent_id_by_config_name(agent_config_names, agents)
+    
+    if not agent_id_by_config_name:
+        return set()
+    
+    # Check which agents have work queues
+    try:
+        from task_graph import WorkQueue
+        work_queue = WorkQueue.get_instance()
+        
+        agent_ids_with_work_queues = set()
+        # Iterate through all task graphs and check which agents have graphs with tasks
+        with work_queue._lock:
+            for graph in work_queue._task_graphs:
+                agent_id = graph.context.get("agent_id")
+                if agent_id in agent_id_by_config_name.values() and len(graph.tasks) > 0:
+                    agent_ids_with_work_queues.add(agent_id)
+        
+        # Map back to config names
+        config_names_with_work_queues = {
+            config_name
+            for config_name, agent_id in agent_id_by_config_name.items()
+            if agent_id in agent_ids_with_work_queues
+        }
+        return config_names_with_work_queues
+    except Exception as e:
+        logger.debug(f"Error checking work queues: {e}")
+        return set()
+
+
 def register_main_routes(agents_bp: Blueprint):
     """Register main agent routes (agents list and recent conversations)."""
     
@@ -166,6 +208,12 @@ def register_main_routes(agents_bp: Blueprint):
                 logger.debug(f"Error checking conversation LLM overrides: {e}")
                 agents_with_conversation_llm_set = set()
             
+            try:
+                agents_with_work_queues_set = _agents_with_work_queues(agent_config_names, agents)
+            except Exception as e:
+                logger.debug(f"Error checking work queues: {e}")
+                agents_with_work_queues_set = set()
+            
             agent_list = []
             for agent in agents:
                 # Check if agent has documents
@@ -195,6 +243,7 @@ def register_main_routes(agents_bp: Blueprint):
                 # Check if agent has notes and conversation LLM overrides (MySQL-based)
                 has_notes = agent.config_name in agents_with_notes_set
                 has_conversation_llm = agent.config_name in agents_with_conversation_llm_set
+                has_work_queues = agent.config_name in agents_with_work_queues_set
                 
                 agent_list.append({
                     "name": agent.name,
@@ -209,7 +258,8 @@ def register_main_routes(agents_bp: Blueprint):
                     "has_memories": has_memories,
                     "has_intentions": has_intentions,
                     "has_notes": has_notes,
-                    "has_conversation_llm": has_conversation_llm
+                    "has_conversation_llm": has_conversation_llm,
+                    "has_work_queues": has_work_queues
                 })
             
             _sort_agents_by_name(agent_list)
@@ -228,6 +278,14 @@ def register_main_routes(agents_bp: Blueprint):
             
             # Get recent activities from database
             activities = agent_activity.get_recent_activity(limit=20)
+            
+            # Get work queue singleton to check for work queues
+            try:
+                from task_graph import WorkQueue
+                work_queue = WorkQueue.get_instance()
+            except Exception as e:
+                logger.debug(f"Error getting work queue: {e}")
+                work_queue = None
             
             recent_conversations = []
             for activity in activities:
@@ -265,12 +323,23 @@ def register_main_routes(agents_bp: Blueprint):
                         channel_name = agent.execute(_get_channel_name(), timeout=5.0)
 
                     display_name = channel_name or str(channel_telegram_id)
+                    
+                    # Check if this conversation has a work queue
+                    has_work_queue = False
+                    if work_queue and agent_telegram_id:
+                        try:
+                            graph = work_queue.graph_for_conversation(agent_telegram_id, channel_telegram_id)
+                            has_work_queue = graph is not None and len(graph.tasks) > 0
+                        except Exception as e:
+                            logger.debug(f"Error checking work queue for {agent_telegram_id}/{channel_telegram_id}: {e}")
+                    
                     recent_conversations.append({
                         "agent_config_name": agent_config_name,
                         "agent_name": agent.name,
                         "channel_id": str(channel_telegram_id),
                         "channel_name": display_name,
                         "last_send_time": last_send_time,
+                        "has_work_queue": has_work_queue,
                     })
                 except Exception as e:
                     logger.debug(f"Error resolving channel name for agent {agent_telegram_id}, channel {channel_telegram_id}: {e}")
