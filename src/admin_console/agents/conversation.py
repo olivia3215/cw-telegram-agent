@@ -241,11 +241,12 @@ def markdown_to_html(text: str) -> str:
 def register_conversation_routes(agents_bp: Blueprint):
     """Register conversation management routes."""
     # Import and register routes from split modules
-    from admin_console.agents import conversation_content, conversation_actions, conversation_media
+    from admin_console.agents import conversation_content, conversation_actions, conversation_media, conversation_work_queue
     
     conversation_content.register_conversation_content_routes(agents_bp)
     conversation_actions.register_conversation_actions_routes(agents_bp)
     conversation_media.register_conversation_media_routes(agents_bp)
+    conversation_work_queue.register_conversation_work_queue_routes(agents_bp)
 
 
 # Legacy route implementations moved to separate modules:
