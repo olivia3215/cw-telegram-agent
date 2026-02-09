@@ -292,7 +292,9 @@ async def insert_received_task_for_conversation(
                         f"[{recipient_id}] Preserving responsiveness delay task {old_task.id} from old graph"
                     )
                 else:
-                    old_task.status = TaskStatus.CANCELLED
+                    # Only cancel tasks that aren't already completed (DONE, FAILED, CANCELLED)
+                    if not old_task.status.is_completed():
+                        old_task.status = TaskStatus.CANCELLED
                 # save all the old tasks, because even if they're done,
                 # other tasks might depend on them.
                 preserved_tasks.append(old_task)
