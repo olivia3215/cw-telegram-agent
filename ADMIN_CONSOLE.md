@@ -58,6 +58,33 @@ The admin console provides three main tabs:
   - **Plans** — View and manage channel-specific plans
   - **Conversation** — View conversation history, edit summaries, trigger summarization, and delete telepathic messages (messages starting with `⟦think⟧`, `⟦remember⟧`, `⟦intend⟧`, `⟦plan⟧`, `⟦retrieve⟧`, `⟦summarize⟧`, `⟦xsend⟧`, `⟦note⟧`)
   - **XSend** — Trigger agent action in a conversation with specific instructions
+  - **Work Queue** — View and manage pending tasks in the conversation's task graph
+
+### Work Queue Tab
+
+The **Work Queue** tab (under Conversations) provides a read-only view of the task graph for a specific conversation, allowing you to monitor and manage pending agent tasks.
+
+**Features:**
+- **Task Graph Visualization**: View all tasks in the conversation's work queue with their current status
+- **Status Summary**: Color-coded counts of tasks by status (pending, active, done, failed, cancelled)
+- **Task Details**: See task IDs, types, parameters, dependencies, and current status
+- **Context Information**: View the graph ID, agent details, channel information, and conversation type
+- **Delete Tasks**: Remove all pending tasks from the work queue with a single action
+
+**Task Information Displayed:**
+- **ID**: Unique task identifier
+- **Type**: Task type (send, sticker, wait, received, etc.)
+- **Status**: Current execution status with color-coded indicator
+- **Dependencies**: Other tasks that must complete before this task runs
+- **Parameters**: Task-specific parameters (e.g., message text, sticker names, delays)
+
+**Deleting the Work Queue:**
+The "Delete All Pending Tasks" button clears all tasks from the conversation's work queue. This is useful for:
+- Canceling a long queue of pending actions
+- Resetting the conversation state when the agent gets stuck
+- Clearing outdated tasks after manual intervention
+
+**Note**: Deleting the work queue is a destructive operation and requires confirmation. The agent will create a new task graph when the next message is received.
 
 ---
 
@@ -128,4 +155,3 @@ For developers, the implementation lives under:
 - `templates/admin_console.html` — Full admin console interface with tabs (Global, Agents, Conversations)
 
 Feel free to update this document as new capabilities are added. ***
-

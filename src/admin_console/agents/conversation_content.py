@@ -8,7 +8,7 @@ from flask import Blueprint  # pyright: ignore[reportMissingImports]
 def register_conversation_content_routes(agents_bp: Blueprint):
     """Register conversation content retrieval routes."""
     from admin_console.agents import conversation_content_check, conversation_get
-    
+
     agents_bp.route("/api/agents/<agent_config_name>/conversation-content-check", methods=["POST"])(
         conversation_content_check.api_check_conversation_content_batch
     )

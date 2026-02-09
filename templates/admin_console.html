@@ -2703,7 +2703,7 @@
                             xsendContent.style.display = 'block';
                         }
                     } else if (subtabName === 'work-queue') {
-                        loadWorkQueue();
+                        WorkQueueUI.load();
                     }
                 }
             }
@@ -7933,7 +7933,16 @@
 
         // ===== Work Queue Functions =====
 
-        function loadWorkQueue() {
+        /**
+         * Namespace for Work Queue UI functions.
+         * Provides read-only view of task graphs and management operations.
+         */
+        const WorkQueueUI = {
+            /**
+             * Load and display the work queue for the currently selected agent and conversation partner.
+             * Fetches work queue data from the API and renders it in the UI.
+             */
+            load: function() {
             const agentSelect = document.getElementById('conversations-agent-select');
             const partnerSelect = document.getElementById('conversations-partner-select');
             const userIdInput = document.getElementById('conversations-user-id');
@@ -7958,7 +7967,7 @@
                         return;
                     }
                     
-                    renderWorkQueue(agentName, userId, data.work_queue);
+                    WorkQueueUI.render(agentName, userId, data.work_queue);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -7966,9 +7975,15 @@
                     }
                     container.innerHTML = `<div class="error">Error loading work queue: ${escapeHtml(error)}</div>`;
                 });
-        }
+            },
 
-        function renderWorkQueue(agentName, userId, workQueue) {
+            /**
+             * Render the work queue data in the UI with formatted task display.
+             * @param {string} agentName - The agent's configuration name
+             * @param {string} userId - The user/channel ID
+             * @param {Object|null} workQueue - The work queue data containing context and nodes
+             */
+            render: function(agentName, userId, workQueue) {
             const container = document.getElementById('work-queue-container');
             
             if (!workQueue) {
@@ -8020,7 +8035,7 @@
                 <div style="padding: 20px; background: #ffffff; border-radius: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <h3 style="margin: 0; font-size: 20px; color: #2c3e50;">Work Queue</h3>
-                        <button onclick="deleteWorkQueue()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete All Pending Tasks</button>
+                        <button onclick="WorkQueueUI.delete()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete All Pending Tasks</button>
                     </div>
                     
                     <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px;">
@@ -8160,46 +8175,56 @@
             `;
             
             container.innerHTML = html;
-        }
+            },
 
-        function deleteWorkQueue() {
-            const agentSelect = document.getElementById('conversations-agent-select');
-            const partnerSelect = document.getElementById('conversations-partner-select');
-            const userIdInput = document.getElementById('conversations-user-id');
-            
-            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
-            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
-            
-            if (!agentName || !userId) {
-                alert('Please select an agent and conversation partner');
-                return;
-            }
-            
-            const container = document.getElementById('work-queue-container');
-            const originalContent = container.innerHTML;
-            container.innerHTML = '<div class="loading">Deleting work queue...</div>';
-            
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    container.innerHTML = originalContent;
-                    alert(`Error: ${data.error}`);
-                } else {
-                    // Reload to show the empty state
-                    loadWorkQueue();
-                }
-            })
-            .catch(error => {
-                if (error && error.message === 'unauthorized') {
+            /**
+             * Delete all pending tasks in the work queue for the currently selected conversation.
+             * Prompts for confirmation before performing the destructive operation.
+             */
+            delete: function() {
+                const agentSelect = document.getElementById('conversations-agent-select');
+                const partnerSelect = document.getElementById('conversations-partner-select');
+                const userIdInput = document.getElementById('conversations-user-id');
+
+                const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+                if (!agentName || !userId) {
+                    alert('Please select an agent and conversation partner');
                     return;
                 }
-                container.innerHTML = originalContent;
-                alert(`Error deleting work queue: ${error}`);
-            });
-        }
+
+                // Confirmation dialog for destructive operation
+                if (!confirm('Are you sure you want to delete ALL pending tasks in this work queue? This action cannot be undone.')) {
+                    return;
+                }
+
+                const container = document.getElementById('work-queue-container');
+                const originalContent = container.innerHTML;
+                container.innerHTML = '<div class="loading">Deleting work queue...</div>';
+
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = originalContent;
+                        alert(`Error: ${data.error || 'Unknown error occurred'}`);
+                    } else {
+                        // Reload to show the empty state
+                        WorkQueueUI.load();
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = originalContent;
+                    alert(`Error deleting work queue: ${error}`);
+                });
+            }
+        };
 
         // Initialize on page load
         loadAgents();

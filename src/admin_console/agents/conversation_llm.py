@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def register_conversation_llm_routes(agents_bp: Blueprint):
     """Register conversation parameters routes (LLM, muted, gagged)."""
-    
+
     @agents_bp.route("/api/agents/<agent_config_name>/conversation-parameters/<user_id>", methods=["GET"])
     def api_get_conversation_parameters(agent_config_name: str, user_id: str):
         """Get conversation parameters (LLM, muted, gagged) for a user."""
@@ -54,7 +54,7 @@ def register_conversation_llm_routes(agents_bp: Blueprint):
             # Get muted status (Telegram notification setting)
             async def _get_muted():
                 return await agent.is_muted(channel_id)
-            
+
             try:
                 is_muted = agent.execute(_get_muted(), timeout=10.0)
             except Exception as e:

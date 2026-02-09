@@ -84,7 +84,7 @@ def _cache_media_to_state(unique_id: str, filename: str, media_bytes: bytes) -> 
 
 def register_conversation_download_routes(agents_bp: Blueprint):
     """Register conversation download route."""
-    
+
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/download", methods=["POST"])
     def api_download_conversation(agent_config_name: str, user_id: str):
         """Download full conversation (up to 2500 messages) as a zip file with standalone HTML."""
@@ -141,20 +141,20 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     async for message in client.iter_messages(entity, limit=2500):
                         # Extract message data similar to conversation_get.py
                         msg_id = int(message.id)
-                        
+
                         # Get sender info
                         from_id = getattr(message, "from_id", None)
                         sender_id = None
                         if from_id:
                             sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
-                        
+
                         if not sender_id:
                             sender = getattr(message, "sender", None)
                             if sender:
                                 sender_id = getattr(sender, "id", None)
-                        
+
                         is_from_agent = sender_id == agent.agent_id
-                        
+
                         sender_name = None
                         if sender_id and isinstance(sender_id, int):
                             try:
@@ -167,9 +167,9 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             sender_name = "User"
                         else:
                             sender_name = "User"
-                        
+
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
-                        
+
                         # Extract reply_to
                         reply_to_msg_id = None
                         reply_to = getattr(message, "reply_to", None)
@@ -177,38 +177,38 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
                             if reply_to_msg_id_val is not None:
                                 reply_to_msg_id = str(reply_to_msg_id_val)
-                        
+
                         # Format reactions
                         reactions_str = await format_message_reactions(agent, message)
                         if reactions_str:
                             reactions_str = await _replace_custom_emoji_in_reactions(
                                 reactions_str, agent_config_name, str(message.id), message, agent
                             )
-                        
+
                         # Format media/stickers
                         media_chain = get_default_media_source_chain()
                         message_parts = await format_message_for_prompt(message, agent=agent, media_chain=media_chain)
-                        
+
                         # Get text with formatting
                         text_markdown = getattr(message, "text_markdown", None)
                         raw_text = getattr(message, "message", None) or getattr(message, "text", None) or ""
                         entities = getattr(message, "entities", None) or []
-                        
+
                         if not text_markdown or text_markdown == raw_text:
                             if raw_text and entities:
                                 from utils.telegram_entities import entities_to_markdown
                                 text_markdown = entities_to_markdown(raw_text, entities)
                             else:
                                 text_markdown = raw_text
-                        
+
                         # Convert markdown to HTML
                         text = markdown_to_html(text_markdown)
-                        
+
                         # Replace custom emojis with images
                         text = await _replace_custom_emojis_with_images(
                             text, raw_text, entities, agent_config_name, str(message.id), message
                         )
-                        
+
                         # Build message parts
                         parts = []
                         for part in message_parts:
@@ -234,7 +234,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     "mime_type": part.get("mime_type"),
                                     "message_id": str(message.id),
                                 })
-                        
+
                         # If text is empty but we have parts, extract from first text part
                         if not text and parts:
                             for part in parts:
@@ -243,7 +243,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     if part_text:
                                         text = part_text
                                         break
-                        
+
                         # Ensure message has content
                         if not parts and not text:
                             parts.append({
@@ -251,7 +251,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                 "text": "[Message]"
                             })
                             text = "[Message]"
-                        
+
                         messages.append({
                             "id": str(message.id),
                             "text": text,
@@ -263,14 +263,14 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             "reply_to_msg_id": reply_to_msg_id,
                             "reactions": reactions_str,
                         })
-                    
+
                     # Reverse to chronological order
                     messages = list(reversed(messages))
-                    
+
                     logger.info(
                         f"[{agent_config_name}] Fetched {len(messages)} messages for download (channel {channel_id})"
                     )
-                    
+
                     # Fetch translations if requested
                     translations = {}
                     if include_translations:
@@ -281,7 +281,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             msg_text = msg.get("text", "")
                             if not msg_text:
                                 continue
-                            
+
                             # Check cache first
                             from translation_cache import get_translation
                             cached_translation = get_translation(msg_text)
@@ -292,7 +292,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     "message_id": msg_id,
                                     "text": msg_text
                                 })
-                        
+
                         # Translate remaining messages in batches
                         if messages_to_translate:
                             from config import TRANSLATION_MODEL
@@ -309,18 +309,18 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     messages_to_translate[i:i + batch_size]
                                     for i in range(0, len(messages_to_translate), batch_size)
                                 ]
-                                
+
                                 for batch in batches:
                                     # Create mapping from message_id to original text for saving to cache
                                     message_id_to_original_text = {
                                         msg["message_id"]: msg["text"]
                                         for msg in batch
                                     }
-                                    
+
                                     # Replace HTML tags with placeholders
                                     batch_with_placeholders = []
                                     batch_tag_maps = {}
-                                    
+
                                     for msg in batch:
                                         message_id = msg["message_id"]
                                         html_text = msg["text"]
@@ -330,7 +330,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                             "message_id": message_id,
                                             "text": text_with_placeholders
                                         })
-                                    
+
                                     # Translate batch
                                     messages_json = json_lib.dumps(batch_with_placeholders, ensure_ascii=False, indent=2)
                                     translation_prompt = (
@@ -353,27 +353,27 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         "Input messages (as JSON, with placeholder tags):\n"
                                         f"{messages_json}\n"
                                     )
-                                    
+
                                     system_prompt = (
                                         "You are a translation assistant. Translate messages into English and return JSON.\n\n"
                                         f"{translation_prompt}"
                                     )
-                                    
+
                                     result_text = await translation_llm.query_with_json_schema(
                                         system_prompt=system_prompt,
                                         json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                                         model=None,
                                         timeout_s=None,
                                     )
-                                    
+
                                     if result_text:
                                         try:
                                             result = json_lib.loads(result_text)
                                             batch_translations = result.get("translations", [])
-                                            
+
                                             # Save translations to cache and store in translations dict
                                             from translation_cache import save_translation
-                                            
+
                                             for translation in batch_translations:
                                                 message_id = translation.get("message_id")
                                                 translated_text = translation.get("translated_text", "")
@@ -383,7 +383,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                         translated_text, tag_map
                                                     )
                                                     translations[message_id] = restored_text
-                                                    
+
                                                     # Save to cache to avoid re-translating in future downloads
                                                     original_text = message_id_to_original_text.get(message_id)
                                                     if original_text:
@@ -393,13 +393,13 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                             logger.warning(f"Failed to save translation to cache for message {message_id}: {save_error}")
                                         except Exception as e:
                                             logger.warning(f"Error parsing translation batch: {e}")
-                    
+
                     # Create temp directory for zip contents
                     with tempfile.TemporaryDirectory() as temp_dir:
                         temp_path = Path(temp_dir)
                         media_dir = temp_path / "media"
                         media_dir.mkdir()
-                        
+
                         # Download all media files
                         media_map = {}  # unique_id -> filename
                         mime_map = {}  # unique_id -> mime_type
@@ -410,11 +410,11 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     message_id = part.get("message_id")
                                     if not unique_id or unique_id in media_map:
                                         continue
-                                    
+
                                     # Try to find cached media first
                                     cached_file = None
                                     escaped_unique_id = glob.escape(unique_id)
-                                    
+
                                     for config_dir in CONFIG_DIRECTORIES:
                                         config_media_dir = Path(config_dir) / "media"
                                         if config_media_dir.exists():
@@ -424,7 +424,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     break
                                             if cached_file:
                                                 break
-                                    
+
                                     if not cached_file:
                                         state_media_dir = get_state_media_path()
                                         if state_media_dir is not None and state_media_dir.exists():
@@ -432,7 +432,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                 if file_path.suffix.lower() != ".json":
                                                     cached_file = file_path
                                                     break
-                                    
+
                                     # If found in cache, copy it
                                     if cached_file and cached_file.exists():
                                         try:
@@ -458,12 +458,12 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     msg_obj = msg_obj[0]
                                                 else:
                                                     continue
-                                            
+
                                             # Check if message is None (deleted or inaccessible)
                                             if msg_obj is None:
                                                 logger.warning(f"Message {msg_id_int} not found (deleted or inaccessible) for media {unique_id}, skipping download")
                                                 continue
-                                            
+
                                             media_items = iter_media_parts(msg_obj)
                                             for item in media_items:
                                                 if item.unique_id == unique_id:
@@ -481,11 +481,11 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     break
                                         except Exception as e:
                                             logger.warning(f"Error downloading media {unique_id}: {e}")
-                        
+
                         # Download custom emoji files
                         emoji_map = {}  # document_id -> filename
                         emoji_pattern = r'data-document-id="(\d+)"'
-                        
+
                         # Collect all emoji document IDs from messages and reactions
                         emoji_doc_ids = set()
                         for msg in messages:
@@ -493,24 +493,24 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             for match in re.finditer(emoji_pattern, msg.get("text", "")):
                                 doc_id = int(match.group(1))
                                 emoji_doc_ids.add(doc_id)
-                            
+
                             # Also extract emoji document IDs from reactions (custom-emoji-reaction img tags)
                             reactions_str = msg.get("reactions", "")
                             if reactions_str:
                                 for match in re.finditer(emoji_pattern, reactions_str):
                                     doc_id = int(match.group(1))
                                     emoji_doc_ids.add(doc_id)
-                        
+
                         # Download each unique emoji
                         for doc_id in emoji_doc_ids:
                             if doc_id in emoji_map:
                                 continue
-                            
+
                             # Try to get emoji from cache
                             try:
                                 from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest  # pyright: ignore[reportMissingImports]
                                 result = await client(GetCustomEmojiDocumentsRequest(document_id=[doc_id]))
-                                
+
                                 documents = None
                                 if hasattr(result, "documents"):
                                     documents = result.documents
@@ -518,7 +518,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                     documents = [result.document] if result.document else []
                                 elif isinstance(result, list):
                                     documents = result
-                                
+
                                 if documents and len(documents) > 0:
                                     doc = documents[0]
                                     unique_id_emoji = get_unique_id(doc)
@@ -535,7 +535,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                         break
                                                 if cached_emoji:
                                                     break
-                                        
+
                                         if not cached_emoji:
                                             state_media_dir = get_state_media_path()
                                             if state_media_dir is not None and state_media_dir.exists():
@@ -543,7 +543,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                                     if file_path.suffix.lower() != ".json":
                                                         cached_emoji = file_path
                                                         break
-                                        
+
                                         if cached_emoji and cached_emoji.exists():
                                             with open(cached_emoji, "rb") as f:
                                                 emoji_bytes = f.read()
@@ -569,7 +569,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                             _cache_media_to_state(unique_id_emoji, emoji_cache_filename, emoji_bytes)
                             except Exception as e:
                                 logger.warning(f"Error downloading emoji {doc_id}: {e}")
-                        
+
                         # Build lottie_data_map for TGS files (embedded JSON works with file:// and http)
                         lottie_data_map = _build_lottie_data_map(media_dir, media_map)
 
@@ -580,12 +580,12 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             agent_tz_id, media_map, mime_map, emoji_map, lottie_data_map,
                             include_translations,
                         )
-                        
+
                         # Write HTML
                         html_path = temp_path / "index.html"
                         with open(html_path, "w", encoding="utf-8") as f:
                             f.write(html_content)
-                        
+
                         # Create zip file (omit .tgs from media/ - Lottie JSON is embedded in HTML)
                         zip_buffer = io.BytesIO()
                         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -593,29 +593,29 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                             for media_file in media_dir.iterdir():
                                 if media_file.suffix.lower() != ".tgs":
                                     zip_file.write(media_file, f"media/{media_file.name}")
-                        
+
                         zip_buffer.seek(0)
                         return zip_buffer.getvalue()
-                
+
                 except Exception as e:
                     logger.error(f"Error downloading conversation: {e}", exc_info=True)
                     raise
-            
+
             # Execute async function
             try:
                 zip_data = agent.execute(_download_conversation(), timeout=300.0)  # 5 minute timeout
-                
+
                 # Return zip file as download
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"conversation_{agent_config_name}_{user_id}_{timestamp}.zip"
-                
+
                 # Properly format Content-Disposition header per RFC 6266
                 # Escape quotes and backslashes in filename, then wrap in quotes
                 escaped_filename = filename.replace('\\', '\\\\').replace('"', '\\"')
                 # Use both filename (for compatibility) and filename* (RFC 5987 encoding for international chars)
                 encoded_filename = quote(filename, safe='')
                 content_disposition = f'attachment; filename="{escaped_filename}"; filename*=UTF-8\'\'{encoded_filename}'
-                
+
                 return Response(
                     zip_data,
                     mimetype="application/zip",
@@ -671,7 +671,7 @@ def _generate_standalone_html(
     """Generate standalone HTML file for conversation display."""
     # This will be a large HTML string with embedded CSS and JavaScript
     # Similar to the renderConversation function in admin_console.html
-    
+
     # Get Lottie and pako from CDN (same as admin console)
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -762,7 +762,7 @@ def _generate_standalone_html(
 <body>
     <h1>Conversation: {html.escape(agent_name)} / {html.escape(user_id)}</h1>
 """
-    
+
     # Add messages
     html_content += '<h2>Messages</h2>\n'
     for msg in messages:
@@ -773,7 +773,7 @@ def _generate_standalone_html(
         timestamp = msg.get("timestamp", "")
         reply_to = msg.get("reply_to_msg_id")
         reactions = msg.get("reactions", "")
-        
+
         # Format timestamp in agent's timezone
         if timestamp:
             try:
@@ -798,15 +798,15 @@ def _generate_standalone_html(
                 formatted_time = timestamp
         else:
             formatted_time = "N/A"
-        
+
         # Get text (translated if requested and available)
         text = msg.get("text", "")
         if show_translations and msg_id in translations:
             text = translations[msg_id]
-        
+
         # Replace emoji URLs with local paths
         text = _replace_emoji_urls_with_local(text, emoji_map)
-        
+
         # Build content from parts
         content_html = ""
         parts = msg.get("parts", [])
@@ -832,7 +832,7 @@ def _generate_standalone_html(
                     unique_id = part.get("unique_id")
                     media_kind = part.get("media_kind", "media")
                     is_animated = part.get("is_animated", False) or media_kind == "animated_sticker"
-                    
+
                     if unique_id in media_map:
                         media_path = f"media/{media_map[unique_id]}"
                         filename = media_map[unique_id]
@@ -871,7 +871,7 @@ def _generate_standalone_html(
                             # Unknown media type - rendered_text with download link
                             rendered_text = part.get("rendered_text", "")
                             content_html += f'<div class="message-media" style="color: #666; font-style: italic;">{html.escape(rendered_text)} <a href="{html.escape(media_path)}" download>[Download]</a></div>\n'
-                        
+
                         # Add caption for known media types only (unknown types already include rendered_text in the else branch)
                         is_unknown_media_type = not (
                             is_tgs_format or is_video_format or is_audio_format or
@@ -885,7 +885,7 @@ def _generate_standalone_html(
                 content_html = f'<div class="message-content">{text}</div>\n'
             else:
                 content_html = '<div class="message-content">[No content]</div>\n'
-        
+
         # Build metadata
         metadata = f"{html.escape(sender_name)}"
         if sender_id:
@@ -893,7 +893,7 @@ def _generate_standalone_html(
         metadata += f" • {formatted_time} • ID: {html.escape(msg_id)}"
         if reply_to:
             metadata += f" • Reply to: {html.escape(str(reply_to))}"
-        
+
         # Build message HTML
         msg_class = "message agent" if is_from_agent else "message"
         html_content += f"""    <div class="{msg_class}" id="msg-{html.escape(msg_id)}">
@@ -905,7 +905,7 @@ def _generate_standalone_html(
             reactions_local = _replace_emoji_urls_with_local(reactions, emoji_map)
             html_content += f'        <div class="reactions">Reactions: {reactions_local}</div>\n'
         html_content += "    </div>\n"
-    
+
     # Embed Lottie JSON inline so TGS works with file:// (CORS blocks fetch) and http
     lottie_json = json_lib.dumps(lottie_data_map)
     # Escape </ to prevent closing script tag when embedding in HTML
@@ -958,7 +958,7 @@ def _generate_standalone_html(
 </html>
 """
     )
-    
+
     return html_content
 
 
@@ -966,7 +966,7 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
     """Replace emoji URLs in HTML with local file paths."""
     if not html_text:
         return html_text
-    
+
     # First, handle img tags that have data-emoji-url attributes
     # These may also have src attributes, which we need to update instead of creating duplicates
     # Pattern: <img ... data-emoji-url="/admin/api/agents/.../emoji/12345" ...>
@@ -974,12 +974,12 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
     def replace_img_with_data_emoji(match):
         img_tag = match.group(1)
         doc_id = int(match.group(2))
-        
+
         if doc_id not in emoji_map:
             return img_tag
-        
+
         local_path = f'media/{emoji_map[doc_id]}'
-        
+
         # Check if img tag already has a src attribute
         if 'src="' in img_tag or "src='" in img_tag:
             # Update existing src attribute and remove data-emoji-url
@@ -990,11 +990,11 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
         else:
             # No src attribute, replace data-emoji-url with src
             img_tag = re.sub(r'data-emoji-url="[^"]*emoji/\d+"', f'src="{local_path}"', img_tag)
-        
+
         return img_tag
-    
+
     html_text = re.sub(pattern_img_with_data_emoji, replace_img_with_data_emoji, html_text)
-    
+
     # Handle span elements with custom-emoji-container that have data-emoji-url
     # These contain inner img tags that need their src updated
     # Pattern: <span ... data-emoji-url="...emoji/12345" ...><img ... /></span>
@@ -1004,12 +1004,12 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
         doc_id = int(match.group(2))
         span_content = match.group(3)
         span_close = match.group(4)
-        
+
         if doc_id not in emoji_map:
             return match.group(0)
-        
+
         local_path = f'media/{emoji_map[doc_id]}'
-        
+
         # Update the inner img tag's src attribute if it exists
         if '<img' in span_content:
             # Update img src within the span content to use local path
@@ -1019,22 +1019,22 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
                 lambda m: f'{m.group(1)}{local_path}"{m.group(3)}' if int(m.group(2)) == doc_id else m.group(0),
                 span_content
             )
-        
+
         # Update data-emoji-url on the span to point to local path (for consistency)
         span_open = re.sub(
             r'data-emoji-url="[^"]*emoji/\d+"',
             f'data-emoji-url="{local_path}"',
             span_open
         )
-        
+
         return f'{span_open}{span_content}{span_close}'
-    
+
     html_text = re.sub(pattern_span_with_emoji, replace_span_emoji, html_text, flags=re.DOTALL)
-    
+
     # Note: We don't replace remaining data-emoji-url attributes on other elements
     # because we can't safely convert them to src (which is only valid for img elements).
     # The img and span cases have been handled above.
-    
+
     # Also replace img src URLs for emojis (in case src wasn't updated by previous patterns)
     # Pattern: <img ... src="/admin/api/agents/.../emoji/12345" ...>
     pattern2 = r'(<img[^>]*src=")[^"]*emoji/(\d+)"([^>]*>)'
@@ -1043,7 +1043,7 @@ def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:
         if doc_id in emoji_map:
             return f'{match.group(1)}media/{emoji_map[doc_id]}"{match.group(3)}'
         return match.group(0)
-    
+
     html_text = re.sub(pattern2, replace_emoji_img, html_text)
-    
+
     return html_text

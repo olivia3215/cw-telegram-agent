@@ -189,11 +189,11 @@ def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
     # Create a temporary .env file to avoid writing to the real one
     test_env_file = tmp_path / ".env"
     test_env_file.touch()
-    
+
     # Mock get_env_file_path to return our temporary file
     with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
         client = _make_client()
-        
+
         # Test empty string
         response = client.post(
             "/admin/api/global-parameters",
@@ -203,7 +203,7 @@ def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
         data = response.get_json()
         assert "error" in data
         assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
-        
+
         # Test whitespace-only
         response = client.post(
             "/admin/api/global-parameters",
@@ -213,7 +213,7 @@ def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
         data = response.get_json()
         assert "error" in data
         assert "empty" in data["error"].lower() or "whitespace" in data["error"].lower()
-        
+
         # Test whitespace with tabs/newlines
         response = client.post(
             "/admin/api/global-parameters",
@@ -228,19 +228,19 @@ def test_global_parameters_reject_empty_default_agent_llm(tmp_path):
 def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
     """Test that TYPING_SPEED cannot be set to values less than 1."""
     import config
-    
+
     # Create a temporary .env file to avoid writing to the real one
     test_env_file = tmp_path / ".env"
     test_env_file.touch()
-    
+
     # Save original value to restore later
     original_typing_speed = config.TYPING_SPEED
-    
+
     try:
         # Mock get_env_file_path to return our temporary file
         with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
             client = _make_client()
-            
+
             # Test zero
             response = client.post(
                 "/admin/api/global-parameters",
@@ -251,7 +251,7 @@ def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
             assert "error" in data
             assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
 
-            
+
             # Test negative
             response = client.post(
                 "/admin/api/global-parameters",
@@ -261,7 +261,7 @@ def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
             data = response.get_json()
             assert "error" in data
             assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
-            
+
             # Test value less than 1 (e.g., 0.5)
             response = client.post(
                 "/admin/api/global-parameters",
@@ -271,14 +271,14 @@ def test_global_parameters_reject_zero_or_negative_typing_speed(tmp_path):
             data = response.get_json()
             assert "error" in data
             assert "1 or greater" in data["error"].lower() or "at least 1" in data["error"].lower()
-            
+
             # Test that 1 is accepted
             response = client.post(
                 "/admin/api/global-parameters",
                 json={"name": "TYPING_SPEED", "value": "1"},
             )
             assert response.status_code == 200
-            
+
             # Test that values greater than 1 are accepted
             response = client.post(
                 "/admin/api/global-parameters",
@@ -425,20 +425,20 @@ def test_contacts_list_and_bulk_delete(monkeypatch):
 def test_global_parameters_reject_negative_delays(tmp_path):
     """Test that START_TYPING_DELAY and SELECT_STICKER_DELAY cannot be negative."""
     import config
-    
+
     # Create a temporary .env file to avoid writing to the real one
     test_env_file = tmp_path / ".env"
     test_env_file.touch()
-    
+
     # Save original values to restore later
     original_start_delay = config.START_TYPING_DELAY
     original_sticker_delay = config.SELECT_STICKER_DELAY
-    
+
     try:
         # Mock get_env_file_path to return our temporary file
         with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
             client = _make_client()
-            
+
             # Test negative START_TYPING_DELAY
             response = client.post(
                 "/admin/api/global-parameters",
@@ -448,7 +448,7 @@ def test_global_parameters_reject_negative_delays(tmp_path):
             data = response.get_json()
             assert "error" in data
             assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
-            
+
             # Test negative SELECT_STICKER_DELAY
             response = client.post(
                 "/admin/api/global-parameters",
@@ -458,14 +458,14 @@ def test_global_parameters_reject_negative_delays(tmp_path):
             data = response.get_json()
             assert "error" in data
             assert "negative" in data["error"].lower() or "non-negative" in data["error"].lower() or "greater than or equal" in data["error"].lower()
-            
+
             # Test that zero and positive values are accepted for delays
             response = client.post(
                 "/admin/api/global-parameters",
                 json={"name": "START_TYPING_DELAY", "value": "0"},
             )
             assert response.status_code == 200
-            
+
             response = client.post(
                 "/admin/api/global-parameters",
                 json={"name": "SELECT_STICKER_DELAY", "value": "2"},
@@ -486,15 +486,15 @@ def test_global_parameters_shell_quote_values(tmp_path):
     """Test that values with shell metacharacters are properly quoted in .env file."""
     import config
     from admin_console.global_parameters import update_env_file, get_env_file_path
-    
+
     # Save original value to restore later
     original_media_model = config.MEDIA_MODEL
-    
+
     try:
         # Create a temporary .env file
         test_env_file = tmp_path / ".env"
         test_env_file.touch()
-        
+
         # Mock get_env_file_path to return our temporary file
         with patch("admin_console.global_parameters.get_env_file_path", return_value=test_env_file):
             # Test with various shell metacharacters that could cause command injection
@@ -510,28 +510,28 @@ def test_global_parameters_shell_quote_values(tmp_path):
                 ("model&background", "Background process"),
                 ("model|pipe", "Pipe"),
             ]
-            
+
             for test_value, description in test_cases:
                     # Clear the file for each test
                     test_env_file.write_text("")
-                    
+
                     # Update the parameter
                     update_env_file("MEDIA_MODEL", test_value)
-                    
+
                     # Read the file content
                     content = test_env_file.read_text()
-                    
+
                     # Verify the value is properly quoted
                     expected_quoted = shlex.quote(test_value)
                     expected_line = f"export MEDIA_MODEL={expected_quoted}"
-                    
+
                     # Check that the expected line appears in the content
                     # (may span multiple lines if value contains newlines)
                     assert expected_line in content, (
                         f"Failed for {description}: expected '{expected_line}' in file content, "
                         f"but got: {content!r}"
                     )
-                    
+
                     # For values without newlines, also verify the exact line format
                     if "\n" not in test_value:
                         # Verify that the quoted value matches what shlex.quote would produce
@@ -555,10 +555,10 @@ def test_resolve_user_id_rejects_telegram_system_user():
     from admin_console.helpers import resolve_user_id_to_channel_id_sync
     from config import TELEGRAM_SYSTEM_USER_ID
     import pytest
-    
+
     # Create a mock agent
     mock_agent = MagicMock()
-    
+
     # Should raise ValueError when trying to resolve Telegram system user ID
     with pytest.raises(ValueError, match=f"User ID {TELEGRAM_SYSTEM_USER_ID}.*not allowed"):
         resolve_user_id_to_channel_id_sync(mock_agent, str(TELEGRAM_SYSTEM_USER_ID))
@@ -570,18 +570,127 @@ def test_resolve_user_id_rejects_telegram_system_user_with_leading_zeros():
     from admin_console.helpers import resolve_user_id_to_channel_id_sync
     from config import TELEGRAM_SYSTEM_USER_ID
     import pytest
-    
+
     # Create a mock agent
     mock_agent = MagicMock()
-    
+
     # Should raise ValueError when trying to resolve with leading zeros (e.g., "0777000")
     # This tests that the check happens after parsing, outside the try-except block
     with pytest.raises(ValueError, match=f"User ID {TELEGRAM_SYSTEM_USER_ID}.*not allowed"):
         resolve_user_id_to_channel_id_sync(mock_agent, "0777000")
-    
+
     # Also test with multiple leading zeros
     with pytest.raises(ValueError, match=f"User ID {TELEGRAM_SYSTEM_USER_ID}.*not allowed"):
         resolve_user_id_to_channel_id_sync(mock_agent, "000777000")
 
 
+def test_work_queue_get_no_agent():
+    """Test that work queue GET endpoint returns 404 when agent not found."""
+    client = _make_client()
+    response = client.get("/admin/api/agents/nonexistent/work-queue/123456789")
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data["success"] is False
+    assert "not found" in data["error"].lower()
+
+
+def test_work_queue_get_no_work_queue(monkeypatch):
+    """Test that work queue GET endpoint returns success with null work_queue when no queue exists."""
+    from unittest.mock import MagicMock
+    from admin_console.helpers import get_agent_by_name
+
+    # Create a mock agent
+    mock_agent = MagicMock()
+    mock_agent.agent_id = 123456
+    mock_agent.agent_name = "TestAgent"
+
+    # Mock get_agent_by_name to return our mock agent
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.get_agent_by_name", lambda name: mock_agent if name == "testagent" else None)
+
+    # Mock resolve_user_id_and_handle_errors to return a channel_id
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.resolve_user_id_and_handle_errors", lambda agent, user_id, logger: (789012, None))
+
+    # Mock WorkQueue.get_instance() to return a mock work queue with no graph
+    mock_work_queue = MagicMock()
+    mock_work_queue.graph_for_conversation.return_value = None
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.WorkQueue.get_instance", lambda: mock_work_queue)
+
+    client = _make_client()
+    response = client.get("/admin/api/agents/testagent/work-queue/789012")
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["success"] is True
+    assert data["work_queue"] is None
+
+
+def test_work_queue_delete_no_agent():
+    """Test that work queue DELETE endpoint returns 404 when agent not found."""
+    client = _make_client()
+    response = client.delete("/admin/api/agents/nonexistent/work-queue/123456789")
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data["success"] is False
+    assert "not found" in data["error"].lower()
+
+
+def test_work_queue_delete_no_work_queue(monkeypatch):
+    """Test that work queue DELETE endpoint returns 404 when no queue exists."""
+    from unittest.mock import MagicMock
+
+    # Create a mock agent
+    mock_agent = MagicMock()
+    mock_agent.agent_id = 123456
+    mock_agent.agent_name = "TestAgent"
+
+    # Mock get_agent_by_name to return our mock agent
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.get_agent_by_name", lambda name: mock_agent if name == "testagent" else None)
+
+    # Mock resolve_user_id_and_handle_errors to return a channel_id
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.resolve_user_id_and_handle_errors", lambda agent, user_id, logger: (789012, None))
+
+    # Mock WorkQueue.get_instance() to return a mock work queue with no graph
+    mock_work_queue = MagicMock()
+    mock_work_queue.graph_for_conversation.return_value = None
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.WorkQueue.get_instance", lambda: mock_work_queue)
+
+    client = _make_client()
+    response = client.delete("/admin/api/agents/testagent/work-queue/789012")
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data["success"] is False
+    assert "No work queue found" in data["error"]
+
+
+def test_work_queue_delete_success(monkeypatch):
+    """Test that work queue DELETE endpoint successfully removes the graph."""
+    from unittest.mock import MagicMock
+
+    # Create a mock agent
+    mock_agent = MagicMock()
+    mock_agent.agent_id = 123456
+    mock_agent.agent_name = "TestAgent"
+
+    # Mock get_agent_by_name to return our mock agent
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.get_agent_by_name", lambda name: mock_agent if name == "testagent" else None)
+
+    # Mock resolve_user_id_and_handle_errors to return a channel_id
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.resolve_user_id_and_handle_errors", lambda agent, user_id, logger: (789012, None))
+
+    # Mock WorkQueue.get_instance() to return a mock work queue with a graph
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-123"
+    mock_work_queue = MagicMock()
+    mock_work_queue.graph_for_conversation.return_value = mock_graph
+    monkeypatch.setattr("admin_console.agents.conversation_work_queue.WorkQueue.get_instance", lambda: mock_work_queue)
+
+    client = _make_client()
+    response = client.delete("/admin/api/agents/testagent/work-queue/789012")
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["success"] is True
+    assert "cleared successfully" in data["message"].lower()
+
+    # Verify remove and save were called
+    mock_work_queue.remove.assert_called_once_with(mock_graph)
+    mock_work_queue.save.assert_called_once()
 
