@@ -6187,7 +6187,8 @@
                         // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
                         'conversation-parameters': 'conversation_parameters',
                         'plans': 'plans',
-                        'conversation': 'conversation'  // Special case, uses different endpoint
+                        'conversation': 'conversation',  // Special case, uses different endpoint
+                        'work-queue': 'work_queue'
                     };
                     
                     if (subtabName === 'profile-conv') {
@@ -6217,7 +6218,7 @@
                             }));
                         }
                     } else {
-                        // For notes, conversation-parameters, and plans, use partner-content-check endpoint
+                        // For notes, conversation-parameters, plans, and work-queue, use partner-content-check endpoint
                         try {
                             const batchResponse = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-content-check`, {
                                 method: 'POST',
