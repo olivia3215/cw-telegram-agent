@@ -51,7 +51,7 @@ _TRANSLATION_SCHEMA = {
 
 def register_conversation_translate_routes(agents_bp: Blueprint):
     """Register conversation translation route."""
-    
+
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/translate", methods=["POST"])
     def api_translate_conversation(agent_config_name: str, user_id: str):
         """Translate unsummarized messages into English using the media LLM. Streams translations via SSE."""
@@ -83,20 +83,20 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                     text_to_message_ids: dict[str, list[str]] = {}
                     messages_to_translate: list[dict[str, str]] = []  # List of {message_id, text}
                     message_id_to_text: dict[str, str] = {}  # Map message_id to original text for lookup
-                    
+
                     for msg in messages:
                         msg_id = str(msg.get("id", ""))
                         # Use HTML text (already XSS-protected from markdown_to_html)
                         msg_text = msg.get("text", "")
                         if not msg_text:
                             continue
-                        
+
                         # Track this message ID for this text
                         if msg_text not in text_to_message_ids:
                             text_to_message_ids[msg_text] = []
                         text_to_message_ids[msg_text].append(msg_id)
                         message_id_to_text[msg_id] = msg_text
-                        
+
                         # Check for existing translation in MySQL
                         translation = None
                         try:
@@ -104,7 +104,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                             translation = get_translation(msg_text)
                         except Exception:
                             pass
-                        
+
                         # If not found in cache, add to translation list
                         if translation is None:
                             # Only add if we haven't already added this text
@@ -122,7 +122,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                         msg_text = msg.get("text", "")  # HTML text (already XSS-protected)
                         if not msg_text:
                             continue
-                        
+
                         # Check for cached translation in MySQL
                         translated_text = None
                         try:
@@ -130,7 +130,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                             translated_text = get_translation(msg_text)
                         except Exception:
                             pass
-                        
+
                         if translated_text:
                             # Translation is already final HTML (tags restored)
                             cached_translations[msg_id] = translated_text
@@ -153,14 +153,14 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                             TRANSLATION_MODEL,
                         )
                         translation_llm = create_llm_from_name(TRANSLATION_MODEL)
-                        
+
                         # Batch size: max 10 messages
                         batch_size = 10
                         batches = [
                             messages_to_translate[i:i + batch_size]
                             for i in range(0, len(messages_to_translate), batch_size)
                         ]
-                        
+
                         # This is async, so we need to run it in the client's event loop
                         async def _translate_batch(batch: list[dict[str, str]]) -> list[dict[str, str]]:
                             """Translate a batch of messages."""
@@ -169,23 +169,23 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                 # This prevents XSS and simplifies translation
                                 batch_with_placeholders = []
                                 batch_tag_maps = {}  # Store tag maps for each message
-                                
+
                                 for msg in batch:
                                     message_id = msg["message_id"]
                                     html_text = msg["text"]
-                                    
+
                                     # Replace HTML tags with placeholders
                                     text_with_placeholders, tag_map = replace_html_tags_with_placeholders(html_text)
-                                    
+
                                     # Store tag map for later restoration
                                     batch_tag_maps[message_id] = tag_map
-                                    
+
                                     # Add message with placeholders to batch
                                     batch_with_placeholders.append({
                                         "message_id": message_id,
                                         "text": text_with_placeholders
                                     })
-                                
+
                                 # Helper function to restore HTML tags in translations
                                 def _restore_html_tags_in_translations(translations: list[dict[str, str]]) -> list[dict[str, str]]:
                                     """Restore HTML tags from placeholders in a list of translations."""
@@ -193,7 +193,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     for translation in translations:
                                         message_id = translation.get("message_id")
                                         translated_text_with_placeholders = translation.get("translated_text", "")
-                                        
+
                                         if message_id and message_id in batch_tag_maps:
                                             # Restore HTML tags
                                             tag_map = batch_tag_maps[message_id]
@@ -208,11 +208,11 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                             # No tag map (shouldn't happen, but handle gracefully)
                                             restored_translations.append(translation)
                                     return restored_translations
-                                
+
                                 # Build translation prompt with messages (now with placeholders instead of HTML)
                                 import json as json_module
                                 messages_json = json_module.dumps(batch_with_placeholders, ensure_ascii=False, indent=2)
-                                
+
                                 translation_prompt = (
                                     "Translate the conversation messages into English.\n"
                                     "Preserve the message structure and return a JSON object with translations.\n"
@@ -233,20 +233,20 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     "Input messages (as JSON, with placeholder tags):\n"
                                     f"{messages_json}\n"
                                 )
-                                
+
                                 # Use the shared query_with_json_schema API for LLM-agnostic translation
                                 system_prompt = (
                                     "You are a translation assistant. Translate messages into English and return JSON.\n\n"
                                     f"{translation_prompt}"
                                 )
-                                
+
                                 result_text = await translation_llm.query_with_json_schema(
                                     system_prompt=system_prompt,
                                     json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                                     model=None,  # Use default model
                                     timeout_s=None,  # Use default timeout
                                 )
-                                
+
                                 if result_text:
                                     # Parse JSON response with better error handling
                                     try:
@@ -263,7 +263,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                         logger.debug(f"Response text length: {len(result_text)} chars")
                                         logger.debug(f"Response text (first 1000 chars): {result_text[:1000]}")
                                         logger.debug(f"Response text (last 1000 chars): {result_text[-1000:]}")
-                                        
+
                                         # Check if response appears truncated (common with long conversations)
                                         if "Unterminated" in str(e) or "Expecting" in str(e):
                                             logger.warning(f"Translation response appears truncated. Response length: {len(result_text)} chars. This may indicate the conversation is too long for a single translation.")
@@ -275,7 +275,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                                 partial_translations = [{"message_id": mid, "translated_text": text} for mid, text in matches]
                                                 logger.info(f"Extracted {len(partial_translations)} partial translations from truncated response")
                                                 return _restore_html_tags_in_translations(partial_translations)
-                                        
+
                                         # Try to extract JSON from markdown code blocks if present
                                         json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', result_text, re.DOTALL)
                                         if json_match:
@@ -296,10 +296,10 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                                     return _restore_html_tags_in_translations(translations)
                                             except json_lib.JSONDecodeError:
                                                 pass
-                                        
+
                                         logger.error(f"Failed to parse translation response. Returning empty translations.")
                                         return []
-                                
+
                                 return []
                             except RetryableLLMError as e:
                                 # Check if this is a PROHIBITED_CONTENT error
@@ -313,7 +313,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                             except Exception as e:
                                 logger.error(f"Error translating batch: {e}")
                                 return []
-                        
+
                         # Helper function to process a batch of translations
                         def _process_batch_translations(
                             batch_translations: list[dict[str, str]],
@@ -321,12 +321,12 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                         ) -> tuple[dict[str, str], list[dict[str, str]]]:
                             """
                             Process translations from a batch: save to cache, build translation dict, return results.
-                            
+
                             Returns:
                                 tuple: (batch_translation_dict, list of translations)
                             """
                             batch_translation_dict: dict[str, str] = {}
-                            
+
                             # Save translations to MySQL immediately as they are received
                             try:
                                 from translation_cache import save_translation
@@ -339,7 +339,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                             save_translation(original_text, translated_text)
                             except Exception as save_error:
                                 logger.warning(f"Failed to save translations to MySQL for {batch_label}: {save_error}")
-                            
+
                             # Build translation dict for all message IDs with the same text
                             for translation in batch_translations:
                                 message_id = translation.get("message_id")
@@ -351,27 +351,27 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                         # Update batch_translation_dict for all message_ids with this text
                                         for msg_id in text_to_message_ids.get(original_text, []):
                                             batch_translation_dict[msg_id] = translated_text
-                            
+
                             return batch_translation_dict, batch_translations
-                        
+
                         # Translate all batches
                         # Process each batch individually and continue even if some batches fail
                         # This ensures successful translations are saved to cache even if later batches fail
                         all_new_translations: list[dict[str, str]] = []
                         batch_errors: list[str] = []
-                        
+
                         for batch_idx, batch in enumerate(batches):
                             try:
                                 batch_translations = agent.execute(_translate_batch(batch), timeout=60.0)
-                                
+
                                 batch_translation_dict, _ = _process_batch_translations(
                                     batch_translations, f"batch {batch_idx + 1}/{len(batches)}"
                                 )
-                                
+
                                 # Stream this batch's translations to client
                                 if batch_translation_dict:
                                     yield f"data: {json_lib.dumps({'type': 'translation', 'translations': batch_translation_dict})}\n\n"
-                                
+
                                 all_new_translations.extend(batch_translations)
                             except RetryableLLMError as e:
                                 # Check if this is a PROHIBITED_CONTENT error
@@ -380,17 +380,17 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     # Retry with batch size 1 (translate messages one by one)
                                     logger.warning(f"Batch {batch_idx + 1}/{len(batches)} blocked due to PROHIBITED_CONTENT, retrying with batch size 1")
                                     batch_translation_dict: dict[str, str] = {}
-                                    
+
                                     # Translate each message individually using the same processing logic
                                     for msg in batch:
                                         try:
                                             single_msg_batch = [msg]
                                             single_translations = agent.execute(_translate_batch(single_msg_batch), timeout=60.0)
-                                            
+
                                             single_dict, _ = _process_batch_translations(
                                                 single_translations, f"message {msg.get('message_id')}"
                                             )
-                                            
+
                                             # Merge into batch dict
                                             batch_translation_dict.update(single_dict)
                                             all_new_translations.extend(single_translations)
@@ -407,7 +407,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                             # Log error for individual message but continue with others
                                             logger.error(f"Error translating individual message {msg.get('message_id')}: {single_error}")
                                             batch_errors.append(f"Message {msg.get('message_id')} failed: {single_error}")
-                                    
+
                                     # Stream translations for this batch (now processed individually)
                                     if batch_translation_dict:
                                         yield f"data: {json_lib.dumps({'type': 'translation', 'translations': batch_translation_dict})}\n\n"
@@ -439,7 +439,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                 error_msg_str = f"Batch {batch_idx + 1}/{len(batches)} error: {e}"
                                 logger.error(error_msg_str)
                                 batch_errors.append(error_msg_str)
-                        
+
                         # Translations are saved incrementally as batches are processed
                         # Log warning if some batches failed (but we still saved successful translations)
                         if batch_errors:
@@ -448,10 +448,10 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                 f"but {len(all_new_translations)} successful translations were saved to cache. "
                                 f"Errors: {', '.join(batch_errors)}"
                             )
-                    
+
                     # Send completion event
                     yield f"data: {json_lib.dumps({'type': 'complete'})}\n\n"
-                    
+
                 except Exception as e:
                     logger.error(f"Error in translation stream for {agent_config_name}/{user_id}: {e}")
                     yield f"data: {json_lib.dumps({'type': 'error', 'error': str(e)})}\n\n"

@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 def _escape_quoted_string_value(value: str) -> str:
     """
     Escape a value for use in a quoted-string within HTTP headers per RFC 6266.
-    
+
     In quoted-string values, the following characters must be escaped:
     - Backslash `\\` -> `\\\\`
     - Double quote `"` -> `\\"`
-    
+
     Args:
         value: The string value to escape
-        
+
     Returns:
         The escaped string safe for use in quoted-string values
     """
@@ -43,7 +43,7 @@ def _escape_quoted_string_value(value: str) -> str:
 
 def register_conversation_media_routes(agents_bp: Blueprint):
     """Register conversation media serving routes."""
-    
+
     @agents_bp.route("/api/agents/<agent_config_name>/emoji/<document_id>", methods=["GET"])
     def api_get_custom_emoji(agent_config_name: str, document_id: str):
         """Serve custom emoji image by document ID, using media pipeline for caching and downloading."""
@@ -63,11 +63,11 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     logger.debug(f"Fetching custom emoji document {doc_id} using GetCustomEmojiDocumentsRequest")
                     # Fetch the custom emoji document
                     result = await agent.client(GetCustomEmojiDocumentsRequest(document_id=[doc_id]))
-                    
+
                     if not result:
                         logger.warning(f"Custom emoji document {doc_id} - GetCustomEmojiDocumentsRequest returned None")
                         return None, None
-                    
+
                     # Check different possible result structures
                     documents = None
                     if hasattr(result, "documents"):
@@ -76,32 +76,32 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         documents = [result.document] if result.document else []
                     elif isinstance(result, list):
                         documents = result
-                    
+
                     if not documents or len(documents) == 0:
                         logger.warning(f"Custom emoji document {doc_id} not found via GetCustomEmojiDocumentsRequest")
                         return None, None
-                    
+
                     # Get the first document (should only be one for a single document_id)
                     doc = documents[0] if documents else None
                     if not doc:
                         logger.warning(f"Custom emoji document {doc_id} returned empty result")
                         return None, None
-                    
+
                     # Get unique_id from document for use with media pipeline
                     from telegram_media import get_unique_id
                     unique_id = get_unique_id(doc)
                     if not unique_id:
                         logger.warning(f"Custom emoji document {doc_id} has no unique_id")
                         return None, None
-                    
+
                     logger.info(f"Custom emoji: document_id={doc_id}, unique_id={unique_id}")
-                    
+
                     # Extract sticker set information from document attributes
                     sticker_set_name = None
                     sticker_set_id = None
                     sticker_access_hash = None
                     sticker_name = None
-                    
+
                     attrs = getattr(doc, "attributes", None)
                     if isinstance(attrs, (list, tuple)):
                         for a in attrs:
@@ -114,19 +114,19 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                     sticker_access_hash = getattr(ss, "access_hash", None)
                                 # Get sticker name (emoji character)
                                 sticker_name = getattr(a, "alt", None)
-                    
+
                     # Also check emoji directly on document
                     if not sticker_name:
                         sticker_name = getattr(doc, "emoji", None)
-                    
+
                     # If we have sticker_set_id but no short_name, query the set to get the name, title, and emoji status
                     sticker_set_title = None
                     is_emoji_set = None
-                    
+
                     if sticker_set_id and not sticker_set_name:
                         try:
                             logger.debug(f"Querying sticker set for custom emoji {doc_id}: set_id={sticker_set_id}")
-                            
+
                             sticker_set_result = await agent.client(
                                 GetStickerSetRequest(
                                     stickerset=InputStickerSetID(
@@ -136,12 +136,12 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                     hash=0
                                 )
                             )
-                            
+
                             if sticker_set_result and hasattr(sticker_set_result, 'set'):
                                 set_obj = sticker_set_result.set
                                 sticker_set_name = getattr(set_obj, 'short_name', None)
                                 sticker_set_title = getattr(set_obj, 'title', None)
-                                
+
                                 # Check if this is an emoji set
                                 if hasattr(set_obj, 'emojis') and getattr(set_obj, 'emojis', False):
                                     is_emoji_set = True
@@ -152,25 +152,25 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                         type_str = str(set_type)
                                         if 'emoji' in type_str.lower() or 'Emoji' in type_str:
                                             is_emoji_set = True
-                                
+
                                 if sticker_set_name:
                                     logger.debug(f"Got sticker set info for custom emoji {doc_id}: name={sticker_set_name}, title={sticker_set_title}, is_emoji_set={is_emoji_set}")
                         except Exception as e:
                             logger.debug(f"Failed to query sticker set for custom emoji {doc_id}: {e}")
-                    
+
                     # Use media pipeline to get/cache the emoji
                     # This will handle caching, downloading, and description generation
                     media_chain = get_default_media_source_chain()
-                    
+
                     logger.info(f"Calling media pipeline for custom emoji {doc_id}: unique_id={unique_id}, sticker_set={sticker_set_name}, is_emoji_set={is_emoji_set}, sticker_name={sticker_name}")
-                    
+
                     # Build metadata dict to pass additional fields
                     metadata = {}
                     if sticker_set_title is not None:
                         metadata['sticker_set_title'] = sticker_set_title
                     if is_emoji_set is not None:
                         metadata['is_emoji_set'] = is_emoji_set
-                    
+
                     record = await media_chain.get(
                         unique_id=unique_id,
                         agent=agent,
@@ -186,18 +186,18 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         sticker_name=sticker_name,
                         **metadata  # Pass additional metadata fields
                     )
-                    
+
                     if not record:
                         logger.warning(f"Custom emoji {doc_id} (unique_id: {unique_id}) not found via media pipeline")
                         return None, None
-                    
+
                     logger.info(f"Media pipeline returned record for custom emoji {doc_id}: status={record.get('status')}, description={record.get('description')[:50] if record.get('description') else None}")
-                    
+
                     # After calling media_chain.get(), the file should be cached
                     # Find the cached file using unique_id
                     cached_file = None
                     escaped_unique_id = glob.escape(unique_id)
-                    
+
                     # Check all config directories first (curated media)
                     for config_dir in CONFIG_DIRECTORIES:
                         config_media_dir = Path(config_dir) / "media"
@@ -208,7 +208,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                     break
                             if cached_file:
                                 break
-                    
+
                     # If not found in config directories, check state/media/
                     if not cached_file:
                         state_media_dir = Path(STATE_DIRECTORY) / "media"
@@ -217,15 +217,15 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 if file_path.suffix.lower() != ".json":
                                     cached_file = file_path
                                     break
-                    
+
                     if not cached_file or not cached_file.exists():
                         logger.warning(f"Custom emoji {doc_id} (unique_id: {unique_id}) processed but cached file not found")
                         return None, None
-                    
+
                     # Read the cached file
                     with open(cached_file, "rb") as f:
                         emoji_bytes = f.read()
-                    
+
                     return emoji_bytes, unique_id
                 except Exception as e:
                     logger.error(f"Error fetching custom emoji {doc_id}: {e}", exc_info=True)
@@ -237,21 +237,21 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 if not emoji_bytes:
                     logger.warning(f"Custom emoji {document_id} not found or failed to download")
                     return jsonify({"error": "Emoji not found"}), 404
-                
+
                 # Detect MIME type
                 mime_type = detect_mime_type_from_bytes(emoji_bytes)
                 if not mime_type:
                     mime_type = "image/webp"  # Default for custom emojis
-                
+
                 # Check if it's an animated emoji (TGS/Lottie)
                 is_animated = is_tgs_mime_type(mime_type)
-                
+
                 headers = {
                     "Cache-Control": "public, max-age=86400",  # Cache for 1 day
                 }
                 if is_animated:
                     headers["X-Emoji-Type"] = "animated"  # Signal to frontend that this needs Lottie
-                
+
                 return Response(
                     emoji_bytes,
                     mimetype=mime_type,
@@ -287,7 +287,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 msg_id = int(message_id)
             except ValueError:
                 return jsonify({"error": "Invalid message ID"}), 400
-            
+
             # Resolve user_id (which may be a username) to channel_id
             from admin_console.helpers import resolve_user_id_and_handle_errors
             channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
@@ -298,10 +298,10 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             # Check config directories first (curated media), then state/media/ (AI cache)
             # This matches the priority order of the media source chain
             cached_file = None
-            
+
             # Escape unique_id to prevent glob pattern injection attacks
             escaped_unique_id = glob.escape(unique_id)
-            
+
             # Check all config directories first (without fallback to state/media/)
             for config_dir in CONFIG_DIRECTORIES:
                 config_media_dir = Path(config_dir) / "media"
@@ -312,7 +312,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                             break
                 if cached_file:
                     break
-            
+
             # If not found in any config directory, check state/media/ directly
             if not cached_file:
                 state_media_dir = Path(STATE_DIRECTORY) / "media"
@@ -321,7 +321,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         if file_path.suffix.lower() != ".json":
                             cached_file = file_path
                             break
-            
+
             # If found in cache, serve from cache
             if cached_file and cached_file.exists():
                 try:
@@ -398,14 +398,14 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     # Read the cached file
                     with open(cached_file, "rb") as f:
                         media_bytes = f.read()
-                    
+
                     # Detect MIME type
                     mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
-                    
+
                     logger.debug(
                         f"Serving cached media {unique_id} from {cached_file} for {agent_config_name}/{user_id}/{message_id}"
                     )
-                    
+
                     # Try to get filename from metadata JSON if it exists
                     file_name = None
                     metadata_file = cached_file.with_suffix(".json")
@@ -418,7 +418,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 file_name = metadata.get("file_name")
                         except Exception:
                             pass
-                    
+
                     # Use unique_id as fallback if filename not found in metadata
                     import urllib.parse
                     if file_name:
@@ -428,7 +428,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
                     else:
                         content_disposition = f"inline; filename={unique_id}"
-                    
+
                     return Response(
                         media_bytes,
                         mimetype=mime_type or "application/octet-stream",
@@ -437,7 +437,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 except Exception as e:
                     logger.warning(f"Error reading cached media file {cached_file}: {e}, falling back to Telegram download")
                     # Fall through to download from Telegram
-            
+
             # Not in cache, or cache read failed - download from Telegram
             if not agent.client or not agent.client.is_connected():
                 return jsonify({"error": "Agent client not connected"}), 503
@@ -450,24 +450,24 @@ def register_conversation_media_routes(agents_bp: Blueprint):
             except Exception as e:
                 logger.warning(f"Cannot fetch media - event loop check failed: {e}")
                 return jsonify({"error": "Agent client event loop is not available"}), 503
-            
+
             # This is async, so we need to run it in the client's event loop
             async def _get_media():
                 try:
                     client = agent.client
                     entity = await client.get_entity(channel_id)
-                    
+
                     # Get the message
                     message = await client.get_messages(entity, ids=msg_id)
                     if not message:
                         return None, None, None
-                    
+
                     # Handle case where get_messages returns a list
                     if isinstance(message, list):
                         if len(message) == 0:
                             return None, None, None
                         message = message[0]
-                    
+
                     # Find the media item with matching unique_id
                     media_items = iter_media_parts(message)
                     for item in media_items:
@@ -492,7 +492,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                             media_bytes = await download_media_bytes(client, item.file_ref)
                             # Detect MIME type
                             mime_type = detect_mime_type_from_bytes(media_bytes[:1024])
-                            
+
                             # Extract filename from document for documents
                             file_name = None
                             if hasattr(item, "kind") and hasattr(item.kind, "value"):
@@ -516,9 +516,9 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                                         file_name = getattr(attr, "file_name", None)
                                                         if file_name:
                                                             break
-                            
+
                             return media_bytes, mime_type, item, file_name
-                    
+
                     return None, None, None, None
                 except Exception as e:
                     logger.error(f"Error fetching media: {e}")
@@ -529,17 +529,17 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 media_bytes, mime_type, media_item, file_name = agent.execute(_get_media(), timeout=30.0)
                 if media_bytes is None:
                     return jsonify({"error": "Media not found"}), 404
-                
+
                 logger.debug(
                     f"Downloaded media {unique_id} from Telegram for {agent_config_name}/{user_id}/{message_id}"
                 )
-                
+
                 # Cache the downloaded media file to state/media/ for future use
                 # Use the same storage mechanism as the normal media source chain
                 try:
                     # Get file extension from MIME type or by detecting from bytes
                     file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
-                    
+
                     # Store media file if we have an extension
                     if file_extension:
                         # MySQL is required - use MySQLMediaSource with directory_source for media files
@@ -548,7 +548,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         # Use MySQL for metadata, DirectoryMediaSource for media files on disk
                         directory_source = get_directory_media_source(state_media_dir)
                         cache_source = MySQLMediaSource(directory_source=directory_source)
-                        
+
                         # Check if file already exists to avoid overwriting
                         media_filename = f"{unique_id}{file_extension}"
                         media_file = state_media_dir / media_filename
@@ -561,7 +561,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 "failure_reason": "Downloaded from admin console, description pending",
                                 "ts": clock.now(UTC).isoformat(),
                             }
-                            
+
                             # Add full metadata from MediaItem if available
                             if media_item:
                                 # Add kind (required for proper classification)
@@ -569,7 +569,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                     record["kind"] = media_item.kind.value
                                 else:
                                     record["kind"] = str(media_item.kind)
-                                
+
                                 # Add sticker-specific metadata
                                 if media_item.sticker_set_name:
                                     record["sticker_set_name"] = media_item.sticker_set_name
@@ -581,19 +581,19 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                     record["sticker_set_id"] = media_item.sticker_set_id
                                 if media_item.sticker_access_hash:
                                     record["sticker_access_hash"] = media_item.sticker_access_hash
-                                
+
                                 # Add duration for videos/animations
                                 if media_item.duration:
                                     record["duration"] = media_item.duration
-                            
+
                             # Add MIME type
                             if mime_type:
                                 record["mime_type"] = mime_type
-                            
+
                             # Add filename for documents
                             if file_name:
                                 record["file_name"] = file_name
-                            
+
                             try:
                                 # MySQLMediaSource.put is async; ensure it is executed so we don't
                                 # drop an un-awaited coroutine (which would skip caching and emit
@@ -617,7 +617,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 except Exception as e:
                     # Don't fail the request if caching fails
                     logger.warning(f"Error caching media file for {unique_id}: {e}")
-                
+
                 # Use filename if available, otherwise fall back to unique_id
                 # Properly escape filename for Content-Disposition header
                 import urllib.parse
@@ -630,7 +630,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
                 else:
                     content_disposition = f"inline; filename={unique_id}"
-                
+
                 return Response(
                     media_bytes,
                     mimetype=mime_type or "application/octet-stream",

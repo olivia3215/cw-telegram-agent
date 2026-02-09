@@ -914,6 +914,7 @@
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
+                <button class="tab-button" data-subtab="work-queue">Work Queue</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector" style="margin-bottom: 16px;">
@@ -1047,6 +1048,11 @@
                                 <div id="xsend-status" style="margin-top: 8px; font-size: 14px;"></div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="work-queue">
+                    <div id="work-queue-container">
+                        <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
             </div>
@@ -2685,6 +2691,8 @@
                             xsendContainer.querySelector('.loading').style.display = 'none';
                             xsendContent.style.display = 'block';
                         }
+                    } else if (subtabName === 'work-queue') {
+                        WorkQueueUI.load();
                     }
                 }
             }
@@ -7911,6 +7919,301 @@
                 statusDiv.innerHTML = `<div style="color: #dc3545;">Error: ${escapeHtml(error)}</div>`;
             });
         }
+
+        // ===== Work Queue Functions =====
+
+        /**
+         * Namespace for Work Queue UI functions.
+         * Provides read-only view of task graphs and management operations.
+         */
+        const WorkQueueUI = {
+            /**
+             * Load and display the work queue for the currently selected agent and conversation partner.
+             * Fetches work queue data from the API and renders it in the UI.
+             */
+            load: function() {
+            const agentSelect = document.getElementById('conversations-agent-select');
+            const partnerSelect = document.getElementById('conversations-partner-select');
+            const userIdInput = document.getElementById('conversations-user-id');
+            
+            const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+            const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+            
+            if (!agentName || !userId) {
+                const container = document.getElementById('work-queue-container');
+                container.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+                return;
+            }
+            
+            const container = document.getElementById('work-queue-container');
+            container.innerHTML = '<div class="loading">Loading work queue...</div>';
+            
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                        return;
+                    }
+                    
+                    WorkQueueUI.render(agentName, userId, data.work_queue);
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = `<div class="error">Error loading work queue: ${escapeHtml(error)}</div>`;
+                });
+            },
+
+            /**
+             * Render the work queue data in the UI with formatted task display.
+             * @param {string} agentName - The agent's configuration name
+             * @param {string} userId - The user/channel ID
+             * @param {Object|null} workQueue - The work queue data containing context and nodes
+             */
+            render: function(agentName, userId, workQueue) {
+            const container = document.getElementById('work-queue-container');
+            
+            if (!workQueue) {
+                container.innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #666;">
+                        <p style="font-size: 16px;">No work queue found for this conversation.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const context = workQueue.context || {};
+            const nodes = workQueue.nodes || [];
+            
+            // Count tasks by status
+            const statusCounts = {
+                pending: 0,
+                active: 0,
+                done: 0,
+                failed: 0,
+                cancelled: 0
+            };
+            nodes.forEach(node => {
+                const status = node.status || 'pending';
+                if (statusCounts.hasOwnProperty(status)) {
+                    statusCounts[status]++;
+                }
+            });
+            
+            // Status color mapping
+            const statusColors = {
+                pending: '#ffc107',
+                active: '#007bff',
+                done: '#28a745',
+                failed: '#dc3545',
+                cancelled: '#6c757d'
+            };
+            
+            // Status icons
+            const statusIcons = {
+                pending: '⏱️',
+                active: '▶️',
+                done: '✅',
+                failed: '❌',
+                cancelled: '⊘'
+            };
+            
+            let html = `
+                <div style="padding: 20px; background: #ffffff; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0; font-size: 20px; color: #2c3e50;">Work Queue</h3>
+                        <button onclick="WorkQueueUI.delete()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete All Pending Tasks</button>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div><strong>Graph ID:</strong> <span style="background: #e9ecef; padding: 2px 6px; border-radius: 3px; font-size: 14px;">${escapeHtml(workQueue.id)}</span></div>
+                            <div><strong>Type:</strong> ${context.is_group_chat ? 'Group' : 'DM'}</div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                            <div><strong>Agent:</strong> ${escapeHtml(context.agent_name || 'N/A')} (${context.agent_id || 'N/A'})</div>
+                            <div><strong>Channel:</strong> ${escapeHtml(context.channel_name || 'N/A')} (${context.channel_id || 'N/A'})</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <strong>Status Summary:</strong>
+                        <div style="display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap;">
+            `;
+            
+            for (const [status, count] of Object.entries(statusCounts)) {
+                html += `
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${statusColors[status]};"></span>
+                        <span style="text-transform: capitalize;">${status}:</span>
+                        <strong>${count}</strong>
+                    </div>
+                `;
+            }
+            
+            html += `
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="margin: 0 0 16px 0; font-size: 16px; color: #2c3e50;">Tasks (${nodes.length})</h4>
+            `;
+            
+            if (nodes.length === 0) {
+                html += '<p style="color: #666; font-style: italic;">No tasks in queue.</p>';
+            } else {
+                nodes.forEach((node, index) => {
+                    const status = node.status || 'pending';
+                    const statusColor = statusColors[status] || '#6c757d';
+                    const statusIcon = statusIcons[status] || '•';
+                    
+                    html += `
+                        <div style="border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 12px; background: #ffffff;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                <div style="flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                        <span style="font-size: 18px;">${statusIcon}</span>
+                                        <span style="font-size: 16px; font-weight: 600; color: #2c3e50;">${escapeHtml(node.id)}</span>
+                                        <span style="padding: 2px 8px; background: #e9ecef; border-radius: 4px; font-size: 12px; font-family: monospace;">${escapeHtml(node.type)}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span style="padding: 4px 12px; background: ${statusColor}; color: white; border-radius: 4px; font-size: 13px; font-weight: 500; text-transform: capitalize;">${escapeHtml(status)}</span>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // Dependencies
+                    if (node.depends_on && node.depends_on.length > 0) {
+                        html += `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 13px; font-weight: 600; color: #495057; margin-bottom: 4px;">Depends on:</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        `;
+                        node.depends_on.forEach(dep => {
+                            html += `<span style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; font-size: 12px;">${escapeHtml(dep)}</span>`;
+                        });
+                        html += `
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    // Parameters
+                    const params = node.params || {};
+                    const paramKeys = Object.keys(params);
+                    if (paramKeys.length > 0) {
+                        html += `
+                            <div>
+                                <strong style="font-size: 13px; color: #495057;">Parameters:</strong>
+                                <div style="margin-top: 8px; background: #f8f9fa; padding: 12px; border-radius: 4px; font-size: 12px;">
+                        `;
+                        
+                        paramKeys.forEach(key => {
+                            const value = params[key];
+                            let displayValue;
+                            let isLongText = false;
+                            
+                            if (typeof value === 'object' && value !== null) {
+                                displayValue = JSON.stringify(value, null, 2);
+                            } else if (typeof value === 'string') {
+                                displayValue = escapeHtml(String(value));
+                                // Check if this is a long text field (like message text)
+                                if (value.length > 80 && (key === 'text' || key === 'message' || key === 'content')) {
+                                    isLongText = true;
+                                }
+                            } else {
+                                displayValue = escapeHtml(String(value));
+                            }
+                            
+                            if (isLongText) {
+                                // Display long text on its own line with wrapping
+                                html += `
+                                    <div style="margin-bottom: 12px;">
+                                        <div style="color: #007bff; font-weight: 500; margin-bottom: 4px;">${escapeHtml(key)}:</div>
+                                        <div style="color: #495057; white-space: pre-wrap; word-break: break-word; padding: 8px; background: white; border-radius: 3px; border: 1px solid #dee2e6;">${displayValue}</div>
+                                    </div>
+                                `;
+                            } else {
+                                html += `
+                                    <div style="margin-bottom: 6px;">
+                                        <span style="color: #007bff; font-weight: 500;">${escapeHtml(key)}:</span>
+                                        <span style="color: #495057; margin-left: 8px;">${displayValue}</span>
+                                    </div>
+                                `;
+                            }
+                        });
+                        
+                        html += `
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                        </div>
+                    `;
+                });
+            }
+            
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            },
+
+            /**
+             * Delete all pending tasks in the work queue for the currently selected conversation.
+             * Prompts for confirmation before performing the destructive operation.
+             */
+            delete: function() {
+                const agentSelect = document.getElementById('conversations-agent-select');
+                const partnerSelect = document.getElementById('conversations-partner-select');
+                const userIdInput = document.getElementById('conversations-user-id');
+
+                const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+                const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+                if (!agentName || !userId) {
+                    alert('Please select an agent and conversation partner');
+                    return;
+                }
+
+                // Confirmation dialog for destructive operation
+                if (!confirm('Are you sure you want to delete ALL pending tasks in this work queue? This action cannot be undone.')) {
+                    return;
+                }
+
+                const container = document.getElementById('work-queue-container');
+                const originalContent = container.innerHTML;
+                container.innerHTML = '<div class="loading">Deleting work queue...</div>';
+
+                fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = originalContent;
+                        alert(`Error: ${data.error || 'Unknown error occurred'}`);
+                    } else {
+                        // Reload to show the empty state
+                        WorkQueueUI.load();
+                    }
+                })
+                .catch(error => {
+                    if (error && error.message === 'unauthorized') {
+                        return;
+                    }
+                    container.innerHTML = originalContent;
+                    alert(`Error deleting work queue: ${error}`);
+                });
+            }
+        };
 
         // Initialize on page load
         loadAgents();

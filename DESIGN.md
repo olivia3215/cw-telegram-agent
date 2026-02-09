@@ -74,6 +74,7 @@ This document describes the high-level architecture of the Telegram agent, with 
   - [Responsiveness and Delays](#responsiveness-and-delays)
   - [Schedule Extension](#schedule-extension)
   - [Integration with Message Processing](#integration-with-message-processing)
+- [Admin Console API Response Convention](#admin-console-api-response-convention)
 - [Admin Console & Puppet Master](#admin-console--puppet-master)
   - [Login and configuration flow](#login-and-configuration-flow)
   - [OTP / verification model](#otp--verification-model)
@@ -1167,6 +1168,38 @@ This ensures that:
 - Agents don't appear to respond instantly during low-responsiveness periods
 - Schedule extension happens in the background without blocking message processing
 - The system maintains realistic timing based on the agent's current activity
+
+## Admin Console API Response Convention
+
+All admin console API endpoints follow a consistent response format to simplify client-side error handling:
+
+**Success responses** include `"success": true` and any relevant data fields:
+```json
+{
+  "success": true,
+  "work_queue": { ... },
+  "message": "Operation completed successfully"
+}
+```
+
+**Error responses** include `"success": false` and an `"error"` field with a human-readable error message:
+```json
+{
+  "success": false,
+  "error": "Agent 'AgentName' not found"
+}
+```
+
+**Guidelines:**
+- Every endpoint returns a JSON object with a `success` boolean field
+- Error responses always include an `error` string field
+- Success responses may include additional data fields as needed
+- HTTP status codes still indicate the error type (400 for validation, 404 for not found, 500 for server error, 503 for unavailable service, etc.)
+- The `success` field allows clients to check for errors without parsing HTTP status codes
+
+**Implementation:**
+- The `resolve_user_id_and_handle_errors()` helper in `admin_console/helpers.py` automatically includes `"success": false` in all error responses
+- All conversation endpoints consistently use this format for both success and error cases
 
 ## Admin Console & Puppet Master
 

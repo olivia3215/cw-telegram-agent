@@ -16,7 +16,7 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
         conversation_delete_telepathic,
         conversation_download,
     )
-    
+
     # Register all routes
     conversation_translate.register_conversation_translate_routes(agents_bp)
     conversation_xsend.register_conversation_xsend_routes(agents_bp)

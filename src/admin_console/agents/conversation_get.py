@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def _utf16_offset_to_python_index(text: str, utf16_offset: int) -> int:
     """
     Convert a UTF-16 code unit offset to a Python string index.
-    
+
     DEPRECATED: Use utils.telegram_entities.utf16_offset_to_python_index instead.
     This is kept as a wrapper for backward compatibility within this module.
     """
@@ -46,7 +46,7 @@ def _utf16_offset_to_python_index(text: str, utf16_offset: int) -> int:
 def _entities_to_markdown(text: str, entities: list) -> str:
     """
     Convert Telegram message entities to markdown format.
-    
+
     DEPRECATED: Use utils.telegram_entities.entities_to_markdown instead.
     This is kept as a wrapper for backward compatibility within this module.
     """
@@ -54,18 +54,18 @@ def _entities_to_markdown(text: str, entities: list) -> str:
 
 
 async def _replace_custom_emojis_with_images(
-    html_text: str, 
-    text: str, 
-    entities: list, 
-    agent_name: str, 
+    html_text: str,
+    text: str,
+    entities: list,
+    agent_name: str,
     message_id: str,
     message: Any = None
 ) -> str:
     """
     Replace custom emoji characters in HTML with img tags that display the custom emoji images.
     This is a central helper that can be used for both message text and reactions.
-    
-    
+
+
     Args:
         html_text: HTML text that may contain custom emoji characters
         text: Original text (to match emoji positions)
@@ -73,15 +73,15 @@ async def _replace_custom_emojis_with_images(
         agent_name: Agent name for building emoji URLs
         message_id: Message ID for building emoji URLs
         message: Optional Telegram message object to extract document references from
-        
+
     Returns:
         HTML with custom emojis replaced by img tags
     """
     if not html_text or not entities:
         return html_text
-    
+
     # Quick check: if the HTML already contains custom-emoji-container tags,
-    # we might be processing already-processed HTML. 
+    # we might be processing already-processed HTML.
     # Count how many emoji characters from entities are still in the HTML
     emoji_entities = [e for e in entities if e.__class__.__name__ == "MessageEntityCustomEmoji"]
     if 'custom-emoji-container' in html_text and emoji_entities:
@@ -96,14 +96,14 @@ async def _replace_custom_emojis_with_images(
             emoji_char = text[start_idx:end_idx]
             if emoji_char in html_text:
                 emoji_chars_in_html.append(emoji_char)
-        
+
         if not emoji_chars_in_html:
             # All emojis already replaced, skip to avoid duplication
             return html_text
         else:
             container_count = html_text.count('custom-emoji-container')
             logger.debug(f"_replace_custom_emojis_with_images: HTML already contains {container_count} custom-emoji-container tags for message {message_id}, but {len(emoji_chars_in_html)} emoji characters still present. Processing may cause duplication.")
-    
+
     # Build a map of document_id -> document for custom emojis
     # We can get documents from the message's document attribute or from entities
     emoji_documents = {}
@@ -114,11 +114,11 @@ async def _replace_custom_emojis_with_images(
             doc_id = getattr(msg_doc, "id", None)
             if doc_id:
                 emoji_documents[doc_id] = msg_doc
-    
+
     result = html_text
     # Process custom emoji entities in reverse order to maintain positions
     # This way, when we replace, earlier positions aren't affected by length changes
-    
+
     # First, deduplicate entities - if multiple entities point to the same position and document_id,
     # we only need to process one of them
     emoji_entities = [e for e in entities if e.__class__.__name__ == "MessageEntityCustomEmoji"]
@@ -135,69 +135,69 @@ async def _replace_custom_emojis_with_images(
             # Keep the first entity we see for each unique position+document_id
             if entity_key not in seen_entities:
                 seen_entities[entity_key] = entity
-    
+
     # Now sort the deduplicated entities
     sorted_entities = sorted(
         seen_entities.values(),
         key=lambda e: (getattr(e, "offset", 0), -getattr(e, "length", 0)),
         reverse=True
     )
-    
+
     logger.debug(f"_replace_custom_emojis_with_images: Processing {len(sorted_entities)} unique emoji entities (from {len(emoji_entities)} total) for message {message_id}")
-    
+
     # Track which positions in the original text have been replaced
     # This prevents replacing the same emoji multiple times if it appears multiple times
     replaced_positions = set()
-    
+
     for entity in sorted_entities:
         utf16_offset = getattr(entity, "offset", 0)
         utf16_length = getattr(entity, "length", 0)
         document_id = getattr(entity, "document_id", None)
-        
+
         if not document_id:
             continue
-        
+
         # Convert UTF-16 offsets to Python string indices
         start_idx = _utf16_offset_to_python_index(text, utf16_offset)
         end_idx = _utf16_offset_to_python_index(text, utf16_offset + utf16_length)
-        
+
         # Skip if we've already replaced an emoji at this position
         position_key = (start_idx, end_idx)
         if position_key in replaced_positions:
             logger.debug(f"Skipping duplicate emoji entity at position {start_idx}-{end_idx} for document_id {document_id}")
             continue
-        
+
         emoji_char = text[start_idx:end_idx]
-        
+
         # Replace the emoji character in the HTML with an img tag or Lottie container
         # Use the media serving endpoint pattern - we'll create an emoji endpoint
         # The blueprint is registered with url_prefix="/admin", so /api/agents/... becomes /admin/api/agents/...
         # But we need to include /admin in the URL since img src is resolved from document root
         emoji_url = f"/admin/api/agents/{agent_name}/emoji/{document_id}"
-        
+
         # Escape emoji_char for safe use in HTML attributes
         emoji_char_escaped = html.escape(emoji_char)
-        
+
         # Create a container that can handle both static and animated emojis
         # The frontend JavaScript will detect TGS files and render them with Lottie
         # For now, use a span with data attributes that the frontend can process
         emoji_tag = f'<span class="custom-emoji-container" data-document-id="{document_id}" data-emoji-url="{emoji_url}" data-emoji-char="{emoji_char_escaped}" style="display: inline-block; width: 1.2em; height: 1.2em; vertical-align: middle;"><img src="{emoji_url}" alt="{emoji_char_escaped}" class="custom-emoji-img" style="width: 1.2em; height: 1.2em; vertical-align: middle; display: inline-block;" onerror="this.parentElement.classList.add(\'emoji-load-error\')" /></span>'
-        
+
         # Find and replace the emoji in the HTML at the specific position
         # The challenge: HTML has tags inserted (like <strong>, <em>), so positions don't match exactly.
         # Strategy: Count how many times this emoji_char appears in the original text up to this position,
         # then find the Nth occurrence in the HTML.
-        
+
         # Count occurrences of this emoji_char in the original text up to start_idx
         occurrences_before = text[:start_idx].count(emoji_char)
-        
+
         # Find the (occurrences_before + 1)th occurrence in the HTML
         # This should correspond to the emoji at this position
         # IMPORTANT: We must skip occurrences that are inside HTML tags (like in alt attributes)
         search_start = 0
         occurrence_count = 0
         emoji_pos = -1
-        
+
         def is_inside_html_tag(html_str: str, pos: int) -> bool:
             """Check if position pos is inside an HTML tag (between < and >)"""
             # Look backwards for the nearest < or >
@@ -210,28 +210,28 @@ async def _replace_custom_emojis_with_images(
                 if tag_close == -1 or tag_close > pos:
                     return True
             return False
-        
+
         while occurrence_count <= occurrences_before:
             pos = result.find(emoji_char, search_start)
             if pos == -1:
                 break
-            
+
             # Skip if this occurrence is inside an HTML tag (e.g., in alt="..." attribute)
             if not is_inside_html_tag(result, pos):
                 occurrence_count += 1
                 if occurrence_count == occurrences_before + 1:
                     emoji_pos = pos
                     break
-            
+
             search_start = pos + 1
-        
+
         if emoji_pos != -1:
             # Check if this position has already been replaced
             # Look backwards from the emoji position to see if there's already a custom-emoji-container
             # that was inserted at this location. We check up to 500 chars back to find the opening tag.
             check_start = max(0, emoji_pos - 500)
             check_region = result[check_start:emoji_pos]
-            
+
             # Look for a custom-emoji-container that ends right before our emoji position
             # This would indicate the emoji at this position was already replaced
             container_end_pattern = f'</span>'
@@ -246,25 +246,25 @@ async def _replace_custom_emojis_with_images(
                         logger.info(f"Skipping emoji at text position {start_idx}-{end_idx} - already replaced in HTML (found container ending at HTML position {check_start + last_container_end}) for document_id {document_id} in message {message_id}")
                         replaced_positions.add(position_key)
                         continue
-            
+
             # Also check if we've already processed this exact position
             if position_key in replaced_positions:
                 logger.debug(f"Skipping emoji at text position {start_idx}-{end_idx} - position already in replaced_positions")
                 continue
-            
+
             # Before replacing, verify the emoji character is actually at this position
             actual_char = result[emoji_pos:emoji_pos + len(emoji_char)]
             if actual_char != emoji_char:
                 logger.warning(f"Emoji character mismatch at HTML position {emoji_pos}: expected '{emoji_char}', found '{actual_char}' for document_id {document_id} in message {message_id}")
                 continue
-            
+
             # Replace at this specific position - this removes the emoji character and inserts the tag
             result = result[:emoji_pos] + emoji_tag + result[emoji_pos + len(emoji_char):]
             replaced_positions.add(position_key)
             logger.debug(f"Replaced emoji '{emoji_char}' at text position {start_idx}-{end_idx} (HTML position {emoji_pos}) for document_id {document_id} in message {message_id}")
         else:
             logger.warning(f"Could not find emoji character '{emoji_char}' in HTML (looking for occurrence {occurrences_before + 1}) for document_id {document_id} at text position {start_idx}-{end_idx} in message {message_id}. HTML length: {len(result)}, HTML preview: {result[:200]}")
-    
+
     return result
 
 
@@ -277,38 +277,38 @@ async def _replace_custom_emoji_in_reactions(
 ) -> str:
     """
     Replace custom emoji text (like "[name]") in reactions with img tags.
-    
+
     Args:
         reactions_str: Formatted reactions string like '"User"(123)=[emoji_name]'
         agent_name: Agent name for building emoji URLs
         message_id: Message ID for building emoji URLs
         message: Telegram message object to extract reaction entities
         agent: Agent instance for getting emoji names
-        
+
     Returns:
         Reactions string with custom emojis replaced by img tags
     """
     if not reactions_str:
         return reactions_str
-    
+
     logger.debug(f"Admin console: Processing reactions for message {message_id}")
-    
+
     try:
         reactions_obj = getattr(message, 'reactions', None)
         if not reactions_obj:
             logger.debug(f"Admin console: Message {message_id} has no reactions object")
             return reactions_str
-        
+
         recent_reactions = getattr(reactions_obj, 'recent_reactions', None)
         if not recent_reactions:
             logger.debug(f"Admin console: Message {message_id} has no recent_reactions")
             return reactions_str
-        
+
         logger.debug(f"Admin console: Message {message_id} has {len(recent_reactions)} reaction(s)")
-        
+
         from utils import get_custom_emoji_name, extract_user_id_from_peer
         from handlers.received_helpers.message_processing import get_channel_name
-        
+
         # Rebuild reactions string directly from reaction objects, using img tags for custom emojis
         # This is more reliable than trying to match and replace text in the formatted string
         reaction_parts = []
@@ -318,32 +318,32 @@ async def _replace_custom_emoji_in_reactions(
             if not peer_id:
                 logger.debug(f"Reaction {idx} on message {message_id} (admin) has no peer_id")
                 continue
-            
+
             user_id = extract_user_id_from_peer(peer_id)
             if user_id is None:
                 logger.debug(f"Reaction {idx} on message {message_id} (admin) has no user_id")
                 continue
-            
+
             # Get user name
             try:
                 user_name = await get_channel_name(agent, user_id)
             except Exception:
                 user_name = str(user_id)
-            
+
             logger.debug(f"Reaction {idx} on message {message_id} (admin) from {user_name}({user_id})")
-            
+
             # Escape user_name to prevent XSS when inserted into HTML
             user_name_escaped = html.escape(user_name)
-            
+
             # Get reaction emoji
             reaction_obj = getattr(reaction, 'reaction', None)
             if not reaction_obj:
                 logger.debug(f"Reaction {idx} on message {message_id} (admin) has no reaction object")
                 continue
-            
+
             # Build the reaction part
             reaction_part = f'"{user_name_escaped}"({user_id})='
-            
+
             # Check if it's a custom emoji (has document_id)
             if hasattr(reaction_obj, 'document_id'):
                 document_id = reaction_obj.document_id
@@ -371,9 +371,9 @@ async def _replace_custom_emoji_in_reactions(
                 # Unknown reaction type - skip
                 logger.debug(f"Reaction {idx} on message {message_id} (admin) has unknown type")
                 continue
-            
+
             reaction_parts.append(reaction_part)
-        
+
         # Return rebuilt reactions string with img tags for custom emojis
         if reaction_parts:
             result = ', '.join(reaction_parts)
@@ -391,21 +391,21 @@ async def _replace_custom_emoji_in_reactions(
 def _get_highest_summarized_message_id_for_api(agent_config_name: str, channel_id: int) -> int | None:
     """
     Get the highest message ID that has been summarized (for use in Flask context).
-    
+
     Everything with message ID <= this value can be assumed to be summarized.
     Returns None if no summaries exist.
     """
     try:
         from admin_console.helpers import get_agent_by_name
-        
+
         agent = get_agent_by_name(agent_config_name)
         if not agent or not agent.is_authenticated:
             return None
-        
+
         # Load from MySQL
         from db import summaries as db_summaries
         summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
-        
+
         highest_max_id = None
         for summary in summaries:
             max_id = summary.get("max_message_id")
@@ -441,12 +441,12 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         # Get summaries from MySQL
         if not agent.is_authenticated:
             return jsonify({"error": "Agent not authenticated"}), 503
-        
+
         from db import summaries as db_summaries
         summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
-        
+
         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
-        
+
         # Get highest summarized message ID to filter messages
         highest_summarized_id = _get_highest_summarized_message_id_for_api(agent.config_name, channel_id)
 
@@ -460,12 +460,12 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         except Exception as e:
             logger.warning(f"Cannot fetch conversation - event loop check failed: {e}")
             return jsonify({"error": "Agent client event loop is not available"}), 503
-        
+
         # This is async, so we need to run it in the client's event loop
         # Cache for custom emoji documents (document_id -> document object)
         # This allows us to download emojis later without needing to fetch them again
         emoji_document_cache: dict[int, Any] = {}
-        
+
         async def _check_blocked_status() -> bool:
             """Check if the conversation is blocked (agent cannot send messages to this channel)."""
             try:
@@ -475,10 +475,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 api_cache = agent.api_cache
                 if api_cache:
                     agent_blocked_user = await api_cache.is_blocked(channel_id, ttl_seconds=0)
-                
+
                 # Check if the user blocked the agent using profile indicators
                 user_blocked_agent = await is_user_blocking_agent(agent, channel_id)
-                
+
                 # Conversation is blocked if either party has blocked the other
                 is_blocked = agent_blocked_user or user_blocked_agent
                 return is_blocked
@@ -486,7 +486,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 logger.warning(f"Error checking blocked status for {agent_config_name}/{channel_id}: {e}", exc_info=True)
                 # On error, default to not blocked (to avoid false positives)
                 return False
-        
+
         async def _get_messages():
             try:
                 # Use client.get_entity() directly since we're already in the client's event loop
@@ -495,10 +495,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 entity = await client.get_entity(channel_id)
                 if not entity:
                     return []
-                
+
                 # Check if this is a DM conversation (needed for read status checking)
                 is_dm_conversation = is_dm(entity)
-                
+
                 # For DMs, get the dialog to check read_outbox_max_id for read receipts
                 # This tells us up to which message ID the partner has read our outgoing messages
                 read_outbox_max_id = None
@@ -511,16 +511,16 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             read_outbox_max_id = getattr(result.dialogs[0], "read_outbox_max_id", None)
                     except Exception as e:
                         logger.debug(f"Failed to get dialog read_outbox_max_id for {channel_id}: {e}")
-                
+
                 # Get media chain for formatting media descriptions
                 media_chain = get_default_media_source_chain()
-                
+
                 # Use min_id to only fetch unsummarized messages (avoid fetching messages we'll filter out)
                 # This prevents unnecessary API calls and flood waits
                 iter_kwargs = {"limit": 200} # limit to 200 messages
                 if highest_summarized_id is not None:
                     iter_kwargs["min_id"] = highest_summarized_id
-                
+
                 messages = []
                 total_fetched = 0
                 async for message in client.iter_messages(entity, **iter_kwargs):
@@ -535,18 +535,18 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             f"despite min_id filter"
                         )
                         continue
-                    
+
                     # Try multiple ways to extract sender_id and sender entity
                     # For group messages, message.sender often contains the User object directly
                     sender_entity = getattr(message, "sender", None)
                     from_id = getattr(message, "from_id", None)
                     sender_id = None
                     sender_name = None
-                    
+
                     # First, try to get sender_id from from_id
                     if from_id:
                         sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
-                    
+
                     # If we have sender_entity, use it to get both ID and name
                     # This is especially useful for group participants where get_entity() fails
                     if sender_entity and isinstance(sender_entity, User):
@@ -555,7 +555,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         first_name = getattr(sender_entity, "first_name", None)
                         last_name = getattr(sender_entity, "last_name", None)
                         username = getattr(sender_entity, "username", None)
-                        
+
                         # Build sender name from available fields
                         if first_name and last_name:
                             sender_name = f"{first_name} {last_name}"
@@ -567,7 +567,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             sender_name = username
                         else:
                             sender_name = None  # Will fall back to get_channel_name below
-                        
+
                         # Cache the sender entity so future lookups work
                         if agent.entity_cache and sender_id:
                             try:
@@ -577,13 +577,13 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 )
                             except Exception as e:
                                 logger.debug(f"Failed to cache sender entity {sender_id}: {e}")
-                    
+
                     # Fallback: try message.sender.id if we don't have sender_id yet
                     if not sender_id and sender_entity:
                         sender_id = getattr(sender_entity, "id", None)
-                    
+
                     is_from_agent = sender_id == agent.agent_id
-                    
+
                     # If we didn't get sender_name from sender_entity, try get_channel_name
                     # This handles DMs and cases where sender_entity wasn't available
                     if not sender_name and sender_id and isinstance(sender_id, int):
@@ -598,17 +598,17 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     elif not sender_name:
                         # No sender_id or sender_id isn't an int - use generic name
                         sender_name = "User"
-                    
+
                     # Final safety check: ensure sender_name is never None
                     if not sender_name:
                         sender_name = "User"
-                    
+
                     # Escape sender_name to prevent XSS when displayed in frontend
                     # (Frontend also escapes, but defense in depth)
                     sender_name = html.escape(sender_name)
-                    
+
                     timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
-                    
+
                     # Extract reply_to information
                     reply_to_msg_id = None
                     reply_to = getattr(message, "reply_to", None)
@@ -616,7 +616,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         reply_to_msg_id_val = getattr(reply_to, "reply_to_msg_id", None)
                         if reply_to_msg_id_val is not None:
                             reply_to_msg_id = str(reply_to_msg_id_val)
-                    
+
                     # Format reactions
                     reactions_str = await format_message_reactions(agent, message)
                     # Replace custom emojis in reactions with images
@@ -624,10 +624,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         reactions_str = await _replace_custom_emoji_in_reactions(
                             reactions_str, agent_config_name, str(message.id), message, agent
                         )
-                    
+
                     # Format media/stickers
                     message_parts = await format_message_for_prompt(message, agent=agent, media_chain=media_chain)
-                    
+
                     # Check if this is a forwarded story
                     # Forwarded stories are represented by MessageMediaStory in the media attribute
                     # They may also have fwd_from with StoryFwdHeader, but the primary indicator is MessageMediaStory
@@ -636,7 +636,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     is_forwarded_story = False
                     story_from_name = None
                     story_id = None
-                    
+
                     # Check media attribute for MessageMediaStory
                     story_item = None
                     story_peer = None
@@ -657,7 +657,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                         story_from_name = await get_channel_name(agent, peer_id)
                                 except Exception:
                                     pass
-                            
+
                             # If story_item is None, try to fetch it from Telegram
                             if not story_item and story_id is not None and story_peer:
                                 try:
@@ -671,7 +671,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                         story_item = stories_result.stories[0]
                                 except Exception as e:
                                     logger.debug(f"Failed to fetch story {story_id} for message {message.id}: {e}")
-                    
+
                     # Also check fwd_from for StoryFwdHeader (alternative representation)
                     if fwd_from and not is_forwarded_story:
                         # Check if this is a StoryFwdHeader (forwarded story)
@@ -679,7 +679,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         fwd_story_id = getattr(fwd_from, "story_id", None)
                         fwd_class_name = fwd_from.__class__.__name__ if hasattr(fwd_from, "__class__") else None
                         fwd_str = str(type(fwd_from)) if fwd_from else ""
-                        
+
                         if fwd_story_id is not None or fwd_class_name == "StoryFwdHeader" or "StoryFwdHeader" in fwd_str:
                             is_forwarded_story = True
                             story_id = fwd_story_id
@@ -696,7 +696,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                         story_from_name = await get_channel_name(agent, from_id)
                                 except Exception:
                                     pass
-                    
+
                     # Extract custom emoji documents from message entities and cache them
                     # This allows us to download emojis later
                     message_entities = getattr(message, "entities", None) or []
@@ -710,20 +710,20 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 # Actually, custom emojis in text aren't in message.document
                                 # We'll need to fetch them separately or use a different approach
                                 pass
-                    
+
                     # Get text with formatting preserved (markdown)
                     # Use text_markdown to preserve bold, italic, etc.
                     text_markdown = getattr(message, "text_markdown", None)
                     raw_text = getattr(message, "message", None) or getattr(message, "text", None) or ""
                     entities = getattr(message, "entities", None) or []
-                    
+
                     # For forwarded stories, check if the message itself has text with formatting
                     # (the story caption will be handled separately)
-                    
+
                     # Check if we have formatting information
                     has_entities = bool(entities)
                     has_text_markdown = bool(text_markdown and text_markdown != raw_text)
-                    
+
                     if not text_markdown or text_markdown == raw_text:
                         # text_markdown not available or same as plain text - try entities
                         if raw_text and entities:
@@ -731,15 +731,15 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             text_markdown = _entities_to_markdown(raw_text, entities)
                         else:
                             text_markdown = raw_text
-                    
+
                     # Convert markdown to HTML for frontend display
                     text = markdown_to_html(text_markdown)
-                    
+
                     # Replace custom emojis with images (pass message for document extraction)
                     text = await _replace_custom_emojis_with_images(
                         text, raw_text, entities, agent_config_name, str(message.id), message
                     )
-                    
+
                     # If this is a forwarded story and we have the story item, try to extract media and text from it
                     story_media_parts = []
                     story_text_content = None
@@ -754,15 +754,15 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             story_caption = getattr(story_item, "caption", None)
                             # StoryItem uses "entities" not "caption_entities" for caption formatting
                             story_caption_entities = getattr(story_item, "entities", None) or getattr(story_item, "caption_entities", None) or []
-                            
+
                             # Check if story_item has text_markdown or text_html like regular messages
                             story_text_markdown = getattr(story_item, "text_markdown", None)
                             story_text_html = getattr(story_item, "text_html", None)
-                            
+
                             # Also check if the original message has text with formatting (sometimes forwarded stories have text in the message itself)
                             message_text_markdown = getattr(message, "text_markdown", None)
                             message_text = getattr(message, "message", None) or getattr(message, "text", None) or ""
-                            
+
                             # Prefer message text_markdown if available (forwarded stories sometimes have formatted text in the message)
                             if message_text_markdown and message_text_markdown.strip() and message_text_markdown != message_text:
                                 story_text_content = message_text_markdown
@@ -791,7 +791,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 story_text_source = 'message_text'
                                 story_text_raw = message_text
                                 story_text_entities = entities  # Use message entities
-                            
+
                             # Extract media from the story item
                             # The story has a 'media' attribute that contains Photo, Document, etc.
                             story_media = getattr(story_item, "media", None)
@@ -827,7 +827,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                         self.text = story_caption if story_caption else None
                                         # Add date for provenance
                                         self.date = getattr(message, "date", None)
-                                
+
                                 story_wrapper = StoryMessageWrapper(story_media, story_caption)
                                 # Process the story media through the normal pipeline
                                 try:
@@ -835,10 +835,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                     from media.media_injector import inject_media_descriptions
                                     temp_messages = [story_wrapper]
                                     await inject_media_descriptions(temp_messages, agent=agent, peer_id=channel_id)
-                                    
+
                                     # Then format using the standard function which handles everything
                                     story_formatted_parts = await format_message_for_prompt(story_wrapper, agent=agent, media_chain=media_chain)
-                                    
+
                                     # Convert to the format expected by the admin console
                                     for part in story_formatted_parts:
                                         if part.get("kind") == "text" and part.get("text"):
@@ -866,7 +866,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                     logger.debug(f"Failed to process story media in message {message.id}: {e}", exc_info=True)
                         except Exception as e:
                             logger.debug(f"Failed to process story item for message {message.id}: {e}")
-                    
+
                     # Build message parts list (text and media)
                     parts = []
                     for part in message_parts:
@@ -896,7 +896,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 "mime_type": part.get("mime_type"),  # For video stickers (webm) - use <video> not <img>
                                 "message_id": str(message.id),  # Include message ID for media serving
                             })
-                    
+
                     # Add story text if we extracted any
                     if story_text_content and story_text_content.strip():
                         story_text = story_text_content.strip()
@@ -923,10 +923,10 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             text = ""  # Clear text since we're using parts instead
                         elif not text:
                             text = story_html  # HTML for display
-                    
+
                     # Add story media parts if we extracted any
                     parts.extend(story_media_parts)
-                    
+
                     # If this is a forwarded story with no parts, add a text part to represent it
                     if is_forwarded_story and not parts:
                         story_text = "Forwarded story"
@@ -945,7 +945,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         if not text:
                             text = story_html
                         logger.debug(f"Added forwarded story text part for message {message.id}: {story_text}")
-                    
+
                     # If text is empty but we have parts, extract text from the first text part
                     # This ensures service messages (which come from format_message_for_prompt) appear in the main text field
                     if not text and parts:
@@ -955,7 +955,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 if part_text:
                                     text = part_text
                                     break
-                    
+
                     # Also handle case where message has no text and no parts (might be other types of empty messages)
                     # This ensures messages always have at least one part so they appear in the UI
                     if not parts and not text:
@@ -983,14 +983,14 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                                 "text": "[Message]"
                             })
                             text = "[Message]"
-                    
+
                     # Check if message is read by partner (only for DMs and messages sent by agent)
                     is_read_by_partner = None
                     if is_dm_conversation and is_from_agent and read_outbox_max_id is not None:
                         # For agent messages in DMs, check if partner has read them
                         # Message is read if its ID is <= read_outbox_max_id
                         is_read_by_partner = msg_id <= read_outbox_max_id
-                    
+
                     messages.append({
                         "id": str(message.id),
                         "text": text,  # HTML-formatted text (XSS-protected via markdown_to_html)
@@ -1019,7 +1019,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             is_blocked = agent.execute(_check_blocked_status(), timeout=10.0)
             # Get agent timezone identifier (IANA format for JavaScript compatibility)
             agent_tz_id = agent.get_timezone_identifier()
-            
+
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
