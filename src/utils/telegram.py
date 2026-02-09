@@ -73,7 +73,7 @@ async def get_channel_name(agent: "Agent", channel_id: int | None):
             return entity.username
 
         # 4. Final fallback if no name can be determined
-        return f"Entity ({entity.id})"
+        return f"Entity ({channel_id})"
 
     except Exception as e:
         # Transient errors (network timeouts, rate limits, connection issues, etc.) should not

@@ -6,6 +6,7 @@ import logging
 
 from media.media_format import format_media_sentence
 from telegram_media import get_unique_id
+from telethon import utils as tg_utils  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.channels import GetFullChannelRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
@@ -138,7 +139,7 @@ async def _build_user_channel_details(agent, dialog, media_chain, fallback_name)
 
     details = [
         "- Type: Direct message",
-        f"- Numeric ID: {dialog.id}",
+        f"- Numeric ID: {tg_utils.get_peer_id(dialog)}",
     ]
     _append_detail(details, "Full name", _format_optional(full_name))
     _append_detail(details, "Username", format_username(dialog))
@@ -178,7 +179,7 @@ async def _build_group_channel_details(agent, dialog, media_chain, channel_id):
 
     details = [
         "- Type: Group",
-        f"- Numeric ID: {dialog.id}",
+        f"- Numeric ID: {tg_utils.get_peer_id(dialog)}",
     ]
     _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
     _append_detail(details, "Username", format_username(dialog))
@@ -223,7 +224,7 @@ async def _build_channel_entity_details(agent, dialog, media_chain):
 
     details = [
         f"- Type: {channel_type}",
-        f"- Numeric ID: {dialog.id}",
+        f"- Numeric ID: {tg_utils.get_peer_id(dialog)}",
     ]
     _append_detail(details, "Title", _format_optional(getattr(dialog, "title", None)))
     _append_detail(details, "Username", format_username(dialog))

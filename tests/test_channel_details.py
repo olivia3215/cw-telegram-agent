@@ -27,8 +27,9 @@ class FakeMediaChain:
 async def test_channel_details_user():
     """Channel details should include user-specific metadata."""
 
+    user_id = 101
     user = User(
-        id=101,
+        id=user_id,
         first_name="Alice",
         last_name="Smith",
         username="alice",
@@ -64,6 +65,7 @@ async def test_channel_details_user():
     assert "# Channel Details" in section
     assert "- Full name: Alice Smith" in section
     assert "- Username: @alice" in section
+    assert f"- Numeric ID: {user_id}" in section  # User IDs remain positive
     assert "- Birthday: 1991-06-05" in section
     assert "⟦media⟧" in section
     assert "Friendly bio" in section
@@ -73,8 +75,9 @@ async def test_channel_details_user():
 async def test_channel_details_group():
     """Channel details should include group metadata when available."""
 
+    chat_id = 202
     chat = Chat(
-        id=202,
+        id=chat_id,
         title="Chess Club",
         photo=ChatPhotoEmpty(),
         participants_count=25,
@@ -108,6 +111,7 @@ async def test_channel_details_group():
 
     assert "- Type: Group" in section
     assert "- Title: Chess Club" in section
+    assert f"- Numeric ID: -{chat_id}" in section  # Basic groups have negative IDs
     assert "- Participant count: 30" in section
     assert "- Description: Weekly tactics and puzzles" in section
     assert "- Profile photo:" not in section
@@ -117,8 +121,9 @@ async def test_channel_details_group():
 async def test_channel_details_supergroup():
     """Channel details should capture supergroup/channel-specific fields."""
 
+    channel_raw_id = 303
     channel = Channel(
-        id=303,
+        id=channel_raw_id,
         title="Announcements",
         photo=ChatPhotoEmpty(),
         date=None,
@@ -157,6 +162,10 @@ async def test_channel_details_supergroup():
     )
 
     assert "- Type: Supergroup" in section
+    # Supergroups/channels use marked format: -1000000000000 - channel_id
+    # For channel_raw_id=303, this becomes -1000000000303
+    marked_channel_id = -1000000000000 - channel_raw_id
+    assert f"- Numeric ID: {marked_channel_id}" in section
     assert "- Participant count: 120" in section
     assert "- Admin count: 5" in section
     assert "- Slow mode seconds: 15" in section
