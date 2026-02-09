@@ -121,7 +121,30 @@ async def _query_sticker_set_info(
 
 @media_bp.route("/api/media")
 def api_media_list():
-    """Get list of media files in a directory with pagination and search support."""
+    """Get list of media files in a directory with pagination and search support.
+    
+    Query Parameters:
+        directory (str, required): Path to the media directory to list
+        page (int, optional): Page number for pagination (default: 1)
+        page_size (int, optional): Number of items per page (default: 10, max: 100)
+        limit (int, optional): Constrains working set to N most recent items (applied before pagination)
+        search (str, optional): Search query to filter media by ID, sticker set, sticker name, or description
+        media_type (str, optional): Filter by media type (default: "all")
+            Valid values: "all", "stickers", "emoji", "video", "photos", "audio", "other"
+    
+    Returns:
+        JSON response with:
+        - media_files: List of media items for the current page
+        - grouped_media: Media items grouped by sticker set
+        - directory: The directory path that was queried
+        - pagination: Pagination metadata including page, total_pages, total_items, etc.
+    
+    Processing Order:
+        1. If limit specified, get the N most recent items (by updated_at/modification time)
+        2. Apply media type filter within those items (or all items if no limit)
+        3. Apply search filter within those items
+        4. Paginate the filtered results
+    """
     try:
         directory_path = request.args.get("directory")
         if not directory_path:
@@ -249,6 +272,10 @@ def api_media_list():
                                 params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
                             
                             where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+                            
+                            # Note: where_sql is constructed from hardcoded clauses only (media_type is validated
+                            # against a whitelist) and parameterized search patterns. No user input is interpolated
+                            # directly into the SQL string, making this safe from SQL injection.
                             
                             # Get total count matching filters (within limit if specified)
                             if limit:

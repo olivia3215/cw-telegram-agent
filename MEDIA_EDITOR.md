@@ -7,10 +7,12 @@ The Media Editor is a web-based application that provides a user-friendly interf
 - [Overview](#overview)
 - [Getting Started](#getting-started)
 - [Web Interface](#web-interface)
+- [Browsing and Filtering Media](#browsing-and-filtering-media)
 - [Managing Media](#managing-media)
 - [Importing Sticker Sets](#importing-sticker-sets)
 - [AI Integration](#ai-integration)
 - [Directory Management](#directory-management)
+- [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -84,12 +86,25 @@ The admin console (which includes the media editor) is automatically started wit
 The Media Editor interface consists of:
 
 - **Directory Selector**: Dropdown to choose which media directory to view
-- **Media Grid**: Visual display of all media items in the selected directory
+- **Limit Field** (state/media only): Constrains the view to N most recent items
+- **Search Box**: Search across media ID, sticker sets, sticker names, and descriptions
+- **Media Type Filter**: Filter by stickers, emoji sets, videos, photos, audio, or other
+- **Pagination Controls**: Navigate through pages of results
+- **Media Grid**: Visual display of media items on the current page
 - **Media Items**: Each item shows:
   - **Preview**: Image, video, or sticker preview
   - **Description**: Editable text area with auto-save
   - **Status**: Shows "Saved", "Saving...", "Error", or other states
   - **Actions**: Buttons for AI refresh, move, and delete operations
+
+### Performance Optimization
+
+For large media collections, the Media Editor uses backend pagination:
+
+- **Fast loading**: Page loads in < 1 second regardless of dataset size
+- **Backend filtering**: Search and media type filters are applied at the database/filesystem level
+- **Smart pagination**: Only loads items for the current page
+- **Limit control**: Constrain the working set to recent items for faster browsing
 
 ### Directory Types
 
@@ -111,6 +126,95 @@ The Media Editor features intelligent auto-save:
 - **Debounced**: New edits extend the delay, preventing excessive saves
 - **Visual feedback**: Status indicators show "Typing...", "Saving...", "Saved", or "Error"
 - **Status tracking**: Manually edited descriptions are marked as "curated"
+
+## Browsing and Filtering Media
+
+The Media Editor provides powerful tools for finding and browsing media in large collections.
+
+### Pagination
+
+When viewing directories with many media items, the interface automatically paginates results:
+
+- **Default page size**: 10 items per page (configurable)
+- **Page navigation**: Use Previous/Next buttons or page selector dropdown
+- **Page indicator**: Shows current page, total pages, and total items
+- **Fast loading**: Each page loads independently for optimal performance
+
+### Search Functionality
+
+Search for media across multiple fields:
+
+1. **Enter search query** in the search box
+2. **Automatic search**: Results appear after 300ms of inactivity (debounced)
+3. **Clear button**: Click to clear search and return to full list
+
+**Search fields:**
+- Media ID (unique_id)
+- Sticker set name
+- Sticker name
+- Description text
+
+**Search features:**
+- Case-insensitive substring matching
+- Searches across all fields simultaneously
+- Results are paginated
+- Clear visual indicator when search is active
+
+### Media Type Filtering
+
+Filter media by category using the "Filter by type" dropdown:
+
+- **All Media**: No filtering (default)
+- **Stickers**: Regular sticker sets (excludes emoji sets)
+- **Emoji Sets**: Custom emoji sticker sets only
+- **Videos**: Video and animation media
+- **Photos**: Photo/image media
+- **Audio**: Audio media files
+- **Other**: Media not in the above categories
+
+**Filter features:**
+- Combines with search (both filters applied)
+- Maintains pagination
+- Shows active filter in pagination info
+
+### Limit Control (state/media only)
+
+For the `state/media` directory with large datasets:
+
+1. **Enter a number** in the "Limit to N most recent items" field
+2. **Wait 500ms** - results update automatically
+3. **View constrained to N most recent** items by modification time
+
+**Use cases:**
+- Focus on recently added media
+- Improve performance with huge datasets
+- Combine with search/filter for targeted browsing
+
+### Combined Filtering
+
+All filters work together:
+
+**Example**: View only sticker sets containing "dancing" within the 1,000 most recent items:
+1. Set limit to 1000
+2. Select "Stickers" from media type filter
+3. Enter "dancing" in search box
+4. Navigate through paginated results
+
+**Processing order:**
+1. Limit (if specified) - constrain to N most recent
+2. Media type filter - apply category filter
+3. Search - apply text search
+4. Pagination - display current page
+
+### Pagination Info Display
+
+The pagination area shows:
+- Current page and total pages
+- Total items matching filters
+- Active search query (if any)
+- Active media type filter (if any)
+
+**Example**: "Page 2 of 5 (47 items) • Search: 'cat' • Type: Stickers"
 
 ## Managing Media
 
@@ -237,6 +341,34 @@ When multiple directories contain the same media item:
 
 - **Target directories**: Created when moving media items
 - **Media cache**: Created automatically by the AI pipeline
+
+## API Reference
+
+The Media Editor exposes a REST API for programmatic access. For detailed API documentation including query parameters, response formats, and examples, see the [Media Editor API section in DESIGN.md](DESIGN.md#media-editor-api).
+
+### Quick Reference
+
+**Endpoint:** `GET /admin/api/media`
+
+**Key Parameters:**
+- `directory` (required): Media directory path
+- `page`: Page number (default: 1)
+- `page_size`: Items per page (default: 10, max: 100)
+- `search`: Search query across ID, sticker set, sticker name, description
+- `media_type`: Filter by type (`all`, `stickers`, `emoji`, `video`, `photos`, `audio`, `other`)
+- `limit`: Constrain to N most recent items
+
+**Example Request:**
+```http
+GET /admin/api/media?directory=state/media&page=2&page_size=20&media_type=stickers&search=cat
+```
+
+**Response includes:**
+- `media_files`: Array of media items for current page
+- `grouped_media`: Items grouped by sticker set
+- `pagination`: Metadata (page, total_pages, total_items, active filters)
+
+For complete API documentation, security considerations, and performance details, see [DESIGN.md](DESIGN.md#media-editor-api).
 
 ## Troubleshooting
 

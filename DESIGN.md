@@ -77,6 +77,11 @@ This document describes the high-level architecture of the Telegram agent, with 
 - [Admin Console & Puppet Master](#admin-console--puppet-master)
   - [Login and configuration flow](#login-and-configuration-flow)
   - [OTP / verification model](#otp--verification-model)
+- [Media Editor API](#media-editor-api)
+  - [Pagination and Filtering](#pagination-and-filtering)
+  - [API Endpoints](#api-endpoints)
+  - [Performance Optimization](#performance-optimization)
+  - [Security](#security)
 
 ---
 
@@ -1187,3 +1192,174 @@ The puppet master session is stored at `state/PuppetMaster/telegram.session`. We
 - Verification state is stored in the Flask session (`SESSION_VERIFIED_KEY`). Clearing cookies or restarting the server without the same secret key forces re-verification.
 
 Once verified, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer without introducing additional privileged accounts.
+
+## Media Editor API
+
+The Media Editor provides a REST API for browsing, searching, and managing media descriptions. The API is designed to handle large media collections efficiently through backend pagination and filtering.
+
+### Pagination and Filtering
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `directory` | string | **Yes** | - | Path to the media directory to list |
+| `page` | integer | No | 1 | Page number for pagination (minimum: 1) |
+| `page_size` | integer | No | 10 | Items per page (minimum: 1, maximum: 100) |
+| `limit` | integer | No | - | Constrains working set to N most recent items |
+| `search` | string | No | - | Search query (case-insensitive substring match) |
+| `media_type` | string | No | `"all"` | Filter by media type |
+
+**Media Type Filter Values:**
+- `all`: No filtering (default)
+- `stickers`: Regular sticker sets (excludes emoji)
+- `emoji`: Custom emoji sticker sets
+- `video`: Videos and animations
+- `photos`: Photo/image media
+- `audio`: Audio media
+- `other`: Media not matching above categories
+
+**Processing Order:**
+1. **Limit**: If specified, retrieve N most recent items (by `updated_at` or modification time)
+2. **Media Type Filter**: Apply media type filtering to the limited set
+3. **Search Filter**: Apply search query across `unique_id`, `description`, `sticker_set_name`, `sticker_name`
+4. **Pagination**: Return only the requested page of results
+
+This ordering ensures expensive operations (search) are performed on the smallest dataset possible.
+
+### API Endpoints
+
+**GET `/admin/api/media`**
+
+Returns a paginated list of media files with filtering applied.
+
+**Request Example:**
+```http
+GET /admin/api/media?directory=state/media&page=2&page_size=20&media_type=stickers&search=cat&limit=1000
+```
+
+**Response Example:**
+```json
+{
+  "media_files": [
+    {
+      "unique_id": "CAACAgIAAxkBAAIC...",
+      "json_file": "/path/to/CAACAgIAAxkBAAIC....json",
+      "media_file": "/path/to/CAACAgIAAxkBAAIC....webp",
+      "description": "A cat sticker showing...",
+      "kind": "sticker",
+      "sticker_set_name": "CatPack",
+      "sticker_set_title": "Cute Cats",
+      "sticker_name": "😸",
+      "emoji_description": "grinning cat",
+      "is_emoji_set": false,
+      "status": "curated",
+      "failure_reason": null,
+      "mime_type": "image/webp"
+    }
+  ],
+  "grouped_media": {
+    "CatPack": [...]
+  },
+  "directory": "state/media",
+  "pagination": {
+    "page": 2,
+    "page_size": 20,
+    "total_items": 234,
+    "total_pages": 12,
+    "limit": 1000,
+    "search": "cat",
+    "media_type": "stickers",
+    "has_more": true
+  }
+}
+```
+
+**Response Fields:**
+- `media_files`: Array of media items for current page
+- `grouped_media`: Media items grouped by sticker set
+- `directory`: The queried directory path
+- `pagination`: Pagination and filter metadata
+  - `page`: Current page number
+  - `page_size`: Items per page
+  - `total_items`: Total items matching filters
+  - `total_pages`: Total number of pages
+  - `limit`: Limit value if specified
+  - `search`: Search query if specified
+  - `media_type`: Media type filter if not "all"
+  - `has_more`: Boolean indicating more pages exist
+
+**Status Codes:**
+- `200 OK`: Successful request
+- `400 Bad Request`: Missing or invalid `directory` parameter
+- `404 Not Found`: Directory does not exist
+- `500 Internal Server Error`: Server error during processing
+
+### Performance Optimization
+
+**MySQL Backend (state/media):**
+- Filtering applied at SQL level using WHERE clauses
+- Sorting applied at SQL level using ORDER BY updated_at DESC
+- Pagination applied at SQL level using LIMIT and OFFSET
+- Expected performance: < 1 second per request regardless of dataset size
+
+**SQL Query Structure:**
+```sql
+-- Note: where_sql is constructed from hardcoded clauses only (media_type is validated
+-- against a whitelist) and parameterized search patterns. No user input is interpolated
+-- directly into the SQL string, making this safe from SQL injection.
+
+SELECT unique_id FROM (
+    SELECT unique_id, updated_at, kind, is_emoji_set, description,
+           sticker_set_name, sticker_name
+    FROM media_metadata
+    ORDER BY updated_at DESC
+    LIMIT @limit_or_all
+) AS limited
+WHERE 
+    -- Media type filter (validated against whitelist)
+    (@media_type = 'all' OR ...) AND
+    -- Search filter (parameterized)
+    (@search IS NULL OR 
+     unique_id LIKE %s OR
+     description LIKE %s OR
+     sticker_set_name LIKE %s OR
+     sticker_name LIKE %s)
+ORDER BY updated_at DESC
+LIMIT @page_size OFFSET @offset
+```
+
+**Filesystem Backend (config directories):**
+- Loads all JSON files from directory
+- Filters in-memory by media type and search
+- Sorts by file modification time
+- Paginates in-memory
+- Expected performance: < 5 seconds for < 1000 items
+
+**Fallback Behavior:**
+If MySQL query fails (connection error, etc.), the system automatically falls back to filesystem implementation with logging. SQL syntax errors are returned to the user as they indicate a bug.
+
+### Security
+
+**SQL Injection Protection:**
+- `media_type` parameter validated against hardcoded whitelist
+- `search` patterns use parameterized queries (`LIKE %s`)
+- WHERE clause constructed from hardcoded strings only
+- No user input interpolated directly into SQL
+
+**Parameter Validation:**
+- `page` clamped to minimum 1, defaults to 1 on invalid input
+- `page_size` clamped to 1-100 range, defaults to 10 on invalid input
+- `media_type` validated against whitelist, defaults to "all" on invalid input
+- `limit` clamped to minimum 1, ignored on invalid input
+- `search` trimmed and treated as null if empty/whitespace
+
+**Authorization:**
+- All endpoints require authentication via Flask session
+- Session verification handled by OTP system (see Admin Console section)
+- No additional authorization checks beyond session validation
+
+**Path Traversal Protection:**
+- Directory paths validated and resolved via `resolve_media_path()`
+- Paths checked against configured media directories
+- Relative paths and symbolic links handled safely
