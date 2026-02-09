@@ -281,13 +281,12 @@ class TestEdgeCases:
                             
                             with patch('admin_console.media.find_media_file', return_value=None):
                                 with patch('admin_console.media.CompositeMediaSource'):
-                                    with patch('asyncio.new_event_loop'):
-                                        response = client.get('/admin/api/media?directory=/test/media')
-                                        
-                                        assert response.status_code == 200
-                                        data = json.loads(response.data)
-                                        assert data['pagination']['total_pages'] in [0, 1]
-                                        assert data['pagination']['has_more'] is False
+                                    response = client.get('/admin/api/media?directory=/test/media')
+                                    
+                                    assert response.status_code == 200
+                                    data = json.loads(response.data)
+                                    assert data['pagination']['total_pages'] in [0, 1]
+                                    assert data['pagination']['has_more'] is False
     
     def test_missing_directory_parameter(self, client):
         """Test error handling when directory parameter is missing"""
