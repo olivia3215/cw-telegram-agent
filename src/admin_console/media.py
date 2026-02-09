@@ -121,7 +121,30 @@ async def _query_sticker_set_info(
 
 @media_bp.route("/api/media")
 def api_media_list():
-    """Get list of media files in a directory."""
+    """Get list of media files in a directory with pagination and search support.
+    
+    Query Parameters:
+        directory (str, required): Path to the media directory to list
+        page (int, optional): Page number for pagination (default: 1)
+        page_size (int, optional): Number of items per page (default: 10, max: 100)
+        limit (int, optional): Constrains working set to N most recent items (applied before pagination)
+        search (str, optional): Search query to filter media by ID, sticker set, sticker name, or description
+        media_type (str, optional): Filter by media type (default: "all")
+            Valid values: "all", "stickers", "emoji", "video", "photos", "audio", "other"
+    
+    Returns:
+        JSON response with:
+        - media_files: List of media items for the current page
+        - grouped_media: Media items grouped by sticker set
+        - directory: The directory path that was queried
+        - pagination: Pagination metadata including page, total_pages, total_items, etc.
+    
+    Processing Order:
+        1. If limit specified, get the N most recent items (by updated_at/modification time)
+        2. Apply media type filter within those items (or all items if no limit)
+        3. Apply search filter within those items
+        4. Paginate the filtered results
+    """
     try:
         directory_path = request.args.get("directory")
         if not directory_path:
@@ -157,7 +180,30 @@ def api_media_list():
                 ]
             )
 
-        # Get optional limit parameter
+        # Get pagination parameters
+        page = 1
+        page_str = request.args.get("page", "").strip()
+        if page_str:
+            try:
+                page = int(page_str)
+                if page < 1:
+                    page = 1
+            except ValueError:
+                page = 1
+        
+        page_size = 10
+        page_size_str = request.args.get("page_size", "").strip()
+        if page_size_str:
+            try:
+                page_size = int(page_size_str)
+                if page_size < 1:
+                    page_size = 10
+                elif page_size > 100:  # Cap at 100 to prevent abuse
+                    page_size = 100
+            except ValueError:
+                page_size = 10
+
+        # Get optional limit parameter (constrains working set to N most recent)
         limit_str = request.args.get("limit", "").strip()
         limit = None
         if limit_str:
@@ -168,6 +214,17 @@ def api_media_list():
             except ValueError:
                 limit = None
 
+        # Get search parameter
+        search_query = request.args.get("search", "").strip()
+        if not search_query:
+            search_query = None
+
+        # Get media type filter
+        media_type = request.args.get("media_type", "all").strip().lower()
+        valid_media_types = ["all", "stickers", "emoji", "video", "photos", "audio", "other"]
+        if media_type not in valid_media_types:
+            media_type = "all"
+
         media_files = []
 
         # Create a single event loop for all async operations in this request
@@ -175,17 +232,100 @@ def api_media_list():
         asyncio.set_event_loop(loop)
         
         try:
-            # Get unique IDs - from MySQL for state/media, otherwise from JSON files
+            # Get unique IDs with filtering applied at database level for MySQL
             unique_ids = []
+            total_count = 0  # Total count matching filters (for pagination)
             use_mysql = is_state_media
+            
             if is_state_media:
-                # For MySQL, query the database directly to get all unique_ids
+                # For MySQL, build query with limit, media_type, search, and pagination
                 try:
                     from db.connection import get_db_connection
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
                         try:
-                            cursor.execute("SELECT unique_id FROM media_metadata")
+                            # Build WHERE clause for filters
+                            where_clauses = []
+                            params = []
+                            
+                            # Apply media type filter
+                            if media_type != "all":
+                                if media_type == "stickers":
+                                    where_clauses.append("(kind IN ('sticker', 'animated_sticker') AND (is_emoji_set IS NULL OR is_emoji_set = 0))")
+                                elif media_type == "emoji":
+                                    where_clauses.append("(kind IN ('sticker', 'animated_sticker') AND is_emoji_set = 1)")
+                                elif media_type == "video":
+                                    where_clauses.append("kind IN ('video', 'animation')")
+                                elif media_type == "photos":
+                                    where_clauses.append("kind = 'photo'")
+                                elif media_type == "audio":
+                                    where_clauses.append("kind = 'audio'")
+                                elif media_type == "other":
+                                    where_clauses.append("kind NOT IN ('sticker', 'animated_sticker', 'video', 'animation', 'photo', 'audio')")
+                            
+                            # Apply search filter
+                            if search_query:
+                                search_pattern = f"%{search_query}%"
+                                where_clauses.append(
+                                    "(unique_id LIKE %s OR description LIKE %s OR sticker_set_name LIKE %s OR sticker_name LIKE %s)"
+                                )
+                                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+                            
+                            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+                            
+                            # Note: where_sql is constructed from hardcoded clauses only (media_type is validated
+                            # against a whitelist) and parameterized search patterns. No user input is interpolated
+                            # directly into the SQL string, making this safe from SQL injection.
+                            
+                            # Get total count matching filters (within limit if specified)
+                            if limit:
+                                # Count only within the N most recent items
+                                # Use updated_at for sorting (most recent first)
+                                # IMPORTANT: Must select all columns needed for WHERE clause
+                                count_sql = f"""
+                                    SELECT COUNT(*) as total FROM (
+                                        SELECT unique_id, kind, is_emoji_set, description, 
+                                               sticker_set_name, sticker_name
+                                        FROM media_metadata
+                                        ORDER BY updated_at DESC
+                                        LIMIT %s
+                                    ) AS limited
+                                    WHERE {where_sql}
+                                """
+                                cursor.execute(count_sql, [limit] + params)
+                            else:
+                                count_sql = f"SELECT COUNT(*) as total FROM media_metadata WHERE {where_sql}"
+                                cursor.execute(count_sql, params)
+                            
+                            total_count = cursor.fetchone()["total"]
+                            
+                            # Get paginated unique_ids
+                            offset = (page - 1) * page_size
+                            
+                            if limit:
+                                # Query within the N most recent items
+                                query_sql = f"""
+                                    SELECT unique_id FROM (
+                                        SELECT unique_id, updated_at, kind, is_emoji_set, description, 
+                                               sticker_set_name, sticker_name, mime_type
+                                        FROM media_metadata
+                                        ORDER BY updated_at DESC
+                                        LIMIT %s
+                                    ) AS limited
+                                    WHERE {where_sql}
+                                    ORDER BY updated_at DESC
+                                    LIMIT %s OFFSET %s
+                                """
+                                cursor.execute(query_sql, [limit] + params + [page_size, offset])
+                            else:
+                                query_sql = f"""
+                                    SELECT unique_id FROM media_metadata
+                                    WHERE {where_sql}
+                                    ORDER BY updated_at DESC
+                                    LIMIT %s OFFSET %s
+                                """
+                                cursor.execute(query_sql, params + [page_size, offset])
+                            
                             rows = cursor.fetchall()
                             unique_ids = [row["unique_id"] for row in rows]
                         finally:
@@ -202,11 +342,85 @@ def api_media_list():
                             unsupported_source,
                         ]
                     )
-                    # Fall back to filesystem
-                    unique_ids = [json_file.stem for json_file in media_dir.glob("*.json")]
-            else:
-                # Find all JSON files to get unique IDs (filesystem)
-                unique_ids = [json_file.stem for json_file in media_dir.glob("*.json")]
+                    # Fall through to filesystem handling below
+            
+            if not use_mysql:
+                # Filesystem implementation: load all, filter, sort, paginate
+                all_json_files = list(media_dir.glob("*.json"))
+                
+                # Load metadata for filtering
+                all_items = []
+                for json_file in all_json_files:
+                    try:
+                        unique_id = json_file.stem
+                        record = cache_source.get_cached_record(unique_id)
+                        if not record:
+                            continue
+                        
+                        # Get file modification time for sorting
+                        media_file_path = find_media_file(media_dir, unique_id)
+                        mod_time = media_file_path.stat().st_mtime if media_file_path and media_file_path.exists() else 0
+                        
+                        all_items.append({
+                            "unique_id": unique_id,
+                            "record": record,
+                            "mod_time": mod_time
+                        })
+                    except Exception as e:
+                        logger.debug(f"Error loading {json_file}: {e}")
+                        continue
+                
+                # Sort by modification time (most recent first)
+                all_items.sort(key=lambda x: x["mod_time"], reverse=True)
+                
+                # Apply limit if specified
+                if limit:
+                    all_items = all_items[:limit]
+                
+                # Apply media type filter
+                if media_type != "all":
+                    filtered_items = []
+                    for item in all_items:
+                        record = item["record"]
+                        kind = record.get("kind", "unknown")
+                        is_emoji_set = record.get("is_emoji_set", False)
+                        
+                        if media_type == "stickers" and kind in ("sticker", "animated_sticker") and not is_emoji_set:
+                            filtered_items.append(item)
+                        elif media_type == "emoji" and kind in ("sticker", "animated_sticker") and is_emoji_set:
+                            filtered_items.append(item)
+                        elif media_type == "video" and kind in ("video", "animation"):
+                            filtered_items.append(item)
+                        elif media_type == "photos" and kind == "photo":
+                            filtered_items.append(item)
+                        elif media_type == "audio" and kind == "audio":
+                            filtered_items.append(item)
+                        elif media_type == "other" and kind not in ("sticker", "animated_sticker", "video", "animation", "photo", "audio"):
+                            filtered_items.append(item)
+                    all_items = filtered_items
+                
+                # Apply search filter
+                if search_query:
+                    search_lower = search_query.lower()
+                    filtered_items = []
+                    for item in all_items:
+                        record = item["record"]
+                        unique_id = item["unique_id"]
+                        
+                        # Search in unique_id, description, sticker_set_name, sticker_name
+                        if (search_lower in unique_id.lower() or
+                            search_lower in (record.get("description") or "").lower() or
+                            search_lower in (record.get("sticker_set_name") or "").lower() or
+                            search_lower in (record.get("sticker_name") or "").lower()):
+                            filtered_items.append(item)
+                    all_items = filtered_items
+                
+                total_count = len(all_items)
+                
+                # Paginate
+                offset = (page - 1) * page_size
+                paginated_items = all_items[offset:offset + page_size]
+                unique_ids = [item["unique_id"] for item in paginated_items]
             
             # Process each unique ID
             for unique_id in unique_ids:
@@ -428,18 +642,7 @@ def api_media_list():
         finally:
             loop.close()
 
-        # Apply limit if specified and directory is state/media
-        if limit is not None and is_state_media:
-            # Sort by file creation time (most recent first), then filter to limit
-            # Items without file_creation_time go to the end
-            media_files.sort(
-                key=lambda x: x.get("_file_creation_time") or 0,
-                reverse=True
-            )
-            # Take only the first 'limit' items
-            media_files = media_files[:limit]
-
-        # Remove internal sorting field before returning
+        # Remove internal sorting field before returning (no longer needed as we don't sort here)
         for media in media_files:
             media.pop("_file_creation_time", None)
 
@@ -451,11 +654,24 @@ def api_media_list():
                 grouped_media[sticker_set] = []
             grouped_media[sticker_set].append(media)
 
+        # Calculate pagination metadata
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+        
         response = jsonify(
             {
                 "media_files": media_files,
                 "grouped_media": grouped_media,
                 "directory": directory_path,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_items": total_count,
+                    "total_pages": total_pages,
+                    "limit": limit,
+                    "search": search_query,
+                    "media_type": media_type if media_type != "all" else None,
+                    "has_more": page < total_pages
+                }
             }
         )
         return add_cache_busting_headers(response)
