@@ -39,7 +39,7 @@ async def test_handle_incoming_message_does_not_check_sender_mute_in_groups():
         "run.mark_partner_typing"
     ), patch("run.can_agent_send_to_channel", new=AsyncMock(return_value=True)), patch(
         "run.insert_received_task_for_conversation", new=AsyncMock()
-    ), patch("run.is_telepathic_message", return_value=False), patch(
+    ), patch(
         "run.format_message_content_for_logging", return_value="hi"
     ):
         await handle_incoming_message(agent, event)

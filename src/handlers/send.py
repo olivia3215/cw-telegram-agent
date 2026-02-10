@@ -128,10 +128,10 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
         else:
             await client.send_message(entity, message, parse_mode="Markdown")
         
-        # Track successful send (exclude telepathic messages)
-        # Check if this is a telepathic message by checking if it's from xsend
-        is_telepathic = task.params.get("xsend_intent") is not None
-        if not is_telepathic:
+        # Track successful send (exclude xsend messages)
+        # Exclude xsend cross-channel messages from activity tracking
+        is_xsend = task.params.get("xsend_intent") is not None
+        if not is_xsend:
             try:
                 from db import agent_activity
                 agent_activity.update_agent_activity(agent_id, channel_id_int)

@@ -56,7 +56,6 @@ from telegram.client_factory import get_telegram_client
 from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm
 from tick import run_tick_loop
 from typing_state import mark_partner_typing
-from telepathic import TELEPATHIC_PREFIXES
 from config import (
     GOOGLE_GEMINI_API_KEY,
     GROK_API_KEY,
@@ -87,21 +86,6 @@ def _env_flag(name: str, default: bool) -> bool:
     if value in ("0", "false", "no", "off"):
         return False
     return default
-
-
-def is_telepathic_message(message) -> bool:
-    """
-    Check if a Telegram message is telepathic (starts with a telepathic prefix).
-    
-    Args:
-        message: Telegram message object
-        
-    Returns:
-        True if the message is telepathic, False otherwise
-    """
-    text = getattr(message, "text", None) or ""
-    text_stripped = text.strip()
-    return text_stripped.startswith(TELEPATHIC_PREFIXES)
 
 
 def is_contact_signup_message(message) -> bool:
@@ -231,13 +215,6 @@ async def handle_incoming_message(agent: Agent, event):
     sender_name = await get_channel_name(agent, sender_id if sender_id is not None else event.chat_id)
     dialog_name = await get_channel_name(agent, event.chat_id)
 
-    # Skip telepathic messages - they should never trigger received tasks
-    if is_telepathic_message(event.message):
-        logger.debug(
-            f"[{agent.name}] Skipping telepathic message from [{sender_name}] in [{dialog_name}]"
-        )
-        return
-
     # If gagged, skip creating received tasks (async notifications should not trigger received tasks when gagged)
     if gagged:
         logger.debug(
@@ -327,17 +304,14 @@ async def scan_unread_messages(agent: Agent):
             continue
 
         # If there are mentions, we must check if they are from a non-blocked user.
-        # Skip telepathic messages even if they mention the agent.
         is_callout = False
         if has_mentions:
             async for message in client.iter_messages(
                 dialog.id, limit=5
             ):
                 if message.mentioned and not await agent.is_blocked(message.sender_id):
-                    # Don't treat telepathic messages as callouts
-                    if not is_telepathic_message(message):
-                        is_callout = True
-                        break
+                    is_callout = True
+                    break
 
         # When a conversation was explicitly marked unread, treat it as a callout.
         is_marked_unread = getattr(dialog.dialog, "unread_mark", False)
@@ -356,33 +330,9 @@ async def scan_unread_messages(agent: Agent):
 
         has_reactions_on_agent_message = reaction_message_id is not None
 
-        # Check if all unread messages are telepathic (skip if so)
-        all_unread_are_telepathic = False
-        if has_unread and not is_callout and not is_marked_unread and not has_reactions_on_agent_message:
-            # Only check if we have unread messages and no other triggers
-            try:
-                unread_messages = []
-                async for message in client.iter_messages(
-                    dialog.id, limit=min(dialog.unread_count, 50)
-                ):
-                    unread_messages.append(message)
-                
-                if unread_messages:
-                    all_unread_are_telepathic = all(
-                        is_telepathic_message(msg) for msg in unread_messages
-                    )
-                    if all_unread_are_telepathic:
-                        logger.debug(
-                            f"[{agent.name}] Skipping unread content in [{await get_channel_name(agent, dialog.id)}] - all {len(unread_messages)} unread messages are telepathic"
-                        )
-            except Exception as e:
-                logger.debug(
-                    f"[{agent.name}] Error checking if unread messages are telepathic in dialog {dialog.id}: {e}"
-                )
-
         # Check if this is a Contact Sign Up message in a single-message conversation
         is_contact_signup_only = False
-        if has_unread and not is_callout and not is_marked_unread and not has_reactions_on_agent_message and not all_unread_are_telepathic:
+        if has_unread and not is_callout and not is_marked_unread and not has_reactions_on_agent_message:
             try:
                 # Get the most recent unread message
                 unread_messages = []
@@ -413,7 +363,7 @@ async def scan_unread_messages(agent: Agent):
                     f"[{agent.name}] Error checking for Contact Sign Up message in dialog {dialog.id}: {e}"
                 )
 
-        if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not all_unread_are_telepathic and not is_contact_signup_only:
+        if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not is_contact_signup_only:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
                 f"[{agent.name}] Found unread content in [{dialog_name}] "

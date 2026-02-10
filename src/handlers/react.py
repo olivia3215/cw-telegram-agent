@@ -72,10 +72,10 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
     try:
         await client(request)
         
-        # Track successful react (exclude telepathic messages)
-        # Reacts are not typically telepathic, but check for consistency
-        is_telepathic = task.params.get("xsend_intent") is not None
-        if not is_telepathic:
+        # Track successful react (exclude xsend messages)
+        # Exclude xsend cross-channel messages from activity tracking
+        is_xsend = task.params.get("xsend_intent") is not None
+        if not is_xsend:
             try:
                 from db import agent_activity
                 agent_activity.update_agent_activity(agent_id, channel_id_int)

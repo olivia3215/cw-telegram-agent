@@ -13,7 +13,6 @@ from typing import Any
 from config import STATE_DIRECTORY
 from handlers.registry import register_immediate_task_handler
 from handlers.storage_helpers import process_property_entry_task
-import handlers.telepathic as telepathic
 from task_graph import TaskNode
 from utils.telegram import get_channel_name
 from utils import format_username, memory_sort_key
@@ -73,10 +72,5 @@ async def handle_immediate_remember(task: TaskNode, *, agent, channel_id: int) -
         logger.warning("[remember] Missing agent context; deferring remember task")
         return False
 
-    telepathy_payload = {"id": task.id}
-    telepathy_payload.update(task.params or {})
-
-    body = json.dumps(telepathy_payload, ensure_ascii=False)
-    await telepathic.maybe_send_telepathic_message(agent, channel_id, "remember", body)
     await _process_remember_task(agent, channel_id, task)
     return True

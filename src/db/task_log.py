@@ -234,7 +234,7 @@ def format_action_details(action_kind: str, params: dict) -> str:
     """
     # Blacklist of parameters that are too verbose or not useful for logs
     blacklist = {
-        "silent",  # Internal flag for telepathic messages
+        "silent",  # Internal flag for silent operations
         "previous_retries",  # Retry count (tracked separately)
         "callout",  # Internal scheduling flag
         "bypass_gagged",  # Internal flag

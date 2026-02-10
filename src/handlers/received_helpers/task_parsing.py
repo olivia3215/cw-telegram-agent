@@ -183,7 +183,6 @@ async def process_retrieve_tasks(
     Raises:
         Exception: To trigger retry after fetching URLs
     """
-    import handlers.telepathic as telepathic
     from config import FETCHED_RESOURCE_LIFETIME_SECONDS
     from task_graph_helpers import make_wait_task
     
@@ -272,10 +271,6 @@ async def process_retrieve_tasks(
                 )
             except Exception as e:
                 logger.debug(f"Failed to log retrieve task: {e}")
-            
-            await telepathic.maybe_send_telepathic_message(
-                agent, channel_id, "retrieve", "\n".join(new_urls)
-            )
 
     logger.info(
         f"[{agent_name}] Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"

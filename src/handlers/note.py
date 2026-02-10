@@ -12,7 +12,6 @@ from pathlib import Path
 from config import STATE_DIRECTORY
 from handlers.registry import register_immediate_task_handler
 from handlers.storage_helpers import process_property_entry_task
-import handlers.telepathic as telepathic
 from task_graph import TaskNode
 
 logger = logging.getLogger(__name__)
@@ -39,11 +38,6 @@ async def handle_immediate_note(task: TaskNode, *, agent, channel_id: int) -> bo
         logger.warning("[note] Missing agent context; deferring note task")
         return False
 
-    telepathy_payload = {"id": task.id}
-    telepathy_payload.update(task.params or {})
-
-    body = json.dumps(telepathy_payload, ensure_ascii=False)
-    await telepathic.maybe_send_telepathic_message(agent, channel_id, "note", body)
     await _process_note_task(agent, channel_id, task)
     return True
 

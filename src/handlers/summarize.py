@@ -12,7 +12,6 @@ from pathlib import Path
 from config import STATE_DIRECTORY
 from handlers.registry import register_immediate_task_handler
 from handlers.storage_helpers import process_property_entry_task
-import handlers.telepathic as telepathic
 from task_graph import TaskNode
 
 logger = logging.getLogger(__name__)
@@ -49,16 +48,5 @@ async def handle_immediate_summarize(task: TaskNode, *, agent, channel_id: int) 
         logger.warning("[summarize] Missing agent context; deferring summarize task")
         return False
 
-    # Check if this summarize task should be silent (no telepathic messages)
-    # Tasks from summarization prepass or admin panel should not send telepathic messages
-    is_silent = task.params.get("silent", False) if task.params else False
-    
-    if not is_silent:
-        telepathy_payload = {"id": task.id}
-        telepathy_payload.update(task.params or {})
-
-        body = json.dumps(telepathy_payload, ensure_ascii=False)
-        await telepathic.maybe_send_telepathic_message(agent, channel_id, "summarize", body)
-    
     await _process_summarize_task(agent, channel_id, task)
     return True

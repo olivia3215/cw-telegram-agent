@@ -91,9 +91,9 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
             # Unknown: keep current behavior (plain text echo); diagnostics are in logs.
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
         
-        # Track successful sticker send (exclude telepathic messages)
-        is_telepathic = task.params.get("xsend_intent") is not None
-        if not is_telepathic:
+        # Track successful sticker send (exclude xsend messages)
+        is_xsend = task.params.get("xsend_intent") is not None
+        if not is_xsend:
             try:
                 from db import agent_activity
                 agent_activity.update_agent_activity(agent_id, channel_id_int)
@@ -110,8 +110,8 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
             
             # Track successful sticker send (fallback case)
-            is_telepathic = task.params.get("xsend_intent") is not None
-            if not is_telepathic:
+            is_xsend = task.params.get("xsend_intent") is not None
+            if not is_xsend:
                 try:
                     from db import agent_activity
                     agent_activity.update_agent_activity(agent_id, channel_id_int)

@@ -7024,13 +7024,9 @@
             if (messages.length === 0 && summaries.length === 0) {
                 html += '<div class="placeholder-card">No conversation history found.</div>';
             } else {
-                // Show "Delete Telepathic Messages" button whenever there's conversation history
                 if (messages.length === 0) {
-                    // All messages summarized - show placeholder and delete button
+                    // All messages summarized - show placeholder
                     html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
-                    html += '<div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; margin-bottom: 12px;">';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
-                    html += '</div>';
                 } else {
                     // Has unsummarized messages - show header with all controls
                     html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
@@ -7042,7 +7038,6 @@
                     html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
                     html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
                     html += 'Show Task Log</label>';
-                    html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                     html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
                     html += '</div>';
@@ -7581,64 +7576,6 @@
                     statusDiv.style.color = '#dc3545';
                 }
                 buttonElement.disabled = false;
-            });
-        }
-
-        function deleteTelepathicMessages(agentName, userId, buttonElement) {
-            // Note: This list should match TELEPATHIC_PREFIXES in src/telepathic.py
-            if (!confirm('Are you sure you want to delete all telepathic messages (⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, ⟦retrieve⟧, ⟦summarize⟧, ⟦xsend⟧, ⟦note⟧) from this channel? This action cannot be undone.')) {
-                return;
-            }
-            
-            // Disable button and show status
-            buttonElement.disabled = true;
-            const originalText = buttonElement.textContent;
-            buttonElement.textContent = 'Deleting...';
-            
-            // Create or update status div
-            let statusDiv = document.getElementById(`delete-telepathic-status-${userId}`);
-            if (!statusDiv) {
-                statusDiv = document.createElement('div');
-                statusDiv.id = `delete-telepathic-status-${userId}`;
-                statusDiv.style.marginTop = '8px';
-                statusDiv.style.fontSize = '14px';
-                buttonElement.parentElement.appendChild(statusDiv);
-            }
-            statusDiv.textContent = 'Deleting telepathic messages...';
-            statusDiv.style.color = '#007bff';
-            
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/delete-telepathic-messages`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    statusDiv.textContent = 'Error: ' + data.error;
-                    statusDiv.style.color = '#dc3545';
-                    buttonElement.disabled = false;
-                    buttonElement.textContent = originalText;
-                } else {
-                    statusDiv.textContent = data.message || `Successfully deleted ${data.deleted_count || 0} telepathic message(s)`;
-                    statusDiv.style.color = '#28a745';
-                    buttonElement.disabled = false;
-                    buttonElement.textContent = originalText;
-                    // Reload conversation after a short delay to show updated messages
-                    setTimeout(() => {
-                        loadConversation();
-                    }, 1000);
-                }
-            })
-            .catch(error => {
-                if (error && error.message === 'unauthorized') {
-                    return;
-                }
-                statusDiv.textContent = 'Error: ' + error;
-                statusDiv.style.color = '#dc3545';
-                buttonElement.disabled = false;
-                buttonElement.textContent = originalText;
             });
         }
 

@@ -33,7 +33,6 @@ from task_graph_helpers import insert_received_task_for_conversation
 from telegram_download import download_media_bytes
 from telegram_media import iter_media_parts
 from utils.telegram import get_channel_name
-from telepathic import TELEPATHIC_PREFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +251,7 @@ def register_conversation_routes(agents_bp: Blueprint):
 
 # Legacy route implementations moved to separate modules:
 # - conversation_content.py: content-check and get-conversation routes
-# - conversation_actions.py: translate, xsend, summarize, delete-telepathic-messages routes
+# - conversation_actions.py: translate, xsend, summarize, download routes
 # - conversation_media.py: emoji and media serving routes
 #
 # The original implementation was removed to reduce file size. See the individual modules for route implementations.

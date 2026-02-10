@@ -860,7 +860,6 @@ After the system prompt, the conversation history is added (processed messages i
 1. LLM generates a `plan` task in its response
 2. Task is parsed and identified as type `"plan"`
 3. `handle_immediate_plan()` (registered as immediate task handler) processes it:
-   - Sends telepathic message with prefix `⟦plan⟧` (if appropriate)
    - Calls `_process_plan_task()` to persist the plan entry
 4. Plan entry is stored in MySQL `plans` table
 5. On subsequent system prompt builds, `_build_system_prompt()` calls `_load_plan_content()` which loads plans from the file
