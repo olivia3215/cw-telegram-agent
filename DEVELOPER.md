@@ -586,6 +586,7 @@ The system uses a storage abstraction to support both filesystem and MySQL backe
 - `media_metadata` - Media description metadata
 - `agent_activity` - Agent activity logs
 - `conversation_llm_overrides` - Channel-specific LLM model overrides
+- `task_execution_log` - Task execution logs with timestamps, action details, and failures
 
 **Filesystem:**
 - `state/media/` - Media cache files (JSON + media files)
@@ -641,6 +642,7 @@ The mixin delegates to the underlying storage backend (`AgentStorageMySQL`), whi
 
 * `tests/test_llm_builder_parts.py` — core coverage for the structured builder.
 * `tests/test_prompt_sticker_descriptions.py` — ensures sticker descriptions are included.
+* `tests/test_task_log.py` — unit tests for task execution logging functionality.
 * Other tests cover media budget/cache, parsing, task graph behavior, and Telegram media detection.
 
 ## Contributing workflow
