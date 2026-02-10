@@ -3550,6 +3550,23 @@
                 return;
             }
             
+            // Check if we're reloading the same conversation
+            const isSameConversation = (
+                currentLoadedConversationAgent === agentName &&
+                currentLoadedConversationUserId === userId
+            );
+            
+            if (isSameConversation) {
+                // Reload the current conversation - just trigger the active subtab's load
+                const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
+                if (activeSubtab) {
+                    const subtabName = activeSubtab.getAttribute('data-subtab');
+                    // Force reload by calling switchSubtab which will reload data
+                    switchSubtab(subtabName);
+                }
+                return;
+            }
+            
             // If userId is from text input and agent is selected, try to populate dropdowns
             const userIdFromInput = userIdInput?.value.trim();
             if (userIdFromInput && agentName) {
@@ -3599,6 +3616,10 @@
                     }
                 }
             }
+            
+            // Update tracking for new conversation
+            currentLoadedConversationAgent = agentName;
+            currentLoadedConversationUserId = userId;
             
             // Load data for the active subtab
             const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
@@ -4930,6 +4951,10 @@
         let selectedAgentContactsAgent = null;
         let currentAgentContactsUserIds = [];
         let expectedAgentContacts = null; // Track current agent contacts request
+        
+        // Track currently loaded conversation for reload functionality
+        let currentLoadedConversationAgent = null;
+        let currentLoadedConversationUserId = null;
 
         // Profile photo fullscreen functions
         function showProfilePhotoFullscreen() {
