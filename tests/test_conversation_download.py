@@ -8,9 +8,10 @@
 import gzip
 import json as json_lib
 import re
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
-from admin_console.agents.conversation_download import _generate_standalone_html
+from admin_console.agents.conversation_download import _generate_standalone_html, _interleave_messages_and_logs
 
 
 def _write_dummy_tgs(path: Path, content: bytes = b'{"v":"5.5.7","fr":30,"layers":[]}'):
@@ -239,3 +240,185 @@ def test_generate_standalone_html_shows_error_when_lottie_data_missing(tmp_path)
     # TGS container is rendered with data-path (JS will show Animation Error when JSON missing)
     assert 'data-path="media/999.tgs"' in html
     assert 'data-unique-id="999"' in html
+
+
+def test_interleave_messages_and_logs_filters_logs_more_than_2_minutes_before_first_message():
+    """Log messages more than 2 minutes before the first conversation message should be omitted."""
+    # First message at 12:00:00
+    first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
+    
+    messages = [
+        {
+            "id": "1",
+            "text": "First message",
+            "timestamp": first_msg_time.isoformat(),
+            "sender_id": "123",
+            "sender_name": "User",
+            "is_from_agent": False,
+        },
+        {
+            "id": "2",
+            "text": "Second message",
+            "timestamp": (first_msg_time + timedelta(minutes=5)).isoformat(),
+            "sender_id": "123",
+            "sender_name": "User",
+            "is_from_agent": False,
+        },
+    ]
+    
+    task_logs = [
+        # Log 3 minutes before first message - should be excluded (more than 2 minutes)
+        {
+            "timestamp": (first_msg_time - timedelta(minutes=3)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Too early"}',
+        },
+        # Log 2 minutes 1 second before first message - should be excluded (more than 2 minutes)
+        {
+            "timestamp": (first_msg_time - timedelta(minutes=2, seconds=1)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Just over 2 min"}',
+        },
+        # Log exactly 2 minutes before first message - should be included (not more than 2 minutes)
+        {
+            "timestamp": (first_msg_time - timedelta(minutes=2)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "At boundary"}',
+        },
+        # Log 1 minute 59 seconds before first message - should be included
+        {
+            "timestamp": (first_msg_time - timedelta(minutes=1, seconds=59)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Just before"}',
+        },
+        # Log 1 minute before first message - should be included
+        {
+            "timestamp": (first_msg_time - timedelta(minutes=1)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "One minute before"}',
+        },
+        # Log at same time as first message - should be included
+        {
+            "timestamp": first_msg_time.isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Same time"}',
+        },
+        # Log after first message - should be included
+        {
+            "timestamp": (first_msg_time + timedelta(minutes=1)).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "After"}',
+        },
+    ]
+    
+    result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
+    
+    # Should have 2 messages + 5 logs (excluding the 2 that are more than 2 minutes before)
+    assert len(result) == 7
+    
+    # Check that the logs are the correct ones
+    log_items = [item for item in result if item['type'] == 'log']
+    assert len(log_items) == 5
+    
+    # Verify the "too early" logs are excluded
+    log_texts = []
+    for item in log_items:
+        details = json_lib.loads(item['data'].get('action_details', '{}'))
+        log_texts.append(details.get('text', ''))
+    
+    assert "Too early" not in log_texts
+    assert "Just over 2 min" not in log_texts
+    assert "At boundary" in log_texts  # This should be included
+    assert "Just before" in log_texts
+    assert "One minute before" in log_texts
+    assert "Same time" in log_texts
+    assert "After" in log_texts
+
+
+def test_interleave_messages_and_logs_excludes_failed_tasks():
+    """Failed tasks should still be excluded from the log display."""
+    first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
+    
+    messages = [
+        {
+            "id": "1",
+            "text": "Message",
+            "timestamp": first_msg_time.isoformat(),
+            "sender_id": "123",
+            "sender_name": "User",
+            "is_from_agent": False,
+        },
+    ]
+    
+    task_logs = [
+        # Normal log - should be included
+        {
+            "timestamp": first_msg_time.isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Normal"}',
+        },
+        # Failed log - should be excluded
+        {
+            "timestamp": first_msg_time.isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Failed"}',
+            "failure_message": "Something went wrong",
+        },
+    ]
+    
+    result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
+    
+    # Should have 1 message + 1 log (excluding the failed one)
+    assert len(result) == 2
+    log_items = [item for item in result if item['type'] == 'log']
+    assert len(log_items) == 1
+    details = json_lib.loads(log_items[0]['data'].get('action_details', '{}'))
+    assert details.get('text') == "Normal"
+
+
+def test_interleave_messages_and_logs_excludes_visible_action_kinds():
+    """Visible action kinds (send, sticker, react, photo) should be excluded."""
+    first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
+    
+    messages = [
+        {
+            "id": "1",
+            "text": "Message",
+            "timestamp": first_msg_time.isoformat(),
+            "sender_id": "123",
+            "sender_name": "User",
+            "is_from_agent": False,
+        },
+    ]
+    
+    task_logs = [
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "think", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "send", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "sticker", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "react", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "photo", "action_details": '{}'},
+    ]
+    
+    result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
+    
+    # Should have 1 message + 1 log (only the "think" log)
+    assert len(result) == 2
+    log_items = [item for item in result if item['type'] == 'log']
+    assert len(log_items) == 1
+    assert log_items[0]['data']['action_kind'] == 'think'
+
+
+def test_interleave_messages_and_logs_with_no_messages():
+    """When there are no messages, no logs should be shown."""
+    task_logs = [
+        {
+            "timestamp": datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC).isoformat(),
+            "action_kind": "think",
+            "action_details": '{"text": "Log"}',
+        },
+    ]
+    
+    result = _interleave_messages_and_logs(messages=[], task_logs=task_logs, summaries=[])
+    
+    # Should be empty when no messages exist
+    assert len(result) == 0
