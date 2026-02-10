@@ -7070,27 +7070,10 @@
                 }
                 
                 // Interleave task logs with messages if toggle is enabled
+                // Note: task logs are already filtered on the server side to only show logs
+                // within 2 minutes before the first message or after
                 let displayItems = [];
-                if (showLogInterleave && conversationTaskLogs.length > 0 && messages.length > 0) {
-                    // Find the timestamp of the first message to determine log cutoff
-                    const firstMsg = messages[0];
-                    const firstMsgDate = new Date(firstMsg.timestamp);
-                    // Cutoff is 2 minutes before the first message
-                    const cutoffTimestamp = new Date(firstMsgDate.getTime() - 2 * 60 * 1000);
-                    
-                    // Filter and prepare logs
-                    const excludedActionKinds = ['send', 'sticker', 'react', 'photo'];
-                    const logsToShow = conversationTaskLogs.filter(log => {
-                        // Exclude failed tasks
-                        if (log.failure_message) return false;
-                        // Exclude visible action kinds
-                        if (excludedActionKinds.includes(log.action_kind)) return false;
-                        // Filter by timestamp - only show logs within 2 minutes before first message or after
-                        const logDate = new Date(log.timestamp);
-                        if (logDate < cutoffTimestamp) return false;
-                        return true;
-                    });
-                    
+                if (showLogInterleave && conversationTaskLogs.length > 0) {
                     // Add messages as items
                     messages.forEach(msg => {
                         displayItems.push({
@@ -7100,8 +7083,8 @@
                         });
                     });
                     
-                    // Add logs as items
-                    logsToShow.forEach(log => {
+                    // Add logs as items (already filtered by server)
+                    conversationTaskLogs.forEach(log => {
                         displayItems.push({
                             type: 'log',
                             timestamp: new Date(log.timestamp),

@@ -666,6 +666,66 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             return jsonify({"error": str(e)}), 500
 
 
+def filter_task_logs_for_conversation(messages: list, task_logs: list) -> list:
+    """
+    Filter task logs to show only successful non-visible tasks within 2 minutes
+    before the first message or after.
+    
+    Args:
+        messages: List of message dicts with 'timestamp' field
+        task_logs: List of task log dicts with 'timestamp', 'action_kind', 'failure_message' fields
+    
+    Returns:
+        Filtered list of task logs
+    """
+    from datetime import timedelta
+    
+    # If there are no messages, don't show any logs
+    if not messages:
+        return []
+    
+    # Find the timestamp of the first message to determine log cutoff
+    cutoff_timestamp = None
+    first_msg = messages[0]
+    first_msg_timestamp_str = first_msg.get("timestamp", "")
+    if first_msg_timestamp_str:
+        try:
+            first_msg_timestamp = datetime.fromisoformat(first_msg_timestamp_str.replace('Z', '+00:00'))
+            if first_msg_timestamp.tzinfo is None:
+                first_msg_timestamp = first_msg_timestamp.replace(tzinfo=UTC)
+            # Cutoff is 2 minutes before the first message
+            cutoff_timestamp = first_msg_timestamp - timedelta(minutes=2)
+        except Exception:
+            pass
+    
+    # Filter task logs
+    excluded_action_kinds = ['send', 'sticker', 'react', 'photo']
+    logs_to_show = []
+    
+    for log in task_logs:
+        # Exclude failed tasks
+        if log.get("failure_message"):
+            continue
+        # Exclude visible action kinds
+        if log.get("action_kind") in excluded_action_kinds:
+            continue
+        # Filter by timestamp - only show logs within 2 minutes before first message or after
+        if cutoff_timestamp:
+            log_timestamp_str = log.get("timestamp")
+            if log_timestamp_str:
+                try:
+                    log_timestamp = datetime.fromisoformat(str(log_timestamp_str).replace('Z', '+00:00'))
+                    if log_timestamp.tzinfo is None:
+                        log_timestamp = log_timestamp.replace(tzinfo=UTC)
+                    if log_timestamp < cutoff_timestamp:
+                        continue
+                except Exception:
+                    continue
+        logs_to_show.append(log)
+    
+    return logs_to_show
+
+
 def _interleave_messages_and_logs(messages: list, task_logs: list, summaries: list) -> list:
     """
     Interleave messages and task logs, filtering logs to show only successful non-visible tasks
@@ -673,51 +733,8 @@ def _interleave_messages_and_logs(messages: list, task_logs: list, summaries: li
     
     Returns a list of dicts with 'type' ('message' or 'log'), 'timestamp', and 'data'.
     """
-    # Find the timestamp of the first message to determine log cutoff
-    from datetime import timedelta
-    
-    cutoff_timestamp = None
-    if messages:
-        first_msg = messages[0]
-        first_msg_timestamp_str = first_msg.get("timestamp", "")
-        if first_msg_timestamp_str:
-            try:
-                first_msg_timestamp = datetime.fromisoformat(first_msg_timestamp_str.replace('Z', '+00:00'))
-                if first_msg_timestamp.tzinfo is None:
-                    first_msg_timestamp = first_msg_timestamp.replace(tzinfo=UTC)
-                # Cutoff is 2 minutes before the first message
-                cutoff_timestamp = first_msg_timestamp - timedelta(minutes=2)
-            except Exception:
-                pass
-    
-    # Filter task logs (exclude failed, exclude visible action kinds, only within 2 minutes of first message)
-    excluded_action_kinds = ['send', 'sticker', 'react', 'photo']
-    logs_to_show = []
-    
-    # If there are no messages, don't show any logs
-    if not messages:
-        pass
-    else:
-        for log in task_logs:
-            # Exclude failed tasks
-            if log.get("failure_message"):
-                continue
-            # Exclude visible action kinds
-            if log.get("action_kind") in excluded_action_kinds:
-                continue
-            # Filter by timestamp - only show logs within 2 minutes before first message or after
-            if cutoff_timestamp:
-                log_timestamp_str = log.get("timestamp")
-                if log_timestamp_str:
-                    try:
-                        log_timestamp = datetime.fromisoformat(str(log_timestamp_str).replace('Z', '+00:00'))
-                        if log_timestamp.tzinfo is None:
-                            log_timestamp = log_timestamp.replace(tzinfo=UTC)
-                        if log_timestamp < cutoff_timestamp:
-                            continue
-                    except Exception:
-                        continue
-            logs_to_show.append(log)
+    # Filter task logs using the shared utility function
+    logs_to_show = filter_task_logs_for_conversation(messages, task_logs)
     
     # Build display items
     display_items = []

@@ -1024,13 +1024,17 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             # Get task execution logs for the past 7 days
             from db.task_log import get_task_logs
             task_logs = get_task_logs(agent.agent_id, channel_id, days=7)
+            
+            # Filter task logs to only show those within 2 minutes before first message
+            from admin_console.agents.conversation_download import filter_task_logs_for_conversation
+            filtered_task_logs = filter_task_logs_for_conversation(messages, task_logs)
 
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
                 "agent_timezone": agent_tz_id,
                 "is_blocked": is_blocked,
-                "task_logs": task_logs
+                "task_logs": filtered_task_logs
             })
         except RuntimeError as e:
             error_msg = str(e).lower()
