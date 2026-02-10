@@ -6874,6 +6874,7 @@
         let showTranslation = false;
         let conversationAgentTimezone = null;
         let conversationTaskLogs = [];
+        let conversationSummaries = [];
         let showLogInterleave = false;
 
         function loadConversation() {
@@ -6909,6 +6910,7 @@
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
                     conversationTaskLogs = taskLogs;  // Store task logs globally
+                    conversationSummaries = summaries;  // Store summaries globally
                     // Preserve showTranslation state instead of resetting it
                     // showTranslation state is preserved
                     
@@ -7304,9 +7306,8 @@
         
         function toggleLogInterleave(agentName, userId) {
             showLogInterleave = !showLogInterleave;
-            // Re-render the conversation with the new toggle state
-            const summaries = []; // We don't have summaries stored, but they're not needed for re-render
-            renderConversation(agentName, userId, summaries, conversationMessages, conversationAgentTimezone, false);
+            // Re-render the conversation with the new toggle state using stored summaries
+            renderConversation(agentName, userId, conversationSummaries, conversationMessages, conversationAgentTimezone, false);
             
             // Restore checkbox state after rendering
             const checkbox = document.getElementById('log-interleave-toggle');
