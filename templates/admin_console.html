@@ -913,7 +913,6 @@
                 <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
-                <button class="tab-button" data-subtab="logs">Logs</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
                 <button class="tab-button" data-subtab="work-queue">Work Queue</button>
             </nav>
@@ -1040,9 +1039,6 @@
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
-                <div class="subtab-panel" data-subtab-panel="logs">
-                    <div id="logs-container">
-                        <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
                 <div class="subtab-panel" data-subtab-panel="xsend">
@@ -6915,7 +6911,6 @@
                     // showTranslation state is preserved
                     
                     renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked);
-                    renderLogs(agentName, userId, taskLogs, summaries, agentTimezone);
                     
                     // Restore checkbox state after rendering if it was checked
                     const checkbox = document.getElementById('translation-toggle');
@@ -7315,127 +7310,6 @@
                 checkbox.checked = showLogInterleave;
             }
         }
-        
-        function renderLogs(agentName, userId, taskLogs, summaries, agentTimezone) {
-            const container = document.getElementById('logs-container');
-            let html = '';
-            
-            function formatTimestamp(utcTimestamp) {
-                if (!utcTimestamp) return 'N/A';
-                try {
-                    const date = new Date(utcTimestamp);
-                    const tz = agentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-                    const formatted = date.toLocaleString('en-US', {
-                        timeZone: tz,
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: false
-                    });
-                    const tzAbbr = new Intl.DateTimeFormat('en-US', {
-                        timeZone: tz,
-                        timeZoneName: 'short'
-                    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || tz;
-                    return `${formatted} ${tzAbbr}`;
-                } catch (e) {
-                    return utcTimestamp;
-                }
-            }
-            
-            function formatActionDetails(actionKind, actionDetails) {
-                if (!actionDetails) return '';
-                try {
-                    const details = JSON.parse(actionDetails);
-                    
-                    // Special formatting for specific action kinds
-                    if (actionKind === 'think' && details.text) {
-                        return `<div style="font-style: italic;">${escapeHtml(details.text)}</div>`;
-                    } else if (actionKind === 'send' && details.text) {
-                        return `<div style="white-space: pre-wrap;">${escapeHtml(details.text)}</div>`;
-                    } else if ((actionKind === 'remember' || actionKind === 'note' || actionKind === 'plan' || actionKind === 'intend') && details.content) {
-                        return `<div style="white-space: pre-wrap;">${escapeHtml(details.content)}</div>`;
-                    } else if (actionKind === 'summarize') {
-                        return 'Summarized conversation';
-                    } else if (Object.keys(details).length > 0 && details.action !== actionKind) {
-                        // Generic display for all other parameters
-                        const parts = [];
-                        for (const [key, value] of Object.entries(details)) {
-                            if (key === 'action') continue; // Skip generic action marker
-                            if (typeof value === 'string' || typeof value === 'number') {
-                                parts.push(`<strong>${key}:</strong> ${escapeHtml(String(value))}`);
-                            } else if (Array.isArray(value)) {
-                                parts.push(`<strong>${key}:</strong> [${value.join(', ')}]`);
-                            } else if (typeof value === 'boolean') {
-                                parts.push(`<strong>${key}:</strong> ${value}`);
-                            } else if (typeof value === 'object' && value !== null) {
-                                parts.push(`<strong>${key}:</strong> ${escapeHtml(JSON.stringify(value))}`);
-                            }
-                        }
-                        return parts.length > 0 ? parts.join('<br>') : '';
-                    } else {
-                        return '';
-                    }
-                } catch (e) {
-                    return escapeHtml(actionDetails);
-                }
-            }
-            
-            html += '<h3 style="margin-bottom: 16px; font-size: 18px; font-weight: bold;">Task Execution Log (Last 7 Days)</h3>';
-            
-            if (taskLogs.length === 0) {
-                html += '<div style="padding: 16px; background: #f5f5f5; border-radius: 4px; color: #666;">No task logs found for this conversation.</div>';
-            } else {
-                // Group logs by date
-                const logsByDate = {};
-                taskLogs.forEach(log => {
-                    const date = new Date(log.timestamp).toLocaleDateString();
-                    if (!logsByDate[date]) {
-                        logsByDate[date] = [];
-                    }
-                    logsByDate[date].push(log);
-                });
-                
-                Object.keys(logsByDate).sort().reverse().forEach(date => {
-                    html += `<div style="margin-bottom: 24px;">`;
-                    html += `<h4 style="margin-bottom: 12px; font-size: 16px; font-weight: bold; color: #333;">${date}</h4>`;
-                    
-                    logsByDate[date].forEach(log => {
-                        const bgColor = log.failure_message ? '#ffe0e0' : '#f0f0f0';
-                        const borderColor = log.failure_message ? '#d32f2f' : '#999';
-                        
-                        html += `<div style="background: ${bgColor}; padding: 12px; margin-bottom: 8px; border-radius: 4px; border-left: 4px solid ${borderColor};">`;
-                        html += `<div style="font-size: 12px; color: #666; margin-bottom: 4px;">`;
-                        html += `<strong>[${escapeHtml(log.action_kind).toUpperCase()}]</strong>`;
-                        if (log.task_identifier) {
-                            html += ` <span style="color: #888; font-size: 11px;">(${escapeHtml(log.task_identifier)})</span>`;
-                        }
-                        html += ` at ${formatTimestamp(log.timestamp)}`;
-                        html += `</div>`;
-                        
-                        const details = formatActionDetails(log.action_kind, log.action_details);
-                        if (details) {
-                            html += `<div style="font-size: 13px; margin-top: 6px;">${details}</div>`;
-                        }
-                        
-                        if (log.failure_message) {
-                            html += `<div style="font-size: 13px; margin-top: 6px; color: #d32f2f; font-weight: bold;">`;
-                            html += `❌ Error: ${escapeHtml(log.failure_message)}`;
-                            html += `</div>`;
-                        }
-                        
-                        html += `</div>`;
-                    });
-                    
-                    html += `</div>`;
-                });
-            }
-            
-            container.innerHTML = html;
-        }
-        
         async function loadCustomEmojiAnimations(agentName) {
             // Find all custom emoji images (both reactions and message text) and check if they're animated (TGS)
             // Only process images that haven't been processed yet (don't have the processed flag)
