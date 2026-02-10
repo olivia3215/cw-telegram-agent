@@ -264,8 +264,7 @@ The `format_action_details()` function (`src/db/task_log.py`) serializes task pa
 - Excludes internal/verbose fields: `silent`, `previous_retries`, `callout`, `bypass_gagged`, `clear_mentions`, `clear_reactions`
 - Includes all other task parameters
 - Truncates long text fields to prevent database bloat:
-  - `text`, `content`, `xsend_intent`: 500 characters
-  - `caption`: 200 characters
+  - `text`, `content`, `xsend_intent`, `caption`: 10,000 characters
 - Returns JSON string for flexible client-side rendering
 
 **Rationale:** Blacklist (vs whitelist) ensures new task parameters are automatically logged without code changes.

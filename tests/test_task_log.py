@@ -295,46 +295,46 @@ class TestFormatActionDetails:
     
     def test_truncates_long_text_fields(self):
         """Test that long text fields are truncated."""
-        long_text = "A" * 600  # Exceeds 500 char limit
+        long_text = "A" * 11000  # Exceeds 10000 char limit
         params = {"text": long_text}
         
         result = format_action_details("send", params)
         parsed = json.loads(result)
         
-        assert len(parsed["text"]) == 503  # 500 + "..."
+        assert len(parsed["text"]) == 10003  # 10000 + "..."
         assert parsed["text"].endswith("...")
     
     def test_truncates_content_field(self):
         """Test that content field is truncated."""
-        long_content = "B" * 600
+        long_content = "B" * 11000
         params = {"content": long_content}
         
         result = format_action_details("remember", params)
         parsed = json.loads(result)
         
-        assert len(parsed["content"]) == 503
+        assert len(parsed["content"]) == 10003
         assert parsed["content"].endswith("...")
     
     def test_truncates_xsend_intent(self):
         """Test that xsend_intent field is truncated."""
-        long_intent = "C" * 600
+        long_intent = "C" * 11000
         params = {"xsend_intent": long_intent}
         
         result = format_action_details("xsend", params)
         parsed = json.loads(result)
         
-        assert len(parsed["xsend_intent"]) == 503
+        assert len(parsed["xsend_intent"]) == 10003
         assert parsed["xsend_intent"].endswith("...")
     
     def test_truncates_caption_field(self):
-        """Test that caption field is truncated to 200 chars."""
-        long_caption = "D" * 300
+        """Test that caption field is truncated to 10000 chars."""
+        long_caption = "D" * 11000
         params = {"caption": long_caption}
         
         result = format_action_details("photo", params)
         parsed = json.loads(result)
         
-        assert len(parsed["caption"]) == 203  # 200 + "..."
+        assert len(parsed["caption"]) == 10003  # 10000 + "..."
         assert parsed["caption"].endswith("...")
     
     def test_preserves_non_blacklisted_parameters(self):

@@ -249,21 +249,24 @@ def format_action_details(action_kind: str, params: dict) -> str:
     }
     
     # Truncate long text fields to avoid bloating the database
+    # Use a generous limit of 10,000 characters to preserve important content
+    MAX_FIELD_LENGTH = 10000
+    
     if "text" in filtered_params and isinstance(filtered_params["text"], str):
-        if len(filtered_params["text"]) > 500:
-            filtered_params["text"] = filtered_params["text"][:500] + "..."
+        if len(filtered_params["text"]) > MAX_FIELD_LENGTH:
+            filtered_params["text"] = filtered_params["text"][:MAX_FIELD_LENGTH] + "..."
     
     if "content" in filtered_params and isinstance(filtered_params["content"], str):
-        if len(filtered_params["content"]) > 500:
-            filtered_params["content"] = filtered_params["content"][:500] + "..."
+        if len(filtered_params["content"]) > MAX_FIELD_LENGTH:
+            filtered_params["content"] = filtered_params["content"][:MAX_FIELD_LENGTH] + "..."
     
     if "xsend_intent" in filtered_params and isinstance(filtered_params["xsend_intent"], str):
-        if len(filtered_params["xsend_intent"]) > 500:
-            filtered_params["xsend_intent"] = filtered_params["xsend_intent"][:500] + "..."
+        if len(filtered_params["xsend_intent"]) > MAX_FIELD_LENGTH:
+            filtered_params["xsend_intent"] = filtered_params["xsend_intent"][:MAX_FIELD_LENGTH] + "..."
     
     if "caption" in filtered_params and isinstance(filtered_params["caption"], str):
-        if len(filtered_params["caption"]) > 200:
-            filtered_params["caption"] = filtered_params["caption"][:200] + "..."
+        if len(filtered_params["caption"]) > MAX_FIELD_LENGTH:
+            filtered_params["caption"] = filtered_params["caption"][:MAX_FIELD_LENGTH] + "..."
     
     # Return empty dict if nothing to log
     if not filtered_params:
