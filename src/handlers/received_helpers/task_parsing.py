@@ -268,6 +268,7 @@ async def process_retrieve_tasks(
                     action_kind="retrieve",
                     action_details=action_details,
                     failure_message=None,
+                    task_identifier=retrieve_task.id,
                 )
             except Exception as e:
                 logger.debug(f"Failed to log retrieve task: {e}")

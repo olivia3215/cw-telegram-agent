@@ -7153,7 +7153,7 @@
                         return `
                             <div style="background: #ffe0f0; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 4px solid #d81b60;">
                                 <div style="font-size: 11px; color: #666; margin-bottom: 4px;">
-                                    <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong> at ${formatTimestamp(log.timestamp)}
+                                    <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong>${log.task_identifier ? ` <span style="color: #888;">(${escapeHtml(log.task_identifier)})</span>` : ''} at ${formatTimestamp(log.timestamp)}
                                 </div>
                                 ${detailsText ? `<div style="font-size: 13px; color: #333;">${detailsText}</div>` : ''}
                             </div>
@@ -7407,7 +7407,11 @@
                         
                         html += `<div style="background: ${bgColor}; padding: 12px; margin-bottom: 8px; border-radius: 4px; border-left: 4px solid ${borderColor};">`;
                         html += `<div style="font-size: 12px; color: #666; margin-bottom: 4px;">`;
-                        html += `<strong>[${escapeHtml(log.action_kind).toUpperCase()}]</strong> at ${formatTimestamp(log.timestamp)}`;
+                        html += `<strong>[${escapeHtml(log.action_kind).toUpperCase()}]</strong>`;
+                        if (log.task_identifier) {
+                            html += ` <span style="color: #888; font-size: 11px;">(${escapeHtml(log.task_identifier)})</span>`;
+                        }
+                        html += ` at ${formatTimestamp(log.timestamp)}`;
                         html += `</div>`;
                         
                         const details = formatActionDetails(log.action_kind, log.action_details);

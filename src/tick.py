@@ -55,6 +55,7 @@ def _log_task_failure(graph, task, error_msg: str):
             action_kind=task.type,
             action_details=action_details,
             failure_message=error_msg,
+            task_identifier=getattr(task, "id", None),
         )
     except Exception as e:
         logger.debug(f"Failed to log task failure: {e}")
@@ -88,6 +89,7 @@ def _log_task_completion(graph, task):
             action_kind=task.type,
             action_details=action_details,
             failure_message=None,
+            task_identifier=getattr(task, "id", None),
         )
     except Exception as e:
         logger.debug(f"Failed to log task completion: {e}")

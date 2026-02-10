@@ -272,6 +272,7 @@ def create_schema() -> None:
                     agent_telegram_id BIGINT NOT NULL,
                     channel_telegram_id BIGINT NOT NULL,
                     action_kind VARCHAR(50) NOT NULL,
+                    task_identifier VARCHAR(100),
                     action_details TEXT,
                     failure_message TEXT,
                     INDEX idx_agent_channel_time (agent_telegram_id, channel_telegram_id, timestamp DESC),

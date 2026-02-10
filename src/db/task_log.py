@@ -25,6 +25,7 @@ def log_task_execution(
     action_kind: str,
     action_details: Optional[str] = None,
     failure_message: Optional[str] = None,
+    task_identifier: Optional[str] = None,
 ) -> None:
     """
     Log a task execution to the database.
@@ -35,6 +36,7 @@ def log_task_execution(
         action_kind: The type of action (e.g., 'send', 'think', 'react')
         action_details: Optional JSON string or text with action details
         failure_message: Optional error message if the task failed
+        task_identifier: Optional task identifier (e.g., task.id)
     """
     try:
         with get_db_connection() as conn:
@@ -42,14 +44,15 @@ def log_task_execution(
             cursor.execute(
                 """
                 INSERT INTO task_execution_log
-                (timestamp, agent_telegram_id, channel_telegram_id, action_kind, action_details, failure_message)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (timestamp, agent_telegram_id, channel_telegram_id, action_kind, task_identifier, action_details, failure_message)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     clock.now(UTC),
                     agent_telegram_id,
                     channel_telegram_id,
                     action_kind,
+                    task_identifier,
                     action_details,
                     failure_message,
                 ),
@@ -79,6 +82,7 @@ def get_task_logs(
         - id: Log entry ID
         - timestamp: ISO format datetime string
         - action_kind: Type of action
+        - task_identifier: Task identifier (if available)
         - action_details: Details string (may be JSON)
         - failure_message: Error message if failed, None otherwise
     """
@@ -89,7 +93,7 @@ def get_task_logs(
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, timestamp, action_kind, action_details, failure_message
+                SELECT id, timestamp, action_kind, task_identifier, action_details, failure_message
                 FROM task_execution_log
                 WHERE agent_telegram_id = %s
                   AND channel_telegram_id = %s
@@ -114,6 +118,7 @@ def get_task_logs(
                     "id": row["id"],
                     "timestamp": timestamp.isoformat() if timestamp else None,
                     "action_kind": row["action_kind"],
+                    "task_identifier": row.get("task_identifier"),
                     "action_details": row["action_details"],
                     "failure_message": row["failure_message"],
                 })
@@ -145,7 +150,7 @@ def get_logs_after_timestamp(
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, timestamp, action_kind, action_details, failure_message
+                SELECT id, timestamp, action_kind, task_identifier, action_details, failure_message
                 FROM task_execution_log
                 WHERE agent_telegram_id = %s
                   AND channel_telegram_id = %s
@@ -169,6 +174,7 @@ def get_logs_after_timestamp(
                     "id": row["id"],
                     "timestamp": timestamp.isoformat() if timestamp else None,
                     "action_kind": row["action_kind"],
+                    "task_identifier": row.get("task_identifier"),
                     "action_details": row["action_details"],
                     "failure_message": row["failure_message"],
                 })

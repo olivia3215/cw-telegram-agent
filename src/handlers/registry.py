@@ -175,6 +175,7 @@ def _log_immediate_task_dispatch(task, agent, channel_id: int) -> None:
             action_kind=task_type,
             action_details=action_details,
             failure_message=None,
+            task_identifier=getattr(task, "id", None),
         )
     except Exception as e:
         logger.debug(f"Failed to log immediate task dispatch: {e}")
