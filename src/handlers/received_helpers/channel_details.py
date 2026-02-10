@@ -1,7 +1,8 @@
-# handlers/received/channel_details.py
+# src/handlers/received_helpers/channel_details.py
 #
-# Channel details building for system prompts.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 
 from media.media_format import format_media_sentence

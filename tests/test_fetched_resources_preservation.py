@@ -1,8 +1,8 @@
 # tests/test_fetched_resources_preservation.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """Test fetched resource preservation across task graphs."""
 
 from datetime import UTC, datetime

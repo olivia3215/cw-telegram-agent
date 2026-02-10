@@ -1,8 +1,8 @@
-# core/execution.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/core/execution.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 General-purpose event loop executor for running coroutines on a specific event loop
 from any thread or async context.

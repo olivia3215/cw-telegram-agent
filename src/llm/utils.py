@@ -1,8 +1,8 @@
-# llm/utils.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/llm/utils.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """Shared utility functions for LLM implementations."""
 
 

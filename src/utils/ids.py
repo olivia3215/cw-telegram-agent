@@ -1,7 +1,8 @@
-# utils/ids.py
+# src/utils/ids.py
 #
-# ID normalization and extraction utilities.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetStickerSetRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissingImports]
 

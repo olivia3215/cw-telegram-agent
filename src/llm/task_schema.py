@@ -1,3 +1,8 @@
+# src/llm/task_schema.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from __future__ import annotations
 
 import re

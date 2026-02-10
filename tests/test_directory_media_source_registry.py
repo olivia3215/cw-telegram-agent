@@ -1,3 +1,8 @@
+# tests/test_directory_media_source_registry.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import json
 from datetime import UTC, datetime
 from pathlib import Path

@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_content_check.py
+# src/admin_console/agents/conversation_content_check.py
 #
-# Route handler for batch checking conversation content.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 from pathlib import Path
 

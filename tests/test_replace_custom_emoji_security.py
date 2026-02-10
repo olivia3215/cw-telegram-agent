@@ -1,7 +1,8 @@
 # tests/test_replace_custom_emoji_security.py
 #
-# Security tests for _replace_custom_emoji_in_reactions function to prevent XSS attacks
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace

@@ -1,7 +1,8 @@
 # tests/test_entities_to_markdown.py
 #
-# Tests for _entities_to_markdown function to verify correct handling of nested/overlapping entities
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace

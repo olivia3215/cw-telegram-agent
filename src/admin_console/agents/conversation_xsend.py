@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_xsend.py
+# src/admin_console/agents/conversation_xsend.py
 #
-# XSend route for triggering received tasks on other channels.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 import os
 

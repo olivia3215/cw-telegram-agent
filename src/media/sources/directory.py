@@ -1,8 +1,8 @@
-# media/sources/directory.py
+# src/media/sources/directory.py
 #
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Directory-based media source.
 

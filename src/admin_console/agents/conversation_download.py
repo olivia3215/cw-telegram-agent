@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_download.py
+# src/admin_console/agents/conversation_download.py
 #
-# Download conversation route for exporting conversations as zip files.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import copy
 import glob
 import gzip

@@ -1,7 +1,8 @@
-# utils/telegram_entities.py
+# src/utils/telegram_entities.py
 #
-# Utilities for converting Telegram message entities to markdown.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 """
 Utilities for working with Telegram message entities.
 

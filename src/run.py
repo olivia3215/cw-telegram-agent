@@ -1,8 +1,8 @@
-# run.py
-
+# src/run.py
+#
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Main entry point for the Telegram agent server.
 

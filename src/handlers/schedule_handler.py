@@ -1,8 +1,8 @@
-# handlers/schedule_handler.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/handlers/schedule_handler.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Handler for schedule tasks that allow agents to manage their daily schedules.
 """

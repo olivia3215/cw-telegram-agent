@@ -1,8 +1,8 @@
 # tests/test_retry_integration.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Integration tests for retry behavior:
 - PROHIBITED_CONTENT triggers task graph retry

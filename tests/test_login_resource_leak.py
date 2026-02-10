@@ -1,3 +1,8 @@
+# tests/test_login_resource_leak.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from flask import Flask

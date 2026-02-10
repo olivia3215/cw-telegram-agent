@@ -1,3 +1,8 @@
+# tests/test_mute_until_does_not_overflow_telethon_int32.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

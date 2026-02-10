@@ -1,8 +1,8 @@
-# utils/__init__.py
+# src/utils/__init__.py
 #
-# Shared utility functions package.
-# Re-exports common utilities for backward compatibility.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from utils.type_coercion import coerce_to_int, coerce_to_str
 from utils.telegram import format_username, get_channel_name, get_dialog_name, is_group_or_channel, is_dm
 from utils.ids import (

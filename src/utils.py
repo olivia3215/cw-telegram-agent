@@ -1,8 +1,8 @@
-# utils.py
+# src/utils.py
 #
-# Backward compatibility: Re-export from utils package.
-# This file is kept for backward compatibility but new code should import from utils.* directly.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from utils import (
     coerce_to_int,
     coerce_to_str,

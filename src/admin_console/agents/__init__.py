@@ -1,7 +1,8 @@
-# admin_console/agents/__init__.py
+# src/admin_console/agents/__init__.py
 #
-# Package initialization for admin console agent routes.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from flask import Blueprint  # pyright: ignore[reportMissingImports]
 
 # Create agents blueprint

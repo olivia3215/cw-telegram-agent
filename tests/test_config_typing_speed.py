@@ -1,8 +1,8 @@
 # tests/test_config_typing_speed.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Tests for TYPING_SPEED config parsing to verify it rejects invalid values.
 """

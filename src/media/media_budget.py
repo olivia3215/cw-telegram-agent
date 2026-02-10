@@ -1,8 +1,8 @@
-# media/media_budget.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/media/media_budget.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Budget management and utilities for media description generation.
 
