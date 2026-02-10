@@ -324,25 +324,3 @@ def client():
     
     with app.test_client() as client:
         yield client
-
-
-# Additional integration tests would go here
-# These would require actual database/filesystem setup with test data
-class TestIntegration:
-    """Integration tests requiring actual data setup"""
-    
-    @pytest.mark.skip(reason="Requires database setup with test data")
-    def test_mysql_pagination_performance(self):
-        """Test that MySQL pagination is efficient with large datasets"""
-        # Would test with 1000+ items and verify query performance
-        pass
-    
-    @pytest.mark.skip(reason="Requires database setup with test data")
-    def test_search_across_all_fields(self):
-        """Test searching across unique_id, description, sticker_set_name, sticker_name"""
-        pass
-    
-    @pytest.mark.skip(reason="Requires database setup with test data")
-    def test_media_type_filtering_accuracy(self):
-        """Test that each media type filter returns only correct items"""
-        pass
