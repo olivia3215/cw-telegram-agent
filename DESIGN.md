@@ -14,6 +14,7 @@ This document describes the high-level architecture of the Telegram agent, with 
   - [Callout vs Regular Tasks](#callout-vs-regular-tasks)
   - [Task Dependencies and Failure Handling](#task-dependencies-and-failure-handling)
   - [Task Types and Special Handling](#task-types-and-special-handling)
+  - [Task Execution Logging](#task-execution-logging)
 - [Retrieval Augmentation Architecture](#retrieval-augmentation-architecture)
   - [Overview](#overview)
   - [Retrieve Task Processing](#retrieve-task-processing)
@@ -199,6 +200,187 @@ The `think` task enables the LLM to reason before producing any output tokens. T
   - Avoid errors by thinking through potential issues
 
 The LLM is instructed on how to use think tasks via the `samples/prompts/Think.md` role prompt.
+
+## Task Execution Logging
+
+The system logs all task executions to a MySQL database table, enabling visibility into agent actions and facilitating debugging through the Admin Console.
+
+### Architecture
+
+**Database Table:** `task_execution_log`
+
+**Schema:**
+```sql
+CREATE TABLE task_execution_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    timestamp DATETIME NOT NULL,
+    agent_telegram_id BIGINT NOT NULL,
+    channel_telegram_id BIGINT NOT NULL,
+    action_kind VARCHAR(50) NOT NULL,
+    task_identifier VARCHAR(100),
+    action_details TEXT,
+    failure_message TEXT,
+    INDEX idx_agent_channel_time (agent_telegram_id, channel_telegram_id, timestamp DESC),
+    INDEX idx_timestamp (timestamp)
+)
+```
+
+**Key Fields:**
+- `timestamp` - When the task was executed (UTC)
+- `action_kind` - Type of task (send, think, retrieve, etc.)
+- `task_identifier` - Task ID for debugging (e.g., task.id)
+- `action_details` - JSON string with task parameters
+- `failure_message` - Error message if task failed
+
+### Logging Points
+
+Task executions are logged at three points in the system:
+
+1. **Task Completion** (`src/tick.py`)
+   - Logged when tasks successfully transition to `TaskStatus.DONE`
+   - Called from `run_one_tick()` after handler completes
+   - Excludes `wait` tasks
+
+2. **Task Failure** (`src/tick.py`)
+   - Logged when tasks raise exceptions
+   - Captures failure message and task details
+   - Excludes `wait` tasks
+
+3. **Immediate Task Dispatch** (`src/handlers/registry.py`)
+   - Logged for tasks processed immediately (not via task graph)
+   - Called before handler execution
+   - Examples: `remember`, `think`, `note`, `plan`, `intend`
+
+4. **Retrieve Task Execution** (`src/handlers/received_helpers/task_parsing.py`)
+   - Logged during retrieval augmentation loop
+   - Captured when URLs are successfully fetched
+   - Special case due to retry mechanism
+
+### Action Details Formatting
+
+The `format_action_details()` function (`src/db/task_log.py`) serializes task parameters to JSON:
+
+**Blacklist Approach:**
+- Excludes internal/verbose fields: `silent`, `previous_retries`, `callout`, `bypass_gagged`, `clear_mentions`, `clear_reactions`
+- Includes all other task parameters
+- Truncates long text fields to prevent database bloat:
+  - `text`, `content`, `xsend_intent`: 500 characters
+  - `caption`: 200 characters
+- Returns JSON string for flexible client-side rendering
+
+**Rationale:** Blacklist (vs whitelist) ensures new task parameters are automatically logged without code changes.
+
+### Log Retention and Cleanup
+
+**Retention Policy:** 14 days
+
+**Cleanup Mechanism:**
+- Integrated into `periodic_scan()` in `src/run.py`
+- Runs daily (24-hour intervals)
+- Deletes logs where `timestamp < (now - 14 days)`
+- Logs deletion count for monitoring
+
+**Rationale:** 14-day retention balances debugging needs with database size. Logs are primarily for debugging recent behavior, not long-term analytics.
+
+### Admin Console Integration
+
+**Conversation Tab Enhancement:**
+- "Show Task Log" checkbox toggles log interleaving
+- Logs appear with pink background between messages
+- Chronologically sorted with conversation history
+- Only shows logs after last summary timestamp
+
+**Filtering Logic:**
+- Excludes failed tasks (logged but not displayed in UI)
+- Excludes visible tasks: `send`, `sticker`, `react`, `photo`
+- Only shows logs after last summarized message (or all if no summaries)
+
+**Display Format:**
+- Action type in uppercase (e.g., `[THINK]`, `[RETRIEVE]`)
+- Task identifier in gray for debugging
+- Timestamp in agent's timezone
+- Formatted action details based on task type
+
+**Download Integration:**
+- Respects "Show Task Log" checkbox state
+- Includes interleaved logs in exported HTML
+- Same filtering logic as UI display
+- Maintains visual distinction (pink background)
+
+### Use Cases
+
+**Debugging:**
+- See exact task execution order and timing
+- Identify which tasks failed and why
+- Verify task parameters were correct
+- Track task identifier for cross-referencing with logs
+
+**Understanding Agent Behavior:**
+- View agent's internal thoughts (`think` tasks)
+- See what information was retrieved from web (`retrieve` tasks)
+- Track when memories, notes, plans were created
+- Verify summarization occurred at expected times
+
+**Performance Analysis:**
+- Identify timing patterns in task execution
+- Detect task failures requiring investigation
+- Monitor retrieval augmentation usage
+- Analyze responsiveness delays
+
+### Implementation Details
+
+**Lazy Loading:**
+- `src/handlers/registry.py` uses lazy import to avoid circular dependencies
+- Falls back to dummy module if import fails
+- Ensures logging failures don't break core functionality
+
+**Error Handling:**
+- All logging wrapped in try/except blocks
+- Logging failures logged but never raised
+- Core task execution unaffected by logging errors
+
+**Timezone Handling:**
+- Database stores timestamps in UTC
+- Timestamps made timezone-aware before ISO serialization
+- UI converts to agent's timezone for display
+- Consistent with existing datetime patterns
+
+**Performance Considerations:**
+- Indexes on `(agent_id, channel_id, timestamp)` for efficient queries
+- Index on `timestamp` for cleanup operations
+- 7-day query window in UI (configurable)
+- No impact on task execution performance
+
+### Testing
+
+**Unit Tests** (`tests/test_task_log.py`):
+- 21 tests covering all CRUD operations
+- Tests for error handling and edge cases
+- Tests for parameter filtering and truncation
+- Integration tests for complete workflows
+
+**Test Coverage:**
+- `log_task_execution()` - success, failure, errors
+- `get_task_logs()` - retrieval, filtering, timezone handling
+- `get_logs_after_timestamp()` - timestamp filtering
+- `delete_old_logs()` - cleanup logic
+- `format_action_details()` - blacklist, truncation, serialization
+
+### Future Enhancements
+
+**Potential Improvements:**
+- Log analytics dashboard (task frequency, failure rates)
+- Configurable retention period per agent
+- Export logs to external monitoring systems
+- Search/filter capabilities in Admin Console
+- Task performance metrics (execution duration)
+
+### Related Issues
+
+- #514 - Task execution logging implementation
+- #524 - Refactor admin_console.html (extract JS/CSS)
+- #525 - Consider modern frontend framework migration
+- #530 - Consolidate duplicate datetime/timezone conversion logic
 
 ## Retrieval Augmentation Architecture
 

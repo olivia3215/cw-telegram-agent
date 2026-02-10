@@ -1,7 +1,8 @@
-# utils/formatting.py
+# src/utils/formatting.py
 #
-# Formatting utilities for messages, JSON, and other content.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 def format_message_content_for_logging(message) -> str:
     """
     Format a Telegram message for logging purposes.

@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# scripts/remove_metadata_columns.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 """
 Remove metadata JSON columns from all database tables.
 

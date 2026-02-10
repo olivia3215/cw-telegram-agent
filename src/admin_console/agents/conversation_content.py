@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_content.py
+# src/admin_console/agents/conversation_content.py
 #
-# Conversation content retrieval routes for the admin console.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from flask import Blueprint  # pyright: ignore[reportMissingImports]
 
 

@@ -1,7 +1,8 @@
-# handlers/received_helpers/task_parsing.py
+# src/handlers/received_helpers/task_parsing.py
 #
-# Task parsing and processing utilities for LLM responses.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import json
 import logging
 import uuid
@@ -253,6 +254,25 @@ async def process_retrieve_tasks(
             new_urls = task_to_fetch.get(retrieve_task.id)
             if not new_urls:
                 continue
+            
+            # Log the retrieve task execution
+            try:
+                from db.task_log import log_task_execution, format_action_details
+                action_details = format_action_details(
+                    "retrieve",
+                    retrieve_task.params
+                )
+                log_task_execution(
+                    agent_telegram_id=agent.agent_id,
+                    channel_telegram_id=channel_id,
+                    action_kind="retrieve",
+                    action_details=action_details,
+                    failure_message=None,
+                    task_identifier=retrieve_task.id,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to log retrieve task: {e}")
+            
             await telepathic.maybe_send_telepathic_message(
                 agent, channel_id, "retrieve", "\n".join(new_urls)
             )

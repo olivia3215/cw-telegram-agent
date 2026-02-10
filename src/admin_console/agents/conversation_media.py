@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_media.py
+# src/admin_console/agents/conversation_media.py
 #
-# Conversation media serving routes for the admin console (emoji and media).
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import asyncio
 import glob
 import logging

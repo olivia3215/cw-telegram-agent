@@ -1,3 +1,8 @@
+# tests/test_subscribe_returns_gagged_warning_on_db_failure.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import asyncio
 from unittest.mock import MagicMock, patch
 

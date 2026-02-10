@@ -1,8 +1,8 @@
-# admin_console/agents/conversation_actions.py
+# src/admin_console/agents/conversation_actions.py
 #
-# Conversation action routes for the admin console.
-# This module imports and registers routes from split modules.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from flask import Blueprint  # pyright: ignore[reportMissingImports]
 
 

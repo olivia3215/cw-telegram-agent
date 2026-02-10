@@ -1,3 +1,8 @@
+# tests/test_handle_incoming_message_does_not_check_sender_mute_in_groups.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

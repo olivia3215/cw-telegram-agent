@@ -3594,7 +3594,7 @@
                 }
             }
             
-            // Load data for the active subtab
+            // Load data for the active subtab (this always reloads the data)
             const activeSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button.active');
             if (activeSubtab) {
                 const subtabName = activeSubtab.getAttribute('data-subtab');
@@ -6867,6 +6867,9 @@
         let conversationTranslations = {};
         let showTranslation = false;
         let conversationAgentTimezone = null;
+        let conversationTaskLogs = [];
+        let conversationSummaries = [];
+        let showLogInterleave = false;
 
         function loadConversation() {
             const agentSelect = document.getElementById('conversations-agent-select');
@@ -6894,11 +6897,14 @@
                     
                     const summaries = data.summaries || [];
                     const messages = data.messages || [];
+                    const taskLogs = data.task_logs || [];
                     const agentTimezone = data.agent_timezone;
                     const isBlocked = data.is_blocked || false;
                     conversationMessages = messages;
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
+                    conversationTaskLogs = taskLogs;  // Store task logs globally
+                    conversationSummaries = summaries;  // Store summaries globally
                     // Preserve showTranslation state instead of resetting it
                     // showTranslation state is preserved
                     
@@ -7033,6 +7039,9 @@
                     html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
                     html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
                     html += 'Display Translation</label>';
+                    html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+                    html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
+                    html += 'Show Task Log</label>';
                     html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                     html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
@@ -7040,7 +7049,113 @@
                     html += '</div>';
                 }
                 
-                html += messages.map(msg => {
+                // Interleave task logs with messages if toggle is enabled
+                let displayItems = [];
+                if (showLogInterleave && conversationTaskLogs.length > 0) {
+                    // Find the timestamp after last summarized message
+                    let afterTimestamp = null;
+                    if (summaries.length > 0) {
+                        // Get the last summary's last_message_date
+                        const lastSummary = summaries[summaries.length - 1];
+                        afterTimestamp = lastSummary.last_message_date;
+                    }
+                    
+                    // Filter and prepare logs
+                    const excludedActionKinds = ['send', 'sticker', 'react', 'photo'];
+                    const logsToShow = conversationTaskLogs.filter(log => {
+                        // Exclude failed tasks
+                        if (log.failure_message) return false;
+                        // Exclude visible action kinds
+                        if (excludedActionKinds.includes(log.action_kind)) return false;
+                        // Filter by timestamp if we have summaries
+                        if (afterTimestamp) {
+                            const logDate = new Date(log.timestamp);
+                            const afterDate = new Date(afterTimestamp);
+                            if (logDate <= afterDate) return false;
+                        }
+                        return true;
+                    });
+                    
+                    // Add messages as items
+                    messages.forEach(msg => {
+                        displayItems.push({
+                            type: 'message',
+                            timestamp: new Date(msg.timestamp),
+                            data: msg
+                        });
+                    });
+                    
+                    // Add logs as items
+                    logsToShow.forEach(log => {
+                        displayItems.push({
+                            type: 'log',
+                            timestamp: new Date(log.timestamp),
+                            data: log
+                        });
+                    });
+                    
+                    // Sort by timestamp
+                    displayItems.sort((a, b) => a.timestamp - b.timestamp);
+                } else {
+                    // No interleaving, just show messages
+                    messages.forEach(msg => {
+                        displayItems.push({
+                            type: 'message',
+                            timestamp: new Date(msg.timestamp),
+                            data: msg
+                        });
+                    });
+                }
+                
+                html += displayItems.map(item => {
+                    if (item.type === 'log') {
+                        // Render log item
+                        const log = item.data;
+                        let detailsText = '';
+                        try {
+                            const details = JSON.parse(log.action_details || '{}');
+                            // Format details based on action kind
+                            if (log.action_kind === 'think' && details.text) {
+                                detailsText = `<div style="font-style: italic;">${escapeHtml(details.text)}</div>`;
+                            } else if (log.action_kind === 'send' && details.text) {
+                                detailsText = `Text: ${escapeHtml(details.text)}`;
+                            } else if ((log.action_kind === 'remember' || log.action_kind === 'note' || log.action_kind === 'plan' || log.action_kind === 'intend') && details.content) {
+                                detailsText = escapeHtml(details.content);
+                            } else if (log.action_kind === 'summarize') {
+                                detailsText = 'Summarized conversation';
+                            } else if (log.action_kind === 'react' && details.emoji) {
+                                detailsText = `Emoji: ${escapeHtml(details.emoji)}`;
+                            } else if (log.action_kind === 'sticker' && details.unique_id) {
+                                detailsText = `Sticker: ${escapeHtml(details.unique_id)}${details.search_query ? ' (' + escapeHtml(details.search_query) + ')' : ''}`;
+                            } else if (Object.keys(details).length > 0 && !details.action) {
+                                // Generic display for any other parameters
+                                const parts = [];
+                                for (const [key, value] of Object.entries(details)) {
+                                    if (typeof value === 'string' || typeof value === 'number') {
+                                        parts.push(`${key}: ${escapeHtml(String(value))}`);
+                                    } else if (Array.isArray(value)) {
+                                        parts.push(`${key}: [${value.join(', ')}]`);
+                                    } else if (typeof value === 'boolean') {
+                                        parts.push(`${key}: ${value}`);
+                                    }
+                                }
+                                detailsText = parts.join(', ');
+                            }
+                        } catch (e) {
+                            detailsText = '';
+                        }
+                        
+                        return `
+                            <div style="background: #ffe0f0; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 4px solid #d81b60;">
+                                <div style="font-size: 11px; color: #666; margin-bottom: 4px;">
+                                    <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong>${log.task_identifier ? ` <span style="color: #888;">(${escapeHtml(log.task_identifier)})</span>` : ''} at ${formatTimestamp(log.timestamp)}
+                                </div>
+                                ${detailsText ? `<div style="font-size: 13px; color: #333;">${detailsText}</div>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        // Render message (existing code)
+                        const msg = item.data;
                     // Build content from parts if available (includes media/stickers)
                     let contentHtml = '';
                     let hasTextContent = false;
@@ -7164,6 +7279,7 @@
                             ${reactionsHtml}
                         </div>
                     `;
+                    } // End of message type
                 }).join('');
             }
             
@@ -7181,6 +7297,17 @@
             }, 100);
         }
         
+        function toggleLogInterleave(agentName, userId) {
+            showLogInterleave = !showLogInterleave;
+            // Re-render the conversation with the new toggle state using stored summaries
+            renderConversation(agentName, userId, conversationSummaries, conversationMessages, conversationAgentTimezone, false);
+            
+            // Restore checkbox state after rendering
+            const checkbox = document.getElementById('log-interleave-toggle');
+            if (checkbox) {
+                checkbox.checked = showLogInterleave;
+            }
+        }
         async function loadCustomEmojiAnimations(agentName) {
             // Find all custom emoji images (both reactions and message text) and check if they're animated (TGS)
             // Only process images that haven't been processed yet (don't have the processed flag)
@@ -7534,8 +7661,12 @@
             statusDiv.style.color = '#007bff';
             
             // Get translation setting
-            const checkbox = document.getElementById('translation-toggle');
-            const includeTranslations = checkbox ? checkbox.checked : false;
+            const translationCheckbox = document.getElementById('translation-toggle');
+            const includeTranslations = translationCheckbox ? translationCheckbox.checked : false;
+            
+            // Get task log setting
+            const taskLogCheckbox = document.getElementById('log-interleave-toggle');
+            const includeTaskLogs = taskLogCheckbox ? taskLogCheckbox.checked : false;
             
             // Make request to download endpoint
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/download`, {
@@ -7544,7 +7675,8 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    include_translations: includeTranslations
+                    include_translations: includeTranslations,
+                    include_task_logs: includeTaskLogs
                 })
             })
             .then(response => {

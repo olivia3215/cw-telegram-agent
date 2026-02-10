@@ -1,8 +1,8 @@
-# db/schema.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/db/schema.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Database schema creation and migration utilities.
 """
@@ -261,6 +261,22 @@ def create_schema() -> None:
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_display_order (display_order),
                     INDEX idx_provider (provider)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
+            # Create task_execution_log table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_execution_log (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    timestamp DATETIME NOT NULL,
+                    agent_telegram_id BIGINT NOT NULL,
+                    channel_telegram_id BIGINT NOT NULL,
+                    action_kind VARCHAR(50) NOT NULL,
+                    task_identifier VARCHAR(100),
+                    action_details TEXT,
+                    failure_message TEXT,
+                    INDEX idx_agent_channel_time (agent_telegram_id, channel_telegram_id, timestamp DESC),
+                    INDEX idx_timestamp (timestamp)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 

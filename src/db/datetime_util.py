@@ -1,8 +1,8 @@
-# db/datetime_util.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# src/db/datetime_util.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Utility functions for parsing and normalizing datetime strings for MySQL.
 """

@@ -1,8 +1,8 @@
 # tests/test_register_agents_parsing.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 from pathlib import Path
 
 from register_agents import extract_fields_from_markdown, parse_agent_markdown

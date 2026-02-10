@@ -1,7 +1,8 @@
 # tests/test_markdown_to_html_security.py
 #
-# Security tests for markdown_to_html function to prevent XSS attacks
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import importlib.util
 from pathlib import Path
 

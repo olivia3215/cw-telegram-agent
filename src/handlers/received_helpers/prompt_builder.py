@@ -1,7 +1,8 @@
-# handlers/received_helpers/prompt_builder.py
+# src/handlers/received_helpers/prompt_builder.py
 #
-# System prompt building utilities for LLM queries.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 
 from handlers.received_helpers.channel_details import build_channel_details_section

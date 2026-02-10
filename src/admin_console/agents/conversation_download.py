@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_download.py
+# src/admin_console/agents/conversation_download.py
 #
-# Download conversation route for exporting conversations as zip files.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import copy
 import glob
 import gzip
@@ -93,9 +94,10 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
 
-            # Get include_translations from request body
+            # Get include_translations and include_task_logs from request body
             data = request.json or {}
             include_translations = data.get("include_translations", False)
+            include_task_logs = data.get("include_task_logs", False)
 
             if not agent.client or not agent.client.is_connected():
                 return jsonify({"error": "Agent client not connected"}), 503
@@ -270,6 +272,30 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     logger.info(
                         f"[{agent_config_name}] Fetched {len(messages)} messages for download (channel {channel_id})"
                     )
+
+                    # Fetch summaries
+                    summaries = []
+                    try:
+                        from db import summaries as db_summaries
+                        summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
+                        summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
+                        logger.info(f"[{agent_config_name}] Fetched {len(summaries)} summaries for download")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch summaries for download: {e}")
+
+                    # Fetch task logs if requested
+                    task_logs = []
+                    if include_task_logs:
+                        try:
+                            from db.task_log import get_task_logs
+                            task_logs = get_task_logs(
+                                agent_telegram_id=agent.agent_id,
+                                channel_telegram_id=channel_id,
+                                days=7
+                            )
+                            logger.info(f"[{agent_config_name}] Fetched {len(task_logs)} task logs for download")
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch task logs for download: {e}")
 
                     # Fetch translations if requested
                     translations = {}
@@ -576,9 +602,9 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         # Generate HTML
                         agent_tz_id = agent.get_timezone_identifier()
                         html_content = _generate_standalone_html(
-                            agent_config_name, user_id, messages, translations,
+                            agent_config_name, user_id, messages, summaries, translations, task_logs,
                             agent_tz_id, media_map, mime_map, emoji_map, lottie_data_map,
-                            include_translations,
+                            include_translations, include_task_logs,
                         )
 
                         # Write HTML
@@ -640,6 +666,91 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             return jsonify({"error": str(e)}), 500
 
 
+def _interleave_messages_and_logs(messages: list, task_logs: list, summaries: list) -> list:
+    """
+    Interleave messages and task logs, filtering logs to show only successful non-visible tasks
+    after the last summary timestamp.
+    
+    Returns a list of dicts with 'type' ('message' or 'log'), 'timestamp', and 'data'.
+    """
+    # Find the timestamp after last summarized message
+    after_timestamp = None
+    if summaries:
+        last_summary = summaries[-1]
+        last_msg_date = last_summary.get("last_message_date")
+        if last_msg_date:
+            try:
+                after_timestamp = datetime.fromisoformat(str(last_msg_date).replace('Z', '+00:00'))
+                if after_timestamp.tzinfo is None:
+                    after_timestamp = after_timestamp.replace(tzinfo=UTC)
+            except Exception:
+                pass
+    
+    # Filter task logs (exclude failed, exclude visible action kinds, only after last summary)
+    excluded_action_kinds = ['send', 'sticker', 'react', 'photo']
+    logs_to_show = []
+    for log in task_logs:
+        # Exclude failed tasks
+        if log.get("failure_message"):
+            continue
+        # Exclude visible action kinds
+        if log.get("action_kind") in excluded_action_kinds:
+            continue
+        # Filter by timestamp if we have summaries
+        if after_timestamp:
+            log_timestamp_str = log.get("timestamp")
+            if log_timestamp_str:
+                try:
+                    log_timestamp = datetime.fromisoformat(str(log_timestamp_str).replace('Z', '+00:00'))
+                    if log_timestamp.tzinfo is None:
+                        log_timestamp = log_timestamp.replace(tzinfo=UTC)
+                    if log_timestamp <= after_timestamp:
+                        continue
+                except Exception:
+                    continue
+        logs_to_show.append(log)
+    
+    # Build display items
+    display_items = []
+    
+    # Add messages
+    for msg in messages:
+        msg_timestamp_str = msg.get("timestamp", "")
+        try:
+            msg_timestamp = datetime.fromisoformat(msg_timestamp_str.replace('Z', '+00:00'))
+            if msg_timestamp.tzinfo is None:
+                msg_timestamp = msg_timestamp.replace(tzinfo=UTC)
+        except Exception:
+            msg_timestamp = datetime.now(UTC)
+        
+        display_items.append({
+            'type': 'message',
+            'timestamp': msg_timestamp,
+            'data': msg
+        })
+    
+    # Add logs
+    for log in logs_to_show:
+        log_timestamp_str = log.get("timestamp", "")
+        try:
+            log_timestamp = datetime.fromisoformat(str(log_timestamp_str).replace('Z', '+00:00'))
+            if log_timestamp.tzinfo is None:
+                log_timestamp = log_timestamp.replace(tzinfo=UTC)
+        except Exception:
+            log_timestamp = datetime.now(UTC)
+        
+        display_items.append({
+            'type': 'log',
+            'timestamp': log_timestamp,
+            'data': log
+        })
+    
+    # Sort by timestamp
+    display_items.sort(key=lambda x: x['timestamp'])
+    
+    return display_items
+
+
 def _build_lottie_data_map(media_dir: Path, media_map: dict) -> dict:
     """
     Build a map of unique_id -> decompressed Lottie JSON for TGS files.
@@ -664,9 +775,9 @@ def _build_lottie_data_map(media_dir: Path, media_map: dict) -> dict:
 
 
 def _generate_standalone_html(
-    agent_name: str, user_id: str, messages: list,
-    translations: dict, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
-    lottie_data_map: dict, show_translations: bool,
+    agent_name: str, user_id: str, messages: list, summaries: list,
+    translations: dict, task_logs: list, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
+    lottie_data_map: dict, show_translations: bool, show_task_logs: bool,
 ) -> str:
     """Generate standalone HTML file for conversation display."""
     # This will be a large HTML string with embedded CSS and JavaScript
@@ -757,15 +868,141 @@ def _generate_standalone_html(
             height: 1.2em;
             vertical-align: middle;
         }}
+        .summary {{
+            background: #fff8dc;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #ffa500;
+        }}
+        .summary-header {{
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+        .summary-content {{
+            white-space: pre-wrap;
+            font-size: 13px;
+        }}
+        .task-log {{
+            background: #ffe0f0;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            border-left: 4px solid #d81b60;
+        }}
+        .task-log-failed {{
+            background: #ffe0e0;
+            border-left-color: #d32f2f;
+        }}
+        .task-log-header {{
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+        .task-log-content {{
+            font-size: 13px;
+            margin-top: 6px;
+        }}
+        .task-log-error {{
+            font-size: 13px;
+            margin-top: 6px;
+            color: #d32f2f;
+            font-weight: bold;
+        }}
     </style>
 </head>
 <body>
     <h1>Conversation: {html.escape(agent_name)} / {html.escape(user_id)}</h1>
 """
 
-    # Add messages
+    # Prepare display items (messages and optionally task logs interleaved)
+    if show_task_logs:
+        display_items = _interleave_messages_and_logs(messages, task_logs, summaries)
+    else:
+        # Just messages, no interleaving
+        display_items = [{'type': 'message', 'timestamp': None, 'data': msg} for msg in messages]
+
+    # Render messages and logs
     html_content += '<h2>Messages</h2>\n'
-    for msg in messages:
+    for item in display_items:
+        if item['type'] == 'log':
+            # Render task log entry
+            log = item['data']
+            action_kind = log.get("action_kind", "unknown")
+            task_identifier = log.get("task_identifier", "")
+            action_details = log.get("action_details", "")
+            timestamp_str = log.get("timestamp", "")
+            
+            # Format timestamp
+            if timestamp_str:
+                try:
+                    dt = datetime.fromisoformat(str(timestamp_str).replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    if agent_timezone:
+                        try:
+                            agent_tz = ZoneInfo(agent_timezone)
+                            dt_local = dt.astimezone(agent_tz)
+                            formatted_time = dt_local.strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    formatted_time = timestamp_str
+            else:
+                formatted_time = "N/A"
+            
+            # Parse action details for display
+            details_html = ""
+            if action_details:
+                try:
+                    details = json_lib.loads(action_details)
+                    
+                    # Format based on action kind
+                    if action_kind == 'think' and details.get('text'):
+                        details_html = f'<div style="font-style: italic;">{html.escape(details["text"])}</div>'
+                    elif action_kind == 'send' and details.get('text'):
+                        details_html = f'<div style="white-space: pre-wrap;">{html.escape(details["text"])}</div>'
+                    elif action_kind in ('remember', 'note', 'plan', 'intend') and details.get('content'):
+                        details_html = f'<div style="white-space: pre-wrap;">{html.escape(details["content"])}</div>'
+                    elif action_kind == 'summarize':
+                        details_html = 'Summarized conversation'
+                    elif action_kind == 'retrieve' and details.get('urls'):
+                        urls = details['urls'] if isinstance(details['urls'], list) else [details['urls']]
+                        details_html = '<strong>URLs:</strong> ' + ', '.join(html.escape(str(u)) for u in urls)
+                    else:
+                        # Generic display
+                        parts = []
+                        for key, value in details.items():
+                            if key == 'action':
+                                continue
+                            if isinstance(value, (str, int, float)):
+                                parts.append(f'<strong>{html.escape(key)}:</strong> {html.escape(str(value))}')
+                            elif isinstance(value, list):
+                                parts.append(f'<strong>{html.escape(key)}:</strong> [{", ".join(html.escape(str(v)) for v in value)}]')
+                            elif isinstance(value, bool):
+                                parts.append(f'<strong>{html.escape(key)}:</strong> {value}')
+                        if parts:
+                            details_html = '<br>'.join(parts)
+                except Exception:
+                    details_html = html.escape(action_details)
+            
+            html_content += f'''<div class="task-log">
+    <div class="task-log-header">
+        <strong>[LOG: {html.escape(action_kind.upper())}]</strong>'''
+            if task_identifier:
+                html_content += f' <span style="color: #888;">({html.escape(task_identifier)})</span>'
+            html_content += f' at {formatted_time}'
+            html_content += '</div>\n'
+            if details_html:
+                html_content += f'    <div class="task-log-content">{details_html}</div>\n'
+            html_content += '</div>\n'
+            continue
+        
+        # Render message (item['type'] == 'message')
+        msg = item['data']
         msg_id = str(msg.get("id", ""))
         is_from_agent = msg.get("is_from_agent", False)
         sender_name = msg.get("sender_name", "User")

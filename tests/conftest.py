@@ -1,8 +1,8 @@
 # tests/conftest.py
-
-# Copyright (c) 2025 Cindy's World LLC and contributors
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 import os
 # Import pytest early to ensure it's in sys.modules when config.py is imported
 import pytest  # noqa: F401

@@ -1,8 +1,8 @@
-# media/sources/base.py
+# src/media/sources/base.py
 #
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
-
+#
 """
 Base classes and common utilities for media sources.
 

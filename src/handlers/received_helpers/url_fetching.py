@@ -1,7 +1,8 @@
-# handlers/received_helpers/url_fetching.py
+# src/handlers/received_helpers/url_fetching.py
 #
-# URL fetching utilities including Playwright support for JavaScript challenges.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 
 # Optional import for Playwright (only used if challenge detected)

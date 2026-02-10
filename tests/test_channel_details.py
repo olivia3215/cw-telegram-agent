@@ -1,3 +1,8 @@
+# tests/test_channel_details.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import types
 from types import SimpleNamespace
 from unittest.mock import AsyncMock

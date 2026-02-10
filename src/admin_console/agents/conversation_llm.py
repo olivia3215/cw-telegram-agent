@@ -1,7 +1,8 @@
-# admin_console/agents/conversation_llm.py
+# src/admin_console/agents/conversation_llm.py
 #
-# Conversation parameters management routes for the admin console (LLM, muted, gagged).
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]

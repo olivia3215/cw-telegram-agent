@@ -1,7 +1,8 @@
-# handlers/received_helpers/message_processing.py
+# src/handlers/received_helpers/message_processing.py
 #
-# Message history processing for LLM prompts.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 from dataclasses import dataclass
 

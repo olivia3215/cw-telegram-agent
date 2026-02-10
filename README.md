@@ -477,8 +477,11 @@ The Admin Console provides three main tabs:
   - View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - Override LLM model for specific conversations
   - View and manage channel-specific plans
-  - View conversation history, edit summaries, trigger summarization, and delete telepathic messages (internal agent messages visible in telepathic channels)
+  - View conversation history with optional task execution logs interleaved, edit summaries, trigger summarization, and delete telepathic messages (internal agent messages visible in telepathic channels)
   - Trigger agent action in a conversation with specific instructions
+  - View work queue and pending tasks
+
+**Task Execution Logging:** The Conversation tab includes a "Show Task Log" checkbox that reveals task executions (think, retrieve, remember, etc.) interleaved chronologically with messages. This helps debug agent behavior and understand decision-making. Downloaded conversations also include logs when the checkbox is enabled.
 
 **See [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md) for comprehensive documentation.**
 

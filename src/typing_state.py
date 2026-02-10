@@ -1,3 +1,8 @@
+# src/typing_state.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 """Track partner typing activity per agent/conversation."""
 
 from __future__ import annotations

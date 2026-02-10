@@ -1,7 +1,8 @@
-# handlers/received_helpers/llm_query.py
+# src/handlers/received_helpers/llm_query.py
 #
-# LLM query execution utilities.
-
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 import logging
 
 from handlers.received_helpers.message_processing import ProcessedMessage

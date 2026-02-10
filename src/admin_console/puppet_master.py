@@ -1,3 +1,8 @@
+# src/admin_console/puppet_master.py
+#
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 """
 Helpers for interacting with the dedicated puppet master Telegram account.
 """

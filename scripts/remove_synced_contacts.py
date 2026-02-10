@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-# remove_synced_contacts.py
+# scripts/remove_synced_contacts.py
 #
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
-# Script to remove synced phone contacts from Telegram.
-# This removes contacts who don't have Telegram accounts, preventing
-# notifications when they sign up for Telegram in the future.
-
 import argparse
 import asyncio
 import logging
