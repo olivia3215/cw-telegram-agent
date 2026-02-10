@@ -7071,14 +7071,12 @@
                 
                 // Interleave task logs with messages if toggle is enabled
                 let displayItems = [];
-                if (showLogInterleave && conversationTaskLogs.length > 0) {
-                    // Find the timestamp after last summarized message
-                    let afterTimestamp = null;
-                    if (summaries.length > 0) {
-                        // Get the last summary's last_message_date
-                        const lastSummary = summaries[summaries.length - 1];
-                        afterTimestamp = lastSummary.last_message_date;
-                    }
+                if (showLogInterleave && conversationTaskLogs.length > 0 && messages.length > 0) {
+                    // Find the timestamp of the first message to determine log cutoff
+                    const firstMsg = messages[0];
+                    const firstMsgDate = new Date(firstMsg.timestamp);
+                    // Cutoff is 2 minutes before the first message
+                    const cutoffTimestamp = new Date(firstMsgDate.getTime() - 2 * 60 * 1000);
                     
                     // Filter and prepare logs
                     const excludedActionKinds = ['send', 'sticker', 'react', 'photo'];
@@ -7087,12 +7085,9 @@
                         if (log.failure_message) return false;
                         // Exclude visible action kinds
                         if (excludedActionKinds.includes(log.action_kind)) return false;
-                        // Filter by timestamp if we have summaries
-                        if (afterTimestamp) {
-                            const logDate = new Date(log.timestamp);
-                            const afterDate = new Date(afterTimestamp);
-                            if (logDate <= afterDate) return false;
-                        }
+                        // Filter by timestamp - only show logs within 2 minutes before first message or after
+                        const logDate = new Date(log.timestamp);
+                        if (logDate < cutoffTimestamp) return false;
                         return true;
                     });
                     
