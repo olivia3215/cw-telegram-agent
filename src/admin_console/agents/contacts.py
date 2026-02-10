@@ -59,6 +59,7 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
     last_name = ""
     bio = ""
     birthday = None
+    participants_count = None
 
     if is_user:
         first_name = getattr(entity, "first_name", None) or ""
@@ -99,7 +100,14 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
             try:
                 full_chat_result = await client(GetFullChatRequest(entity.id))
                 full_chat = getattr(full_chat_result, "full_chat", None)
-                bio = getattr(full_chat, "about", None) or ""
+                if full_chat:
+                    bio = getattr(full_chat, "about", None) or ""
+                    # Get participant count for regular chats
+                    participants = getattr(full_chat, "participants", None)
+                    if participants:
+                        participants_list = getattr(participants, "participants", None)
+                        if participants_list:
+                            participants_count = len(participants_list)
             except Exception as e:
                 logger.debug(f"Failed to fetch full chat info for {entity.id}: {e}")
         elif is_channel:
@@ -107,7 +115,10 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
                 input_channel = await client.get_input_entity(entity)
                 full_result = await client(GetFullChannelRequest(input_channel))
                 full_chat = getattr(full_result, "full_chat", None)
-                bio = getattr(full_chat, "about", None) or ""
+                if full_chat:
+                    bio = getattr(full_chat, "about", None) or ""
+                    # Get participant count for channels
+                    participants_count = getattr(full_chat, "participants_count", None)
             except Exception as e:
                 logger.debug(f"Failed to fetch full channel info for {entity.id}: {e}")
 
@@ -136,6 +147,7 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
         "is_deleted": is_deleted,
         "can_edit_contact": is_user,
         "partner_type": partner_type,
+        "participants_count": participants_count,
     }
 
 
