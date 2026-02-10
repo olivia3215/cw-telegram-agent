@@ -32,7 +32,10 @@ logger = logging.getLogger(__name__)
 def create_admin_app() -> Flask:
     """Create and configure the admin console Flask application."""
     app = Flask(
-        __name__, template_folder=str(Path(__file__).parent.parent.parent / "templates")
+        __name__,
+        template_folder=str(Path(__file__).parent.parent.parent / "templates"),
+        static_folder=str(Path(__file__).parent.parent.parent / "static"),
+        static_url_path="/static",
     )
     if ADMIN_CONSOLE_SECRET_KEY:
         app.secret_key = ADMIN_CONSOLE_SECRET_KEY
@@ -77,15 +80,6 @@ def create_admin_app() -> Flask:
             return None
 
         return jsonify({"error": "Admin console verification required"}), 401
-    
-    # Add root-level favicon route (browsers request /favicon.ico, not /admin/favicon.ico)
-    @app.route("/favicon.ico")
-    def root_favicon():
-        """Serve the favicon at root level."""
-        favicon_path = Path(__file__).parent.parent.parent / "favicon.ico"
-        if not favicon_path.exists():
-            return jsonify({"error": "Favicon not found"}), 404
-        return send_file(favicon_path, mimetype="image/x-icon")
     
     # Scan and set available directories
     directories = scan_media_directories()
