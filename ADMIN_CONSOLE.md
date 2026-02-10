@@ -56,7 +56,7 @@ The admin console provides three main tabs:
   - **Notes** — View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - **Conversation LLM** — Override LLM model for specific conversations
   - **Plans** — View and manage channel-specific plans
-  - **Conversation** — View conversation history, edit summaries, trigger summarization, delete telepathic messages, and optionally show task execution logs interleaved with messages
+  - **Conversation** — View conversation history, edit summaries, trigger summarization, and optionally show task execution logs interleaved with messages
   - **XSend** — Trigger agent action in a conversation with specific instructions
   - **Work Queue** — View and manage pending tasks in the conversation's task graph
 

@@ -10,7 +10,6 @@ from datetime import UTC
 from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import process_message_history
 from handlers.registry import dispatch_immediate_task
-from telepathic import TELEPATHIC_PREFIXES
 from utils import get_dialog_name, is_group_or_channel
 
 logger = logging.getLogger(__name__)
@@ -135,7 +134,6 @@ async def perform_summarization(
     from clock import clock
     
     # Filter to unsummarized messages, excluding the most recent 20
-    # Also exclude telepathic messages (those starting with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, or ⟦retrieve⟧)
     unsummarized_messages = []
     for msg in messages:
         msg_id = getattr(msg, "id", None)
@@ -143,17 +141,6 @@ async def perform_summarization(
             msg_id_int = int(msg_id)
             # Message is unsummarized if its ID is higher than the highest summarized ID
             if highest_summarized_id is None or msg_id_int > highest_summarized_id:
-                # Check if this is a telepathic message and exclude it from summarization
-                message_text = getattr(msg, "text", None) or ""
-                message_text = message_text.strip()
-                
-                # Skip telepathic messages (agent's internal thoughts)
-                if message_text.startswith(TELEPATHIC_PREFIXES):
-                    logger.debug(
-                        f"[{agent.name}] Excluding telepathic message from summarization: {message_text[:50]}..."
-                    )
-                    continue
-                
                 unsummarized_messages.append(msg)
     
     # Keep only the most recent 20 unsummarized messages for the conversation

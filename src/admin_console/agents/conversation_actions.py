@@ -13,7 +13,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
         conversation_translate,
         conversation_xsend,
         conversation_summarize,
-        conversation_delete_telepathic,
         conversation_download,
     )
 
@@ -21,7 +20,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
     conversation_translate.register_conversation_translate_routes(agents_bp)
     conversation_xsend.register_conversation_xsend_routes(agents_bp)
     conversation_summarize.register_conversation_summarize_routes(agents_bp)
-    conversation_delete_telepathic.register_conversation_delete_telepathic_routes(agents_bp)
     conversation_download.register_conversation_download_routes(agents_bp)
 
 
@@ -29,7 +27,6 @@ def register_conversation_actions_routes(agents_bp: Blueprint):
 # - conversation_translate.py: translate route
 # - conversation_xsend.py: xsend route
 # - conversation_summarize.py: summarize route
-# - conversation_delete_telepathic.py: delete-telepathic-messages route
 # - conversation_download.py: download route
 #
 # The original implementation was removed to reduce file size. See the individual modules for route implementations.

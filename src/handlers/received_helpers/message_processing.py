@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 from llm.base import MsgPart
 from media.media_injector import format_message_for_prompt
-from telepathic import TELEPATHIC_PREFIXES
 from utils import format_username, get_channel_name
 
 logger = logging.getLogger(__name__)
@@ -122,8 +121,6 @@ async def process_message_history(
     Returns:
         List of ProcessedMessage objects in chronological order (oldest first)
     """
-    from telepathic import is_telepath
-    
     history_rendered_items: list[ProcessedMessage] = []
     chronological = list(reversed(messages))  # oldest → newest
 
@@ -132,26 +129,6 @@ async def process_message_history(
             m, agent=agent, media_chain=media_chain
         )
         if not message_parts:
-            continue
-
-        # Filter out telepathic messages from agent's view
-        # Check if this is a telepathic message (starts with ⟦think⟧, ⟦remember⟧, ⟦intend⟧, ⟦plan⟧, ⟦retrieve⟧, or ⟦summarize⟧)
-        # Note: ⟦media⟧ is NOT a telepathic prefix - it's used for legitimate media descriptions
-        message_text = ""
-        for part in message_parts:
-            if part.get("kind") == "text":
-                text_val = part.get("text", "")
-                message_text += str(text_val) if text_val else ""
-            elif part.get("kind") == "media":
-                rendered_val = part.get("rendered_text", "")
-                message_text += str(rendered_val) if rendered_val else ""
-        
-        # Check if message starts with a telepathic prefix (explicit list, not regex, to avoid matching ⟦media⟧)
-        message_text_stripped = message_text.strip()
-        is_telepathic_message = message_text_stripped.startswith(TELEPATHIC_PREFIXES)
-        
-        if not is_telepath(agent.agent_id) and is_telepathic_message:
-            logger.debug(f"[telepathic] Filtering out telepathic message from agent view: {message_text_stripped[:50]}...")
             continue
 
         # Get sender information

@@ -60,9 +60,9 @@ async def handle_photo(task: TaskNode, graph: TaskGraph, work_queue=None):
             entity, file=photo, reply_to=in_reply_to
         )
         
-        # Track successful photo send (exclude telepathic messages)
-        is_telepathic = task.params.get("xsend_intent") is not None
-        if not is_telepathic:
+        # Track successful photo send (exclude xsend messages)
+        is_xsend = task.params.get("xsend_intent") is not None
+        if not is_xsend:
             try:
                 from db import agent_activity
                 agent_activity.update_agent_activity(agent_id, channel_id_int)
