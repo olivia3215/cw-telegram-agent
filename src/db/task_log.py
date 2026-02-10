@@ -105,9 +105,14 @@ def get_task_logs(
             # Convert to list of dicts with ISO format timestamps
             logs = []
             for row in rows:
+                # Ensure timestamp is timezone-aware (treat as UTC)
+                timestamp = row["timestamp"]
+                if timestamp and timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=UTC)
+                
                 logs.append({
                     "id": row["id"],
-                    "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                    "timestamp": timestamp.isoformat() if timestamp else None,
                     "action_kind": row["action_kind"],
                     "action_details": row["action_details"],
                     "failure_message": row["failure_message"],
@@ -155,9 +160,14 @@ def get_logs_after_timestamp(
             
             logs = []
             for row in rows:
+                # Ensure timestamp is timezone-aware (treat as UTC)
+                timestamp = row["timestamp"]
+                if timestamp and timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=UTC)
+                
                 logs.append({
                     "id": row["id"],
-                    "timestamp": row["timestamp"].isoformat() if row["timestamp"] else None,
+                    "timestamp": timestamp.isoformat() if timestamp else None,
                     "action_kind": row["action_kind"],
                     "action_details": row["action_details"],
                     "failure_message": row["failure_message"],
