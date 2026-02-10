@@ -6935,6 +6935,14 @@
                     if (showTranslation && checkbox) {
                         startTranslationStream(agentName, userId, checkbox);
                     }
+                    
+                    // Scroll to bottom of conversation after rendering
+                    setTimeout(() => {
+                        const container = document.getElementById('conversation-container');
+                        if (container) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    }, 100);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -8092,6 +8100,14 @@
                     }
                     
                     WorkQueueUI.render(agentName, userId, data.work_queue);
+                    
+                    // Scroll to bottom of work queue after rendering
+                    setTimeout(() => {
+                        const container = document.getElementById('work-queue-container');
+                        if (container) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    }, 100);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -8297,6 +8313,11 @@
                     </div>
                 </div>
             `;
+            
+            // Add refresh button at the bottom
+            html += '<div style="margin-top: 16px; padding: 12px; text-align: center; border-top: 1px solid #ddd;">';
+            html += `<button onclick="WorkQueueUI.load()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Work Queue</button>`;
+            html += '</div>';
             
             container.innerHTML = html;
             },
