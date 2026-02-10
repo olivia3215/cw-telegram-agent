@@ -6895,13 +6895,13 @@
             
             if (!agentName || !userId) {
                 alert('Please select an agent and enter/select a conversation partner');
-                return;
+                return Promise.resolve();
             }
             
             const container = document.getElementById('conversation-container');
             container.innerHTML = '<div class="loading">Loading conversation...</div>';
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
+            return fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -6945,11 +6945,14 @@
         }
 
         function refreshConversation() {
-            loadConversation();
-            // Scroll to bottom after a short delay to allow rendering to complete
-            setTimeout(() => {
-                window.scrollTo(0, document.body.scrollHeight);
-            }, 200);
+            loadConversation().then(() => {
+                // Wait for the next frame to ensure DOM has been updated
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    });
+                });
+            });
         }
 
         function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false) {
@@ -8085,13 +8088,13 @@
             if (!agentName || !userId) {
                 const container = document.getElementById('work-queue-container');
                 container.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
-                return;
+                return Promise.resolve();
             }
             
             const container = document.getElementById('work-queue-container');
             container.innerHTML = '<div class="loading">Loading work queue...</div>';
             
-            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`)
+            return fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -8367,11 +8370,14 @@
              * This is called by the refresh button at the bottom of the work queue page.
              */
             refresh: function() {
-                WorkQueueUI.load();
-                // Scroll to bottom after a short delay to allow rendering to complete
-                setTimeout(() => {
-                    window.scrollTo(0, document.body.scrollHeight);
-                }, 200);
+                WorkQueueUI.load().then(() => {
+                    // Wait for the next frame to ensure DOM has been updated
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            window.scrollTo(0, document.body.scrollHeight);
+                        });
+                    });
+                });
             }
         };
 
