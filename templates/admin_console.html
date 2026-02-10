@@ -6935,11 +6935,6 @@
                     if (showTranslation && checkbox) {
                         startTranslationStream(agentName, userId, checkbox);
                     }
-                    
-                    // Scroll to bottom of conversation after rendering
-                    setTimeout(() => {
-                        window.scrollTo(0, document.body.scrollHeight);
-                    }, 100);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -6947,6 +6942,14 @@
                     }
                     container.innerHTML = `<div class="error">Error loading conversation: ${escapeHtml(error)}</div>`;
                 });
+        }
+
+        function refreshConversation() {
+            loadConversation();
+            // Scroll to bottom after a short delay to allow rendering to complete
+            setTimeout(() => {
+                window.scrollTo(0, document.body.scrollHeight);
+            }, 200);
         }
 
         function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false) {
@@ -7299,7 +7302,7 @@
             
             // Add refresh button at the bottom
             html += '<div style="margin-top: 16px; padding: 12px; text-align: center; border-top: 1px solid #ddd;">';
-            html += `<button onclick="loadConversation()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Conversation</button>`;
+            html += `<button onclick="refreshConversation()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Conversation</button>`;
             html += '</div>';
             
             container.innerHTML = html;
@@ -8097,11 +8100,6 @@
                     }
                     
                     WorkQueueUI.render(agentName, userId, data.work_queue);
-                    
-                    // Scroll to bottom of work queue after rendering
-                    setTimeout(() => {
-                        window.scrollTo(0, document.body.scrollHeight);
-                    }, 100);
                 })
                 .catch(error => {
                     if (error && error.message === 'unauthorized') {
@@ -8310,7 +8308,7 @@
             
             // Add refresh button at the bottom
             html += '<div style="margin-top: 16px; padding: 12px; text-align: center; border-top: 1px solid #ddd;">';
-            html += `<button onclick="WorkQueueUI.load()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Work Queue</button>`;
+            html += `<button onclick="WorkQueueUI.refresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh Work Queue</button>`;
             html += '</div>';
             
             container.innerHTML = html;
@@ -8362,6 +8360,18 @@
                     container.innerHTML = originalContent;
                     alert(`Error deleting work queue: ${error}`);
                 });
+            },
+
+            /**
+             * Refresh the work queue and scroll to the bottom.
+             * This is called by the refresh button at the bottom of the work queue page.
+             */
+            refresh: function() {
+                WorkQueueUI.load();
+                // Scroll to bottom after a short delay to allow rendering to complete
+                setTimeout(() => {
+                    window.scrollTo(0, document.body.scrollHeight);
+                }, 200);
             }
         };
 
