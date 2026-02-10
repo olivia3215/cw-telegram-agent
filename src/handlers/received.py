@@ -543,21 +543,35 @@ async def _schedule_tasks(
             if task.type == "send":
                 raw_text = task.params.get("text")
                 message = str(raw_text) if raw_text is not None else ""
-                delay_seconds = agent.start_typing_delay + len(message) / agent.typing_speed
+                
+                # Apply start typing delay only if > 1
+                start_delay_portion = agent.start_typing_delay if agent.start_typing_delay > 1 else 0
+                
+                # Zero out typing speed portion if >= 1000
+                typing_portion = 0 if agent.typing_speed >= 1000 else len(message) / agent.typing_speed
+                
+                delay_seconds = start_delay_portion + typing_portion
             elif task.type == "sticker":
                 delay_seconds = SELECT_STICKER_DELAY
             else:  # photo - double the sticker delay
                 delay_seconds = SELECT_STICKER_DELAY * 2
 
-            # Create wait task for typing indicator
-            wait_task = task.insert_delay(graph, delay_seconds)
-            wait_task.depends_on.append(last_id)
-            wait_task.params["typing"] = True
-            last_id = wait_task.id
+            # Only create wait task if delay > 0.5 seconds
+            if delay_seconds > 0.5:
+                # Create wait task for typing indicator
+                wait_task = task.insert_delay(graph, delay_seconds)
+                wait_task.depends_on.append(last_id)
+                wait_task.params["typing"] = True
+                last_id = wait_task.id
 
-            logger.info(
-                f"[{agent.name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
-            )
+                logger.info(
+                    f"[{agent.name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
+                )
+            else:
+                logger.info(
+                    f"[{agent.name}] Skipped typing delay ({delay_seconds:.1f}s <= 0.5s) before {task.type} task"
+                )
+                task.depends_on.append(last_id)
         else:
             task.depends_on.append(last_id)
 
