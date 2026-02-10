@@ -65,12 +65,14 @@ def test_generate_standalone_html_embeds_lottie_json_when_lottie_data_map_provid
         user_id="6904083970",
         messages=messages,
         translations={},
+        task_logs=[],
         agent_timezone="America/New_York",
         media_map={unique_id: tgs_filename},
         mime_map={unique_id: "application/x-tgsticker"},
         emoji_map={},
         lottie_data_map=lottie_data_map,
         show_translations=False,
+        show_task_logs=False,
     )
 
     # Should embed Lottie JSON via lottie-data (works with file://)
@@ -168,12 +170,14 @@ def test_generate_standalone_html_deduplicates_lottie_json_for_repeated_stickers
         user_id="123",
         messages=messages,
         translations={},
+        task_logs=[],
         agent_timezone="UTC",
         media_map={unique_id: tgs_filename},
         mime_map={unique_id: "application/x-tgsticker"},
         emoji_map={},
         lottie_data_map=lottie_data_map,
         show_translations=False,
+        show_task_logs=False,
     )
 
     # Lottie JSON should appear once in lottie-data, not 3 times
@@ -219,12 +223,14 @@ def test_generate_standalone_html_shows_error_when_lottie_data_missing(tmp_path)
         user_id="123",
         messages=messages,
         translations={},
+        task_logs=[],
         agent_timezone="UTC",
         media_map={unique_id: "999.tgs"},
         mime_map={unique_id: "application/x-tgsticker"},
         emoji_map={},
         lottie_data_map={},
         show_translations=False,
+        show_task_logs=False,
     )
 
     # TGS container is rendered with data-path (JS will show Animation Error when JSON missing)

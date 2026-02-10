@@ -7788,8 +7788,12 @@
             statusDiv.style.color = '#007bff';
             
             // Get translation setting
-            const checkbox = document.getElementById('translation-toggle');
-            const includeTranslations = checkbox ? checkbox.checked : false;
+            const translationCheckbox = document.getElementById('translation-toggle');
+            const includeTranslations = translationCheckbox ? translationCheckbox.checked : false;
+            
+            // Get task log setting
+            const taskLogCheckbox = document.getElementById('log-interleave-toggle');
+            const includeTaskLogs = taskLogCheckbox ? taskLogCheckbox.checked : false;
             
             // Make request to download endpoint
             fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/download`, {
@@ -7798,7 +7802,8 @@
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    include_translations: includeTranslations
+                    include_translations: includeTranslations,
+                    include_task_logs: includeTaskLogs
                 })
             })
             .then(response => {
