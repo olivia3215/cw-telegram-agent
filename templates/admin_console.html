@@ -6938,10 +6938,7 @@
                     
                     // Scroll to bottom of conversation after rendering
                     setTimeout(() => {
-                        const container = document.getElementById('conversation-container');
-                        if (container) {
-                            container.scrollTop = container.scrollHeight;
-                        }
+                        window.scrollTo(0, document.body.scrollHeight);
                     }, 100);
                 })
                 .catch(error => {
@@ -8103,10 +8100,7 @@
                     
                     // Scroll to bottom of work queue after rendering
                     setTimeout(() => {
-                        const container = document.getElementById('work-queue-container');
-                        if (container) {
-                            container.scrollTop = container.scrollHeight;
-                        }
+                        window.scrollTo(0, document.body.scrollHeight);
                     }, 100);
                 })
                 .catch(error => {
