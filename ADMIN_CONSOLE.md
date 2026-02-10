@@ -56,9 +56,42 @@ The admin console provides three main tabs:
   - **Notes** — View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - **Conversation LLM** — Override LLM model for specific conversations
   - **Plans** — View and manage channel-specific plans
-  - **Conversation** — View conversation history, edit summaries, trigger summarization, and delete telepathic messages (messages starting with `⟦think⟧`, `⟦remember⟧`, `⟦intend⟧`, `⟦plan⟧`, `⟦retrieve⟧`, `⟦summarize⟧`, `⟦xsend⟧`, `⟦note⟧`)
+  - **Conversation** — View conversation history, edit summaries, trigger summarization, delete telepathic messages, and optionally show task execution logs interleaved with messages
   - **XSend** — Trigger agent action in a conversation with specific instructions
   - **Work Queue** — View and manage pending tasks in the conversation's task graph
+
+### Conversation Tab - Task Logging
+
+The **Conversation** tab includes an optional **"Show Task Log"** checkbox that interleaves task execution logs with conversation messages, providing visibility into agent actions.
+
+**Features:**
+- **Task Execution Visibility**: See all non-visible tasks (think, retrieve, remember, note, plan, intend, summarize, etc.) executed by the agent
+- **Chronological Interleaving**: Logs are sorted chronologically with messages for context
+- **Visual Distinction**: Task logs appear with a pink background to distinguish them from messages
+- **Smart Filtering**: 
+  - Only shows successful tasks (failed tasks are not displayed)
+  - Excludes visible tasks that are already in the conversation (send, sticker, react, photo)
+  - Only shows logs after the last conversation summary (or all logs if no summaries exist)
+- **Task Details**: Each log entry shows:
+  - Action type (e.g., THINK, RETRIEVE, REMEMBER)
+  - Task identifier for debugging
+  - Timestamp in agent's timezone
+  - Task parameters and details
+- **Download Integration**: The "Download Conversation" feature respects the checkbox state and includes interleaved logs in the exported HTML
+
+**Use Cases:**
+- Debug agent behavior by seeing exactly what tasks were executed
+- Understand the agent's thought process (think tasks)
+- See what information was retrieved from URLs (retrieve tasks)
+- Track when memories, notes, plans, and intentions were created
+- Verify that summaries were generated at expected times
+
+**Technical Details:**
+- Task logs are stored in the `task_execution_log` database table
+- Logs are retained for 14 days and automatically cleaned up
+- All task executions are logged except `wait`/`delay` tasks
+- Failed task executions are logged but not displayed in the UI (available via database queries)
+
 
 ### Work Queue Tab
 
