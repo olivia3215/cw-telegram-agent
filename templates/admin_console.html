@@ -3374,6 +3374,20 @@
             }
         });
 
+        // Refresh recent conversations when dropdown is opened (background refresh)
+        const recentConversationsSelect = document.getElementById('recent-conversations-select');
+        if (recentConversationsSelect) {
+            // Trigger refresh on mousedown (when user clicks to open dropdown)
+            recentConversationsSelect.addEventListener('mousedown', () => {
+                loadRecentConversations(); // Fire and forget - updates in background
+            });
+            
+            // Also trigger on focus for keyboard navigation
+            recentConversationsSelect.addEventListener('focus', () => {
+                loadRecentConversations(); // Fire and forget - updates in background
+            });
+        }
+
         document.getElementById('recent-conversations-select')?.addEventListener('change', async (e) => {
             const value = e.target.value;
             if (!value) {
