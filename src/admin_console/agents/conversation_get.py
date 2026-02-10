@@ -1023,7 +1023,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
 
             # Get task execution logs for the past 7 days
             from db.task_log import get_task_logs
-            task_logs = get_task_logs(agent.telegram_id, channel_id, days=7)
+            task_logs = get_task_logs(agent.agent_id, channel_id, days=7)
 
             return jsonify({
                 "messages": messages,

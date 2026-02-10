@@ -161,7 +161,7 @@ def _log_immediate_task_dispatch(task, agent, channel_id: int) -> None:
             return
         
         # Get agent telegram ID
-        agent_id = getattr(agent, "telegram_id", None)
+        agent_id = getattr(agent, "agent_id", None)
         if not agent_id:
             return
         
