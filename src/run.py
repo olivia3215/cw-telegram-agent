@@ -1,6 +1,6 @@
 # run.py
 
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
 """
@@ -38,6 +38,7 @@ from agent import (
     all_agents,
 )
 from clock import clock
+from datetime import UTC
 from main_loop import set_main_loop
 from exceptions import ShutdownException
 from utils import format_message_content_for_logging
@@ -906,8 +907,25 @@ async def run_telegram_loop(agent: Agent):
 async def periodic_scan(agents, interval_sec):
     """A background task that periodically scans for unread messages."""
     await clock.sleep(interval_sec / 9)
+    
+    # Track last cleanup time (once per day)
+    last_log_cleanup = None
+    
     while True:
         logger.info("Scanning for changes...")
+        
+        # Periodic cleanup of old task logs (once per day)
+        try:
+            now = clock.now(UTC)
+            if last_log_cleanup is None or (now - last_log_cleanup).total_seconds() >= 86400:
+                from db.task_log import delete_old_logs
+                deleted = delete_old_logs(days=14)
+                last_log_cleanup = now
+                if deleted > 0:
+                    logger.info(f"Cleaned up {deleted} old task log entries")
+        except Exception as e:
+            logger.warning(f"Error during task log cleanup: {e}")
+        
         for agent in agents:
             # Only scan if the client exists and is connected
             if agent.client:

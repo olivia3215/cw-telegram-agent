@@ -1,6 +1,6 @@
 # tick.py
 
-# Copyright (c) 2025 Cindy's World LLC and contributors
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 
 import asyncio
@@ -24,6 +24,40 @@ from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
 
 logger = logging.getLogger(__name__)
+
+
+# Lazy import for task logging to avoid circular dependencies
+def _log_task_failure(graph, task, error_msg: str):
+    """Log a task failure to the database."""
+    try:
+        from db.task_log import log_task_execution, format_action_details
+        
+        agent_id = graph.context.get("agent_id")
+        channel_id = graph.context.get("channel_id")
+        
+        if not agent_id or not channel_id or not task.type:
+            return
+        
+        # Skip wait tasks
+        if task.type == "wait":
+            return
+        
+        # Format action details
+        action_details = format_action_details(
+            task.type,
+            getattr(task, "params", {})
+        )
+        
+        # Log the failure
+        log_task_execution(
+            agent_telegram_id=agent_id,
+            channel_telegram_id=channel_id,
+            action_kind=task.type,
+            action_details=action_details,
+            failure_message=error_msg,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log task failure: {e}")
 
 # per-tick AI description budget (default 8; env override)
 
@@ -205,10 +239,15 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
             task.status = TaskStatus.DONE
 
     except Exception as e:
+        error_msg = str(e)
         if isinstance(e, PeerIdInvalidError) and agent:
             agent.clear_entity_cache()
         else:
             logger.exception(f"[{agent_name}] Task {task.id} raised exception: {e}")
+        
+        # Log the task failure
+        _log_task_failure(graph, task, error_msg)
+        
         task.failed(graph)
 
     if is_graph_complete(graph):

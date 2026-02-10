@@ -1,5 +1,8 @@
 # admin_console/agents/conversation_get.py
 #
+# Copyright (c) 2025-2026 Cindy's World LLC and contributors
+# Licensed under the MIT License. See LICENSE.md for details.
+#
 # Route handler for getting conversation history.
 
 import asyncio
@@ -1020,11 +1023,16 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             # Get agent timezone identifier (IANA format for JavaScript compatibility)
             agent_tz_id = agent.get_timezone_identifier()
 
+            # Get task execution logs for the past 7 days
+            from db.task_log import get_task_logs
+            task_logs = get_task_logs(agent.telegram_id, channel_id, days=7)
+
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
                 "agent_timezone": agent_tz_id,
-                "is_blocked": is_blocked
+                "is_blocked": is_blocked,
+                "task_logs": task_logs
             })
         except RuntimeError as e:
             error_msg = str(e).lower()

@@ -913,6 +913,7 @@
                 <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
+                <button class="tab-button" data-subtab="logs">Logs</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
                 <button class="tab-button" data-subtab="work-queue">Work Queue</button>
             </nav>
@@ -1036,6 +1037,11 @@
                 </div>
                 <div class="subtab-panel" data-subtab-panel="conversation">
                     <div id="conversation-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="logs">
+                    <div id="logs-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>
@@ -6867,6 +6873,8 @@
         let conversationTranslations = {};
         let showTranslation = false;
         let conversationAgentTimezone = null;
+        let conversationTaskLogs = [];
+        let showLogInterleave = false;
 
         function loadConversation() {
             const agentSelect = document.getElementById('conversations-agent-select');
@@ -6894,15 +6902,18 @@
                     
                     const summaries = data.summaries || [];
                     const messages = data.messages || [];
+                    const taskLogs = data.task_logs || [];
                     const agentTimezone = data.agent_timezone;
                     const isBlocked = data.is_blocked || false;
                     conversationMessages = messages;
                     conversationTranslations = {};
                     conversationAgentTimezone = agentTimezone;
+                    conversationTaskLogs = taskLogs;  // Store task logs globally
                     // Preserve showTranslation state instead of resetting it
                     // showTranslation state is preserved
                     
                     renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked);
+                    renderLogs(agentName, userId, taskLogs, summaries, agentTimezone);
                     
                     // Restore checkbox state after rendering if it was checked
                     const checkbox = document.getElementById('translation-toggle');
@@ -7033,6 +7044,9 @@
                     html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
                     html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
                     html += 'Display Translation</label>';
+                    html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+                    html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
+                    html += 'Show Task Log</label>';
                     html += `<button id="delete-telepathic-btn-${userId}" onclick="deleteTelepathicMessages('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Delete Telepathic Messages</button>`;
                     html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
                     html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
@@ -7040,7 +7054,99 @@
                     html += '</div>';
                 }
                 
-                html += messages.map(msg => {
+                // Interleave task logs with messages if toggle is enabled
+                let displayItems = [];
+                if (showLogInterleave && conversationTaskLogs.length > 0) {
+                    // Find the timestamp after last summarized message
+                    let afterTimestamp = null;
+                    if (summaries.length > 0) {
+                        // Get the last summary's last_message_date
+                        const lastSummary = summaries[summaries.length - 1];
+                        afterTimestamp = lastSummary.last_message_date;
+                    }
+                    
+                    // Filter and prepare logs
+                    const excludedActionKinds = ['send', 'sticker', 'react', 'photo'];
+                    const logsToShow = conversationTaskLogs.filter(log => {
+                        // Exclude failed tasks
+                        if (log.failure_message) return false;
+                        // Exclude visible action kinds
+                        if (excludedActionKinds.includes(log.action_kind)) return false;
+                        // Filter by timestamp if we have summaries
+                        if (afterTimestamp) {
+                            const logDate = new Date(log.timestamp);
+                            const afterDate = new Date(afterTimestamp);
+                            if (logDate <= afterDate) return false;
+                        }
+                        return true;
+                    });
+                    
+                    // Add messages as items
+                    messages.forEach(msg => {
+                        displayItems.push({
+                            type: 'message',
+                            timestamp: new Date(msg.timestamp),
+                            data: msg
+                        });
+                    });
+                    
+                    // Add logs as items
+                    logsToShow.forEach(log => {
+                        displayItems.push({
+                            type: 'log',
+                            timestamp: new Date(log.timestamp),
+                            data: log
+                        });
+                    });
+                    
+                    // Sort by timestamp
+                    displayItems.sort((a, b) => a.timestamp - b.timestamp);
+                } else {
+                    // No interleaving, just show messages
+                    messages.forEach(msg => {
+                        displayItems.push({
+                            type: 'message',
+                            timestamp: new Date(msg.timestamp),
+                            data: msg
+                        });
+                    });
+                }
+                
+                html += displayItems.map(item => {
+                    if (item.type === 'log') {
+                        // Render log item
+                        const log = item.data;
+                        let detailsText = '';
+                        try {
+                            const details = JSON.parse(log.action_details || '{}');
+                            if (log.action_kind === 'think') {
+                                detailsText = `Thought: ${escapeHtml(details.thought || '')}`;
+                            } else if (log.action_kind === 'remember' || log.action_kind === 'note') {
+                                detailsText = `Content: ${escapeHtml(details.content || '')}`;
+                            } else if (log.action_kind === 'summarize') {
+                                detailsText = 'Summarized conversation';
+                            } else if (log.action_kind === 'plan') {
+                                detailsText = `Plan: ${escapeHtml(details.content || '')}`;
+                            } else if (log.action_kind === 'intend') {
+                                detailsText = `Intent: ${escapeHtml(details.content || '')}`;
+                            } else if (details.action) {
+                                detailsText = escapeHtml(details.action);
+                            }
+                        } catch (e) {
+                            detailsText = '';
+                        }
+                        
+                        return `
+                            <div style="background: #ffe0f0; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 4px solid #d81b60;">
+                                <div style="font-size: 11px; color: #666; margin-bottom: 4px;">
+                                    <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong> at ${formatTimestamp(log.timestamp)}
+                                </div>
+                                ${detailsText ? `<div style="font-size: 13px; color: #333;">${detailsText}</div>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        // Render message (existing code)
+                        const msg = item.data;
                     // Build content from parts if available (includes media/stickers)
                     let contentHtml = '';
                     let hasTextContent = false;
@@ -7164,6 +7270,7 @@
                             ${reactionsHtml}
                         </div>
                     `;
+                    } // End of message type
                 }).join('');
             }
             
@@ -7179,6 +7286,125 @@
                 loadTGSAnimationsForConversation(agentName, userId);
                 loadCustomEmojiAnimations(agentName);
             }, 100);
+        }
+        
+        function toggleLogInterleave(agentName, userId) {
+            showLogInterleave = !showLogInterleave;
+            // Re-render the conversation with the new toggle state
+            const summaries = []; // We don't have summaries stored, but they're not needed for re-render
+            renderConversation(agentName, userId, summaries, conversationMessages, conversationAgentTimezone, false);
+            
+            // Restore checkbox state after rendering
+            const checkbox = document.getElementById('log-interleave-toggle');
+            if (checkbox) {
+                checkbox.checked = showLogInterleave;
+            }
+        }
+        
+        function renderLogs(agentName, userId, taskLogs, summaries, agentTimezone) {
+            const container = document.getElementById('logs-container');
+            let html = '';
+            
+            function formatTimestamp(utcTimestamp) {
+                if (!utcTimestamp) return 'N/A';
+                try {
+                    const date = new Date(utcTimestamp);
+                    const tz = agentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const formatted = date.toLocaleString('en-US', {
+                        timeZone: tz,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    });
+                    const tzAbbr = new Intl.DateTimeFormat('en-US', {
+                        timeZone: tz,
+                        timeZoneName: 'short'
+                    }).formatToParts(date).find(part => part.type === 'timeZoneName')?.value || tz;
+                    return `${formatted} ${tzAbbr}`;
+                } catch (e) {
+                    return utcTimestamp;
+                }
+            }
+            
+            function formatActionDetails(actionKind, actionDetails) {
+                if (!actionDetails) return '';
+                try {
+                    const details = JSON.parse(actionDetails);
+                    if (actionKind === 'send') {
+                        return `Text: ${escapeHtml(details.text || '')}`;
+                    } else if (actionKind === 'react') {
+                        return `Emoji: ${escapeHtml(details.emoji || '')}`;
+                    } else if (actionKind === 'think') {
+                        return `Thought: ${escapeHtml(details.thought || '')}`;
+                    } else if (actionKind === 'remember' || actionKind === 'note' || actionKind === 'plan') {
+                        return `Content: ${escapeHtml(details.content || '')}`;
+                    } else if (actionKind === 'sticker') {
+                        return `Sticker ID: ${escapeHtml(details.unique_id || '')}${details.search_query ? ', Query: ' + escapeHtml(details.search_query) : ''}`;
+                    } else if (actionKind === 'photo') {
+                        return `Photo ID: ${escapeHtml(details.unique_id || '')}${details.caption ? ', Caption: ' + escapeHtml(details.caption) : ''}`;
+                    } else if (actionKind === 'xsend') {
+                        return `To: ${escapeHtml(details.target || '')}, Text: ${escapeHtml(details.text || '')}`;
+                    } else if (details.action) {
+                        return escapeHtml(details.action);
+                    } else {
+                        return escapeHtml(actionDetails);
+                    }
+                } catch (e) {
+                    return escapeHtml(actionDetails);
+                }
+            }
+            
+            html += '<h3 style="margin-bottom: 16px; font-size: 18px; font-weight: bold;">Task Execution Log (Last 7 Days)</h3>';
+            
+            if (taskLogs.length === 0) {
+                html += '<div style="padding: 16px; background: #f5f5f5; border-radius: 4px; color: #666;">No task logs found for this conversation.</div>';
+            } else {
+                // Group logs by date
+                const logsByDate = {};
+                taskLogs.forEach(log => {
+                    const date = new Date(log.timestamp).toLocaleDateString();
+                    if (!logsByDate[date]) {
+                        logsByDate[date] = [];
+                    }
+                    logsByDate[date].push(log);
+                });
+                
+                Object.keys(logsByDate).sort().reverse().forEach(date => {
+                    html += `<div style="margin-bottom: 24px;">`;
+                    html += `<h4 style="margin-bottom: 12px; font-size: 16px; font-weight: bold; color: #333;">${date}</h4>`;
+                    
+                    logsByDate[date].forEach(log => {
+                        const bgColor = log.failure_message ? '#ffe0e0' : '#f0f0f0';
+                        const borderColor = log.failure_message ? '#d32f2f' : '#999';
+                        
+                        html += `<div style="background: ${bgColor}; padding: 12px; margin-bottom: 8px; border-radius: 4px; border-left: 4px solid ${borderColor};">`;
+                        html += `<div style="font-size: 12px; color: #666; margin-bottom: 4px;">`;
+                        html += `<strong>[${escapeHtml(log.action_kind).toUpperCase()}]</strong> at ${formatTimestamp(log.timestamp)}`;
+                        html += `</div>`;
+                        
+                        const details = formatActionDetails(log.action_kind, log.action_details);
+                        if (details) {
+                            html += `<div style="font-size: 13px; margin-top: 6px;">${details}</div>`;
+                        }
+                        
+                        if (log.failure_message) {
+                            html += `<div style="font-size: 13px; margin-top: 6px; color: #d32f2f; font-weight: bold;">`;
+                            html += `❌ Error: ${escapeHtml(log.failure_message)}`;
+                            html += `</div>`;
+                        }
+                        
+                        html += `</div>`;
+                    });
+                    
+                    html += `</div>`;
+                });
+            }
+            
+            container.innerHTML = html;
         }
         
         async function loadCustomEmojiAnimations(agentName) {
