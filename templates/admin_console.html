@@ -958,12 +958,12 @@
                                 <img id="conversation-profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
                             </div>
                             <div style="display: grid; gap: 16px;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div id="conversation-profile-name-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                                     <div>
-                                        <label for="conversation-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
+                                        <label id="conversation-profile-first-name-label" for="conversation-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
                                         <input type="text" id="conversation-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
                                     </div>
-                                    <div>
+                                    <div id="conversation-profile-last-name-container">
                                         <label for="conversation-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
                                         <input type="text" id="conversation-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
                                     </div>
@@ -976,11 +976,15 @@
                                     <label for="conversation-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
                                     <input type="text" id="conversation-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
                                 </div>
+                                <div id="conversation-profile-member-count-container" style="display: none;">
+                                    <label for="conversation-profile-member-count" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Members:</label>
+                                    <input type="text" id="conversation-profile-member-count" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+                                </div>
                                 <div>
                                     <label id="conversation-profile-bio-label" for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
                                     <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
                                 </div>
-                                <div>
+                                <div id="conversation-profile-birthday-container">
                                     <label for="conversation-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
                                     <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
                                         <select id="conversation-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
@@ -3762,25 +3766,53 @@
                 originalConversationProfile = JSON.parse(JSON.stringify(data));
                 currentConversationProfile = data;
 
+                // Determine if this is a group/channel or user
+                const isUser = data.partner_type === 'user';
+                const isGroup = data.partner_type && data.partner_type !== 'user';
+                
+                // Update field labels and visibility based on entity type
+                const firstNameLabel = document.getElementById('conversation-profile-first-name-label');
+                const lastNameContainer = document.getElementById('conversation-profile-last-name-container');
+                const nameRow = document.getElementById('conversation-profile-name-row');
+                const birthdayContainer = document.getElementById('conversation-profile-birthday-container');
+                const memberCountContainer = document.getElementById('conversation-profile-member-count-container');
+                const bioLabel = document.getElementById('conversation-profile-bio-label');
+
+                if (isUser) {
+                    // User layout
+                    if (firstNameLabel) firstNameLabel.textContent = 'First Name:';
+                    if (lastNameContainer) lastNameContainer.style.display = 'block';
+                    if (nameRow) nameRow.style.gridTemplateColumns = '1fr 1fr';
+                    if (birthdayContainer) birthdayContainer.style.display = 'block';
+                    if (memberCountContainer) memberCountContainer.style.display = 'none';
+                    if (bioLabel) bioLabel.textContent = 'Bio:';
+                } else {
+                    // Group/Channel layout
+                    if (firstNameLabel) firstNameLabel.textContent = 'Title:';
+                    if (lastNameContainer) lastNameContainer.style.display = 'none';
+                    if (nameRow) nameRow.style.gridTemplateColumns = '1fr';
+                    if (birthdayContainer) birthdayContainer.style.display = 'none';
+                    if (memberCountContainer) memberCountContainer.style.display = 'block';
+                    if (bioLabel) bioLabel.textContent = 'Description:';
+                }
+
                 document.getElementById('conversation-profile-first-name').value = data.first_name || '';
                 document.getElementById('conversation-profile-last-name').value = data.last_name || '';
                 document.getElementById('conversation-profile-username').value = data.username || '';
                 document.getElementById('conversation-profile-telegram-id').value = data.telegram_id || '';
+                
+                // Set member count for groups/channels
+                const memberCountInput = document.getElementById('conversation-profile-member-count');
+                if (memberCountInput && data.participants_count !== null && data.participants_count !== undefined) {
+                    memberCountInput.value = data.participants_count.toLocaleString();
+                } else if (memberCountInput) {
+                    memberCountInput.value = '';
+                }
+
                 const conversationBioTextarea = document.getElementById('conversation-profile-bio');
                 resetTextareaHeight(conversationBioTextarea);
                 conversationBioTextarea.value = data.bio || '';
                 autoGrowTextarea(conversationBioTextarea);
-                const bioLabel = document.getElementById('conversation-profile-bio-label');
-                if (bioLabel) {
-                    let isGroup = data.partner_type && data.partner_type !== 'user';
-                    if (data.partner_type === undefined || data.partner_type === null) {
-                        const telegramId = Number(data.telegram_id);
-                        if (!Number.isNaN(telegramId)) {
-                            isGroup = telegramId < 0;
-                        }
-                    }
-                    bioLabel.textContent = isGroup ? 'Description:' : 'Bio:';
-                }
 
                 const photoImg = document.getElementById('conversation-profile-photo');
                 if (data.profile_photo) {
@@ -3791,6 +3823,7 @@
                     photoImg.style.display = 'none';
                 }
 
+                // Handle birthday (only for users)
                 const monthSelect = document.getElementById('conversation-profile-birthday-month');
                 const daySelect = document.getElementById('conversation-profile-birthday-day');
                 const yearInput = document.getElementById('conversation-profile-birthday-year');
@@ -3798,7 +3831,7 @@
                 daySelect.innerHTML = '<option value="">Day</option>';
                 yearInput.value = '';
 
-                if (data.birthday) {
+                if (data.birthday && isUser) {
                     monthSelect.value = data.birthday.month || '';
                     const days = data.birthday.month === 2
                         ? 29

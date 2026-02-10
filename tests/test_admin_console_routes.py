@@ -351,6 +351,66 @@ def test_contacts_profile_fallback_reads_full_user(monkeypatch):
     assert data["birthday"] == {"day": 4, "month": 7, "year": 1999}
 
 
+def test_contacts_profile_group_includes_member_count(monkeypatch):
+    from admin_console.agents import contacts as contacts_module
+
+    class FakeFullChat:
+        def __init__(self):
+            self.about = "Test group description"
+            self.participants_count = 42
+
+    class FakeFullChatResult:
+        def __init__(self):
+            self.full_chat = FakeFullChat()
+
+    class FakeChannel:
+        def __init__(self, channel_id):
+            self.id = channel_id
+            self.title = "Test Channel"
+            self.username = "testchannel"
+
+    class FakeClient:
+        def __init__(self):
+            self.channel = FakeChannel(-1001234567890)
+
+        async def get_input_entity(self, entity):
+            return entity
+
+        async def get_entity(self, channel_id):
+            return self.channel
+
+        async def __call__(self, request):
+            return FakeFullChatResult()
+
+    class FakeAgent:
+        def __init__(self):
+            self.client = FakeClient()
+
+        def execute(self, coro, timeout=30.0):
+            import asyncio
+
+            return asyncio.run(coro)
+
+    monkeypatch.setattr(contacts_module, "Channel", FakeChannel)
+    monkeypatch.setattr("admin_console.agents.contacts.get_agent_by_name", lambda _: FakeAgent())
+    monkeypatch.setattr(
+        "admin_console.helpers.resolve_user_id_and_handle_errors",
+        lambda agent, user_id, logger: (-1001234567890, None),
+    )
+
+    client = _make_client()
+    response = client.get("/admin/api/agents/test/partner-profile/-1001234567890")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["first_name"] == "Test Channel"
+    assert data["last_name"] == ""
+    assert data["bio"] == "Test group description"
+    assert data["birthday"] is None
+    assert data["partner_type"] == "channel"
+    assert data["participants_count"] == 42
+    assert data["can_edit_contact"] is False
+
+
 def test_contacts_list_and_bulk_delete(monkeypatch):
     from admin_console.agents import contacts as contacts_module
 
