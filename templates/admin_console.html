@@ -7119,18 +7119,32 @@
                         let detailsText = '';
                         try {
                             const details = JSON.parse(log.action_details || '{}');
-                            if (log.action_kind === 'think') {
-                                detailsText = `Thought: ${escapeHtml(details.thought || '')}`;
-                            } else if (log.action_kind === 'remember' || log.action_kind === 'note') {
-                                detailsText = `Content: ${escapeHtml(details.content || '')}`;
+                            // Format details based on action kind
+                            if (log.action_kind === 'think' && details.text) {
+                                detailsText = `<div style="font-style: italic;">${escapeHtml(details.text)}</div>`;
+                            } else if (log.action_kind === 'send' && details.text) {
+                                detailsText = `Text: ${escapeHtml(details.text)}`;
+                            } else if ((log.action_kind === 'remember' || log.action_kind === 'note' || log.action_kind === 'plan' || log.action_kind === 'intend') && details.content) {
+                                detailsText = escapeHtml(details.content);
                             } else if (log.action_kind === 'summarize') {
                                 detailsText = 'Summarized conversation';
-                            } else if (log.action_kind === 'plan') {
-                                detailsText = `Plan: ${escapeHtml(details.content || '')}`;
-                            } else if (log.action_kind === 'intend') {
-                                detailsText = `Intent: ${escapeHtml(details.content || '')}`;
-                            } else if (details.action) {
-                                detailsText = escapeHtml(details.action);
+                            } else if (log.action_kind === 'react' && details.emoji) {
+                                detailsText = `Emoji: ${escapeHtml(details.emoji)}`;
+                            } else if (log.action_kind === 'sticker' && details.unique_id) {
+                                detailsText = `Sticker: ${escapeHtml(details.unique_id)}${details.search_query ? ' (' + escapeHtml(details.search_query) + ')' : ''}`;
+                            } else if (Object.keys(details).length > 0 && !details.action) {
+                                // Generic display for any other parameters
+                                const parts = [];
+                                for (const [key, value] of Object.entries(details)) {
+                                    if (typeof value === 'string' || typeof value === 'number') {
+                                        parts.push(`${key}: ${escapeHtml(String(value))}`);
+                                    } else if (Array.isArray(value)) {
+                                        parts.push(`${key}: [${value.join(', ')}]`);
+                                    } else if (typeof value === 'boolean') {
+                                        parts.push(`${key}: ${value}`);
+                                    }
+                                }
+                                detailsText = parts.join(', ');
                             }
                         } catch (e) {
                             detailsText = '';
@@ -7334,24 +7348,34 @@
                 if (!actionDetails) return '';
                 try {
                     const details = JSON.parse(actionDetails);
-                    if (actionKind === 'send') {
-                        return `Text: ${escapeHtml(details.text || '')}`;
-                    } else if (actionKind === 'react') {
-                        return `Emoji: ${escapeHtml(details.emoji || '')}`;
-                    } else if (actionKind === 'think') {
-                        return `Thought: ${escapeHtml(details.thought || '')}`;
-                    } else if (actionKind === 'remember' || actionKind === 'note' || actionKind === 'plan') {
-                        return `Content: ${escapeHtml(details.content || '')}`;
-                    } else if (actionKind === 'sticker') {
-                        return `Sticker ID: ${escapeHtml(details.unique_id || '')}${details.search_query ? ', Query: ' + escapeHtml(details.search_query) : ''}`;
-                    } else if (actionKind === 'photo') {
-                        return `Photo ID: ${escapeHtml(details.unique_id || '')}${details.caption ? ', Caption: ' + escapeHtml(details.caption) : ''}`;
-                    } else if (actionKind === 'xsend') {
-                        return `To: ${escapeHtml(details.target || '')}, Text: ${escapeHtml(details.text || '')}`;
-                    } else if (details.action) {
-                        return escapeHtml(details.action);
+                    
+                    // Special formatting for specific action kinds
+                    if (actionKind === 'think' && details.text) {
+                        return `<div style="font-style: italic;">${escapeHtml(details.text)}</div>`;
+                    } else if (actionKind === 'send' && details.text) {
+                        return `<div style="white-space: pre-wrap;">${escapeHtml(details.text)}</div>`;
+                    } else if ((actionKind === 'remember' || actionKind === 'note' || actionKind === 'plan' || actionKind === 'intend') && details.content) {
+                        return `<div style="white-space: pre-wrap;">${escapeHtml(details.content)}</div>`;
+                    } else if (actionKind === 'summarize') {
+                        return 'Summarized conversation';
+                    } else if (Object.keys(details).length > 0 && details.action !== actionKind) {
+                        // Generic display for all other parameters
+                        const parts = [];
+                        for (const [key, value] of Object.entries(details)) {
+                            if (key === 'action') continue; // Skip generic action marker
+                            if (typeof value === 'string' || typeof value === 'number') {
+                                parts.push(`<strong>${key}:</strong> ${escapeHtml(String(value))}`);
+                            } else if (Array.isArray(value)) {
+                                parts.push(`<strong>${key}:</strong> [${value.join(', ')}]`);
+                            } else if (typeof value === 'boolean') {
+                                parts.push(`<strong>${key}:</strong> ${value}`);
+                            } else if (typeof value === 'object' && value !== null) {
+                                parts.push(`<strong>${key}:</strong> ${escapeHtml(JSON.stringify(value))}`);
+                            }
+                        }
+                        return parts.length > 0 ? parts.join('<br>') : '';
                     } else {
-                        return escapeHtml(actionDetails);
+                        return '';
                     }
                 } catch (e) {
                     return escapeHtml(actionDetails);
