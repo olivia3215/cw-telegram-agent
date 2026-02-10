@@ -369,12 +369,14 @@ In addition the following prompts give agents additional capabilities
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Agent Instructions`.
-* **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Agent Stickers`.
+* **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Agent Stickers`, `Start Typing Delay`, `Typing Speed`, `Daily Schedule`, `Telegram ID`, `Disabled`, `Gagged`, `Reset Context On First Message`.
   You may omit these entirely.
   
   The `LLM` field specifies which LLM to use:
   - `gemini` or names starting with `gemini` (e.g., `gemini-2.0-flash`) - uses Gemini LLM
   - `grok` or names starting with `grok` (e.g., `grok-4-fast-non-reasoning`) - uses Grok LLM
+  
+  See [samples/README.md](samples/README.md) for detailed documentation on all configuration fields
   - `openrouter` or models with `/` in the name (e.g., `anthropic/claude-sonnet-4.5`) - uses OpenRouter LLM
   - Available LLMs are managed via the admin console Global/LLMs page
   - If omitted, defaults to Gemini with `gemini-3-flash-preview`

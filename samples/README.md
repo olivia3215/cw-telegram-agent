@@ -466,6 +466,318 @@ When this section is present in an agent's configuration:
 
 This configuration also affects the `clear-conversation` task. If an agent with this setting processes a `clear-conversation` task (e.g., triggered by a command or an intention), it will also clear all plans and summaries for that conversation.
 
+## Typing Behavior
+
+Agents can be configured to simulate realistic typing behavior by specifying how long they wait before starting to type and how fast they type. This makes interactions feel more natural and human-like.
+
+### Configuration
+
+Add the `Start Typing Delay` and/or `Typing Speed` fields to your agent's markdown file:
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Start Typing Delay
+8.0
+
+# Typing Speed
+5.0
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are Heidi...
+```
+
+### Start Typing Delay
+
+The `Start Typing Delay` field specifies how many seconds the agent waits before starting to type a response. This simulates the time a human takes to read the message and formulate a response.
+
+**Valid Range:** 1 to 3600 seconds (1 second to 1 hour)
+
+**Default Behavior:** If not specified, the agent uses the global default from the `START_TYPING_DELAY` environment variable (defaults to 3.0 seconds if not set).
+
+**Examples:**
+- `1.0` - Very quick responses (1 second delay)
+- `3.0` - Normal conversational pace (3 seconds delay)
+- `8.0` - Thoughtful, slower responses (8 seconds delay)
+- `60.0` - Very delayed responses (1 minute delay)
+
+### Typing Speed
+
+The `Typing Speed` field specifies how many characters per second the agent types. Combined with the message length, this determines how long the agent displays the "typing..." indicator.
+
+**Valid Range:** 1 to 1000 characters per second
+
+**Default Behavior:** If not specified, the agent uses the global default from the `TYPING_SPEED` environment variable (defaults to 20.0 characters per second if not set).
+
+**Examples:**
+- `5.0` - Very slow typing (realistic for a careful typist)
+- `10.0` - Slow typing
+- `20.0` - Normal typing speed (default)
+- `50.0` - Fast typing
+- `100.0` - Very fast typing
+
+### How It Works
+
+When an agent prepares to send a message:
+
+1. **Calculate Delay**: `total_delay = start_typing_delay + (message_length / typing_speed)`
+2. **Wait**: The agent waits for the calculated delay before sending the message
+3. **Typing Indicator**: During this wait, Telegram shows the "typing..." indicator to conversation partners
+
+**Example Calculation:**
+- Start Typing Delay: `8.0` seconds
+- Typing Speed: `5.0` characters/second
+- Message: "Hello, how are you?" (19 characters)
+- Total Delay: `8.0 + (19 / 5.0) = 8.0 + 3.8 = 11.8` seconds
+
+### Benefits
+
+By configuring typing behavior:
+- Conversations feel more natural and human-like
+- Different agents can have different typing personalities (thoughtful vs. quick, careful vs. rapid)
+- Reduces the impression that responses are instantaneous/automated
+- Allows conversation partners time to think about what they've said
+
+### Example Agent
+
+The `samples/agents/Heidi.md` configuration uses:
+- `Start Typing Delay: 8.0` - Heidi takes time to think before responding
+- `Typing Speed: 5.0` - Heidi types carefully and deliberately
+
+## Stickers
+
+Agents can be configured to use Telegram stickers in their responses. You can specify sticker sets for the agent to choose from, or explicitly curate specific stickers.
+
+### Configuration
+
+Add the `Agent Sticker Sets` and/or `Agent Stickers` fields to your agent's markdown file:
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Agent Sticker Sets
+UtyaDuck
+HappyPenguin
+
+# Agent Stickers
+UtyaDuck :: 😊
+HappyPenguin :: 👋
+
+# Role Prompt
+Chatbot
+
+# Agent Instructions
+You are Heidi...
+```
+
+### Agent Sticker Sets
+
+The `Agent Sticker Sets` field specifies a list of Telegram sticker set names (one per line) that the agent can use. The agent can select appropriate stickers from these sets when responding.
+
+**Format:** One sticker set name per line
+
+```markdown
+# Agent Sticker Sets
+UtyaDuck
+CindyPainter
+WendyDancer
+```
+
+**How to Find Sticker Set Names:**
+1. In Telegram, find a sticker you want to use
+2. Tap the sticker to view the sticker pack
+3. The sticker set name is usually visible in the pack details
+
+### Agent Stickers
+
+The `Agent Stickers` field specifies explicitly curated stickers (one per line) using the format `STICKER_SET_NAME :: STICKER_EMOJI_OR_NAME`.
+
+**Format:** `SET_NAME :: STICKER_IDENTIFIER` (one per line)
+
+```markdown
+# Agent Stickers
+WendyDancer :: 😉
+CindyPainter :: 😀
+UtyaDuck :: 👍
+```
+
+The identifier after `::` can be:
+- An emoji that represents the sticker
+- A descriptive name for the sticker
+
+**Whitespace:** Spaces around `::` are automatically trimmed, so these are equivalent:
+- `UtyaDuck :: 😊`
+- `UtyaDuck::😊`
+- `UtyaDuck ::😊`
+
+### How Stickers Work
+
+When an agent is configured with stickers:
+
+1. **Selection**: The agent's LLM can choose to send a sticker as part of its response
+2. **Context**: The agent sees available stickers in its system prompt and can reference them
+3. **Usage**: Stickers appear as tasks in the agent's response (type: `sticker`)
+
+### Combining Both Fields
+
+You can use both `Agent Sticker Sets` (for broad access to sticker packs) and `Agent Stickers` (for curated favorites):
+
+```markdown
+# Agent Sticker Sets
+UtyaDuck
+HappyPenguin
+
+# Agent Stickers
+UtyaDuck :: 😊
+UtyaDuck :: 😢
+HappyPenguin :: 👋
+```
+
+This gives the agent access to all stickers in the listed sets, with explicitly curated favorites highlighted.
+
+### Default Behavior
+
+If neither field is specified, the agent will not have access to stickers and cannot send them.
+
+### Example Agent
+
+The `samples/agents/Heidi.md` configuration uses:
+
+```markdown
+# Agent Sticker Sets
+UtyaDuck
+```
+
+This gives Heidi access to all stickers in the UtyaDuck sticker set.
+
+## Agent Control Fields
+
+Agents have several control fields that affect their behavior and status in the system.
+
+### Disabled
+
+The `Disabled` section completely disables the agent, preventing it from processing any tasks or participating in conversations. The content of the section is ignored; its presence alone disables the agent.
+
+**Configuration:**
+
+```markdown
+# Agent Name
+Untitled Agent
+
+# Agent Phone
++18005551212
+
+# Agent Instructions
+You are a helpful assistant.
+
+# Disabled
+```
+
+**Behavior:**
+- Disabled agents do not connect to Telegram
+- Any existing task graphs for the agent are cancelled
+- The agent does not participate in the tick loop
+- The agent appears as disabled in the admin console
+
+**Use Cases:**
+- Temporarily disabling an agent without deleting its configuration
+- Testing configurations without activating the agent
+- Keeping example/template agents that should not be active
+
+### Gagged
+
+The `Gagged` section sets the agent's global default "gagged" status, which prevents the agent from automatically responding to messages. The content of the section is ignored; its presence alone gags the agent by default.
+
+**Configuration:**
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Agent Instructions
+You are Heidi...
+
+# Gagged
+```
+
+**Behavior:**
+- Gagged agents do not create "received" tasks for incoming messages
+- The agent will not automatically respond to conversations
+- The agent can still process `xsend` tasks (which bypass gagged status)
+- Per-conversation overrides can be set via the admin console to un-gag specific conversations
+
+**Use Cases:**
+- Agents that should only respond when explicitly triggered (e.g., via `xsend`)
+- Testing agent configurations without having them respond to all messages
+- Temporarily silencing an agent without fully disabling it
+
+**Per-Conversation Overrides:**
+The gagged status can be overridden on a per-conversation basis via the admin console:
+- Set a conversation to "ungagged" even if the global default is gagged
+- Set a conversation to "gagged" even if the global default is ungagged
+- Remove the override to use the global default
+
+**Difference from Disabled:**
+- **Disabled:** Agent is completely inactive (no Telegram connection, no task processing)
+- **Gagged:** Agent is active but doesn't automatically respond (can still process `xsend` and other internal tasks)
+
+### Telegram ID
+
+The `Telegram ID` field stores the agent's Telegram user ID. This field is typically auto-populated when the agent first connects to Telegram, but can also be manually specified.
+
+**Configuration:**
+
+```markdown
+# Agent Name
+Heidi
+
+# Agent Phone
++14083607039
+
+# Telegram ID
+7359509635
+
+# Agent Instructions
+You are Heidi...
+```
+
+**Behavior:**
+- **Auto-population:** When an agent first successfully connects to Telegram, the system automatically updates the configuration file with the agent's Telegram ID
+- **Manual specification:** You can manually add this field if you already know the agent's Telegram ID
+- **Persistence:** Once set, the Telegram ID is stored in the configuration file and used to identify the agent
+
+**Use Cases:**
+- **Database relationships:** The Telegram ID is used as a foreign key in database tables (notes, conversation parameters, etc.)
+- **Agent identification:** Used to distinguish between different agents in the system
+- **Admin console:** Used to manage agent-specific settings and relationships
+
+**Important Notes:**
+- This field is managed automatically by the system
+- You typically don't need to manually set this field
+- If the field exists and matches the connected agent's ID, no update is needed
+- If the field is missing or incorrect, it will be automatically updated on connection
+
+### Default Behavior
+
+If none of these control fields are specified:
+- The agent is **enabled** (not disabled)
+- The agent is **ungagged** (responds to all messages)
+- The **Telegram ID** will be auto-populated on first connection
+
 ## Configuration
 
 To use custom prompt directories, set the `CINDY_AGENT_CONFIG_PATH` environment variable:
