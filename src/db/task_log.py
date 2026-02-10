@@ -217,94 +217,50 @@ def delete_old_logs(days: int = 14) -> int:
 def format_action_details(action_kind: str, params: dict) -> str:
     """
     Format action details based on action kind for storage.
-    Returns a JSON string or plain text description.
+    Returns a JSON string with all task parameters except blacklisted ones.
 
     Args:
         action_kind: The type of action
         params: Task parameters dictionary
 
     Returns:
-        Formatted details string
+        Formatted details string (JSON)
     """
-    if action_kind == "send":
-        text = params.get("text", "")
-        # Truncate long messages
-        if len(text) > 500:
-            text = text[:500] + "..."
-        return json.dumps({"text": text})
+    # Blacklist of parameters that are too verbose or not useful for logs
+    blacklist = {
+        "silent",  # Internal flag for telepathic messages
+        "previous_retries",  # Retry count (tracked separately)
+        "callout",  # Internal scheduling flag
+        "bypass_gagged",  # Internal flag
+        "clear_mentions",  # Internal Telegram flag
+        "clear_reactions",  # Internal Telegram flag
+    }
     
-    elif action_kind == "react":
-        return json.dumps({"emoji": params.get("emoji", "")})
+    # Create a copy of params, excluding blacklisted keys
+    filtered_params = {
+        k: v for k, v in params.items()
+        if k not in blacklist
+    }
     
-    elif action_kind == "sticker":
-        return json.dumps({
-            "unique_id": params.get("unique_id", ""),
-            "search_query": params.get("search_query", ""),
-        })
+    # Truncate long text fields to avoid bloating the database
+    if "text" in filtered_params and isinstance(filtered_params["text"], str):
+        if len(filtered_params["text"]) > 500:
+            filtered_params["text"] = filtered_params["text"][:500] + "..."
     
-    elif action_kind == "photo":
-        return json.dumps({
-            "unique_id": params.get("unique_id", ""),
-            "caption": params.get("caption", "")[:200] if params.get("caption") else "",
-        })
+    if "content" in filtered_params and isinstance(filtered_params["content"], str):
+        if len(filtered_params["content"]) > 500:
+            filtered_params["content"] = filtered_params["content"][:500] + "..."
     
-    elif action_kind == "think":
-        thought = params.get("thought", "")
-        if len(thought) > 200:
-            thought = thought[:200] + "..."
-        return json.dumps({"thought": thought})
+    if "xsend_intent" in filtered_params and isinstance(filtered_params["xsend_intent"], str):
+        if len(filtered_params["xsend_intent"]) > 500:
+            filtered_params["xsend_intent"] = filtered_params["xsend_intent"][:500] + "..."
     
-    elif action_kind == "remember":
-        content = params.get("content", "")
-        if len(content) > 200:
-            content = content[:200] + "..."
-        return json.dumps({"content": content})
+    if "caption" in filtered_params and isinstance(filtered_params["caption"], str):
+        if len(filtered_params["caption"]) > 200:
+            filtered_params["caption"] = filtered_params["caption"][:200] + "..."
     
-    elif action_kind == "note":
-        content = params.get("content", "")
-        if len(content) > 200:
-            content = content[:200] + "..."
-        return json.dumps({"content": content})
+    # Return empty dict if nothing to log
+    if not filtered_params:
+        return json.dumps({"action": action_kind})
     
-    elif action_kind == "summarize":
-        # Just note that summarization occurred, no content
-        return json.dumps({"action": "summarize"})
-    
-    elif action_kind == "plan":
-        content = params.get("content", "")
-        if len(content) > 200:
-            content = content[:200] + "..."
-        return json.dumps({"content": content})
-    
-    elif action_kind == "intend":
-        content = params.get("content", "")
-        if len(content) > 200:
-            content = content[:200] + "..."
-        return json.dumps({"content": content})
-    
-    elif action_kind == "schedule":
-        return json.dumps({"action": "schedule_extended"})
-    
-    elif action_kind == "block":
-        return json.dumps({"action": "block_user"})
-    
-    elif action_kind == "unblock":
-        return json.dumps({"action": "unblock_user"})
-    
-    elif action_kind == "clear-conversation":
-        return json.dumps({"action": "clear_conversation"})
-    
-    elif action_kind == "xsend":
-        text = params.get("text", "")
-        target = params.get("target_username", "") or params.get("target_id", "")
-        if len(text) > 300:
-            text = text[:300] + "..."
-        return json.dumps({"text": text, "target": str(target)})
-    
-    elif action_kind == "received":
-        # Just note that a message was received and processed
-        return json.dumps({"action": "received_message"})
-    
-    else:
-        # For unknown action kinds, store full params as JSON
-        return json.dumps(params)
+    return json.dumps(filtered_params)
