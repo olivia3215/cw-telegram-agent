@@ -59,6 +59,39 @@ def _log_task_failure(graph, task, error_msg: str):
     except Exception as e:
         logger.debug(f"Failed to log task failure: {e}")
 
+
+def _log_task_completion(graph, task):
+    """Log a successful task completion to the database."""
+    try:
+        from db.task_log import log_task_execution, format_action_details
+        
+        agent_id = graph.context.get("agent_id")
+        channel_id = graph.context.get("channel_id")
+        
+        if not agent_id or not channel_id or not task.type:
+            return
+        
+        # Skip wait tasks
+        if task.type == "wait":
+            return
+        
+        # Format action details
+        action_details = format_action_details(
+            task.type,
+            getattr(task, "params", {})
+        )
+        
+        # Log the completion
+        log_task_execution(
+            agent_telegram_id=agent_id,
+            channel_telegram_id=channel_id,
+            action_kind=task.type,
+            action_details=action_details,
+            failure_message=None,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log task completion: {e}")
+
 # per-tick AI description budget (default 8; env override)
 
 
@@ -237,6 +270,10 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         # Only mark as DONE if task is still ACTIVE (handler may have reset it to PENDING)
         if task.status == TaskStatus.ACTIVE:
             task.status = TaskStatus.DONE
+            
+            # Log successful task completion (skip wait tasks)
+            if task.type != "wait":
+                _log_task_completion(graph, task)
 
     except Exception as e:
         error_msg = str(e)

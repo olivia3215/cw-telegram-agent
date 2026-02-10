@@ -76,11 +76,7 @@ async def dispatch_task(task_type: str, *args: Any, **kwargs: Any) -> bool:
     if not handler:
         return False
 
-    # Log task execution (before execution)
-    # Skip 'wait' tasks as per requirement
-    if task_type != "wait":
-        _log_task_dispatch(task_type, args)
-
+    # Don't log here - we'll log after successful completion in tick.py
     await handler(*args, **kwargs)
     return True
 
