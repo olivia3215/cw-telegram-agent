@@ -38,6 +38,7 @@ class FakeLLM:
         image_bytes: bytes,
         mime_type: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         return self.text
 
@@ -454,9 +455,10 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
             image_bytes: bytes,
             mime_type: str | None = None,
             timeout_s: float | None = None,
+            agent_name: str | None = None,
         ) -> str:
             received_bytes.append(image_bytes)
-            return await super().describe_image(image_bytes, mime_type, timeout_s)
+            return await super().describe_image(image_bytes, mime_type, timeout_s, agent_name)
     
     llm = TrackingLLM("generated description")
     client = FakeClient()

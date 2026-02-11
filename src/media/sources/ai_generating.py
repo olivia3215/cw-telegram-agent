@@ -265,6 +265,7 @@ class AIGeneratingMediaSource(MediaSource):
                     final_mime_type,
                     duration=duration,
                     timeout_s=get_describe_timeout_secs(),
+                    agent_name=getattr(agent, 'name', None),
                 )
             elif kind == "audio" or is_audio_mime_type(final_mime_type):
                 # Audio files (including voice messages)
@@ -288,6 +289,7 @@ class AIGeneratingMediaSource(MediaSource):
                         audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
                         duration=duration,
                         timeout_s=get_describe_timeout_secs(),
+                        agent_name=getattr(agent, 'name', None),
                     )
                 else:
                     # LLM doesn't support audio description - this shouldn't happen, but fall through to describe_image
@@ -296,7 +298,7 @@ class AIGeneratingMediaSource(MediaSource):
                     )
                     # Fall through to describe_image which will raise ValueError
                     desc = await media_llm.describe_image(
-                        data, None, timeout_s=get_describe_timeout_secs()
+                        data, None, timeout_s=get_describe_timeout_secs(), agent_name=getattr(agent, 'name', None)
                     )
             else:
                 # Ensure we have a valid MIME type before calling describe_image
@@ -307,7 +309,7 @@ class AIGeneratingMediaSource(MediaSource):
                     f"(final_mime_type={final_mime_type}, detected={detected_mime_type}, from_ext={'mime_type' in metadata})"
                 )
                 desc = await media_llm.describe_image(
-                    data, image_mime_type, timeout_s=get_describe_timeout_secs()
+                    data, image_mime_type, timeout_s=get_describe_timeout_secs(), agent_name=getattr(agent, 'name', None)
                 )
             desc = (desc or "").strip()
         except httpx.TimeoutException:

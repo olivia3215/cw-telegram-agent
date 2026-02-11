@@ -246,6 +246,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                                     model=None,  # Use default model
                                     timeout_s=None,  # Use default timeout
+                                    agent_name="admin-translation",
                                 )
 
                                 if result_text:
