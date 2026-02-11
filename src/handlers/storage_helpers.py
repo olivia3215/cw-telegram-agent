@@ -285,6 +285,38 @@ def clear_plans_and_summaries(agent, channel_id: int):
         raise
 
 
+def clear_summaries_only(agent, channel_id: int):
+    """
+    Clear only summaries (not plans) for a specific channel.
+    
+    Args:
+        agent: The agent instance
+        channel_id: The conversation ID
+    """
+    # Verify agent has agent_id (required for MySQL storage)
+    if not agent.is_authenticated:
+        raise ValueError(
+            f"[{agent.name}] Cannot clear summaries: agent_id is None. "
+            "Agent must be authenticated before storage operations."
+        )
+    
+    # Clear from MySQL
+    try:
+        from db import summaries
+        
+        # Get all summaries and delete them
+        summaries_list = summaries.load_summaries(agent.agent_id, channel_id)
+        for summary in summaries_list:
+            summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
+        
+        logger.info(
+            f"[{agent.name}] Cleared summaries for channel [{channel_id}]"
+        )
+    except Exception as e:
+        logger.error(f"Failed to clear summaries from MySQL: {e}")
+        raise
+
+
 async def _load_existing_entry_mysql(
     agent, channel_id: int, property_name: str, entry_id: str
 ) -> dict[str, Any] | None:

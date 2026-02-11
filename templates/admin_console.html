@@ -733,6 +733,16 @@
                                     </label>
                                 </div>
                                 <div class="agent-param-section">
+                                    <h3>Clear Summaries On First Message</h3>
+                                    <label style="display: inline-flex; align-items: center; gap: 8px;">
+                                        <input id="new-agent-clear-summaries" type="checkbox">
+                                        Enabled
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="agent-param-grid">
+                                <div class="agent-param-section">
                                     <h3>Gagged</h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-gagged" type="checkbox">
@@ -5409,6 +5419,7 @@
                     const explicitStickers = data.explicit_stickers || [];
                     const dailyScheduleDescription = data.daily_schedule_description;
                     const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
+                    const clearSummariesOnFirstMessage = data.clear_summaries_on_first_message || false;
                     const startTypingDelay = data.start_typing_delay !== undefined ? data.start_typing_delay : null;
                     const typingSpeed = data.typing_speed !== undefined ? data.typing_speed : null;
                     const configDirectory = data.config_directory || '';
@@ -5555,6 +5566,11 @@
                                         <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
                                             onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
                                         Reset Context On First Message
+                                    </label>
+                                    <label class="agent-param-checkbox-label" style="margin-top: 8px;">
+                                        <input type="checkbox" id="clear-summaries-toggle" ${clearSummariesOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                            onchange="updateAgentClearSummaries('${escJsAttr(agentName)}', this.checked)">
+                                        Clear Summaries On First Message
                                     </label>
                                 </div>
                                 <div class="agent-param-section">
@@ -5746,6 +5762,23 @@
             })
             .catch(error => {
                 if (error && error.message !== 'unauthorized') alert('Error updating reset context: ' + error);
+                loadAgentConfiguration(agentName);
+            });
+        }
+
+        function updateAgentClearSummaries(agentName, enabled) {
+            fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/clear-summaries`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear_summaries_on_first_message: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) alert('Error updating clear summaries: ' + data.error);
+                loadAgentConfiguration(agentName);
+            })
+            .catch(error => {
+                if (error && error.message !== 'unauthorized') alert('Error updating clear summaries: ' + error);
                 loadAgentConfiguration(agentName);
             });
         }
@@ -6074,6 +6107,7 @@
                 document.getElementById('new-agent-explicit-stickers').value = (defaults.explicit_stickers || []).join('\n');
                 document.getElementById('new-agent-daily-schedule').value = defaults.daily_schedule_description || '';
                 document.getElementById('new-agent-reset-context').checked = !!defaults.reset_context_on_first_message;
+                document.getElementById('new-agent-clear-summaries').checked = !!defaults.clear_summaries_on_first_message;
                 document.getElementById('new-agent-gagged').checked = !!defaults.is_gagged;
                 document.getElementById('new-agent-start-typing-delay').value = defaults.start_typing_delay ?? '';
                 document.getElementById('new-agent-typing-speed').value = defaults.typing_speed ?? '';
@@ -6179,6 +6213,7 @@
                     explicit_stickers: document.getElementById('new-agent-explicit-stickers')?.value,
                     daily_schedule_description: document.getElementById('new-agent-daily-schedule')?.value,
                     reset_context_on_first_message: document.getElementById('new-agent-reset-context')?.checked,
+                    clear_summaries_on_first_message: document.getElementById('new-agent-clear-summaries')?.checked,
                     start_typing_delay: document.getElementById('new-agent-start-typing-delay')?.value,
                     typing_speed: document.getElementById('new-agent-typing-speed')?.value,
                     is_gagged: document.getElementById('new-agent-gagged')?.checked
