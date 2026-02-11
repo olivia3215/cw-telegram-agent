@@ -2209,21 +2209,6 @@
                 if (data.error) {
                     alert('Error refreshing from AI: ' + data.error);
                 } else {
-                    // Update the cached data in allMediaFiles array so pagination shows updated data
-                    const mediaIndex = allMediaFiles.findIndex(m => m.unique_id === uniqueId);
-                    if (mediaIndex !== -1) {
-                        allMediaFiles[mediaIndex].description = data.description || null;
-                        allMediaFiles[mediaIndex].status = data.status || 'ok';
-                        // Clear failure_reason if status is successful
-                        if (data.status && (
-                            data.status === 'generated' || 
-                            data.status === 'curated' ||
-                            (data.status === 'budget_exhausted' && data.description)
-                        )) {
-                            allMediaFiles[mediaIndex].failure_reason = null;
-                        }
-                    }
-
                     // Update the textarea with the new AI-generated description
                     if (textarea) {
                         textarea.value = data.description || '';
