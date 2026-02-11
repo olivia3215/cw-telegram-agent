@@ -466,6 +466,66 @@ When this section is present in an agent's configuration:
 
 This configuration also affects the `clear-conversation` task. If an agent with this setting processes a `clear-conversation` task (e.g., triggered by a command or an intention), it will also clear all plans and summaries for that conversation.
 
+## Clear Summaries On First Message
+
+Agents can be configured to automatically clear only their conversation summaries (not plans or notes) when a new conversation begins. This is useful for agents that maintain persistent state across scenarios using `note`s, but want to start each new scenario with a fresh conversation context.
+
+### Configuration
+
+Add the `Clear Summaries On First Message` section to your agent's markdown file. The content of the section is ignored; its presence alone enables the behavior:
+
+```markdown
+# Agent Name
+Lucy
+
+# Clear Summaries On First Message
+(Any text here is ignored)
+
+# Role Prompt
+Chatbot
+Task-Memory
+
+# Agent Instructions
+...
+```
+
+### How It Works
+
+When this section is present in an agent's configuration:
+
+1. **Start of Conversation Detection**: When the agent receives a message and the conversation history is empty (or only contains that one message), it's considered the "start of a conversation". This happens during the very first interaction or after a user has "Cleared History" in Telegram.
+2. **Selective Context Erasure**: At the start of a conversation, the agent automatically:
+   - Erases all conversation summaries
+   - **Preserves** all `plan`s for the conversation
+   - **Preserves** all `note`s for the conversation
+3. **Partial Fresh Start**: The agent starts with fresh conversation context but retains tracking state (notes and plans) from previous scenarios.
+
+### Differences from Reset Context On First Message
+
+| Feature | Reset Context On First Message | Clear Summaries On First Message |
+|---------|-------------------------------|----------------------------------|
+| Clears summaries | ✓ | ✓ |
+| Clears plans | ✓ | ✗ |
+| Clears notes | ✓ | ✗ |
+| Use case | Complete fresh start | Maintain state across scenarios |
+
+### Use Case Example
+
+An agent tracking multiple role-play scenarios uses `note`s to remember which scenarios have been completed, who the characters are, and other persistent state. When a user clears their Telegram history and starts a new scenario, the agent should:
+- Forget the conversation details from the previous scenario (clear summaries)
+- Remember the scenario tracking state (preserve notes)
+- Keep any active plans (preserve plans)
+
+This allows the agent to seamlessly move from one scenario to the next while maintaining continuity of the overall experience.
+
+### Precedence When Both Flags Are Enabled
+
+If both `Reset Context On First Message` and `Clear Summaries On First Message` are present in the agent configuration, **Reset Context On First Message takes precedence**. The agent will clear plans, summaries, and notes (complete reset) rather than just clearing summaries.
+
+### Manual Reset
+
+Like `Reset Context On First Message`, this configuration can also be triggered manually via the `clear-conversation` task. However, when using `clear-conversation`, the agent will only clear summaries and preserve plans and notes.
+
 ## Typing Behavior
 
 Agents can be configured to simulate realistic typing behavior by specifying how long they wait before starting to type and how fast they type. This makes interactions feel more natural and human-like.
