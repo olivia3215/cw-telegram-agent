@@ -115,11 +115,13 @@ async def perform_summarization(
     media_chain,
     highest_summarized_id: int | None,
     parse_llm_reply_fn,  # Function to parse LLM reply
+    summarize_all: bool = False,
 ):
     """
     Perform summarization of unsummarized messages.
     
-    Summarizes all messages except the most recent 20 that are not already summarized.
+    By default, summarizes all messages except the most recent 20 that are not already summarized.
+    When summarize_all=True (e.g., from admin console), summarizes ALL unsummarized messages.
     Processes all messages requiring summarization in a single LLM call, even if that's
     hundreds of messages.
     
@@ -130,10 +132,11 @@ async def perform_summarization(
         media_chain: Media source chain for fetching media descriptions
         highest_summarized_id: Highest message ID that has been summarized (or None)
         parse_llm_reply_fn: Function to parse LLM reply (async def parse_llm_reply(...) -> list[TaskNode])
+        summarize_all: If True, summarize ALL unsummarized messages (including the most recent ones)
     """
     from clock import clock
     
-    # Filter to unsummarized messages, excluding the most recent 20
+    # Filter to unsummarized messages
     unsummarized_messages = []
     for msg in messages:
         msg_id = getattr(msg, "id", None)
@@ -143,9 +146,14 @@ async def perform_summarization(
             if highest_summarized_id is None or msg_id_int > highest_summarized_id:
                 unsummarized_messages.append(msg)
     
-    # Keep only the most recent 20 unsummarized messages for the conversation
-    # The rest (n-20) will be summarized
-    messages_to_summarize = unsummarized_messages[20:] if len(unsummarized_messages) > 20 else []
+    # Determine which messages to summarize
+    if summarize_all:
+        # Summarize ALL unsummarized messages (e.g., when triggered from admin console)
+        messages_to_summarize = unsummarized_messages
+    else:
+        # Keep only the most recent 20 unsummarized messages for the conversation
+        # The rest (n-20) will be summarized
+        messages_to_summarize = unsummarized_messages[20:] if len(unsummarized_messages) > 20 else []
     
     if not messages_to_summarize:
         logger.info(f"[{agent.name}] No messages to summarize for channel {channel_id}")
@@ -294,7 +302,8 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
     Trigger summarization directly without going through the task graph.
     
     This function can be called from the admin console to trigger summarization
-    without interfering with an active conversation in progress.
+    without interfering with an active conversation in progress. It summarizes ALL
+    unsummarized messages, including the most recent ones.
     
     Args:
         agent: Agent instance
@@ -332,7 +341,7 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
     # Get highest summarized ID
     highest_summarized_id = get_highest_summarized_message_id(agent, channel_id)
     
-    # Perform summarization directly
+    # Perform summarization directly, summarizing ALL unsummarized messages
     await perform_summarization(
         agent=agent,
         channel_id=channel_id,
@@ -340,4 +349,5 @@ async def trigger_summarization_directly(agent, channel_id: int, parse_llm_reply
         media_chain=media_chain,
         highest_summarized_id=highest_summarized_id,
         parse_llm_reply_fn=parse_llm_reply_fn,
+        summarize_all=True,
     )
