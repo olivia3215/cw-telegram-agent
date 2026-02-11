@@ -871,7 +871,7 @@ def _generate_standalone_html(
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f8f9fa;
+            background: transparent;
             border-radius: 4px;
             border: 1px solid #e9ecef;
             overflow: hidden;
@@ -1197,7 +1197,7 @@ def _generate_standalone_html(
                         animationContainer.style.display = 'flex';
                         animationContainer.style.alignItems = 'center';
                         animationContainer.style.justifyContent = 'center';
-                        animationContainer.style.backgroundColor = '#ffffff';
+                        animationContainer.style.backgroundColor = 'transparent';
                         container.appendChild(animationContainer);
 
                         lottie.loadAnimation({
