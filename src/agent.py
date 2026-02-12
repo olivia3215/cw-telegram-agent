@@ -61,6 +61,7 @@ class Agent(
         daily_schedule_description=None,
         # Context reset configuration
         reset_context_on_first_message=False,
+        clear_summaries_on_first_message=False,
         # Disabled status
         is_disabled=False,
         # Gagged status (global default)
@@ -87,6 +88,7 @@ class Agent(
 
         # Context reset behavior
         self.reset_context_on_first_message = reset_context_on_first_message
+        self.clear_summaries_on_first_message = clear_summaries_on_first_message
 
         # Multi-set config (lists)
         self.sticker_set_names = list(

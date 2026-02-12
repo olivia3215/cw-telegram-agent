@@ -60,6 +60,7 @@ async def test_handle_received_resets_context():
     agent.config_name = "TestAgent"
     agent.agent_id = 123456 # Agent's own ID
     agent.reset_context_on_first_message = True
+    agent.clear_summaries_on_first_message = False
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
     agent.is_disabled = False
@@ -110,6 +111,7 @@ async def test_handle_received_false_positive_prevention():
     agent.config_name = "TestAgent"
     agent.agent_id = 123456
     agent.reset_context_on_first_message = True
+    agent.clear_summaries_on_first_message = False
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
     agent.is_disabled = False
@@ -145,6 +147,7 @@ async def test_handle_received_no_reset_if_disabled():
     agent.config_name = "TestAgent"
     agent.agent_id = 123456
     agent.reset_context_on_first_message = False
+    agent.clear_summaries_on_first_message = False
     agent.daily_schedule_description = None
     agent.client = AsyncMock()
     agent.is_disabled = False
