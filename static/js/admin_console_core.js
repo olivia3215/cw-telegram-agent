@@ -1492,6 +1492,34 @@ function toggle(element, shouldShow, displayType = 'block') {
     }
 }
 
+// Auto-save utilities
+function scheduleAutoSave(uniqueId, saveFunction, delay = 1000) {
+    // Clear existing timer for this textarea
+    if (autoSaveTimers[uniqueId]) {
+        clearTimeout(autoSaveTimers[uniqueId]);
+    }
+    
+    // Set status to "Typing..."
+    if (savingStates[uniqueId]) {
+        savingStates[uniqueId].textContent = 'Typing...';
+    }
+    
+    // Set new timer
+    autoSaveTimers[uniqueId] = setTimeout(() => {
+        saveFunction();
+    }, delay);
+}
+
+function setSaveStatus(uniqueId, status) {
+    if (savingStates[uniqueId]) {
+        savingStates[uniqueId].textContent = status;
+    }
+}
+
+function registerAutoSaveElement(uniqueId, statusElement) {
+    savingStates[uniqueId] = statusElement;
+}
+
 // Error and success message utilities
 function showError(element, message) {
     if (typeof element === 'string') {
