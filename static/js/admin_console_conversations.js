@@ -1026,37 +1026,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
         html += '<div><strong>This conversation is blocked.</strong> The agent cannot send messages to this conversation.</div>';
         html += '</div>';
     }
-    
-    // Helper function to convert UTC timestamp to agent timezone for display
-    // Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
-    function formatTimestamp(utcTimestamp) {
-        if (!utcTimestamp) return 'N/A';
-        try {
-            const date = new Date(utcTimestamp);
-            // Use agentTimezone if provided (backend sends fallback to server timezone)
-            // Format: YYYY-MM-DD HH:MM:SS TZ (matching prompt format)
-            const tz = agentTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const formatted = date.toLocaleString('en-US', {
-                timeZone: tz,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZoneName: 'short'
-            });
-            // Convert from "MM/DD/YYYY, HH:MM:SS TZ" to "YYYY-MM-DD HH:MM:SS TZ"
-            const parts = formatted.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}:\d{2}:\d{2})\s+(.+)/);
-            if (parts) {
-                return `${parts[3]}-${parts[1]}-${parts[2]} ${parts[4]} ${parts[5]}`;
-            }
-            return formatted;
-        } catch (e) {
-            return utcTimestamp;
-        }
-    }
+    // Use the formatTimestamp utility from core (now global)
     
     // Display summaries at the top (editable, styled like memories)
     if (summaries.length > 0) {
@@ -1206,7 +1176,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                 return `
                     <div style="background: #ffe0f0; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 4px solid #d81b60;">
                         <div style="font-size: 11px; color: #666; margin-bottom: 4px;">
-                            <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong>${log.task_identifier ? ` <span style="color: #888;">(${escapeHtml(log.task_identifier)})</span>` : ''} at ${formatTimestamp(log.timestamp)}
+                            <strong>[LOG: ${escapeHtml(log.action_kind).toUpperCase()}]</strong>${log.task_identifier ? ` <span style="color: #888;">(${escapeHtml(log.task_identifier)})</span>` : ''} at ${formatTimestamp(log.timestamp, agentTimezone)}
                         </div>
                         ${detailsText ? `<div style="font-size: 13px; color: #333;">${detailsText}</div>` : ''}
                     </div>
@@ -1304,7 +1274,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
             } else {
                 senderDisplay = msg.is_from_agent ? '<strong>Agent</strong>' : '<strong>User</strong>';
             }
-            let metadataLine = `${senderDisplay} • ${formatTimestamp(msg.timestamp)} • ID: ${msg.id}`;
+            let metadataLine = `${senderDisplay} • ${formatTimestamp(msg.timestamp, agentTimezone)} • ID: ${msg.id}`;
             if (msg.reply_to_msg_id) {
                 metadataLine += ` • Reply to: ${msg.reply_to_msg_id}`;
             }

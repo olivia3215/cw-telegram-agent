@@ -18,6 +18,14 @@ let appInitialized = false;
 let requestCooldownTimer = null;
 const DEFAULT_COOLDOWN_SECONDS = 30;
 
+// Global timeout trackers for debounced operations
+let globalDocsSaveTimeout = null;
+let globalDocsFilenameTimeout = null;
+let agentDocsSaveTimeout = null;
+let agentDocsFilenameTimeout = null;
+let globalPromptsSaveTimeout = null;
+let globalPromptsFilenameTimeout = null;
+
 const authOverlay = document.getElementById('auth-overlay');
 const authStatusEl = document.getElementById('auth-status');
 const authErrorEl = document.getElementById('auth-error');
@@ -1428,6 +1436,46 @@ function setupLLMCombobox(inputEl, availableLLMs, options = {}) {
         }
     });
     observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// Generic debounce utility
+// Returns a debounced version of the provided function
+function debounce(func, delay = 500) {
+    let timeoutId;
+    return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// Format UTC timestamp to agent timezone for display
+// Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
+function formatTimestamp(utcTimestamp, timezone) {
+    if (!utcTimestamp) return 'N/A';
+    try {
+        const date = new Date(utcTimestamp);
+        // Use provided timezone or fall back to browser timezone
+        const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const formatted = date.toLocaleString('en-US', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZoneName: 'short'
+        });
+        // Convert from "MM/DD/YYYY, HH:MM:SS TZ" to "YYYY-MM-DD HH:MM:SS TZ"
+        const parts = formatted.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}:\d{2}:\d{2})\s+(.+)/);
+        if (parts) {
+            return `${parts[3]}-${parts[1]}-${parts[2]} ${parts[4]} ${parts[5]}`;
+        }
+        return formatted;
+    } catch (e) {
+        return utcTimestamp;
+    }
 }
 
 function escapeHtml(text) {
