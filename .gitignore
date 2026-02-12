@@ -11,6 +11,7 @@ logs/
 config/private-key.pem
 .env
 ssl
+certs/
 state/
 .vscode/
 *.log

@@ -439,6 +439,8 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 | `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
 | `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface for the console |
 | `CINDY_ADMIN_CONSOLE_PORT` | `5001` | Port for the console |
+| `CINDY_ADMIN_CONSOLE_SSL_CERT` | _(unset)_ | Path to SSL certificate file for HTTPS (optional, requires `SSL_KEY`) |
+| `CINDY_ADMIN_CONSOLE_SSL_KEY` | _(unset)_ | Path to SSL private key file for HTTPS (optional, requires `SSL_CERT`) |
 
 **Quick start**
 1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):
@@ -458,6 +460,35 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
    ./run.sh
    open http://localhost:5001/admin
    ```
+
+**Enabling HTTPS (Optional)**
+
+To enable HTTPS for secure connections:
+
+1. Generate SSL certificates (self-signed for development):
+   ```bash
+   # From the project root
+   openssl req -x509 -newkey rsa:4096 -nodes \
+     -out certs/cert.pem -keyout certs/key.pem -days 365 \
+     -subj "/CN=localhost"
+   ```
+
+2. Configure environment variables:
+   ```bash
+   export CINDY_ADMIN_CONSOLE_SSL_CERT="$(pwd)/certs/cert.pem"
+   export CINDY_ADMIN_CONSOLE_SSL_KEY="$(pwd)/certs/key.pem"
+   ```
+
+3. Restart the server:
+   ```bash
+   ./run.sh restart
+   open https://localhost:5001/admin
+   ```
+
+**Note:** Self-signed certificates will show a browser security warning. You can:
+- Click "Advanced" → "Proceed anyway" for development use
+- Use a reverse proxy (Nginx) with Let's Encrypt for production
+- See `tmp/https-options.md` for detailed HTTPS deployment options
 
 On first visit to the console you'll be prompted to send a six-digit verification code. Click "Send verification code" to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 

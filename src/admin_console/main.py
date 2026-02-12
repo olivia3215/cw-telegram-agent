@@ -39,6 +39,14 @@ def main():
         help="Host to bind to (default: 0.0.0.0 for network access)",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument(
+        "--ssl-cert",
+        help="Path to SSL certificate file (for HTTPS, requires --ssl-key)",
+    )
+    parser.add_argument(
+        "--ssl-key",
+        help="Path to SSL private key file (for HTTPS, requires --ssl-cert)",
+    )
 
     args = parser.parse_args()
 
@@ -56,9 +64,27 @@ def main():
     # Set directories in routes module
     set_available_directories(directories)
 
+    # Check SSL configuration
+    ssl_context = None
+    if args.ssl_cert and args.ssl_key:
+        import ssl
+        try:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_context.load_cert_chain(args.ssl_cert, args.ssl_key)
+            logger.info("HTTPS enabled")
+        except Exception as e:
+            logger.error(f"Failed to load SSL certificates: {e}")
+            logger.warning("Falling back to HTTP")
+    elif args.ssl_cert or args.ssl_key:
+        logger.warning("Both --ssl-cert and --ssl-key must be provided for HTTPS")
+
     # Start the web server
-    logger.info(f"Starting Admin Console on http://{args.host}:{args.port}")
-    create_admin_app().run(host=args.host, port=args.port, debug=args.debug)
+    protocol = "https" if ssl_context else "http"
+    logger.info(f"Starting Admin Console on {protocol}://{args.host}:{args.port}")
+    
+    # Create app with HTTPS flag for session cookie security
+    app = create_admin_app(use_https=(ssl_context is not None))
+    app.run(host=args.host, port=args.port, debug=args.debug, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":
