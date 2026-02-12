@@ -108,6 +108,44 @@ class LLM(ABC):
 
     prompt_name: str = "Default"
 
+    def _log_usage_from_openai_response(
+        self,
+        response: Any,
+        agent_name: str,
+        model_name: str,
+        operation: str,
+    ) -> None:
+        """
+        Log LLM usage from an OpenAI-compatible response.
+        
+        This is a shared helper for OpenAI-compatible APIs (OpenAI, Grok, OpenRouter).
+        
+        Args:
+            response: The OpenAI-compatible response object
+            agent_name: Agent name for logging
+            model_name: Model name for logging
+            operation: Operation type (e.g., "describe_image", "query_structured")
+        """
+        if hasattr(response, 'usage') and response.usage:
+            try:
+                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
+                output_tokens = getattr(response.usage, 'completion_tokens', 0)
+                
+                if input_tokens or output_tokens:
+                    from .usage_logging import log_llm_usage
+                    log_llm_usage(
+                        agent_name=agent_name,
+                        model_name=model_name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        operation=operation,
+                    )
+            except Exception as e:
+                # Don't fail the request if usage logging fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to log LLM usage: {e}")
+
     @property
     def image_description_prompt(self) -> str:
         """Return the prompt for image description."""
@@ -138,6 +176,7 @@ class LLM(ABC):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
@@ -146,6 +185,7 @@ class LLM(ABC):
         Args:
             allowed_task_types: Optional set of task types to allow in the response schema.
                                If None, all task types are allowed.
+            agent_name: Agent name for usage logging (required).
         """
         ...
 
@@ -161,6 +201,7 @@ class LLM(ABC):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -171,6 +212,7 @@ class LLM(ABC):
 
         Args:
             image_bytes: The image data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the image
             timeout_s: Optional timeout in seconds for the request
         """
@@ -180,6 +222,7 @@ class LLM(ABC):
     async def describe_video(
         self,
         video_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
@@ -191,6 +234,7 @@ class LLM(ABC):
 
         Args:
             video_bytes: The video data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the video
             duration: Video duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
@@ -201,6 +245,7 @@ class LLM(ABC):
     async def describe_audio(
         self,
         audio_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
@@ -212,6 +257,7 @@ class LLM(ABC):
 
         Args:
             audio_bytes: The audio data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the audio
             duration: Audio duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
@@ -226,6 +272,7 @@ class LLM(ABC):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query the LLM with a JSON schema constraint on the response.
@@ -238,6 +285,7 @@ class LLM(ABC):
             json_schema: JSON schema dictionary that constrains the response format
             model: Optional model name override
             timeout_s: Optional timeout in seconds for the request
+            agent_name: Agent name for usage logging (required)
         
         Returns:
             JSON string response that matches the schema

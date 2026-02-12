@@ -147,6 +147,7 @@ class OpenAILLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -222,9 +223,14 @@ class OpenAILLM(LLM):
 
             # Extract text from response
             if response.choices and response.choices[0].message.content:
-                return response.choices[0].message.content.strip()
+                text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenAI returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "describe_image")
+            
+            return text
 
         except Exception as e:
             raise RuntimeError(f"OpenAI request failed: {e}") from e
@@ -235,6 +241,7 @@ class OpenAILLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -251,6 +258,7 @@ class OpenAILLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -407,6 +415,7 @@ class OpenAILLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build messages using the parts-aware builder and call OpenAI with structured output.
@@ -496,6 +505,9 @@ class OpenAILLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenAI returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_structured")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
@@ -528,6 +540,7 @@ class OpenAILLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query OpenAI with a JSON schema constraint on the response.
@@ -609,6 +622,9 @@ class OpenAILLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenAI returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_with_json_schema")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder

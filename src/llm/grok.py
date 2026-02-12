@@ -96,6 +96,7 @@ class GrokLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -171,9 +172,14 @@ class GrokLLM(LLM):
 
             # Extract text from response
             if response.choices and response.choices[0].message.content:
-                return response.choices[0].message.content.strip()
+                text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"Grok returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "describe_image")
+            
+            return text
 
         except Exception as e:
             raise RuntimeError(f"Grok request failed: {e}") from e
@@ -184,6 +190,7 @@ class GrokLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -200,6 +207,7 @@ class GrokLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -344,6 +352,7 @@ class GrokLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build messages using the parts-aware builder and call Grok with structured output.
@@ -412,6 +421,9 @@ class GrokLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"Grok returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_structured")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
@@ -432,6 +444,7 @@ class GrokLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query Grok with a JSON schema constraint on the response.
@@ -492,6 +505,9 @@ class GrokLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"Grok returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_with_json_schema")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder

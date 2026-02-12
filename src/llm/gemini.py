@@ -106,6 +106,79 @@ class GeminiLLM(LLM):
         # Cache the REST API format to avoid recomputing it
         self._safety_settings_rest_cache = self._safety_settings_to_rest_format()
 
+    def _log_usage_from_rest_response(
+        self,
+        obj: dict,
+        agent_name: str,
+        model_name: str,
+        operation: str,
+    ) -> None:
+        """
+        Log LLM usage from a REST API response.
+        
+        Args:
+            obj: The parsed JSON response object
+            agent_name: Agent name for logging
+            model_name: Model name for logging
+            operation: Operation type (e.g., "describe_image", "describe_video")
+        """
+        try:
+            # Extract usage metadata from REST API response
+            usage = obj.get("usageMetadata", {})
+            input_tokens = usage.get("promptTokenCount", 0)
+            output_tokens = usage.get("candidatesTokenCount", 0)
+            
+            if input_tokens or output_tokens:
+                from .usage_logging import log_llm_usage
+                log_llm_usage(
+                    agent_name=agent_name,
+                    model_name=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    operation=operation,
+                )
+        except Exception as e:
+            # Don't fail the request if usage logging fails
+            logger.warning(f"Failed to log LLM usage: {e}")
+
+    def _log_usage_from_sdk_response(
+        self,
+        response: Any,
+        agent_name: str,
+        model_name: str,
+        operation: str | None = None,
+    ) -> None:
+        """
+        Log LLM usage from an SDK response object.
+        
+        Args:
+            response: The SDK response object
+            agent_name: Agent name for logging
+            model_name: Model name for logging
+            operation: Optional operation type (e.g., "query_structured")
+        """
+        if response is None:
+            return
+            
+        try:
+            # Gemini responses have usage_metadata attribute
+            if hasattr(response, "usage_metadata"):
+                usage = response.usage_metadata
+                input_tokens = getattr(usage, "prompt_token_count", 0)
+                output_tokens = getattr(usage, "candidates_token_count", 0)
+                
+                from .usage_logging import log_llm_usage
+                log_llm_usage(
+                    agent_name=agent_name,
+                    model_name=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    operation=operation,
+                )
+        except Exception as e:
+            # Don't fail the request if usage logging fails
+            logger.warning(f"Failed to log LLM usage: {e}")
+
     def _safety_settings_to_rest_format(self) -> list[dict[str, str]]:
         """
         Convert client API safety settings to REST API format.
@@ -193,6 +266,7 @@ class GeminiLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -310,13 +384,20 @@ class GeminiLLM(LLM):
             parts = (candidates[0].get("content") or {}).get("parts") or []
             if not parts or "text" not in parts[0]:
                 raise RuntimeError(f"Gemini returned no text parts: {obj}")
-            return parts[0]["text"].strip()
+            
+            text = parts[0]["text"].strip()
+            
+            # Log usage
+            self._log_usage_from_rest_response(obj, agent_name, model, "describe_image")
+            
+            return text
         except Exception as e:
             raise RuntimeError(f"Gemini parse error: {e}") from e
 
     async def describe_video(
         self,
         video_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
@@ -488,13 +569,20 @@ class GeminiLLM(LLM):
             parts = (candidates[0].get("content") or {}).get("parts") or []
             if not parts or "text" not in parts[0]:
                 raise RuntimeError(f"Gemini returned no text parts: {obj}")
-            return parts[0]["text"].strip()
+            
+            text = parts[0]["text"].strip()
+            
+            # Log usage
+            self._log_usage_from_rest_response(obj, agent_name, model, "describe_video")
+            
+            return text
         except Exception as e:
             raise RuntimeError(f"Gemini parse error: {e}") from e
 
     async def describe_audio(
         self,
         audio_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
@@ -626,7 +714,13 @@ class GeminiLLM(LLM):
             parts = (candidates[0].get("content") or {}).get("parts") or []
             if not parts or "text" not in parts[0]:
                 raise RuntimeError(f"Gemini returned no text parts: {obj}")
-            return parts[0]["text"].strip()
+            
+            text = parts[0]["text"].strip()
+            
+            # Log usage
+            self._log_usage_from_rest_response(obj, agent_name, model, "describe_audio")
+            
+            return text
         except Exception as e:
             raise RuntimeError(f"Gemini parse error: {e}") from e
 
@@ -638,6 +732,8 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
         system_instruction: str | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
+        operation: str | None = None,
     ) -> str:
         """
         Thin wrapper around the Gemini client for role-structured 'contents'.
@@ -735,6 +831,9 @@ class GeminiLLM(LLM):
             
             # Extract the first candidate's text safely using the helper
             text = _extract_response_text(response)
+            
+            # Log usage
+            self._log_usage_from_sdk_response(response, agent_name, model_name, operation)
 
             # Optional comprehensive logging for debugging
             if GEMINI_DEBUG_LOGGING:
@@ -905,6 +1004,7 @@ class GeminiLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -928,6 +1028,8 @@ class GeminiLLM(LLM):
             timeout_s=timeout_s,
             system_instruction=system_prompt,
             allowed_task_types=allowed_task_types,
+            agent_name=agent_name,
+            operation="query_structured",
         )
 
     async def query_with_json_schema(
@@ -937,6 +1039,7 @@ class GeminiLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query Gemini with a JSON schema constraint on the response.
@@ -1009,6 +1112,9 @@ class GeminiLLM(LLM):
 
             # Extract text from response
             text = _extract_response_text(response)
+            
+            # Log usage
+            self._log_usage_from_sdk_response(response, agent_name, model_name, "query_with_json_schema")
 
             # Optional comprehensive logging for debugging
             if GEMINI_DEBUG_LOGGING:

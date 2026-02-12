@@ -37,7 +37,7 @@ async def test_concurrent_budget_consumption(tmp_path):
     only one should succeed and the rest should get BUDGET_EXHAUSTED.
     """
     llm = FakeLLM()
-    agent = SimpleNamespace(client=MagicMock(), llm=llm)
+    agent = SimpleNamespace(client=MagicMock(), llm=llm, name="TestAgent")
     
     # Mock download_media_bytes to add a delay
     async def fake_download(*args, **kwargs):

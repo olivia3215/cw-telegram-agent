@@ -262,6 +262,7 @@ class AIGeneratingMediaSource(MediaSource):
                 duration = metadata.get("duration")
                 desc = await media_llm.describe_video(
                     data,
+                    agent.name,
                     final_mime_type,
                     duration=duration,
                     timeout_s=get_describe_timeout_secs(),
@@ -285,6 +286,7 @@ class AIGeneratingMediaSource(MediaSource):
                     duration = metadata.get("duration")
                     desc = await media_llm.describe_audio(
                         data,
+                        agent.name,
                         audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
                         duration=duration,
                         timeout_s=get_describe_timeout_secs(),
@@ -296,7 +298,7 @@ class AIGeneratingMediaSource(MediaSource):
                     )
                     # Fall through to describe_image which will raise ValueError
                     desc = await media_llm.describe_image(
-                        data, None, timeout_s=get_describe_timeout_secs()
+                        data, agent.name, None, timeout_s=get_describe_timeout_secs()
                     )
             else:
                 # Ensure we have a valid MIME type before calling describe_image
@@ -307,7 +309,7 @@ class AIGeneratingMediaSource(MediaSource):
                     f"(final_mime_type={final_mime_type}, detected={detected_mime_type}, from_ext={'mime_type' in metadata})"
                 )
                 desc = await media_llm.describe_image(
-                    data, image_mime_type, timeout_s=get_describe_timeout_secs()
+                    data, agent.name, image_mime_type, timeout_s=get_describe_timeout_secs()
                 )
             desc = (desc or "").strip()
         except httpx.TimeoutException:

@@ -209,6 +209,7 @@ async def run_llm_with_retrieval(
             history_size=llm.history_size,
             timeout_s=None,
             allowed_task_types=allowed_task_types,
+            agent_name=agent.name,
         )
     except Exception as e:
         # Use module-level function if not provided

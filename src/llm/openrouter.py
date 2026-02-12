@@ -104,6 +104,7 @@ class OpenRouterLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
     ) -> str:
@@ -177,9 +178,14 @@ class OpenRouterLLM(LLM):
 
             # Extract text from response
             if response.choices and response.choices[0].message.content:
-                return response.choices[0].message.content.strip()
+                text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "describe_image")
+            
+            return text
 
         except Exception as e:
             raise RuntimeError(f"OpenRouter request failed: {e}") from e
@@ -190,6 +196,7 @@ class OpenRouterLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -206,6 +213,7 @@ class OpenRouterLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -368,6 +376,7 @@ class OpenRouterLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build messages using the parts-aware builder and call OpenRouter with structured output.
@@ -442,6 +451,9 @@ class OpenRouterLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_structured")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
@@ -462,6 +474,7 @@ class OpenRouterLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query OpenRouter with a JSON schema constraint on the response.
@@ -529,6 +542,9 @@ class OpenRouterLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
+            
+            # Log usage
+            self._log_usage_from_openai_response(response, agent_name, model_name, "query_with_json_schema")
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
