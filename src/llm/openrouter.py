@@ -66,40 +66,6 @@ class OpenRouterLLM(LLM):
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         ]
 
-    def _log_usage_from_openai_response(
-        self,
-        response: Any,
-        agent_name: str,
-        model_name: str,
-        operation: str,
-    ) -> None:
-        """
-        Log LLM usage from an OpenAI-compatible response.
-        
-        Args:
-            response: The OpenAI-compatible response object
-            agent_name: Agent name for logging
-            model_name: Model name for logging
-            operation: Operation type (e.g., "describe_image", "query_structured")
-        """
-        if hasattr(response, 'usage') and response.usage:
-            try:
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
-                output_tokens = getattr(response.usage, 'completion_tokens', 0)
-                
-                if input_tokens or output_tokens:
-                    from .usage_logging import log_llm_usage
-                    log_llm_usage(
-                        agent_name=agent_name,
-                        model_name=model_name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        operation=operation,
-                    )
-            except Exception as e:
-                # Don't fail the request if usage logging fails
-                logger.warning(f"Failed to log LLM usage: {e}")
-
     def _is_gemini_model(self, model_name: str) -> bool:
         """Check if model is a Gemini model."""
         model_lower = model_name.lower()
