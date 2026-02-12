@@ -1424,8 +1424,20 @@ function setupLLMCombobox(inputEl, availableLLMs, options = {}) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// Generic debounce utility
-// Returns a debounced version of the provided function
+/**
+ * Creates a debounced version of a function that delays its execution until after
+ * a specified delay has elapsed since the last time it was invoked.
+ * 
+ * @param {Function} func - The function to debounce
+ * @param {number} [delay=500] - The delay in milliseconds
+ * @returns {Function} The debounced function
+ * 
+ * @example
+ * const debouncedSearch = debounce((query) => {
+ *   console.log('Searching for:', query);
+ * }, 300);
+ * input.addEventListener('input', (e) => debouncedSearch(e.target.value));
+ */
 function debounce(func, delay = 500) {
     let timeoutId;
     return function(...args) {
@@ -1434,7 +1446,18 @@ function debounce(func, delay = 500) {
     };
 }
 
-// Option creation utilities
+/**
+ * Creates an HTML option element for use in select dropdowns.
+ * 
+ * @param {string} value - The value attribute of the option
+ * @param {string} text - The visible text content of the option
+ * @param {boolean} [selected=false] - Whether the option should be selected
+ * @returns {HTMLOptionElement} The created option element
+ * 
+ * @example
+ * const option = createOption('us', 'United States', true);
+ * selectElement.appendChild(option);
+ */
 function createOption(value, text, selected = false) {
     const option = document.createElement('option');
     option.value = value;
@@ -1443,6 +1466,20 @@ function createOption(value, text, selected = false) {
     return option;
 }
 
+/**
+ * Populates a select element with options from an array of option objects.
+ * Clears existing options before adding new ones.
+ * 
+ * @param {string|HTMLSelectElement} selectElement - The select element or its ID
+ * @param {Array<{value: string, label?: string, text?: string, selected?: boolean}>} options - Array of option objects
+ * @param {string} [selectedValue=null] - Value to mark as selected
+ * 
+ * @example
+ * populateSelect('country-select', [
+ *   { value: 'us', label: 'United States' },
+ *   { value: 'ca', label: 'Canada' }
+ * ], 'us');
+ */
 function populateSelect(selectElement, options, selectedValue = null) {
     if (typeof selectElement === 'string') {
         selectElement = document.getElementById(selectElement);
@@ -1460,7 +1497,16 @@ function populateSelect(selectElement, options, selectedValue = null) {
     });
 }
 
-// Display toggle utilities
+/**
+ * Shows an HTML element by setting its display style.
+ * 
+ * @param {string|HTMLElement} element - The element or its ID
+ * @param {string} [displayType='block'] - The CSS display value (e.g., 'block', 'flex', 'inline-block')
+ * 
+ * @example
+ * show('error-message', 'flex');
+ * show(document.getElementById('modal'));
+ */
 function show(element, displayType = 'block') {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1470,6 +1516,15 @@ function show(element, displayType = 'block') {
     }
 }
 
+/**
+ * Hides an HTML element by setting its display to 'none'.
+ * 
+ * @param {string|HTMLElement} element - The element or its ID
+ * 
+ * @example
+ * hide('loading-spinner');
+ * hide(document.getElementById('modal'));
+ */
 function hide(element) {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1479,6 +1534,17 @@ function hide(element) {
     }
 }
 
+/**
+ * Shows or hides an element based on a condition.
+ * 
+ * @param {string|HTMLElement} element - The element or its ID
+ * @param {boolean} shouldShow - Whether to show (true) or hide (false) the element
+ * @param {string} [displayType='block'] - The CSS display value when showing
+ * 
+ * @example
+ * toggle('advanced-options', isAdvancedMode);
+ * toggle(errorDiv, hasError, 'flex');
+ */
 function toggle(element, shouldShow, displayType = 'block') {
     if (shouldShow) {
         show(element, displayType);
@@ -1487,7 +1553,22 @@ function toggle(element, shouldShow, displayType = 'block') {
     }
 }
 
-// Auto-save utilities
+/**
+ * Schedules an auto-save operation after a delay. Automatically clears previous
+ * timers and updates status to "Typing..." while waiting.
+ * 
+ * @param {string} uniqueId - Unique identifier for this auto-save instance
+ * @param {Function} saveFunction - The function to call after the delay
+ * @param {number} [delay=1000] - Delay in milliseconds before saving
+ * 
+ * @example
+ * textarea.addEventListener('input', () => {
+ *   scheduleAutoSave('note-123', async () => {
+ *     await saveNote(noteId, textarea.value);
+ *     setSaveStatus('note-123', 'Saved');
+ *   });
+ * });
+ */
 function scheduleAutoSave(uniqueId, saveFunction, delay = 1000) {
     // Clear existing timer for this textarea
     if (autoSaveTimers[uniqueId]) {
@@ -1505,17 +1586,48 @@ function scheduleAutoSave(uniqueId, saveFunction, delay = 1000) {
     }, delay);
 }
 
+/**
+ * Updates the save status text for an auto-save element.
+ * 
+ * @param {string} uniqueId - Unique identifier for this auto-save instance
+ * @param {string} status - The status text to display (e.g., 'Saved', 'Saving...', 'Error')
+ * 
+ * @example
+ * setSaveStatus('note-123', 'Saved');
+ * setSaveStatus('note-123', 'Error saving');
+ */
 function setSaveStatus(uniqueId, status) {
     if (savingStates[uniqueId]) {
         savingStates[uniqueId].textContent = status;
     }
 }
 
+/**
+ * Registers a status element for auto-save status display.
+ * Must be called before using scheduleAutoSave or setSaveStatus for a given ID.
+ * 
+ * @param {string} uniqueId - Unique identifier for this auto-save instance
+ * @param {HTMLElement} statusElement - The element to display status messages
+ * 
+ * @example
+ * const statusEl = document.getElementById('save-status');
+ * registerAutoSaveElement('note-123', statusEl);
+ */
 function registerAutoSaveElement(uniqueId, statusElement) {
     savingStates[uniqueId] = statusElement;
 }
 
-// Error and success message utilities
+/**
+ * Displays an error message in a container with error styling.
+ * Automatically escapes HTML to prevent XSS attacks.
+ * 
+ * @param {string|HTMLElement} element - The container element or its ID
+ * @param {string} message - The error message to display
+ * 
+ * @example
+ * showError('result-container', 'Failed to save changes');
+ * showError(containerDiv, data.error);
+ */
 function showError(element, message) {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1525,6 +1637,17 @@ function showError(element, message) {
     }
 }
 
+/**
+ * Displays a success message in a container with success styling.
+ * Automatically escapes HTML to prevent XSS attacks.
+ * 
+ * @param {string|HTMLElement} element - The container element or its ID
+ * @param {string} message - The success message to display
+ * 
+ * @example
+ * showSuccess('result-container', 'Changes saved successfully');
+ * showSuccess(containerDiv, 'Agent created');
+ */
 function showSuccess(element, message) {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1534,7 +1657,17 @@ function showSuccess(element, message) {
     }
 }
 
-// Loading state management utilities
+/**
+ * Displays a simple loading message in a container.
+ * Automatically escapes HTML to prevent XSS attacks.
+ * 
+ * @param {string|HTMLElement} element - The container element or its ID
+ * @param {string} [message='Loading...'] - The loading message to display
+ * 
+ * @example
+ * showLoading('data-container');
+ * showLoading(containerDiv, 'Loading agents...');
+ */
 function showLoading(element, message = 'Loading...') {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1544,6 +1677,18 @@ function showLoading(element, message = 'Loading...') {
     }
 }
 
+/**
+ * Displays an animated loading spinner with a message in a container.
+ * Use this for longer operations where visual feedback is important.
+ * Automatically escapes HTML to prevent XSS attacks.
+ * 
+ * @param {string|HTMLElement} element - The container element or its ID
+ * @param {string} [message='Loading...'] - The loading message to display
+ * 
+ * @example
+ * showLoadingSpinner('media-container');
+ * showLoadingSpinner(containerDiv, 'Uploading files...');
+ */
 function showLoadingSpinner(element, message = 'Loading...') {
     if (typeof element === 'string') {
         element = document.getElementById(element);
@@ -1560,8 +1705,20 @@ function showLoadingSpinner(element, message = 'Loading...') {
     }
 }
 
-// Format UTC timestamp to agent timezone for display
-// Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
+/**
+ * Formats a UTC timestamp to a specific timezone for display.
+ * Returns format "YYYY-MM-DD HH:MM:SS TZ" matching the format used in prompts.
+ * 
+ * @param {string|Date} utcTimestamp - The UTC timestamp to format
+ * @param {string} [timezone] - IANA timezone name (e.g., 'America/New_York'). Falls back to browser timezone if not provided.
+ * @returns {string} Formatted timestamp string or 'N/A' if invalid
+ * 
+ * @example
+ * formatTimestamp('2026-02-12T20:30:00Z', 'America/New_York');
+ * // Returns: "2026-02-12 15:30:00 EST"
+ * 
+ * formatTimestamp(message.timestamp, agentTimezone);
+ */
 function formatTimestamp(utcTimestamp, timezone) {
     if (!utcTimestamp) return 'N/A';
     try {
