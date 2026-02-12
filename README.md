@@ -2,6 +2,10 @@
 
 Conversational Telegram agents powered by an LLM. This README covers how to **set up**, **configure**, and **run** the server. For architecture, internals, and developer workflows, see [DESIGN.md](DESIGN.md) and [DEVELOPER.md](DEVELOPER.md).
 
+> **📦 First-time deployment?** 
+> - **Quick:** Follow the [Quick start](#quick-start) section below for essential setup steps
+> - **Comprehensive:** See [DEPLOYMENT.md](DEPLOYMENT.md) for a complete step-by-step deployment guide including troubleshooting
+
 ## Table of Contents
 
 - [Requirements](#requirements)
@@ -23,6 +27,8 @@ Conversational Telegram agents powered by an LLM. This README covers how to **se
 - [Troubleshooting](#troubleshooting)
 - [More docs](#more-docs)
 
+> **💡 Tip:** For a complete deployment walkthrough with troubleshooting, see [DEPLOYMENT.md](DEPLOYMENT.md)
+
 ---
 
 ## Requirements
@@ -40,6 +46,15 @@ Conversational Telegram agents powered by an LLM. This README covers how to **se
 ---
 
 ## Quick start
+
+> **🚀 New Deployment Checklist:**
+> 1. ✅ Install Python 3.13 and Cairo library (see [Requirements](#requirements))
+> 2. ✅ Create virtual environment and install dependencies
+> 3. ✅ Set required environment variables (API keys, paths)
+> 4. ✅ (Optional) Set up MySQL database or use filesystem storage
+> 5. ✅ Log in Telegram sessions for each agent
+> 6. ✅ (Optional) Generate SSL certificates if using HTTPS
+> 7. ✅ Start the agent server
 
 ### 1) Create and activate a virtual environment
 
@@ -463,32 +478,58 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 
 **Enabling HTTPS (Optional)**
 
-To enable HTTPS for secure connections:
+By default, the admin console runs on HTTP. To enable HTTPS for secure connections:
 
-1. Generate SSL certificates (self-signed for development):
+> **Note for new deployments:** SSL certificates are NOT included in the repository (they're in `.gitignore` for security). You must generate your own certificates to enable HTTPS.
+
+1. **Generate SSL certificates:**
    ```bash
-   # From the project root
+   # Create the certs directory if it doesn't exist
+   mkdir -p certs
+   
+   # Generate self-signed certificate (valid for 1 year)
    openssl req -x509 -newkey rsa:4096 -nodes \
      -out certs/cert.pem -keyout certs/key.pem -days 365 \
      -subj "/CN=localhost"
    ```
 
-2. Configure environment variables:
+2. **Configure environment variables in `.env`:**
+   ```bash
+   export CINDY_ADMIN_CONSOLE_SSL_CERT="$SCRIPT_DIR/certs/cert.pem"
+   export CINDY_ADMIN_CONSOLE_SSL_KEY="$SCRIPT_DIR/certs/key.pem"
+   ```
+   
+   Or set them temporarily in your shell:
    ```bash
    export CINDY_ADMIN_CONSOLE_SSL_CERT="$(pwd)/certs/cert.pem"
    export CINDY_ADMIN_CONSOLE_SSL_KEY="$(pwd)/certs/key.pem"
    ```
 
-3. Restart the server:
+3. **Start/restart the server:**
    ```bash
    ./run.sh restart
+   ```
+
+4. **Access via HTTPS:**
+   ```bash
    open https://localhost:5001/admin
    ```
 
-**Note:** Self-signed certificates will show a browser security warning. You can:
-- Click "Advanced" → "Proceed anyway" for development use
-- Use a reverse proxy (Nginx) with Let's Encrypt for production
-- See `tmp/https-options.md` for detailed HTTPS deployment options
+**Browser Security Warning:** Self-signed certificates trigger a "Your connection is not private" warning. This is expected.
+- **For development/personal use:** Click "Advanced" → "Proceed to localhost (unsafe)"
+- **For production deployments:** Use a reverse proxy (Nginx/Apache) with Let's Encrypt certificates for trusted SSL
+
+**HTTPS Documentation:**
+- 📘 **Quick Start:** See `tmp/https-quickstart.md` for step-by-step instructions
+- 📗 **Deployment Options:** See `tmp/https-options.md` for comparison of 5 HTTPS approaches (reverse proxy, Cloudflare Tunnel, etc.)
+- 📙 **Certificate Management:** See `certs/README.md` for certificate renewal and troubleshooting
+
+**When to use HTTPS:**
+- ✅ Accessing the console over a network or the internet
+- ✅ When security/encryption is important
+- ⚠️ Optional for local-only access (localhost)
+
+**Disabling HTTPS:** Remove or comment out the SSL environment variables and restart.
 
 On first visit to the console you'll be prompted to send a six-digit verification code. Click "Send verification code" to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
@@ -557,6 +598,11 @@ For detailed information about the script management system and project architec
 
 ## More docs
 
+* **🚀 New Deployment:** [DEPLOYMENT.md](DEPLOYMENT.md) - Complete step-by-step guide for deploying on a fresh system
 * **Architecture & design:** [DESIGN.md](DESIGN.md)
 * **Developer guide:** [DEVELOPER.md](DEVELOPER.md)
+* **Admin console:** [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md)
 * **Curated media descriptions:** [samples/media/README.md](samples/media/README.md)
+* **HTTPS deployment options:** [tmp/https-options.md](tmp/https-options.md) - Comprehensive comparison of HTTPS approaches
+* **HTTPS quick start:** [tmp/https-quickstart.md](tmp/https-quickstart.md) - Step-by-step HTTPS setup guide
+* **Certificate management:** [certs/README.md](certs/README.md) - SSL certificate generation and renewal
