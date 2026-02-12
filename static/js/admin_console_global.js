@@ -12,10 +12,7 @@ async function loadGlobalDocsConfigDirectories() {
         
         select.innerHTML = '<option value="">Choose a config directory...</option>';
         data.directories.forEach(dir => {
-            const option = document.createElement('option');
-            option.value = dir.path;
-            option.textContent = dir.display_path;
-            select.appendChild(option);
+            select.appendChild(createOption(dir.path, dir.display_path));
         });
         
         select.onchange = function() {
@@ -488,10 +485,7 @@ async function loadAgentDocs(agentConfigName) {
         
         select.innerHTML = '<option value="">Choose a document...</option>';
         data.docs.forEach(doc => {
-            const option = document.createElement('option');
-            option.value = doc.filename;
-            option.textContent = doc.filename;
-            select.appendChild(option);
+            select.appendChild(createOption(doc.filename, doc.filename));
         });
         
         select.onchange = function() {
@@ -896,10 +890,7 @@ async function loadGlobalPromptsConfigDirectories() {
         
         select.innerHTML = '<option value="">Choose a config directory...</option>';
         data.directories.forEach(dir => {
-            const option = document.createElement('option');
-            option.value = dir.path;
-            option.textContent = dir.display_path;
-            select.appendChild(option);
+            select.appendChild(createOption(dir.path, dir.display_path));
         });
         
         select.onchange = function() {

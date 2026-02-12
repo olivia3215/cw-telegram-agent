@@ -197,10 +197,7 @@ function fetchDirectories(selectElement) {
         .then((response) => response.json())
         .then((directories) => {
             directories.forEach((dir) => {
-                const option = document.createElement('option');
-                option.value = dir.path;
-                option.textContent = dir.name;
-                selectElement.appendChild(option);
+                selectElement.appendChild(createOption(dir.path, dir.name));
             });
         })
         .catch((error) => {
@@ -1229,10 +1226,7 @@ async function loadConfigDirectoriesForMove(selectId) {
         
         select.innerHTML = '<option value="">Select config directory...</option>';
         data.directories.forEach(dir => {
-            const option = document.createElement('option');
-            option.value = dir.path;
-            option.textContent = dir.display_path;
-            select.appendChild(option);
+            select.appendChild(createOption(dir.path, dir.display_path));
         });
     } catch (error) {
         console.error('Error loading config directories:', error);
@@ -1249,10 +1243,7 @@ async function loadAgentsForMove(selectId) {
         
         select.innerHTML = '<option value="">Select agent...</option>';
         data.agents.forEach(agent => {
-            const option = document.createElement('option');
-            option.value = agent.config_name;
-            option.textContent = agent.name;
-            select.appendChild(option);
+            select.appendChild(createOption(agent.config_name, agent.name));
         });
     } catch (error) {
         console.error('Error loading agents:', error);
@@ -1446,6 +1437,32 @@ function debounce(func, delay = 500) {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => func.apply(this, args), delay);
     };
+}
+
+// Option creation utilities
+function createOption(value, text, selected = false) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = text;
+    if (selected) option.selected = true;
+    return option;
+}
+
+function populateSelect(selectElement, options, selectedValue = null) {
+    if (typeof selectElement === 'string') {
+        selectElement = document.getElementById(selectElement);
+    }
+    if (!selectElement) return;
+    
+    selectElement.innerHTML = '';
+    options.forEach(opt => {
+        const option = createOption(
+            opt.value, 
+            opt.label || opt.text || opt.value,
+            opt.value === selectedValue || opt.selected
+        );
+        selectElement.appendChild(option);
+    });
 }
 
 // Display toggle utilities

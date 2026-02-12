@@ -277,10 +277,7 @@ function populatePageSelect() {
 
         if (hasItems) {
             for (let page = 1; page <= currentTotalPages; page += 1) {
-                const option = document.createElement('option');
-                option.value = String(page);
-                option.textContent = `Page ${page}`;
-                select.appendChild(option);
+                select.appendChild(createOption(String(page), `Page ${page}`));
             }
 
             select.value = String(currentPage);
