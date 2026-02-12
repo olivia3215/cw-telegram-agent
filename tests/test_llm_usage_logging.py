@@ -138,3 +138,4 @@ def test_log_llm_usage_without_operation():
             assert "LLM_USAGE" in log_message
             assert "operation=" not in log_message
             assert "model=test-model" in log_message
+

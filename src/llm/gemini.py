@@ -193,9 +193,9 @@ class GeminiLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -314,26 +314,25 @@ class GeminiLLM(LLM):
             
             text = parts[0]["text"].strip()
             
-            # Log usage if agent_name is provided
-            if agent_name:
-                try:
-                    # Extract usage metadata from REST API response
-                    usage = obj.get("usageMetadata", {})
-                    input_tokens = usage.get("promptTokenCount", 0)
-                    output_tokens = usage.get("candidatesTokenCount", 0)
-                    
-                    if input_tokens or output_tokens:
-                        from .usage_logging import log_llm_usage
-                        log_llm_usage(
-                            agent_name=agent_name,
-                            model_name=model,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            operation="describe_image",
-                        )
-                except Exception as e:
-                    # Don't fail the request if usage logging fails
-                    logger.warning(f"Failed to log LLM usage: {e}")
+            # Log usage
+            try:
+                # Extract usage metadata from REST API response
+                usage = obj.get("usageMetadata", {})
+                input_tokens = usage.get("promptTokenCount", 0)
+                output_tokens = usage.get("candidatesTokenCount", 0)
+                
+                if input_tokens or output_tokens:
+                    from .usage_logging import log_llm_usage
+                    log_llm_usage(
+                        agent_name=agent_name,
+                        model_name=model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        operation="describe_image",
+                    )
+            except Exception as e:
+                # Don't fail the request if usage logging fails
+                logger.warning(f"Failed to log LLM usage: {e}")
             
             return text
         except Exception as e:
@@ -342,10 +341,10 @@ class GeminiLLM(LLM):
     async def describe_video(
         self,
         video_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -517,26 +516,25 @@ class GeminiLLM(LLM):
             
             text = parts[0]["text"].strip()
             
-            # Log usage if agent_name is provided
-            if agent_name:
-                try:
-                    # Extract usage metadata from REST API response
-                    usage = obj.get("usageMetadata", {})
-                    input_tokens = usage.get("promptTokenCount", 0)
-                    output_tokens = usage.get("candidatesTokenCount", 0)
-                    
-                    if input_tokens or output_tokens:
-                        from .usage_logging import log_llm_usage
-                        log_llm_usage(
-                            agent_name=agent_name,
-                            model_name=model,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            operation="describe_video",
-                        )
-                except Exception as e:
-                    # Don't fail the request if usage logging fails
-                    logger.warning(f"Failed to log LLM usage: {e}")
+            # Log usage
+            try:
+                # Extract usage metadata from REST API response
+                usage = obj.get("usageMetadata", {})
+                input_tokens = usage.get("promptTokenCount", 0)
+                output_tokens = usage.get("candidatesTokenCount", 0)
+                
+                if input_tokens or output_tokens:
+                    from .usage_logging import log_llm_usage
+                    log_llm_usage(
+                        agent_name=agent_name,
+                        model_name=model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        operation="describe_video",
+                    )
+            except Exception as e:
+                # Don't fail the request if usage logging fails
+                logger.warning(f"Failed to log LLM usage: {e}")
             
             return text
         except Exception as e:
@@ -545,10 +543,10 @@ class GeminiLLM(LLM):
     async def describe_audio(
         self,
         audio_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -680,26 +678,25 @@ class GeminiLLM(LLM):
             
             text = parts[0]["text"].strip()
             
-            # Log usage if agent_name is provided
-            if agent_name:
-                try:
-                    # Extract usage metadata from REST API response
-                    usage = obj.get("usageMetadata", {})
-                    input_tokens = usage.get("promptTokenCount", 0)
-                    output_tokens = usage.get("candidatesTokenCount", 0)
-                    
-                    if input_tokens or output_tokens:
-                        from .usage_logging import log_llm_usage
-                        log_llm_usage(
-                            agent_name=agent_name,
-                            model_name=model,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            operation="describe_audio",
-                        )
-                except Exception as e:
-                    # Don't fail the request if usage logging fails
-                    logger.warning(f"Failed to log LLM usage: {e}")
+            # Log usage
+            try:
+                # Extract usage metadata from REST API response
+                usage = obj.get("usageMetadata", {})
+                input_tokens = usage.get("promptTokenCount", 0)
+                output_tokens = usage.get("candidatesTokenCount", 0)
+                
+                if input_tokens or output_tokens:
+                    from .usage_logging import log_llm_usage
+                    log_llm_usage(
+                        agent_name=agent_name,
+                        model_name=model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        operation="describe_audio",
+                    )
+            except Exception as e:
+                # Don't fail the request if usage logging fails
+                logger.warning(f"Failed to log LLM usage: {e}")
             
             return text
         except Exception as e:
@@ -713,7 +710,7 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
         system_instruction: str | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
         operation: str | None = None,
     ) -> str:
         """
@@ -813,8 +810,8 @@ class GeminiLLM(LLM):
             # Extract the first candidate's text safely using the helper
             text = _extract_response_text(response)
             
-            # Log usage if agent_name is provided
-            if agent_name and response is not None:
+            # Log usage
+            if response is not None:
                 try:
                     # Gemini responses have usage_metadata attribute
                     if hasattr(response, "usage_metadata"):
@@ -1003,7 +1000,7 @@ class GeminiLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -1038,7 +1035,7 @@ class GeminiLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query Gemini with a JSON schema constraint on the response.
@@ -1112,8 +1109,8 @@ class GeminiLLM(LLM):
             # Extract text from response
             text = _extract_response_text(response)
             
-            # Log usage if agent_name is provided
-            if agent_name and response is not None:
+            # Log usage
+            if response is not None:
                 try:
                     # Gemini responses have usage_metadata attribute
                     if hasattr(response, "usage_metadata"):

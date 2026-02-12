@@ -36,9 +36,9 @@ class FakeLLM:
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         return self.text
 
@@ -70,7 +70,7 @@ async def test_budget_exhaustion_returns_fallback_after_limit(monkeypatch, tmp_p
     # Arrange
     llm = FakeLLM("first desc")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     # Prevent real network; return small bytes (async)
     async def _fake_download_media_bytes(client, doc):
@@ -127,7 +127,7 @@ async def test_cache_hit_does_not_consume_budget(monkeypatch, tmp_path):
     """
     llm = FakeLLM("should not be called")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     # Create a curated description file
     curated_dir = tmp_path / "curated"
@@ -304,7 +304,7 @@ async def test_ai_chain_updates_cache_on_generation(monkeypatch, tmp_path):
     # Arrange
     llm = FakeLLM("generated description")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     # Prevent real network; return small bytes (async)
     async def _fake_download_media_bytes(client, doc):
@@ -368,7 +368,7 @@ async def test_budget_exhaustion_still_stores_media(monkeypatch, tmp_path):
     # Arrange
     llm = FakeLLM("should not be called")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     # Track download calls
     download_calls = []
@@ -453,16 +453,16 @@ async def test_ai_generating_source_uses_cached_media_file(monkeypatch, tmp_path
         async def describe_image(
             self,
             image_bytes: bytes,
+            agent_name: str,
             mime_type: str | None = None,
             timeout_s: float | None = None,
-            agent_name: str | None = None,
         ) -> str:
             received_bytes.append(image_bytes)
-            return await super().describe_image(image_bytes, mime_type, timeout_s, agent_name)
+            return await super().describe_image(image_bytes, agent_name, mime_type, timeout_s)
     
     llm = TrackingLLM("generated description")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
     
     unique_id = "cached-media-uid"
     
@@ -545,7 +545,7 @@ async def test_ai_chain_retry_limit_prevents_retry(tmp_path):
     )
 
     doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
-    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM())
+    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM(), name="TestAgent")
 
     result = await ai_chain.get(
         unique_id,
@@ -568,7 +568,7 @@ async def test_ai_chain_increments_retry_count_on_temp_failure(monkeypatch, tmp_
     """
     llm = FakeLLM()
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."
@@ -680,7 +680,7 @@ async def test_ai_chain_persists_retry_count_when_skipping_temp_failure_overwrit
 
     reset_description_budget(1)
     doc = SimpleNamespace(uid=unique_id, mime_type="image/png")
-    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM())
+    agent = SimpleNamespace(client=FakeClient(), llm=FakeLLM(), name="TestAgent")
 
     result = await ai_chain.get(
         unique_id,
@@ -708,7 +708,7 @@ async def test_ai_chain_updates_last_used_when_chain_returns(monkeypatch, tmp_pa
     """
     llm = FakeLLM("generated desc")
     client = FakeClient()
-    agent = SimpleNamespace(client=client, llm=llm)
+    agent = SimpleNamespace(client=client, llm=llm, name="TestAgent")
 
     async def _fake_download_media_bytes(client, doc):
         return b"\x89PNG..."

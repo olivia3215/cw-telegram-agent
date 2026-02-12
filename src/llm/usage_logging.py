@@ -96,7 +96,7 @@ def log_llm_usage(
     Log LLM usage with token counts and estimated cost.
     
     Args:
-        agent_name: Name of the agent making the request
+        agent_name: Name of the agent making the request (required)
         model_name: The model used for the request
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens

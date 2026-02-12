@@ -219,7 +219,7 @@ async def test_gemini_describe_video_success():
         # Test video description
         video_bytes = make_minimal_mp4_bytes()
         description = await llm.describe_video(
-            video_bytes, mime_type="video/mp4", duration=5
+            video_bytes, "TestAgent", mime_type="video/mp4", duration=5
         )
 
         assert (
@@ -245,7 +245,7 @@ async def test_gemini_describe_video_too_long():
     video_bytes = make_minimal_mp4_bytes()
 
     with pytest.raises(ValueError) as exc_info:
-        await llm.describe_video(video_bytes, mime_type="video/mp4", duration=15)
+        await llm.describe_video(video_bytes, "TestAgent", mime_type="video/mp4", duration=15)
 
     assert "too long to analyze" in str(exc_info.value).lower()
     assert "15" in str(exc_info.value)
@@ -276,7 +276,7 @@ async def test_gemini_describe_video_exactly_10_seconds():
 
         # Should not raise - exactly 10 seconds is OK
         description = await llm.describe_video(
-            make_minimal_mp4_bytes(), mime_type="video/mp4", duration=10
+            make_minimal_mp4_bytes(), "TestAgent", mime_type="video/mp4", duration=10
         )
         assert description == "A 10-second video description."
 
@@ -305,7 +305,7 @@ async def test_gemini_describe_video_no_duration():
 
         # Should not raise - no duration means we can't enforce limit
         description = await llm.describe_video(
-            make_minimal_mp4_bytes(), mime_type="video/mp4", duration=None
+            make_minimal_mp4_bytes(), "TestAgent", mime_type="video/mp4", duration=None
         )
         assert description == "Video without duration metadata."
 
@@ -316,7 +316,7 @@ async def test_gemini_describe_video_unsupported_mime():
     llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
     with pytest.raises(ValueError) as exc_info:
-        await llm.describe_video(b"fake_audio", mime_type="audio/mp3", duration=5)
+        await llm.describe_video(b"fake_audio", "TestAgent", mime_type="audio/mp3", duration=5)
 
     assert "not supported" in str(exc_info.value).lower()
     assert "audio/mpeg" in str(exc_info.value)
@@ -335,7 +335,7 @@ async def test_gemini_describe_video_timeout():
         mock_client_class.return_value = mock_client
 
         with pytest.raises(RetryableLLMError) as exc_info:
-            await llm.describe_video(make_minimal_mp4_bytes(), mime_type="video/mp4", duration=5)
+            await llm.describe_video(make_minimal_mp4_bytes(), "TestAgent", mime_type="video/mp4", duration=5)
 
         assert (
             "timeout" in str(exc_info.value).lower()
@@ -544,6 +544,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tm
 
     # Create mock agent
     agent = MagicMock()
+    agent.name = "TestAgent"
     client = MagicMock()
     llm = MagicMock()
     llm.describe_video = AsyncMock(return_value="An animated dancing cat.")
@@ -603,7 +604,9 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tm
                         assert (
                             call_args[0][0] == b"fake_video_bytes"
                         )  # First positional arg should be video bytes
-                        assert call_args[0][1] == "video/mp4"  # Second should be MIME type
+                        assert call_args[0][1] == agent.name  # Second should be agent name
+                        # MIME type should be passed as keyword arg
+                        assert call_args[1].get("mime_type") == "video/mp4" or call_args[0][2] == "video/mp4"
 
                     # Verify result
                     assert result["status"] == MediaStatus.GENERATED.value

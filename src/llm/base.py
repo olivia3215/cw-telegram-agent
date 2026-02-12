@@ -138,7 +138,7 @@ class LLM(ABC):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
@@ -147,7 +147,7 @@ class LLM(ABC):
         Args:
             allowed_task_types: Optional set of task types to allow in the response schema.
                                If None, all task types are allowed.
-            agent_name: Optional agent name for usage logging.
+            agent_name: Agent name for usage logging (required).
         """
         ...
 
@@ -163,9 +163,9 @@ class LLM(ABC):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -174,9 +174,9 @@ class LLM(ABC):
 
         Args:
             image_bytes: The image data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the image
             timeout_s: Optional timeout in seconds for the request
-            agent_name: Optional agent name for usage logging
         """
         ...
 
@@ -184,10 +184,10 @@ class LLM(ABC):
     async def describe_video(
         self,
         video_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -196,10 +196,10 @@ class LLM(ABC):
 
         Args:
             video_bytes: The video data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the video
             duration: Video duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
-            agent_name: Optional agent name for usage logging
         """
         ...
 
@@ -207,10 +207,10 @@ class LLM(ABC):
     async def describe_audio(
         self,
         audio_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -219,10 +219,10 @@ class LLM(ABC):
 
         Args:
             audio_bytes: The audio data as bytes
+            agent_name: Agent name for usage logging (required)
             mime_type: Optional MIME type of the audio
             duration: Audio duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
-            agent_name: Optional agent name for usage logging
         """
         ...
 
@@ -234,7 +234,7 @@ class LLM(ABC):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query the LLM with a JSON schema constraint on the response.
@@ -247,7 +247,7 @@ class LLM(ABC):
             json_schema: JSON schema dictionary that constrains the response format
             model: Optional model name override
             timeout_s: Optional timeout in seconds for the request
-            agent_name: Optional agent name for usage logging
+            agent_name: Agent name for usage logging (required)
         
         Returns:
             JSON string response that matches the schema

@@ -104,9 +104,9 @@ class OpenRouterLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
+        agent_name: str,
         mime_type: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -182,8 +182,8 @@ class OpenRouterLLM(LLM):
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
             
-            # Log usage if agent_name is provided
-            if agent_name and hasattr(response, 'usage') and response.usage:
+            # Log usage
+            if hasattr(response, 'usage') and response.usage:
                 try:
                     input_tokens = getattr(response.usage, 'prompt_tokens', 0)
                     output_tokens = getattr(response.usage, 'completion_tokens', 0)
@@ -392,7 +392,7 @@ class OpenRouterLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Build messages using the parts-aware builder and call OpenRouter with structured output.
@@ -468,8 +468,8 @@ class OpenRouterLLM(LLM):
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
             
-            # Log usage if agent_name is provided
-            if agent_name and hasattr(response, 'usage') and response.usage:
+            # Log usage
+            if hasattr(response, 'usage') and response.usage:
                 try:
                     input_tokens = getattr(response.usage, 'prompt_tokens', 0)
                     output_tokens = getattr(response.usage, 'completion_tokens', 0)
@@ -506,7 +506,7 @@ class OpenRouterLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
+        agent_name: str,
     ) -> str:
         """
         Query OpenRouter with a JSON schema constraint on the response.
@@ -575,8 +575,8 @@ class OpenRouterLLM(LLM):
             else:
                 raise RuntimeError(f"OpenRouter returned no content: {response}")
             
-            # Log usage if agent_name is provided
-            if agent_name and hasattr(response, 'usage') and response.usage:
+            # Log usage
+            if hasattr(response, 'usage') and response.usage:
                 try:
                     input_tokens = getattr(response.usage, 'prompt_tokens', 0)
                     output_tokens = getattr(response.usage, 'completion_tokens', 0)
