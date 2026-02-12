@@ -129,6 +129,7 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "explicit_stickers": formatted_explicit_stickers,
                 "daily_schedule_description": agent.daily_schedule_description if hasattr(agent, 'daily_schedule_description') else None,
                 "reset_context_on_first_message": agent.reset_context_on_first_message,
+                "clear_summaries_on_first_message": agent.clear_summaries_on_first_message,
                 "is_disabled": agent.is_disabled,
                 "is_gagged": agent.is_gagged,
                 "start_typing_delay": start_typing_delay,
@@ -465,6 +466,39 @@ def register_configuration_routes(agents_bp: Blueprint):
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating reset context for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/configuration/clear-summaries", methods=["PUT"])
+    def api_update_agent_clear_summaries(agent_config_name: str):
+        """Update agent clear summaries on first message (only allowed if disabled)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            if not agent.is_disabled:
+                return jsonify({"error": "Agent must be disabled to update clear summaries"}), 400
+
+            data = request.json
+            clear_summaries = data.get("clear_summaries_on_first_message", False)
+
+            from register_agents import extract_fields_from_markdown
+            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+            content = agent_file.read_text(encoding="utf-8")
+            fields = extract_fields_from_markdown(content)
+            
+            if clear_summaries:
+                fields["Clear Summaries On First Message"] = ""
+            else:
+                if "Clear Summaries On First Message" in fields:
+                    del fields["Clear Summaries On First Message"]
+
+            _write_agent_markdown(agent, fields)
+
+            agent.clear_summaries_on_first_message = clear_summaries
+            return jsonify({"success": True})
+        except Exception as e:
+            logger.error(f"Error updating clear summaries for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/start-typing-delay", methods=["PUT"])
@@ -1109,6 +1143,7 @@ def register_new_agent_routes(agents_bp: Blueprint):
                     "typing_speed": None,
                     "daily_schedule_description": None,
                     "reset_context_on_first_message": False,
+                    "clear_summaries_on_first_message": False,
                     "is_disabled": True,
                     "is_gagged": False,
                     "telegram_id": None,
@@ -1135,6 +1170,7 @@ def register_new_agent_routes(agents_bp: Blueprint):
                     "timezone": parsed.get("timezone") or "",
                     "daily_schedule_description": parsed.get("daily_schedule_description") or "",
                     "reset_context_on_first_message": bool(parsed.get("reset_context_on_first_message")),
+                    "clear_summaries_on_first_message": bool(parsed.get("clear_summaries_on_first_message")),
                     "start_typing_delay": parsed.get("start_typing_delay"),
                     "typing_speed": parsed.get("typing_speed"),
                     "is_gagged": bool(parsed.get("is_gagged")),
@@ -1246,6 +1282,12 @@ def register_new_agent_routes(agents_bp: Blueprint):
                 fields["Reset Context On First Message"] = ""
             elif "Reset Context On First Message" in fields:
                 del fields["Reset Context On First Message"]
+
+            clear_summaries = bool(data.get("clear_summaries_on_first_message"))
+            if clear_summaries:
+                fields["Clear Summaries On First Message"] = ""
+            elif "Clear Summaries On First Message" in fields:
+                del fields["Clear Summaries On First Message"]
 
             start_typing_delay = data.get("start_typing_delay")
             if start_typing_delay is not None and str(start_typing_delay).strip() != "":

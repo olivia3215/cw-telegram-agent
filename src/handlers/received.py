@@ -793,6 +793,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         clear_plans_and_summaries(agent, channel_id_int)
         # Re-check highest summarized ID after clearing
         highest_summarized_id = None
+    # If "Clear Summaries On First Message" is enabled (and reset context is not), clear only summaries
+    elif agent.clear_summaries_on_first_message and is_conversation_start(agent, messages, highest_summarized_id):
+        from handlers.storage_helpers import clear_summaries_only
+        clear_summaries_only(agent, channel_id_int)
+        # Re-check highest summarized ID after clearing
+        highest_summarized_id = None
 
     media_chain = get_default_media_source_chain()
     messages = await inject_media_descriptions(
