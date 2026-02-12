@@ -94,11 +94,7 @@ function initializeApp() {
                         if (clearSearchBtn) {
                             hide(clearSearchBtn);
                         }
-                // Clean up search debounce timer when changing directory
-                if (searchDebounceTimer) {
-                    clearTimeout(searchDebounceTimer);
-                    searchDebounceTimer = null;
-                }
+                // No need to manually clean up debounced function
                 loadMediaFiles(currentDirectory);
             } else {
                 // Clear everything when directory is deselected
@@ -156,22 +152,21 @@ function initializeApp() {
         });
     }
     
-    // Add event listener for search input
+    // Add event listener for search input with debouncing
     if (mediaSearchInput) {
-        mediaSearchInput.addEventListener('input', (event) => {
-            clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(() => {
-                const query = event.target.value.trim();
-                currentSearchQuery = query;
-                if (clearSearchBtn) {
-                    toggle(clearSearchBtn, query, 'inline-block');
-                }
-                if (currentDirectory) {
-                    currentPage = 1; // Reset to first page when searching
-                    loadMediaFiles(currentDirectory);
-                }
-            }, 300); // Debounce 300ms
-        });
+        const handleSearchInput = debounce((event) => {
+            const query = event.target.value.trim();
+            currentSearchQuery = query;
+            if (clearSearchBtn) {
+                toggle(clearSearchBtn, query, 'inline-block');
+            }
+            if (currentDirectory) {
+                currentPage = 1; // Reset to first page when searching
+                loadMediaFiles(currentDirectory);
+            }
+        }, 300); // Debounce 300ms
+        
+        mediaSearchInput.addEventListener('input', handleSearchInput);
     }
     
     // Add event listener for media type filter
