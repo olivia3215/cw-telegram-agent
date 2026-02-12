@@ -24,7 +24,7 @@ async function loadGlobalDocsConfigDirectories() {
             globalDocsCurrentFilename = '';
             globalDocsContent = '';
             document.getElementById('global-docs-select').innerHTML = '<option value="">Choose a document...</option>';
-            document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a config directory and document to edit</div>';
+            showLoading('global-docs-editor-container', 'Select a config directory and document to edit');
             document.getElementById('delete-global-doc-btn').style.display = 'none';
             // Load docs list (will show all if no directory selected)
             loadGlobalDocsList();
@@ -96,7 +96,7 @@ async function loadGlobalDocsList() {
                 
                 loadGlobalDoc(this.value);
             } else {
-                document.getElementById('global-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                showLoading('global-docs-editor-container', 'Select a document to edit');
                 document.getElementById('delete-global-doc-btn').style.display = 'none';
             }
         };
@@ -453,7 +453,7 @@ async function moveGlobalDoc() {
 async function loadAgentDocs(agentConfigName) {
     if (!agentConfigName) {
         document.getElementById('agent-docs-select').innerHTML = '<option value="">Choose a document...</option>';
-        document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select an agent and document to edit</div>';
+        showLoading('agent-docs-editor-container', 'Select an agent and document to edit');
         return;
     }
     
@@ -498,7 +498,7 @@ async function loadAgentDocs(agentConfigName) {
             if (this.value) {
                 loadAgentDoc(this.value, configDir);
             } else {
-                document.getElementById('agent-docs-editor-container').innerHTML = '<div class="loading">Select a document to edit</div>';
+                showLoading('agent-docs-editor-container', 'Select a document to edit');
                 document.getElementById('delete-agent-doc-btn').style.display = 'none';
             }
         };
@@ -908,7 +908,7 @@ async function loadGlobalPromptsConfigDirectories() {
             globalPromptsCurrentFilename = '';
             globalPromptsContent = '';
             document.getElementById('global-prompts-select').innerHTML = '<option value="">Choose a role prompt...</option>';
-            document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a config directory and role prompt to edit</div>';
+            showLoading('global-prompts-editor-container', 'Select a config directory and role prompt to edit');
             document.getElementById('delete-global-prompt-btn').style.display = 'none';
             // Load prompts list (will show all if no directory selected)
             loadGlobalPromptsList();
@@ -980,7 +980,7 @@ async function loadGlobalPromptsList() {
                 
                 loadGlobalPrompt(this.value);
             } else {
-                document.getElementById('global-prompts-editor-container').innerHTML = '<div class="loading">Select a role prompt to edit</div>';
+                showLoading('global-prompts-editor-container', 'Select a role prompt to edit');
                 document.getElementById('delete-global-prompt-btn').style.display = 'none';
             }
         };
@@ -1466,7 +1466,7 @@ async function loadConfigDirectoriesForMovePrompts(selectId, currentConfigDir) {
 // Global parameters functions
 async function loadGlobalParameters() {
     const container = document.getElementById('global-parameters-container');
-    container.innerHTML = '<div class="loading">Loading parameters...</div>';
+    showLoading(container, 'Loading parameters...');
     
     try {
         const response = await fetchWithAuth('/admin/api/global-parameters');
@@ -1594,7 +1594,7 @@ let openrouterModelsCache = null;
 
 async function loadGlobalLLMs() {
     const container = document.getElementById('global-llms-container');
-    container.innerHTML = '<div class="loading">Loading LLMs...</div>';
+    showLoading(container, 'Loading LLMs...');
     
     try {
         const response = await fetchWithAuth('/admin/api/global/llms');

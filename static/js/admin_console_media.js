@@ -4,8 +4,7 @@
 
 function loadMediaFiles(directoryPath, preservePage = false) {
     // Show loading spinner
-    document.getElementById('media-container').innerHTML =
-        '<div class="loading-spinner" style="text-align: center; padding: 60px 20px;"><div style="display: inline-block; width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite;"></div><div style="margin-top: 16px; color: #666; font-size: 14px;">Loading media files...</div></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
+    showLoadingSpinner('media-container', 'Loading media files...');
 
     const savedPage = currentPage; // Save current page
 
@@ -99,7 +98,7 @@ function displayMediaPage(mediaFiles) {
 
     // If no directory is selected, don't display anything
     if (!currentDirectory) {
-        container.innerHTML = '<div class="loading">Select a directory to view media files</div>';
+        showLoading(container, 'Select a directory to view media files');
         document.getElementById('pagination-top').style.display = 'none';
         document.getElementById('pagination-bottom').style.display = 'none';
         updatePaginationControls();

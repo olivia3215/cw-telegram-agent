@@ -1448,6 +1448,32 @@ function debounce(func, delay = 500) {
     };
 }
 
+// Loading state management utilities
+function showLoading(element, message = 'Loading...') {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.innerHTML = `<div class="loading">${escapeHtml(message)}</div>`;
+    }
+}
+
+function showLoadingSpinner(element, message = 'Loading...') {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.innerHTML = `
+            <div class="loading-spinner" style="text-align: center; padding: 60px 20px;">
+                <div style="display: inline-block; width: 50px; height: 50px; border: 4px solid #f3f3f3; 
+                     border-top: 4px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                <div style="margin-top: 16px; color: #666; font-size: 14px;">${escapeHtml(message)}</div>
+            </div>
+            <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+        `;
+    }
+}
+
 // Format UTC timestamp to agent timezone for display
 // Matches the format used in prompts: "YYYY-MM-DD HH:MM:SS TZ"
 function formatTimestamp(utcTimestamp, timezone) {

@@ -436,7 +436,7 @@ function loadNotesForPartner() {
     }
     
     const container = document.getElementById('notes-conv-container');
-    container.innerHTML = '<div class="loading">Loading notes...</div>';
+    showLoading(container, 'Loading notes...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/notes/${userId}`)
         .then(response => response.json())
@@ -525,7 +525,7 @@ function loadConversationParameters() {
     }
     
     const container = document.getElementById('conversation-parameters-container');
-    container.innerHTML = '<div class="loading">Loading conversation parameters...</div>';
+    showLoading(container, 'Loading conversation parameters...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-parameters/${userId}`)
         .then(response => response.json())
@@ -677,7 +677,7 @@ function loadPlans() {
     }
     
     const container = document.getElementById('plans-container');
-    container.innerHTML = '<div class="loading">Loading plans...</div>';
+    showLoading(container, 'Loading plans...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/plans/${userId}`)
         .then(response => response.json())
@@ -959,7 +959,7 @@ function loadConversation() {
     }
     
     const container = document.getElementById('conversation-container');
-    container.innerHTML = '<div class="loading">Loading conversation...</div>';
+    showLoading(container, 'Loading conversation...');
     
     return fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}`)
         .then(response => response.json())
@@ -2095,12 +2095,12 @@ const WorkQueueUI = {
     
     if (!agentName || !userId) {
         const container = document.getElementById('work-queue-container');
-        container.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+        showLoading(container, 'Select an agent and conversation partner');
         return Promise.resolve();
     }
     
     const container = document.getElementById('work-queue-container');
-    container.innerHTML = '<div class="loading">Loading work queue...</div>';
+    showLoading(container, 'Loading work queue...');
     
     return fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/work-queue/${userId}`)
         .then(response => response.json())

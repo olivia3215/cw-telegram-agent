@@ -265,7 +265,7 @@ document.getElementById('conversations-agent-select')?.addEventListener('change'
     
     const conversationParametersContainer = document.getElementById('conversation-parameters-container');
     if (conversationParametersContainer) {
-        conversationParametersContainer.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+        showLoading(conversationParametersContainer, 'Select an agent and conversation partner');
     }
     
     const plansContainer = document.getElementById('plans-container');
@@ -786,7 +786,7 @@ async function loadAgentContacts(agentName) {
         selectedAgentContactsAgent = null;
         currentAgentContactsUserIds = [];
         expectedAgentContacts = null;
-        container.innerHTML = '<div class="loading">Select an agent to view contacts</div>';
+        showLoading(container, 'Select an agent to view contacts');
         return;
     }
 
@@ -796,7 +796,7 @@ async function loadAgentContacts(agentName) {
         return;
     }
 
-    container.innerHTML = '<div class="loading">Loading contacts...</div>';
+    showLoading(container, 'Loading contacts...');
     const requestKey = agentName;
     expectedAgentContacts = requestKey;
     try {
@@ -1028,7 +1028,7 @@ function loadMemories(agentName) {
         return;
     }
     
-    container.innerHTML = '<div class="loading">Loading memories...</div>';
+    showLoading(container, 'Loading memories...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memories`)
         .then(response => response.json())
@@ -1309,7 +1309,7 @@ function deleteNote(agentName, userId, noteId) {
 // Load intentions (similar to memories)
 function loadIntentions(agentName) {
     const container = document.getElementById('intentions-container');
-    container.innerHTML = '<div class="loading">Loading intentions...</div>';
+    showLoading(container, 'Loading intentions...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/intentions`)
         .then(response => response.json())
@@ -1508,11 +1508,11 @@ function loadMemberships(agentName) {
     }
     
     if (!agentName) {
-        container.innerHTML = '<div class="loading">Select an agent to manage memberships</div>';
+        showLoading(container, 'Select an agent to manage memberships');
         return;
     }
     
-    container.innerHTML = '<div class="loading">Loading memberships...</div>';
+    showLoading(container, 'Loading memberships...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/memberships`)
         .then(response => response.json())
@@ -2183,7 +2183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function loadAgentConfiguration(agentName) {
     const container = document.getElementById('parameters-container');
-    container.innerHTML = '<div class="loading">Loading configuration...</div>';
+    showLoading(container, 'Loading configuration...');
     
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration`)
         .then(response => response.json())
