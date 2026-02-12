@@ -165,10 +165,10 @@ function updatePaginationControls() {
     const topContainer = document.getElementById('pagination-top');
     const bottomContainer = document.getElementById('pagination-bottom');
     if (topContainer) {
-        topContainer.style.display = hasItems ? 'flex' : 'none';
+        toggle(topContainer, hasItems, 'flex');
     }
     if (bottomContainer) {
-        bottomContainer.style.display = hasItems ? 'flex' : 'none';
+        toggle(bottomContainer, hasItems, 'flex');
     }
 
     // Update pagination info display

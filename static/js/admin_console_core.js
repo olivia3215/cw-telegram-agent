@@ -70,13 +70,13 @@ function initializeApp() {
                 // Show controls only for selected directory
                 const isStateMedia = currentDirectory.includes('state/media') || currentDirectory.endsWith('state/media');
                 if (mediaLimitContainer) {
-                    mediaLimitContainer.style.display = isStateMedia ? 'block' : 'none';
+                    toggle(mediaLimitContainer, isStateMedia, 'block');
                 }
                 if (mediaSearchContainer) {
-                    mediaSearchContainer.style.display = 'block';
+                    show(mediaSearchContainer, 'block');
                 }
                 if (mediaTypeContainer) {
-                    mediaTypeContainer.style.display = 'block';
+                    show(mediaTypeContainer, 'block');
                 }
                 if (mediaLimitInput && !isStateMedia) {
                     mediaLimitInput.value = ''; // Clear limit when switching away from state/media
@@ -91,9 +91,9 @@ function initializeApp() {
                 if (mediaTypeSelect) {
                     mediaTypeSelect.value = 'all';
                 }
-                if (clearSearchBtn) {
-                    clearSearchBtn.style.display = 'none';
-                }
+                        if (clearSearchBtn) {
+                            hide(clearSearchBtn);
+                        }
                 // Clean up search debounce timer when changing directory
                 if (searchDebounceTimer) {
                     clearTimeout(searchDebounceTimer);
@@ -110,18 +110,18 @@ function initializeApp() {
                 document.getElementById('media-container').innerHTML =
                     '<div class="loading">Select a directory to view media files</div>';
                 // Hide pagination and filter controls
-                document.getElementById('pagination-top').style.display = 'none';
-                document.getElementById('pagination-bottom').style.display = 'none';
+                hide('pagination-top');
+                hide('pagination-bottom');
                 updatePaginationControls();
                 populatePageSelect();
                 if (mediaLimitContainer) {
-                    mediaLimitContainer.style.display = 'none';
+                    hide(mediaLimitContainer);
                 }
                 if (mediaSearchContainer) {
-                    mediaSearchContainer.style.display = 'none';
+                    hide(mediaSearchContainer);
                 }
                 if (mediaTypeContainer) {
-                    mediaTypeContainer.style.display = 'none';
+                    hide(mediaTypeContainer);
                 }
                 if (mediaLimitInput) {
                     mediaLimitInput.value = '';
@@ -132,9 +132,9 @@ function initializeApp() {
                 if (mediaTypeSelect) {
                     mediaTypeSelect.value = 'all';
                 }
-                if (clearSearchBtn) {
-                    clearSearchBtn.style.display = 'none';
-                }
+                        if (clearSearchBtn) {
+                            hide(clearSearchBtn);
+                        }
             }
         });
 
@@ -164,7 +164,7 @@ function initializeApp() {
                 const query = event.target.value.trim();
                 currentSearchQuery = query;
                 if (clearSearchBtn) {
-                    clearSearchBtn.style.display = query ? 'inline-block' : 'none';
+                    toggle(clearSearchBtn, query, 'inline-block');
                 }
                 if (currentDirectory) {
                     currentPage = 1; // Reset to first page when searching
@@ -188,8 +188,8 @@ function initializeApp() {
     setupPaginationControls();
     
     // Ensure pagination is hidden initially (no directory selected)
-    document.getElementById('pagination-top').style.display = 'none';
-    document.getElementById('pagination-bottom').style.display = 'none';
+    hide('pagination-top');
+    hide('pagination-bottom');
 }
 
 function fetchDirectories(selectElement) {
@@ -1446,6 +1446,33 @@ function debounce(func, delay = 500) {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => func.apply(this, args), delay);
     };
+}
+
+// Display toggle utilities
+function show(element, displayType = 'block') {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.style.display = displayType;
+    }
+}
+
+function hide(element) {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.style.display = 'none';
+    }
+}
+
+function toggle(element, shouldShow, displayType = 'block') {
+    if (shouldShow) {
+        show(element, displayType);
+    } else {
+        hide(element);
+    }
 }
 
 // Loading state management utilities

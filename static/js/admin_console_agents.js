@@ -464,7 +464,7 @@ function conversationProfileFieldChanged() {
     setConversationProfileNeedsSave(hasChanges);
     const cancelBtn = document.getElementById('conversation-profile-cancel-btn');
     if (cancelBtn) {
-        cancelBtn.style.display = hasChanges ? 'inline-block' : 'none';
+        toggle(cancelBtn, hasChanges, 'inline-block');
     }
 }
 
@@ -663,7 +663,7 @@ async function loadConversationProfile() {
 
         const deletedIndicator = document.getElementById('conversation-profile-deleted');
         if (deletedIndicator) {
-            deletedIndicator.style.display = data.is_deleted ? 'block' : 'none';
+            toggle(deletedIndicator, data.is_deleted, 'block');
         }
 
         const contactCheckbox = document.getElementById('conversation-profile-contact-checkbox');
@@ -756,7 +756,7 @@ async function saveConversationProfile() {
 
         const deletedIndicator = document.getElementById('conversation-profile-deleted');
         if (deletedIndicator) {
-            deletedIndicator.style.display = data.is_deleted ? 'block' : 'none';
+            toggle(deletedIndicator, data.is_deleted, 'block');
         }
 
         if (statusDiv) {
