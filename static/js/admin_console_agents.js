@@ -810,7 +810,7 @@ async function loadAgentContacts(agentName) {
             return;
         }
         if (data.error) {
-            container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+            showError(container, data.error);
             return;
         }
 
@@ -1043,7 +1043,7 @@ function loadMemories(agentName) {
             }
             
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -1315,7 +1315,7 @@ function loadIntentions(agentName) {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -1525,7 +1525,7 @@ function loadMemberships(agentName) {
             }
             
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -2189,7 +2189,7 @@ function loadAgentConfiguration(agentName) {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             

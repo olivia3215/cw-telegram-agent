@@ -1492,6 +1492,25 @@ function toggle(element, shouldShow, displayType = 'block') {
     }
 }
 
+// Error and success message utilities
+function showError(element, message) {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.innerHTML = `<div class="error">Error: ${escapeHtml(message)}</div>`;
+    }
+}
+
+function showSuccess(element, message) {
+    if (typeof element === 'string') {
+        element = document.getElementById(element);
+    }
+    if (element) {
+        element.innerHTML = `<div class="success">${escapeHtml(message)}</div>`;
+    }
+}
+
 // Loading state management utilities
 function showLoading(element, message = 'Loading...') {
     if (typeof element === 'string') {

@@ -37,8 +37,7 @@ function loadMediaFiles(directoryPath, preservePage = false) {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                document.getElementById('media-container').innerHTML =
-                    `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError('media-container', data.error);
                 return;
             }
 
@@ -967,7 +966,7 @@ function importStickerSet() {
     .then(response => response.json())
     .then(data => {
         if (data.error) {
-            statusDiv.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+            showError(statusDiv, data.error);
         } else {
             statusDiv.innerHTML = '<div style="color: #28a745;">Import completed!</div>';
             // Reload media files
@@ -979,7 +978,7 @@ function importStickerSet() {
             statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
             return;
         }
-        statusDiv.innerHTML = `<div class="error">Error: ${escapeHtml(error)}</div>`;
+        showError(statusDiv, error);
     });
 }
 

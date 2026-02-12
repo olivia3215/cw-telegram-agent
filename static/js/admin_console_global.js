@@ -1464,7 +1464,7 @@ async function loadGlobalParameters() {
         const data = await response.json();
         
         if (data.error) {
-            container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+            showError(container, data.error);
             return;
         }
         
@@ -1592,7 +1592,7 @@ async function loadGlobalLLMs() {
         const data = await response.json();
         
         if (data.error) {
-            container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+            showError(container, data.error);
             return;
         }
         

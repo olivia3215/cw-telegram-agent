@@ -442,7 +442,7 @@ function loadNotesForPartner() {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -531,7 +531,7 @@ function loadConversationParameters() {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -683,7 +683,7 @@ function loadPlans() {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -965,7 +965,7 @@ function loadConversation() {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
@@ -2106,7 +2106,7 @@ const WorkQueueUI = {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="error">Error: ${escapeHtml(data.error)}</div>`;
+                showError(container, data.error);
                 return;
             }
             
