@@ -1004,7 +1004,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         "reactions": reactions_str,
                         "is_read_by_partner": is_read_by_partner,  # True if read, False if unread, None if unknown/not applicable
                     })
-                logger.info(
+                logger.debug(
                     f"[{agent_config_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "
                     f"(highest_summarized_id={highest_summarized_id}, using min_id filter)"
                 )
