@@ -51,11 +51,14 @@ def create_admin_app(use_https: bool = False) -> Flask:
             "CINDY_ADMIN_CONSOLE_SECRET_KEY is not set; using a transient secret key."
         )
     
-    # Configure secure session cookies when using HTTPS
+    # Configure session cookies
+    # Always set these for better cookie persistence and security
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+    
+    # Only send cookies over HTTPS when SSL is enabled
     if use_https:
         app.config['SESSION_COOKIE_SECURE'] = True  # Only send over HTTPS
-        app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
-        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 
     # Ensure each app instance has its own OTP challenge manager.
     if "otp_challenge_manager" not in app.extensions:
