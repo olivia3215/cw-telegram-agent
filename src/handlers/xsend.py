@@ -8,6 +8,8 @@ import logging
 
 from agent import get_agent_for_id
 from utils import normalize_peer_id
+from utils.formatting import format_log_prefix
+from utils.telegram import get_channel_name
 from task_graph import TaskGraph, TaskNode
 from task_graph_helpers import insert_received_task_for_conversation
 from handlers.registry import register_task_handler
@@ -31,16 +33,19 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
         raise RuntimeError("Missing agent_id or channel_id in graph context")
 
     agent = get_agent_for_id(agent_id)
+    
+    # Get channel name for logging
+    channel_name = await get_channel_name(agent, current_channel_id)
 
     raw_target = task.params.get("target_channel_id")
     if raw_target is None:
-        logger.warning(f"[{agent.name}] xsend: missing target_channel_id")
+        logger.warning(f"{format_log_prefix(agent.name, channel_name)} xsend: missing target_channel_id")
         return
 
     try:
         target_channel_id = normalize_peer_id(raw_target)
     except Exception:
-        logger.warning(f"[{agent.name}] xsend: invalid target_channel_id: {raw_target!r}")
+        logger.warning(f"{format_log_prefix(agent.name, channel_name)} xsend: invalid target_channel_id: {raw_target!r}")
         return
 
     intent_raw = task.params.get("intent")
@@ -48,7 +53,7 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     # Block xsend to the same channel
     if target_channel_id == normalize_peer_id(current_channel_id):
-        logger.info(f"[{agent.name}] xsend: target equals current channel; ignoring")
+        logger.info(f"{format_log_prefix(agent.name, channel_name)} xsend: target equals current channel; ignoring")
         return
 
     # Coalesce with existing received for the target; preserve/overwrite xsend_intent
@@ -61,5 +66,5 @@ async def handle_xsend(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     logger.info(
-        f"[{agent.name}] xsend scheduled received on channel {target_channel_id} (intent length={len(intent)})"
+        f"{format_log_prefix(agent.name, channel_name)} xsend scheduled received on channel {target_channel_id} (intent length={len(intent)})"
     )

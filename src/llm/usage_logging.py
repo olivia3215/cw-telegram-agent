@@ -11,6 +11,8 @@ Provides centralized logging for LLM invocations with token counts and estimated
 import logging
 from typing import Optional
 
+from utils.formatting import format_log_prefix
+
 logger = logging.getLogger(__name__)
 
 # Cache for model pricing to avoid repeated database queries
@@ -90,7 +92,8 @@ def log_llm_usage(
     model_name: str,
     input_tokens: int,
     output_tokens: int,
-    operation: Optional[str] = None
+    operation: Optional[str] = None,
+    channel_name: Optional[str] = None
 ) -> None:
     """
     Log LLM usage with token counts and estimated cost.
@@ -101,6 +104,7 @@ def log_llm_usage(
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
         operation: Optional operation type (e.g., "query", "describe_image", "describe_video")
+        channel_name: Optional channel name for logging prefix
     """
     cost = calculate_cost(model_name, input_tokens, output_tokens)
     
@@ -120,4 +124,4 @@ def log_llm_usage(
     
     log_message = f"LLM_USAGE {' '.join(parts)}"
     
-    logger.info(f"[{agent_name}] {log_message}")
+    logger.info(f"{format_log_prefix(agent_name, channel_name)} {log_message}")

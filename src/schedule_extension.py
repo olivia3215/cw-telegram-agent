@@ -15,6 +15,7 @@ from clock import clock
 from handlers.received_helpers.task_parsing import parse_llm_reply_from_json
 from handlers.registry import dispatch_immediate_task
 from schedule import ScheduleActivity, days_remaining
+from utils.formatting import format_log_prefix
 
 if TYPE_CHECKING:
     from agent import Agent
@@ -94,11 +95,11 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
             allowed_task_types=allowed_task_types,
         )
     except Exception as e:
-        logger.error(f"[{agent.name}] LLM query failed during schedule extension: {e}")
+        logger.error(f"{format_log_prefix(agent.name)} LLM query failed during schedule extension: {e}")
         raise
     
     if not reply:
-        logger.warning(f"[{agent.name}] LLM returned empty response for schedule extension")
+        logger.warning(f"{format_log_prefix(agent.name)} LLM returned empty response for schedule extension")
         return existing_schedule or {
             "version": "1.0",
             "agent_name": agent.name,
@@ -116,7 +117,7 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
             agent=agent,
         )
     except Exception as e:
-        logger.error(f"[{agent.name}] Failed to parse LLM response for schedule extension: {e}")
+        logger.error(f"{format_log_prefix(agent.name)} Failed to parse LLM response for schedule extension: {e}")
         logger.error(f"Response: {reply[:500]}")
         raise
     

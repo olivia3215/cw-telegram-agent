@@ -11,7 +11,9 @@ from telethon.tl.types import InputStickerSetShortName
 
 from agent import Agent, get_agent_for_id
 from utils import coerce_to_int
+from utils.formatting import format_log_prefix
 from utils.ids import ensure_int_id
+from utils.telegram import get_channel_name
 from task_graph import TaskGraph, TaskNode
 from handlers.registry import register_task_handler
 
@@ -50,15 +52,18 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     sticker_name = task.params.get("name")
     reply_to_raw = task.params.get("reply_to")
     in_reply_to = coerce_to_int(reply_to_raw)
+    
+    # Get channel name for logging
+    channel_name = await get_channel_name(agent, channel_id)
 
     # Require sticker set to be specified in task (no fallback)
     set_short = task.params.get("sticker_set")
 
     if not sticker_name:
-        raise ValueError(f"[{agent.name}] Sticker task missing 'name' parameter.")
+        raise ValueError(f"{format_log_prefix(agent.name, channel_name)} Sticker task missing 'name' parameter.")
     if not set_short:
         raise ValueError(
-            f"[{agent.name}] Sticker task missing 'sticker_set' parameter."
+            f"{format_log_prefix(agent.name, channel_name)} Sticker task missing 'sticker_set' parameter."
         )
 
     # 1) Try by-set cache
@@ -68,7 +73,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     # 2) If miss, try a transient resolve within the requested set (no cache mutation)
     if file is None:
         logger.debug(
-            f"[{agent.name}] sticker miss: set={set_short!r} name={sticker_name!r}; attempting transient resolve"
+            f"{format_log_prefix(agent.name, channel_name)} sticker miss: set={set_short!r} name={sticker_name!r}; attempting transient resolve"
         )
         file = await _resolve_sticker_doc_in_set(client, set_short, sticker_name)
 
@@ -104,7 +109,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         # Premium stickers require a premium account to send
         # Send the sticker name as text instead (which shows as animated emoji)
         logger.info(
-            f"[{agent.name}] Premium account required for sticker {sticker_name!r}, sending as text"
+            f"{format_log_prefix(agent.name, channel_name)} Premium account required for sticker {sticker_name!r}, sending as text"
         )
         try:
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
@@ -120,7 +125,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
                     logger.debug(f"Failed to update agent activity: {e}")
         except Exception as e:
             logger.exception(
-                f"[{agent.name}] Failed to send fallback text message: {e}"
+                f"{format_log_prefix(agent.name, channel_name)} Failed to send fallback text message: {e}"
             )
     except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to send sticker: {e}")
+        logger.exception(f"{format_log_prefix(agent.name, channel_name)} Failed to send sticker: {e}")

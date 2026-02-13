@@ -11,6 +11,7 @@ from pathlib import Path
 from handlers.registry import dispatch_immediate_task
 from task_graph import TaskGraph, TaskNode
 from utils import coerce_to_str, normalize_list, strip_json_fence
+from utils.formatting import format_log_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,7 @@ async def process_retrieve_tasks(
     retrieved_urls: set[str],
     retrieved_contents: list[tuple[str, str]],
     fetch_url_fn,  # Function to fetch URLs: async def fetch_url(url: str, agent=None) -> tuple[str, str]
+    channel_name: str | None = None,  # Optional channel name for logging
 ) -> list[TaskNode]:
     """
     Run the retrieval loop: fetch requested URLs and then trigger a retry.
@@ -176,6 +178,7 @@ async def process_retrieve_tasks(
         retrieved_urls: Set of URLs already retrieved
         retrieved_contents: List of (url, content) tuples for retrieved content
         fetch_url_fn: Function to fetch URLs (async def fetch_url(url: str, agent=None) -> tuple[str, str])
+        channel_name: Optional channel name for logging
     
     Returns:
         List of tasks with retrieve tasks processed
@@ -218,7 +221,7 @@ async def process_retrieve_tasks(
         return normalized_tasks
 
     agent_name = agent.name if agent else "[unknown]"
-    logger.info(f"[{agent_name}] Found {len(retrieve_tasks)} retrieve task(s)")
+    logger.info(f"{format_log_prefix(agent_name, channel_name)} Found {len(retrieve_tasks)} retrieve task(s)")
 
     remaining = 3
     urls_to_fetch: list[str] = []

@@ -19,6 +19,7 @@ from agent import Agent, all_agents
 from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
 from telegram.client_factory import get_puppet_master_client, get_telegram_client
+from utils.formatting import format_log_prefix
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ async def remove_synced_contacts_for_agent(agent: Agent) -> bool:
             error_msg = str(start_error).lower()
             if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
                 logger.warning(
-                    f"[{agent_name}] Session file is locked. "
+                    f"{format_log_prefix(agent_name)} Session file is locked. "
                     "This usually means another process is using the session. "
                     "Skipping this agent."
                 )
@@ -61,22 +62,22 @@ async def remove_synced_contacts_for_agent(agent: Agent) -> bool:
             raise
         
         if not await client.is_user_authorized():
-            logger.error(f"[{agent_name}] Not authenticated. Please run './telegram_login.sh' first.")
+            logger.error(f"{format_log_prefix(agent_name)} Not authenticated. Please run './telegram_login.sh' first.")
             return False
         
         me = await client.get_me()
-        logger.info(f"[{agent_name}] Connected as: {me.username or me.first_name} ({me.id})")
+        logger.info(f"{format_log_prefix(agent_name)} Connected as: {me.username or me.first_name} ({me.id})")
         
-        logger.info(f"[{agent_name}] Removing all synced phone contacts...")
+        logger.info(f"{format_log_prefix(agent_name)} Removing all synced phone contacts...")
         result = await client(ResetSavedRequest())
         
-        logger.info(f"[{agent_name}] Successfully removed synced contacts.")
-        logger.info(f"[{agent_name}] Result: {result}")
+        logger.info(f"{format_log_prefix(agent_name)} Successfully removed synced contacts.")
+        logger.info(f"{format_log_prefix(agent_name)} Result: {result}")
         
         return True
         
     except Exception as e:
-        logger.exception(f"[{agent_name}] Error removing synced contacts: {e}")
+        logger.exception(f"{format_log_prefix(agent_name)} Error removing synced contacts: {e}")
         return False
     finally:
         await client.disconnect()

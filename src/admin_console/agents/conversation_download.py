@@ -24,6 +24,7 @@ from flask import Blueprint, Response, jsonify, request  # pyright: ignore[repor
 from admin_console.helpers import get_agent_by_name, get_state_media_path
 from config import CONFIG_DIRECTORIES
 from llm.factory import create_llm_from_name
+from utils.formatting import format_log_prefix
 
 # Import markdown_to_html and placeholder functions from conversation module
 from admin_console.agents.conversation import (
@@ -270,7 +271,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     messages = list(reversed(messages))
 
                     logger.info(
-                        f"[{agent_config_name}] Fetched {len(messages)} messages for download (channel {channel_id})"
+                        f"{format_log_prefix(agent.name)} Fetched {len(messages)} messages for download (channel {channel_id})"
                     )
 
                     # Fetch summaries
@@ -279,7 +280,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         from db import summaries as db_summaries
                         summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
                         summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
-                        logger.info(f"[{agent_config_name}] Fetched {len(summaries)} summaries for download")
+                        logger.info(f"{format_log_prefix(agent.name)} Fetched {len(summaries)} summaries for download")
                     except Exception as e:
                         logger.warning(f"Failed to fetch summaries for download: {e}")
 
@@ -293,7 +294,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                 channel_telegram_id=channel_id,
                                 days=7
                             )
-                            logger.info(f"[{agent_config_name}] Fetched {len(task_logs)} task logs for download")
+                            logger.info(f"{format_log_prefix(agent.name)} Fetched {len(task_logs)} task logs for download")
                         except Exception as e:
                             logger.warning(f"Failed to fetch task logs for download: {e}")
 

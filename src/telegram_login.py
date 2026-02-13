@@ -13,6 +13,7 @@ from agent import all_agents
 from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
 from telegram.client_factory import get_puppet_master_client, get_telegram_client
+from utils.formatting import format_log_prefix
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,10 +22,10 @@ logger = logging.getLogger(__name__)
 async def _ensure_logged_in(client, phone: str, agent_name: str) -> None:
     await client.connect()
     if await client.is_user_authorized():
-        logger.info(f"[{agent_name}] Already logged in.")
+        logger.info(f"{format_log_prefix(agent_name)} Already logged in.")
         return
 
-    logger.info(f"[{agent_name}] Sending code to %s...", phone)
+    logger.info(f"{format_log_prefix(agent_name)} Sending code to %s...", phone)
 
     await client.send_code_request(phone)
     code_prompt = (
@@ -38,13 +39,13 @@ async def _ensure_logged_in(client, phone: str, agent_name: str) -> None:
         password = getpass.getpass("Enter your 2FA password: ")
         await client.sign_in(password=password)
     except Exception as exc:
-        logger.error(f"[{agent_name}] Login failed: %s", exc)
+        logger.error(f"{format_log_prefix(agent_name)} Login failed: %s", exc)
         raise
 
     me = await client.get_me()
     if me:
         logger.info(
-            f"[{agent_name}] Logged in as: {me.username or me.first_name} ({me.id})"
+            f"{format_log_prefix(agent_name)} Logged in as: {me.username or me.first_name} ({me.id})"
         )
 
 

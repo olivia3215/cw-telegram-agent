@@ -9,6 +9,7 @@ from telethon.tl.functions.contacts import BlockRequest  # pyright: ignore[repor
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode
+from utils.formatting import format_log_prefix
 from utils.telegram import get_channel_name, is_group_or_channel
 from handlers.registry import register_task_handler
 
@@ -21,6 +22,9 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     channel_id = graph.context.get("channel_id")
     agent = get_agent_for_id(agent_id)
     client = agent.client
+    
+    # Get channel name for logging
+    channel_name = await get_channel_name(agent, channel_id)
 
     # Safety check: ensure this is a one-on-one conversation
     # Try cached entity first to avoid GetContactsRequest flood
@@ -32,18 +36,18 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
         try:
             entity = await client.get_entity(channel_id)
         except Exception as e:
-            logger.debug(f"[{agent.name}] Could not fetch entity for {channel_id}: {e}")
+            logger.debug(f"{format_log_prefix(agent.name, channel_name)} Could not fetch entity for {channel_id}: {e}")
             entity = None
     
     # Perform safety check now that we have the entity (or confirmed it's None)
     if entity and is_group_or_channel(entity):
         logger.warning(
-            f"Agent {agent.name} attempted to block a group/channel ({channel_id}). Aborting."
+            f"{format_log_prefix(agent.name, channel_name)} Agent attempted to block a group/channel ({channel_id}). Aborting."
         )
         return
 
     logger.info(
-        f"[{agent.name}] Blocking [{await get_channel_name(agent, channel_id)}]."
+        f"{format_log_prefix(agent.name, channel_name)} Blocking [{channel_name}]."
     )
     
     # Use get_input_entity with the cached entity to avoid GetContactsRequest flood
@@ -55,7 +59,7 @@ async def handle_block(task: TaskNode, graph: TaskGraph, work_queue=None):
     except ValueError as e:
         # Entity not found - user may have deleted account or we don't have access
         logger.warning(
-            f"[{agent.name}] Cannot block user {channel_id}: {e}. "
+            f"{format_log_prefix(agent.name, channel_name)} Cannot block user {channel_id}: {e}. "
             "User may have deleted account or we don't have access."
         )
         # Don't retry - this is a permanent failure

@@ -7,19 +7,21 @@ import logging
 
 from handlers.received_helpers.channel_details import build_channel_details_section
 from utils import get_dialog_name
+from utils.formatting import format_log_prefix
 from schedule import get_current_activity
 from telegram_media import get_unique_id
 
 logger = logging.getLogger(__name__)
 
 
-def _build_current_activity_section(agent, now) -> str:
+def _build_current_activity_section(agent, now, channel_name: str | None = None) -> str:
     """
     Build the current activity section for the system prompt.
     
     Args:
         agent: The agent instance
         now: Current datetime
+        channel_name: Optional channel name for logging
     
     Returns:
         Formatted activity section string, or empty string if no activity
@@ -70,7 +72,7 @@ def _build_current_activity_section(agent, now) -> str:
         activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
         return activity_text
     except Exception as e:
-        logger.debug(f"[{agent.name}] Failed to add current activity to prompt: {e}")
+        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to add current activity to prompt: {e}")
         return ""
 
 
@@ -305,10 +307,10 @@ async def build_complete_system_prompt(
     if memory_content:
         system_prompt += f"\n\n{memory_content}\n"
         logger.info(
-            f"[{agent.name}] Added memory content to system prompt for channel {channel_id}"
+            f"{format_log_prefix(agent.name, channel_name)} Added memory content to system prompt for channel {channel_id}"
         )
     else:
-        logger.info(f"[{agent.name}] No memory content found for channel {channel_id}")
+        logger.info(f"{format_log_prefix(agent.name, channel_name)} No memory content found for channel {channel_id}")
 
     # Add current time
     now = agent.get_current_time()
@@ -317,7 +319,7 @@ async def build_complete_system_prompt(
     )
 
     # Add current activity if agent has a schedule
-    activity_section = _build_current_activity_section(agent, now)
+    activity_section = _build_current_activity_section(agent, now, channel_name)
     if activity_section:
         system_prompt += activity_section
 
@@ -338,7 +340,7 @@ async def build_complete_system_prompt(
     if summary_content:
         system_prompt += f"\n\n# Summary of earlier conversation\n\n{summary_content}\n"
         logger.info(
-            f"[{agent.name}] Added conversation summary to system prompt for channel {channel_id} "
+            f"{format_log_prefix(agent.name, channel_name)} Added conversation summary to system prompt for channel {channel_id} "
             f"(with metadata: {has_task_summarize})"
         )
 

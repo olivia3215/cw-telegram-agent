@@ -11,16 +11,22 @@ from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import process_message_history
 from handlers.registry import dispatch_immediate_task
 from utils import get_dialog_name, is_group_or_channel
+from utils.formatting import format_log_prefix
 
 logger = logging.getLogger(__name__)
 
 
-def get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
+def get_highest_summarized_message_id(agent, channel_id: int, channel_name: str | None = None) -> int | None:
     """
     Get the highest message ID that has been summarized.
     
     Everything with message ID <= this value can be assumed to be summarized.
     Returns None if no summaries exist.
+    
+    Args:
+        agent: The agent instance
+        channel_id: The channel ID
+        channel_name: Optional channel name for logging
     
     Returns:
         Highest message ID covered by summaries, or None if no summaries exist
@@ -46,7 +52,7 @@ def get_highest_summarized_message_id(agent, channel_id: int) -> int | None:
                     pass
         return highest_max_id
     except Exception as e:
-        logger.debug(f"[{agent.name}] Failed to get highest summarized message ID: {e}")
+        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to get highest summarized message ID: {e}")
         return None
 
 
@@ -116,6 +122,7 @@ async def perform_summarization(
     highest_summarized_id: int | None,
     parse_llm_reply_fn,  # Function to parse LLM reply
     summarize_all: bool = False,
+    channel_name: str | None = None,  # Optional channel name for logging
 ):
     """
     Perform summarization of unsummarized messages.
@@ -156,20 +163,20 @@ async def perform_summarization(
         messages_to_summarize = unsummarized_messages[20:] if len(unsummarized_messages) > 20 else []
     
     if not messages_to_summarize:
-        logger.info(f"[{agent.name}] No messages to summarize for channel {channel_id}")
+        logger.info(f"{format_log_prefix(agent.name, channel_name)} No messages to summarize for channel {channel_id}")
         return
     
     logger.info(
-        f"[{agent.name}] Summarizing {len(messages_to_summarize)} messages for channel {channel_id}"
+        f"{format_log_prefix(agent.name, channel_name)} Summarizing {len(messages_to_summarize)} messages for channel {channel_id}"
     )
     
     # Get conversation context
     dialog = await agent.get_cached_entity(channel_id)
     is_group = is_group_or_channel(dialog)
-    channel_name = await get_dialog_name(agent, channel_id)
+    dialog_name = await get_dialog_name(agent, channel_id)
     
     # Get appropriate LLM instance
-    llm = get_channel_llm(agent, channel_id)
+    llm = get_channel_llm(agent, channel_id, channel_name)
     
     # Get full JSON of existing summaries for editing (will be added to system prompt before conversation history)
     summary_json = await agent._load_summary_content(channel_id, json_format=True)
