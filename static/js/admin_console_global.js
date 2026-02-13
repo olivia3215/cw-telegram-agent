@@ -875,8 +875,7 @@ async function moveAgentDoc(fromConfigDir) {
 // Global prompts state
 let globalPromptsConfigDir = '';
 let globalPromptsCurrentFilename = '';
-let globalPromptsSaveTimeout = null;
-let globalPromptsFilenameTimeout = null;
+// globalPromptsSaveTimeout and globalPromptsFilenameTimeout are declared in admin_console_core.js
 let globalPromptsContent = '';
 
 // Load config directories for global prompts
