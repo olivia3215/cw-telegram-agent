@@ -944,6 +944,12 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Clear mentions/reactions if requested (these flags were set during message scanning)
     clear_mentions = task.params.get("clear_mentions", False)
     clear_reactions = task.params.get("clear_reactions", False)
+    reaction_message_ids = task.params.get("reaction_message_ids", [])
+    if clear_reactions and reaction_message_ids:
+        logger.info(
+            f"[{agent.name}] [REACTION-READ] Marking reactions as read for message(s) {reaction_message_ids} "
+            f"in conversation {channel_name} (task_id={task.id})"
+        )
     await client.send_read_acknowledge(entity, clear_mentions=clear_mentions, clear_reactions=clear_reactions)
     
     # After marking as read, create/extend online wait task to 5 minutes from now

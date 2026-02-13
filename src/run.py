@@ -327,6 +327,12 @@ async def scan_unread_messages(agent: Agent):
         if unread_reactions_count > 0:
             # Only check if there are actually unread reactions indicated
             reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
+            if reaction_message_id:
+                dialog_name = await get_channel_name(agent, dialog.id)
+                logger.info(
+                    f"[{agent.name}] [REACTION-SCAN] Unread reaction found on agent message {reaction_message_id} "
+                    f"in [{dialog_name}] (chat_id={dialog.id}, unread_reactions_count={unread_reactions_count})"
+                )
 
         has_reactions_on_agent_message = reaction_message_id is not None
 
@@ -770,9 +776,13 @@ async def run_telegram_loop(agent: Agent):
                 try:
                     message = await client.get_messages(chat_id, ids=msg_id)
                     if message and getattr(message, "out", False):
+                        chat_name = await get_channel_name(agent, chat_id)
+                        logger.info(
+                            f"[{agent.name}] [REACTION-EVENT] Reaction detected on agent message {msg_id} in [{chat_name}] (chat_id={chat_id})"
+                        )
+                        
                         # Check if agent can send messages to this channel before creating received task
                         if not await can_agent_send_to_channel(agent, chat_id):
-                            chat_name = await get_channel_name(agent, chat_id)
                             logger.debug(
                                 f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - agent cannot send messages in this chat"
                             )
@@ -781,7 +791,6 @@ async def run_telegram_loop(agent: Agent):
                         # Check if conversation is gagged (async notifications should not trigger received tasks when gagged)
                         gagged = await agent.is_conversation_gagged(chat_id)
                         if gagged:
-                            chat_name = await get_channel_name(agent, chat_id)
                             logger.debug(
                                 f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - conversation is gagged"
                             )
