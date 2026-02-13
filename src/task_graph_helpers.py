@@ -172,6 +172,7 @@ async def insert_received_task_for_conversation(
 
         # Check if there's already an active received task for this conversation
         if old_graph:
+            # First check for active (non-completed) received tasks
             for task in old_graph.tasks:
                 if task.type == "received" and not task.status.is_completed():
                     # There's already an active received task
@@ -184,7 +185,7 @@ async def insert_received_task_for_conversation(
                             logger.info(
                                 f"[{agent.name}] Preventing duplicate received task - reaction on message "
                                 f"{reaction_message_id} already in tracked list {existing_reaction_ids} "
-                                f"for task {task.id} (status: {task.status})"
+                                f"for active task {task.id} (status: {task.status})"
                             )
                             # Still update other flags if they're being set to True
                             updated = False
@@ -235,6 +236,23 @@ async def insert_received_task_for_conversation(
                     except Exception as e:
                         logger.error(f"[{agent.name}] Failed to save work queue state: {e}")
                     return
+            
+            # Also check recently completed received tasks for duplicate reactions
+            # This prevents duplicate tasks when Telegram's API has a delay in reflecting read status
+            if reaction_message_id is not None:
+                for task in old_graph.tasks:
+                    if task.type == "received" and task.status.is_completed():
+                        # Check if this completed task recently handled this reaction
+                        existing_reaction_ids = task.params.get("reaction_message_ids", [])
+                        if reaction_message_id in existing_reaction_ids:
+                            # This reaction was recently handled - skip creating a new task
+                            # Telegram's API likely hasn't reflected the read status yet
+                            logger.info(
+                                f"[{agent.name}] Preventing duplicate received task - reaction on message "
+                                f"{reaction_message_id} was recently handled by completed task {task.id} "
+                                f"(status: {task.status}). Telegram API may have delayed read status update."
+                            )
+                            return
             # Log if we found a graph but no active received task (for debugging duplicates)
             received_tasks = [t for t in old_graph.tasks if t.type == "received"]
             if received_tasks:

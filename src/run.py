@@ -8,9 +8,9 @@ Main entry point for the Telegram agent server.
 
 This module sets up and runs the Telegram agent event loop, handling:
 - Agent registration and authentication
-- Telegram event handlers (messages, reactions, typing indicators)
+- Telegram event handlers (messages, typing indicators, dialog updates)
 - Work queue loading and processing
-- Message scanning and task creation
+- Periodic message scanning and task creation (including reactions)
 - Admin console integration
 - Graceful shutdown handling
 
@@ -28,7 +28,6 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
-    UpdateMessageReactions,
     UpdateUserTyping,
 )
 
@@ -327,6 +326,12 @@ async def scan_unread_messages(agent: Agent):
         if unread_reactions_count > 0:
             # Only check if there are actually unread reactions indicated
             reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
+            if reaction_message_id:
+                dialog_name = await get_channel_name(agent, dialog.id)
+                logger.debug(
+                    f"[{agent.name}] [REACTION-SCAN] Unread reaction found on agent message {reaction_message_id} "
+                    f"in [{dialog_name}] (chat_id={dialog.id}, unread_reactions_count={unread_reactions_count})"
+                )
 
         has_reactions_on_agent_message = reaction_message_id is not None
 
@@ -741,67 +746,19 @@ async def run_telegram_loop(agent: Agent):
             # For DMs, we track the user_id as the partner who is typing.
             mark_partner_typing(agent.agent_id, user_id)
 
-        @client.on(events.Raw(UpdateMessageReactions))
-        async def handle_message_reactions(update):
-            """
-            Handle reaction updates event-driven instead of scanning.
-            When a reaction is added to a message, Telegram sends this update.
-            This avoids the need to scan all dialogs for reactions.
-            """
-            try:
-                peer_id = getattr(update, "peer", None)
-                if not peer_id:
-                    return
-                
-                # Convert peer object to marked ID format (consistent with rest of codebase)
-                # This handles the conversion: channels -> -100<id>, chats -> -<id>, users -> <id>
-                chat_id = utils.get_peer_id(peer_id)
-                
-                # Check if this is a reaction to the agent's message
-                msg_id = getattr(update, "msg_id", None)
-                if not msg_id:
-                    return
-                
-                # Check if the message is from the agent by checking the update's actor_id
-                # If actor_id matches agent_id, this is a reaction TO the agent's message
-                # Actually, we need to check if the message itself is from the agent
-                # Use get_messages with single ID - this is lightweight and won't trigger GetHistoryRequest
-                # (get_messages with ids= is different from iterating)
-                try:
-                    message = await client.get_messages(chat_id, ids=msg_id)
-                    if message and getattr(message, "out", False):
-                        # Check if agent can send messages to this channel before creating received task
-                        if not await can_agent_send_to_channel(agent, chat_id):
-                            chat_name = await get_channel_name(agent, chat_id)
-                            logger.debug(
-                                f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - agent cannot send messages in this chat"
-                            )
-                            return
-                        
-                        # Check if conversation is gagged (async notifications should not trigger received tasks when gagged)
-                        gagged = await agent.is_conversation_gagged(chat_id)
-                        if gagged:
-                            chat_name = await get_channel_name(agent, chat_id)
-                            logger.debug(
-                                f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - conversation is gagged"
-                            )
-                            return
-                        
-                        # This is the agent's message - create a received task
-                        # Read receipts are now handled in handle_received with responsiveness delays
-                        # Pass clear_reactions flag so reactions can be cleared when marking as read
-                        await insert_received_task_for_conversation(
-                            recipient_id=agent.agent_id,
-                            channel_id=chat_id,
-                            is_callout=True,  # Reactions are treated as callouts
-                            reaction_message_id=msg_id,
-                            clear_mentions=False,
-                            clear_reactions=True,
-                        )
-                except Exception as e:
-                    logger.debug(f"[{agent.name}] Error handling reaction update: {e}")
-            except Exception as e:
-                logger.debug(f"[{agent.name}] Error processing UpdateMessageReactions: {e}")
+        # NOTE: We do NOT have an UpdateMessageReactions event handler.
+        # 
+        # Reactions are handled exclusively by the periodic scan (scan_unread_messages).
+        # We previously had an event-driven handler for UpdateMessageReactions, but
+        # production logs showed it consistently fired AFTER the periodic scan had
+        # already detected and processed the reaction. The event provided no value
+        # and only created duplicates that had to be blocked.
+        #
+        # The 10-second periodic scan interval provides sufficient responsiveness for
+        # reactions, especially given that reactions trigger responsiveness delays anyway.
+        #
+        # If Telegram improves their API delivery speed in the future, we can restore
+        # the event handler from git history (see commit f1a3e46 for removal rationale).
 
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):

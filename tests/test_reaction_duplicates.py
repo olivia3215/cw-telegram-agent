@@ -284,3 +284,55 @@ async def test_multiple_reactions_tracked_in_list(work_queue, mock_agent, monkey
     assert 43 in reaction_ids
     assert 45 in reaction_ids
 
+
+@pytest.mark.asyncio
+async def test_completed_reaction_prevents_duplicate(work_queue, mock_agent, monkeypatch):
+    """Test that reactions already handled by completed tasks don't create duplicates."""
+    # Mock get_agent_for_id to return our mock agent
+    monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda _: mock_agent)
+    
+    agent_id = "123456789"
+    channel_id = "987654321"
+    reaction_msg_id = 42
+    
+    # First call: Create received task with reaction
+    await insert_received_task_for_conversation(
+        work_queue=work_queue,
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        is_callout=True,
+        reaction_message_id=reaction_msg_id,
+        clear_reactions=True,
+    )
+    
+    # Verify task was created
+    assert len(work_queue._task_graphs) == 1
+    graph = work_queue._task_graphs[0]
+    received_tasks = [t for t in graph.tasks if t.type == "received"]
+    assert len(received_tasks) == 1
+    original_task = received_tasks[0]
+    assert original_task.params.get("reaction_message_ids") == [reaction_msg_id]
+    
+    # Simulate task completion (as if it processed and marked reactions as read)
+    original_task.status = TaskStatus.DONE
+    
+    # Second call: Periodic scan finds "unread" reaction (Telegram API hasn't updated yet)
+    # This should be prevented by checking completed tasks
+    await insert_received_task_for_conversation(
+        work_queue=work_queue,
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        is_callout=True,
+        reaction_message_id=reaction_msg_id,  # Same message ID!
+        clear_reactions=True,
+    )
+    
+    # Verify no duplicate task was created
+    assert len(work_queue._task_graphs) == 1  # Still only one graph
+    graph = work_queue._task_graphs[0]
+    
+    received_tasks = [t for t in graph.tasks if t.type == "received"]
+    assert len(received_tasks) == 1  # Still only one received task
+    assert received_tasks[0].id == original_task.id  # Same task (not a new one)
+    assert received_tasks[0].status == TaskStatus.DONE  # Still marked as done
+
