@@ -1190,7 +1190,7 @@ def _generate_standalone_html(
                             content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-path="{html.escape(media_path)}"></div></div>\n'
                         elif is_video_format:
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
-                            content_html += f'<div class="message-media"><video controls loop muted preload="metadata"><source src="{html.escape(media_path)}"{type_attr}></video></div>\n'
+                            content_html += f'<div class="message-media"><video controls loop muted preload="auto"><source src="{html.escape(media_path)}"{type_attr}></video></div>\n'
                         elif is_audio_format:
                             type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
                             content_html += f'<div class="message-media"><audio controls><source src="{html.escape(media_path)}"{type_attr}></audio></div>\n'

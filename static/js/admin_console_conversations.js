@@ -1214,7 +1214,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                         
                         if (isVideoSticker) {
                             // Video stickers (e.g. webm from "OSAKA's video pack") - use video tag
-                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="metadata" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}" type="${mimeType || 'video/webm'}"></video></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}" type="${mimeType || 'video/webm'}"></video></div>`;
                         } else if (mediaKind === 'photo' || (mediaKind === 'sticker' && !isAnimatedSticker)) {
                             // Static images and regular stickers
                             contentHtml += `<div style="margin-bottom: 4px;"><img src="${mediaUrl}" alt="${part.sticker_name || uniqueId}" style="max-width: 300px; max-height: 300px; border-radius: 8px;"></div>`;
@@ -1231,7 +1231,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                             </div>`;
                         } else if (mediaKind === 'video' || mediaKind === 'animation' || mediaKind === 'gif') {
                             // Videos, animations, and GIFs
-                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="metadata" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video></div>`;
                         } else if (mediaKind === 'audio') {
                             contentHtml += `<div style="margin-bottom: 4px;"><audio controls style="width: 100%; max-width: 400px;"><source src="${mediaUrl}"></audio></div>`;
                         } else {
