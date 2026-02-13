@@ -162,28 +162,30 @@ def test_gemini_thinking_tokens_counted_in_rest_response():
     
     with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
         with patch("llm.usage_logging.logger") as mock_logger:
-            # Create a mock GeminiLLM instance
-            gemini = GeminiLLM(model="gemini-3-flash-preview")
-            
-            # Call the logging method
-            gemini._log_usage_from_rest_response(
-                obj=mock_response,
-                agent_name="TestAgent",
-                model_name="gemini-3-flash-preview",
-                operation="describe_image",
-            )
-            
-            # Verify logging was called
-            assert mock_logger.info.call_count == 1
-            
-            # Check that output tokens includes thinking tokens (500 + 200 = 700)
-            log_message = mock_logger.info.call_args[0][0]
-            assert "input_tokens=1000" in log_message
-            assert "output_tokens=700" in log_message
-            
-            # Verify cost calculation includes thinking tokens
-            # Expected: (1000/1M * 0.50) + (700/1M * 3.00) = 0.0005 + 0.0021 = 0.0026
-            assert "cost=$0.0026" in log_message
+            with patch("llm.gemini.GOOGLE_GEMINI_API_KEY", "fake-api-key"):
+                with patch("llm.gemini.genai.Client"):
+                    # Create a mock GeminiLLM instance
+                    gemini = GeminiLLM(model="gemini-3-flash-preview")
+                    
+                    # Call the logging method
+                    gemini._log_usage_from_rest_response(
+                        obj=mock_response,
+                        agent_name="TestAgent",
+                        model_name="gemini-3-flash-preview",
+                        operation="describe_image",
+                    )
+                    
+                    # Verify logging was called
+                    assert mock_logger.info.call_count == 1
+                    
+                    # Check that output tokens includes thinking tokens (500 + 200 = 700)
+                    log_message = mock_logger.info.call_args[0][0]
+                    assert "input_tokens=1000" in log_message
+                    assert "output_tokens=700" in log_message
+                    
+                    # Verify cost calculation includes thinking tokens
+                    # Expected: (1000/1M * 0.50) + (700/1M * 3.00) = 0.0005 + 0.0021 = 0.0026
+                    assert "cost=$0.0026" in log_message
 
 
 def test_gemini_thinking_tokens_counted_in_sdk_response():
@@ -201,28 +203,30 @@ def test_gemini_thinking_tokens_counted_in_sdk_response():
     
     with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
         with patch("llm.usage_logging.logger") as mock_logger:
-            # Create a mock GeminiLLM instance
-            gemini = GeminiLLM(model="gemini-3-flash-preview")
-            
-            # Call the logging method
-            gemini._log_usage_from_sdk_response(
-                response=mock_response,
-                agent_name="TestAgent",
-                model_name="gemini-3-flash-preview",
-                operation="query_structured",
-            )
-            
-            # Verify logging was called
-            assert mock_logger.info.call_count == 1
-            
-            # Check that output tokens includes thinking tokens (800 + 300 = 1100)
-            log_message = mock_logger.info.call_args[0][0]
-            assert "input_tokens=1500" in log_message
-            assert "output_tokens=1100" in log_message
-            
-            # Verify cost calculation includes thinking tokens
-            # Expected: (1500/1M * 0.50) + (1100/1M * 3.00) = 0.00075 + 0.0033 = 0.00405
-            assert "cost=$0.0040" in log_message  # Rounded to 4 decimals
+            with patch("llm.gemini.GOOGLE_GEMINI_API_KEY", "fake-api-key"):
+                with patch("llm.gemini.genai.Client"):
+                    # Create a mock GeminiLLM instance
+                    gemini = GeminiLLM(model="gemini-3-flash-preview")
+                    
+                    # Call the logging method
+                    gemini._log_usage_from_sdk_response(
+                        response=mock_response,
+                        agent_name="TestAgent",
+                        model_name="gemini-3-flash-preview",
+                        operation="query_structured",
+                    )
+                    
+                    # Verify logging was called
+                    assert mock_logger.info.call_count == 1
+                    
+                    # Check that output tokens includes thinking tokens (800 + 300 = 1100)
+                    log_message = mock_logger.info.call_args[0][0]
+                    assert "input_tokens=1500" in log_message
+                    assert "output_tokens=1100" in log_message
+                    
+                    # Verify cost calculation includes thinking tokens
+                    # Expected: (1500/1M * 0.50) + (1100/1M * 3.00) = 0.00075 + 0.0033 = 0.00405
+                    assert "cost=$0.0040" in log_message  # Rounded to 4 decimals
 
 
 def test_gemini_no_thinking_tokens_still_works():
@@ -247,24 +251,26 @@ def test_gemini_no_thinking_tokens_still_works():
     
     with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
         with patch("llm.usage_logging.logger") as mock_logger:
-            gemini = GeminiLLM(model="gemini-2.0-flash")
-            
-            gemini._log_usage_from_rest_response(
-                obj=mock_response,
-                agent_name="TestAgent",
-                model_name="gemini-2.0-flash",
-                operation="describe_image",
-            )
-            
-            # Should still log successfully with just the candidate tokens
-            assert mock_logger.info.call_count == 1
-            
-            log_message = mock_logger.info.call_args[0][0]
-            assert "input_tokens=1000" in log_message
-            assert "output_tokens=500" in log_message
-            
-            # Cost should only include candidate tokens
-            # Expected: (1000/1M * 0.50) + (500/1M * 3.00) = 0.0005 + 0.0015 = 0.002
-            assert "cost=$0.0020" in log_message
+            with patch("llm.gemini.GOOGLE_GEMINI_API_KEY", "fake-api-key"):
+                with patch("llm.gemini.genai.Client"):
+                    gemini = GeminiLLM(model="gemini-2.0-flash")
+                    
+                    gemini._log_usage_from_rest_response(
+                        obj=mock_response,
+                        agent_name="TestAgent",
+                        model_name="gemini-2.0-flash",
+                        operation="describe_image",
+                    )
+                    
+                    # Should still log successfully with just the candidate tokens
+                    assert mock_logger.info.call_count == 1
+                    
+                    log_message = mock_logger.info.call_args[0][0]
+                    assert "input_tokens=1000" in log_message
+                    assert "output_tokens=500" in log_message
+                    
+                    # Cost should only include candidate tokens
+                    # Expected: (1000/1M * 0.50) + (500/1M * 3.00) = 0.0005 + 0.0015 = 0.002
+                    assert "cost=$0.0020" in log_message
 
 
