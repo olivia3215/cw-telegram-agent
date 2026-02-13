@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import os
+import pprint
 from collections.abc import Iterable
 from typing import Any
 
@@ -839,11 +840,8 @@ class GeminiLLM(LLM):
             if GEMINI_DEBUG_LOGGING:
                 logger.info("=== GEMINI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
                 if response is not None:
-                    try:
-                        logger.info(f"Response JSON: {json.dumps(response, indent=2, default=str)}")
-                    except Exception as e:
-                        logger.info(f"Failed to serialize response to JSON: {e}")
-                        logger.info(f"Response object: {response}")
+                    # Use pprint for readable output of complex response objects
+                    logger.info(f"Response object:\n{pprint.pformat(response, width=120, compact=False)}")
                     # Log the response text without backslash substitution
                     formatted_text = _format_string_for_logging(text)
                     logger.info(f"Response string:\n{formatted_text}")
@@ -1120,11 +1118,8 @@ class GeminiLLM(LLM):
             if GEMINI_DEBUG_LOGGING:
                 logger.info("=== GEMINI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
                 if response is not None:
-                    try:
-                        logger.info(f"Response JSON: {json.dumps(response, indent=2, default=str)}")
-                    except Exception as e:
-                        logger.info(f"Failed to serialize response to JSON: {e}")
-                        logger.info(f"Response object: {response}")
+                    # Use pprint for readable output of complex response objects
+                    logger.info(f"Response object:\n{pprint.pformat(response, width=120, compact=False)}")
                     formatted_text = _format_string_for_logging(text)
                     logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
