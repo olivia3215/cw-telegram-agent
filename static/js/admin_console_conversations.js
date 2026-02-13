@@ -2397,15 +2397,13 @@ loadAgents();
 // Global docs state
 let globalDocsConfigDir = '';
 let globalDocsCurrentFilename = '';
-let globalDocsSaveTimeout = null;
-let globalDocsFilenameTimeout = null;
+// globalDocsSaveTimeout and globalDocsFilenameTimeout are declared in admin_console_core.js
 let globalDocsContent = '';
 
 // Agent docs state
 let agentDocsCurrentAgent = '';
 let agentDocsCurrentFilename = '';
-let agentDocsSaveTimeout = null;
-let agentDocsFilenameTimeout = null;
+// agentDocsSaveTimeout and agentDocsFilenameTimeout are declared in admin_console_core.js
 let agentDocsContent = '';
 
 // Load config directories for global docs
