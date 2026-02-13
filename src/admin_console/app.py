@@ -45,6 +45,10 @@ def create_admin_app() -> Flask:
             "CINDY_ADMIN_CONSOLE_SECRET_KEY is not set; using a transient secret key."
         )
 
+    # Configure session cookies for better persistence
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+
     # Ensure each app instance has its own OTP challenge manager.
     if "otp_challenge_manager" not in app.extensions:
         app.extensions["otp_challenge_manager"] = OTPChallengeManager()
