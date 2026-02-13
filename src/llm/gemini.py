@@ -127,14 +127,17 @@ class GeminiLLM(LLM):
             usage = obj.get("usageMetadata", {})
             input_tokens = usage.get("promptTokenCount", 0)
             output_tokens = usage.get("candidatesTokenCount", 0)
+            # Thinking tokens are billed as output tokens per Google's pricing
+            thinking_tokens = usage.get("thoughtsTokenCount", 0)
+            total_output_tokens = output_tokens + thinking_tokens
             
-            if input_tokens or output_tokens:
+            if input_tokens or total_output_tokens:
                 from .usage_logging import log_llm_usage
                 log_llm_usage(
                     agent_name=agent_name,
                     model_name=model_name,
                     input_tokens=input_tokens,
-                    output_tokens=output_tokens,
+                    output_tokens=total_output_tokens,
                     operation=operation,
                 )
         except Exception as e:
@@ -166,13 +169,16 @@ class GeminiLLM(LLM):
                 usage = response.usage_metadata
                 input_tokens = getattr(usage, "prompt_token_count", 0)
                 output_tokens = getattr(usage, "candidates_token_count", 0)
+                # Thinking tokens are billed as output tokens per Google's pricing
+                thinking_tokens = getattr(usage, "thoughts_token_count", 0)
+                total_output_tokens = output_tokens + thinking_tokens
                 
                 from .usage_logging import log_llm_usage
                 log_llm_usage(
                     agent_name=agent_name,
                     model_name=model_name,
                     input_tokens=input_tokens,
-                    output_tokens=output_tokens,
+                    output_tokens=total_output_tokens,
                     operation=operation,
                 )
         except Exception as e:
