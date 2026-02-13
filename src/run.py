@@ -771,7 +771,7 @@ async def run_telegram_loop(agent: Agent):
                 if not msg_id:
                     return
                 
-                logger.debug(
+                logger.info(
                     f"[{agent.name}] [REACTION-EVENT-RAW] UpdateMessageReactions received for msg_id={msg_id} "
                     f"chat_id={chat_id} at t={handler_start_time:.3f}"
                 )
