@@ -8,9 +8,9 @@ Main entry point for the Telegram agent server.
 
 This module sets up and runs the Telegram agent event loop, handling:
 - Agent registration and authentication
-- Telegram event handlers (messages, reactions, typing indicators)
+- Telegram event handlers (messages, typing indicators, dialog updates)
 - Work queue loading and processing
-- Message scanning and task creation
+- Periodic message scanning and task creation (including reactions)
 - Admin console integration
 - Graceful shutdown handling
 
@@ -28,7 +28,6 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
-    UpdateMessageReactions,
     UpdateUserTyping,
 )
 
@@ -746,81 +745,6 @@ async def run_telegram_loop(agent: Agent):
             # Handle DM typing updates. When peer is None or PeerUser, user_id is the partner typing.
             # For DMs, we track the user_id as the partner who is typing.
             mark_partner_typing(agent.agent_id, user_id)
-
-        @client.on(events.Raw(UpdateMessageReactions))
-        async def handle_message_reactions(update):
-            """
-            Handle reaction updates event-driven instead of scanning.
-            When a reaction is added to a message, Telegram sends this update.
-            This avoids the need to scan all dialogs for reactions.
-            """
-            try:
-                import time
-                handler_start_time = time.time()
-                
-                peer_id = getattr(update, "peer", None)
-                if not peer_id:
-                    return
-                
-                # Convert peer object to marked ID format (consistent with rest of codebase)
-                # This handles the conversion: channels -> -100<id>, chats -> -<id>, users -> <id>
-                chat_id = utils.get_peer_id(peer_id)
-                
-                # Check if this is a reaction to the agent's message
-                msg_id = getattr(update, "msg_id", None)
-                if not msg_id:
-                    return
-                
-                logger.info(
-                    f"[{agent.name}] [REACTION-EVENT-RAW] UpdateMessageReactions received for msg_id={msg_id} "
-                    f"chat_id={chat_id} at t={handler_start_time:.3f}"
-                )
-                
-                # Check if the message is from the agent by checking the update's actor_id
-                # If actor_id matches agent_id, this is a reaction TO the agent's message
-                # Actually, we need to check if the message itself is from the agent
-                # Use get_messages with single ID - this is lightweight and won't trigger GetHistoryRequest
-                # (get_messages with ids= is different from iterating)
-                try:
-                    message = await client.get_messages(chat_id, ids=msg_id)
-                    if message and getattr(message, "out", False):
-                        chat_name = await get_channel_name(agent, chat_id)
-                        elapsed = time.time() - handler_start_time
-                        logger.info(
-                            f"[{agent.name}] [REACTION-EVENT] Reaction detected on agent message {msg_id} in [{chat_name}] "
-                            f"(chat_id={chat_id}, handler_elapsed={elapsed:.3f}s)"
-                        )
-                        
-                        # Check if agent can send messages to this channel before creating received task
-                        if not await can_agent_send_to_channel(agent, chat_id):
-                            logger.debug(
-                                f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - agent cannot send messages in this chat"
-                            )
-                            return
-                        
-                        # Check if conversation is gagged (async notifications should not trigger received tasks when gagged)
-                        gagged = await agent.is_conversation_gagged(chat_id)
-                        if gagged:
-                            logger.debug(
-                                f"[{agent.name}] Skipping received task for reaction in [{chat_name}] - conversation is gagged"
-                            )
-                            return
-                        
-                        # This is the agent's message - create a received task
-                        # Read receipts are now handled in handle_received with responsiveness delays
-                        # Pass clear_reactions flag so reactions can be cleared when marking as read
-                        await insert_received_task_for_conversation(
-                            recipient_id=agent.agent_id,
-                            channel_id=chat_id,
-                            is_callout=True,  # Reactions are treated as callouts
-                            reaction_message_id=msg_id,
-                            clear_mentions=False,
-                            clear_reactions=True,
-                        )
-                except Exception as e:
-                    logger.warning(f"[{agent.name}] Error handling reaction update: {e}", exc_info=True)
-            except Exception as e:
-                logger.warning(f"[{agent.name}] Error processing UpdateMessageReactions: {e}", exc_info=True)
 
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):
