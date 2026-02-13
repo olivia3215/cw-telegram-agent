@@ -755,6 +755,9 @@ async def run_telegram_loop(agent: Agent):
             This avoids the need to scan all dialogs for reactions.
             """
             try:
+                import time
+                handler_start_time = time.time()
+                
                 peer_id = getattr(update, "peer", None)
                 if not peer_id:
                     return
@@ -768,6 +771,11 @@ async def run_telegram_loop(agent: Agent):
                 if not msg_id:
                     return
                 
+                logger.debug(
+                    f"[{agent.name}] [REACTION-EVENT-RAW] UpdateMessageReactions received for msg_id={msg_id} "
+                    f"chat_id={chat_id} at t={handler_start_time:.3f}"
+                )
+                
                 # Check if the message is from the agent by checking the update's actor_id
                 # If actor_id matches agent_id, this is a reaction TO the agent's message
                 # Actually, we need to check if the message itself is from the agent
@@ -777,8 +785,10 @@ async def run_telegram_loop(agent: Agent):
                     message = await client.get_messages(chat_id, ids=msg_id)
                     if message and getattr(message, "out", False):
                         chat_name = await get_channel_name(agent, chat_id)
+                        elapsed = time.time() - handler_start_time
                         logger.info(
-                            f"[{agent.name}] [REACTION-EVENT] Reaction detected on agent message {msg_id} in [{chat_name}] (chat_id={chat_id})"
+                            f"[{agent.name}] [REACTION-EVENT] Reaction detected on agent message {msg_id} in [{chat_name}] "
+                            f"(chat_id={chat_id}, handler_elapsed={elapsed:.3f}s)"
                         )
                         
                         # Check if agent can send messages to this channel before creating received task
@@ -808,9 +818,9 @@ async def run_telegram_loop(agent: Agent):
                             clear_reactions=True,
                         )
                 except Exception as e:
-                    logger.debug(f"[{agent.name}] Error handling reaction update: {e}")
+                    logger.warning(f"[{agent.name}] Error handling reaction update: {e}", exc_info=True)
             except Exception as e:
-                logger.debug(f"[{agent.name}] Error processing UpdateMessageReactions: {e}")
+                logger.warning(f"[{agent.name}] Error processing UpdateMessageReactions: {e}", exc_info=True)
 
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):
