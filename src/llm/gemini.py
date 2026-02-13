@@ -842,9 +842,6 @@ class GeminiLLM(LLM):
                 if response is not None:
                     # Use pprint for readable output of complex response objects
                     logger.info(f"Response object:\n{pprint.pformat(response, width=120, compact=False)}")
-                    # Log the response text without backslash substitution
-                    formatted_text = _format_string_for_logging(text)
-                    logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: RESPONSE ===")
 
             if text.startswith("⟦"):
@@ -1120,8 +1117,6 @@ class GeminiLLM(LLM):
                 if response is not None:
                     # Use pprint for readable output of complex response objects
                     logger.info(f"Response object:\n{pprint.pformat(response, width=120, compact=False)}")
-                    formatted_text = _format_string_for_logging(text)
-                    logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END GEMINI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
 
             if text and not text.startswith("⟦"):

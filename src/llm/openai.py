@@ -493,11 +493,6 @@ class OpenAILLM(LLM):
             if OPENAI_DEBUG_LOGGING:
                 logger.info("=== OPENAI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
                 logger.info(f"Response: {response}")
-                if response.choices and response.choices[0].message.content:
-                    formatted_text = _format_string_for_logging(
-                        response.choices[0].message.content
-                    )
-                    logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END OPENAI_DEBUG_LOGGING: RESPONSE ===")
 
             # Extract text from response
@@ -610,11 +605,6 @@ class OpenAILLM(LLM):
             if OPENAI_DEBUG_LOGGING:
                 logger.info("=== OPENAI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
                 logger.info(f"Response: {response}")
-                if response.choices and response.choices[0].message.content:
-                    formatted_text = _format_string_for_logging(
-                        response.choices[0].message.content
-                    )
-                    logger.info(f"Response string:\n{formatted_text}")
                 logger.info("=== END OPENAI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
 
             # Extract text from response
