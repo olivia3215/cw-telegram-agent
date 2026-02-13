@@ -746,6 +746,20 @@ async def run_telegram_loop(agent: Agent):
             # For DMs, we track the user_id as the partner who is typing.
             mark_partner_typing(agent.agent_id, user_id)
 
+        # NOTE: We do NOT have an UpdateMessageReactions event handler.
+        # 
+        # Reactions are handled exclusively by the periodic scan (scan_unread_messages).
+        # We previously had an event-driven handler for UpdateMessageReactions, but
+        # production logs showed it consistently fired AFTER the periodic scan had
+        # already detected and processed the reaction. The event provided no value
+        # and only created duplicates that had to be blocked.
+        #
+        # The 10-second periodic scan interval provides sufficient responsiveness for
+        # reactions, especially given that reactions trigger responsiveness delays anyway.
+        #
+        # If Telegram improves their API delivery speed in the future, we can restore
+        # the event handler from git history (see commit f1a3e46 for removal rationale).
+
         @client.on(events.Raw(UpdateDialogFilter))
         async def handle_dialog_update(event):
             """
