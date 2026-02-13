@@ -60,10 +60,6 @@ def create_admin_app(use_https: bool = False) -> Flask:
     if use_https:
         app.config['SESSION_COOKIE_SECURE'] = True  # Only send over HTTPS
 
-    # Configure session cookies for better persistence
-    app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
-
     # Ensure each app instance has its own OTP challenge manager.
     if "otp_challenge_manager" not in app.extensions:
         app.extensions["otp_challenge_manager"] = OTPChallengeManager()
