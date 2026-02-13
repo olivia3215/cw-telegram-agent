@@ -24,6 +24,8 @@ The Admin Console is a web application that runs alongside `cw-telegram-agent`. 
 | `CINDY_AGENT_LOOP_ENABLED` | `true` | Toggle the agent loop; set `false` to run console-only |
 | `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface to bind (use `127.0.0.1` for local-only) |
 | `CINDY_ADMIN_CONSOLE_PORT` | `5001` | Listening port |
+| `CINDY_ADMIN_CONSOLE_SSL_CERT` | _(unset)_ | Path to SSL certificate file for HTTPS (optional, requires `SSL_KEY`) |
+| `CINDY_ADMIN_CONSOLE_SSL_KEY` | _(unset)_ | Path to SSL private key file for HTTPS (optional, requires `SSL_CERT`) |
 
 Example shell configuration:
 
@@ -35,6 +37,32 @@ export CINDY_ADMIN_CONSOLE_PORT=5001
 ```
 
 Start the agent with your normal workflow (`./run.sh`), then open `http://HOST:PORT/admin`.
+
+**Enabling HTTPS (Optional)**
+
+To secure the admin console with HTTPS:
+
+1. Generate SSL certificates:
+   ```bash
+   # Self-signed certificate (for development/personal use)
+   openssl req -x509 -newkey rsa:4096 -nodes \
+     -out certs/cert.pem -keyout certs/key.pem -days 365 \
+     -subj "/CN=localhost"
+   ```
+
+2. Configure SSL in your shell or `.env`:
+   ```bash
+   export CINDY_ADMIN_CONSOLE_SSL_CERT="$(pwd)/certs/cert.pem"
+   export CINDY_ADMIN_CONSOLE_SSL_KEY="$(pwd)/certs/key.pem"
+   ```
+
+3. Restart the server and access via HTTPS:
+   ```bash
+   ./run.sh restart
+   open https://localhost:5001/admin
+   ```
+
+**Note:** Self-signed certificates will trigger browser security warnings. For production deployments with public access, consider using a reverse proxy (Nginx) with Let's Encrypt certificates. See `tmp/https-options.md` for detailed deployment options.
 
 ---
 

@@ -938,6 +938,8 @@ async def main():
     agent_loop_enabled = _env_flag("CINDY_AGENT_LOOP_ENABLED", True)
     admin_host = os.getenv("CINDY_ADMIN_CONSOLE_HOST", "0.0.0.0")
     admin_port_raw = os.getenv("CINDY_ADMIN_CONSOLE_PORT", "5001")
+    admin_ssl_cert = os.getenv("CINDY_ADMIN_CONSOLE_SSL_CERT")
+    admin_ssl_key = os.getenv("CINDY_ADMIN_CONSOLE_SSL_KEY")
 
     try:
         admin_port = int(admin_port_raw)
@@ -1012,7 +1014,11 @@ async def main():
                         exc,
                     )
                 else:
-                    admin_server = start_admin_console(admin_host, admin_port)
+                    admin_server = start_admin_console(
+                        admin_host, admin_port, 
+                        ssl_cert=admin_ssl_cert, 
+                        ssl_key=admin_ssl_key
+                    )
 
         if not agent_loop_enabled:
             if not admin_enabled:
