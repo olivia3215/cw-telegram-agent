@@ -946,7 +946,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     clear_reactions = task.params.get("clear_reactions", False)
     reaction_message_ids = task.params.get("reaction_message_ids", [])
     if clear_reactions and reaction_message_ids:
-        logger.info(
+        logger.debug(
             f"[{agent.name}] [REACTION-READ] Marking reactions as read for message(s) {reaction_message_ids} "
             f"in conversation {channel_name} (task_id={task.id})"
         )

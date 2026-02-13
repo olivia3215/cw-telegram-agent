@@ -328,7 +328,7 @@ async def scan_unread_messages(agent: Agent):
             reaction_message_id = await get_agent_message_with_reactions(agent, dialog)
             if reaction_message_id:
                 dialog_name = await get_channel_name(agent, dialog.id)
-                logger.info(
+                logger.debug(
                     f"[{agent.name}] [REACTION-SCAN] Unread reaction found on agent message {reaction_message_id} "
                     f"in [{dialog_name}] (chat_id={dialog.id}, unread_reactions_count={unread_reactions_count})"
                 )
