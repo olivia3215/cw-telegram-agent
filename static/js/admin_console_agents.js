@@ -2785,8 +2785,8 @@ function renderMediaItem(agentName, mediaItem) {
     // Thumbnail
     const img = document.createElement('img');
     img.className = 'media-thumbnail';
-    img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Loading...</text></svg>';
-    img.alt = 'Media thumbnail';
+    img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Loading...</text></svg>';
+    img.alt = 'Media';
     
     // Load thumbnail asynchronously
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/thumbnail`)
@@ -2802,14 +2802,17 @@ function renderMediaItem(agentName, mediaItem) {
     
     div.appendChild(img);
     
+    // Content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'media-item-content';
+    
     // Description
     const descDiv = document.createElement('div');
     descDiv.className = 'media-description';
-    descDiv.textContent = mediaItem.description || '(No description)';
+    descDiv.textContent = mediaItem.description || '(No description - click to add)';
     descDiv.title = 'Click to edit';
-    descDiv.style.cursor = 'pointer';
     descDiv.onclick = () => editMediaDescription(agentName, mediaItem.unique_id, descDiv);
-    div.appendChild(descDiv);
+    contentDiv.appendChild(descDiv);
     
     // Profile Picture checkbox
     const checkboxDiv = document.createElement('div');
@@ -2832,7 +2835,7 @@ function renderMediaItem(agentName, mediaItem) {
     
     checkboxDiv.appendChild(checkbox);
     checkboxDiv.appendChild(label);
-    div.appendChild(checkboxDiv);
+    contentDiv.appendChild(checkboxDiv);
     
     // Actions
     const actionsDiv = document.createElement('div');
@@ -2840,7 +2843,7 @@ function renderMediaItem(agentName, mediaItem) {
     
     const refreshBtn = document.createElement('button');
     refreshBtn.className = 'primary';
-    refreshBtn.textContent = 'Refresh AI';
+    refreshBtn.textContent = 'Refresh from AI';
     refreshBtn.title = 'Regenerate description using AI';
     refreshBtn.onclick = () => refreshMediaDescription(agentName, mediaItem.unique_id);
     actionsDiv.appendChild(refreshBtn);
@@ -2851,7 +2854,8 @@ function renderMediaItem(agentName, mediaItem) {
     deleteBtn.onclick = () => deleteMedia(agentName, mediaItem.unique_id);
     actionsDiv.appendChild(deleteBtn);
     
-    div.appendChild(actionsDiv);
+    contentDiv.appendChild(actionsDiv);
+    div.appendChild(contentDiv);
     
     return div;
 }

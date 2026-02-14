@@ -462,18 +462,20 @@ body.auth-locked {
 }
 
 /* Media Page Styles */
-.media-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+.media-list {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
     padding: 8px 0;
 }
 
 .media-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px;
     border: 1px solid #ddd;
     border-radius: 8px;
-    padding: 12px;
-    position: relative;
     background: #fff;
     transition: box-shadow 0.2s;
 }
@@ -483,46 +485,62 @@ body.auth-locked {
 }
 
 .media-thumbnail {
-    width: 100%;
+    width: 150px;
     height: 150px;
     object-fit: cover;
     border-radius: 4px;
     background: #f5f5f5;
-    display: block;
-    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.media-item-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
 }
 
 .media-description {
-    font-size: 13px;
-    color: #666;
-    margin: 8px 0;
-    line-height: 1.4;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
     min-height: 40px;
-    max-height: 80px;
-    overflow-y: auto;
+    cursor: pointer;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: border-color 0.2s;
+}
+
+.media-description:hover {
+    border-color: #ddd;
+    background: #fafafa;
 }
 
 .media-description textarea {
     width: 100%;
-    min-height: 60px;
-    padding: 6px;
+    min-height: 80px;
+    padding: 8px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 14px;
     resize: vertical;
     box-sizing: border-box;
+    font-family: inherit;
 }
 
 .media-profile-checkbox {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin: 8px 0;
-    font-size: 13px;
+    gap: 8px;
+    font-size: 14px;
 }
 
 .media-profile-checkbox input[type="checkbox"] {
     cursor: pointer;
+    width: 16px;
+    height: 16px;
 }
 
 .media-profile-checkbox input[type="checkbox"]:disabled {
@@ -532,14 +550,13 @@ body.auth-locked {
 
 .media-actions {
     display: flex;
-    gap: 6px;
-    margin-top: 8px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
 .media-actions button {
-    padding: 4px 8px;
-    font-size: 12px;
+    padding: 6px 12px;
+    font-size: 13px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
