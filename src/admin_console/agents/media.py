@@ -523,7 +523,7 @@ def register_media_routes(agents_bp: Blueprint):
                 record["description"] = description
                 record["status"] = "curated"
             
-            media_metadata.save_media_metadata(unique_id, record)
+            media_metadata.save_media_metadata(record)
             
             return jsonify({"success": True, "description": description})
             
