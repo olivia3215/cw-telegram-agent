@@ -386,19 +386,27 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     Returns:
         Thumbnail bytes or None
     """
+    import io
+    
     # Try to find photo in Saved Messages or Profile Photos
     photo_obj = None
     
     # Check Saved Messages
     async for message in client.iter_messages("me", limit=None):
         photo = getattr(message, "photo", None)
-        if not photo:
-            continue
-            
-        unique_id_val = get_unique_id(photo)
-        if unique_id_val and str(unique_id_val) == unique_id:
-            photo_obj = photo
-            break
+        if photo:
+            unique_id_val = get_unique_id(photo)
+            if unique_id_val and str(unique_id_val) == unique_id:
+                photo_obj = photo
+                break
+        
+        # Check documents (for videos)
+        document = getattr(message, "document", None)
+        if document:
+            unique_id_val = get_unique_id(document)
+            if unique_id_val and str(unique_id_val) == unique_id:
+                photo_obj = document
+                break
     
     # If not found, check profile photos
     if not photo_obj:
@@ -413,8 +421,20 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     if not photo_obj:
         return None
     
-    # Download as thumbnail
-    return await download_media_bytes(client, photo_obj, thumb=-1)
+    # Download as thumbnail using Telethon's download_media with thumb parameter
+    try:
+        buf = io.BytesIO()
+        # Use thumb=-1 to get the smallest thumbnail
+        await client.download_media(photo_obj, file=buf, thumb=-1)
+        return buf.getvalue()
+    except Exception as e:
+        # If thumbnail download fails, try downloading the full media
+        logger.debug(f"Thumbnail download failed for {unique_id}, falling back to full media: {e}")
+        try:
+            return await download_media_bytes(client, photo_obj)
+        except Exception as e2:
+            logger.error(f"Full media download also failed for {unique_id}: {e2}")
+            return None
 
 
 def register_media_routes(agents_bp: Blueprint):
