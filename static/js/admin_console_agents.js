@@ -153,6 +153,8 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                 loadAgentDocs(agentName);
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
+            } else if (subtabName === 'media') {
+                loadAgentMedia(agentName);
             }
         }
     } else {
@@ -2737,3 +2739,378 @@ function scheduleAgentPromptAutoSave(agentName) {
 }
 
 // Load recent conversations dropdown
+
+// ============================================================================
+// Media Management Functions
+// ============================================================================
+
+async function loadAgentMedia(agentName) {
+    const container = document.getElementById('agents-media-list');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading">Loading media...</div>';
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media`);
+        const data = await response.json();
+        
+        if (data.error) {
+            container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+            return;
+        }
+        
+        const media = data.media || [];
+        
+        if (media.length === 0) {
+            container.innerHTML = '<div class="loading">No media found. Upload media or save from conversations.</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        media.forEach(item => {
+            container.appendChild(renderMediaItem(agentName, item));
+        });
+        
+    } catch (error) {
+        console.error('Error loading media:', error);
+        container.innerHTML = `<div class="error">Error loading media</div>`;
+    }
+}
+
+function renderMediaItem(agentName, mediaItem) {
+    const div = document.createElement('div');
+    div.className = 'media-item';
+    div.dataset.uniqueId = mediaItem.unique_id;
+    
+    // Thumbnail
+    const img = document.createElement('img');
+    img.className = 'media-thumbnail';
+    img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Loading...</text></svg>';
+    img.alt = 'Media thumbnail';
+    
+    // Load thumbnail asynchronously
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/thumbnail`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.thumbnail) {
+                img.src = data.thumbnail;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading thumbnail:', error);
+        });
+    
+    div.appendChild(img);
+    
+    // Description
+    const descDiv = document.createElement('div');
+    descDiv.className = 'media-description';
+    descDiv.textContent = mediaItem.description || '(No description)';
+    descDiv.title = 'Click to edit';
+    descDiv.style.cursor = 'pointer';
+    descDiv.onclick = () => editMediaDescription(agentName, mediaItem.unique_id, descDiv);
+    div.appendChild(descDiv);
+    
+    // Profile Picture checkbox
+    const checkboxDiv = document.createElement('div');
+    checkboxDiv.className = 'media-profile-checkbox';
+    
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = mediaItem.is_profile_photo || false;
+    checkbox.disabled = !mediaItem.can_be_profile_photo;
+    checkbox.id = `profile-checkbox-${mediaItem.unique_id}`;
+    checkbox.onchange = () => toggleProfilePhoto(agentName, mediaItem.unique_id, checkbox.checked);
+    
+    const label = document.createElement('label');
+    label.htmlFor = checkbox.id;
+    label.textContent = 'Profile Picture';
+    if (!mediaItem.can_be_profile_photo) {
+        label.title = 'This media type cannot be used as a profile picture';
+        label.style.opacity = '0.5';
+    }
+    
+    checkboxDiv.appendChild(checkbox);
+    checkboxDiv.appendChild(label);
+    div.appendChild(checkboxDiv);
+    
+    // Actions
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'media-actions';
+    
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'primary';
+    refreshBtn.textContent = 'Refresh AI';
+    refreshBtn.title = 'Regenerate description using AI';
+    refreshBtn.onclick = () => refreshMediaDescription(agentName, mediaItem.unique_id);
+    actionsDiv.appendChild(refreshBtn);
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.onclick = () => deleteMedia(agentName, mediaItem.unique_id);
+    actionsDiv.appendChild(deleteBtn);
+    
+    div.appendChild(actionsDiv);
+    
+    return div;
+}
+
+function editMediaDescription(agentName, uniqueId, descDiv) {
+    const currentText = descDiv.textContent === '(No description)' ? '' : descDiv.textContent;
+    
+    // Create textarea
+    const textarea = document.createElement('textarea');
+    textarea.value = currentText;
+    textarea.style.width = '100%';
+    textarea.style.minHeight = '60px';
+    textarea.style.padding = '6px';
+    textarea.style.border = '1px solid #ddd';
+    textarea.style.borderRadius = '4px';
+    textarea.style.fontSize = '13px';
+    
+    // Replace description with textarea
+    const parent = descDiv.parentElement;
+    parent.replaceChild(textarea, descDiv);
+    textarea.focus();
+    
+    // Save on blur
+    const save = async () => {
+        const newDescription = textarea.value.trim();
+        
+        try {
+            const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/description`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description: newDescription })
+            });
+            
+            const data = await response.json();
+            if (data.error) {
+                alert('Error updating description: ' + data.error);
+            }
+            
+            // Restore description div
+            descDiv.textContent = newDescription || '(No description)';
+            parent.replaceChild(descDiv, textarea);
+            
+        } catch (error) {
+            console.error('Error updating description:', error);
+            alert('Error updating description');
+            parent.replaceChild(descDiv, textarea);
+        }
+    };
+    
+    textarea.onblur = save;
+    textarea.onkeydown = (e) => {
+        if (e.key === 'Escape') {
+            parent.replaceChild(descDiv, textarea);
+        } else if (e.key === 'Enter' && e.ctrlKey) {
+            save();
+        }
+    };
+}
+
+async function refreshMediaDescription(agentName, uniqueId) {
+    if (!confirm('Regenerate description using AI? This will clear the current description.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/refresh-description`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error refreshing description: ' + data.error);
+            return;
+        }
+        
+        alert('Description cache cleared. It will regenerate on next access.');
+        loadAgentMedia(agentName);
+        
+    } catch (error) {
+        console.error('Error refreshing description:', error);
+        alert('Error refreshing description');
+    }
+}
+
+async function toggleProfilePhoto(agentName, uniqueId, isChecked) {
+    try {
+        let response;
+        if (isChecked) {
+            // Set as profile photo
+            response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/set-profile-photo`, {
+                method: 'POST'
+            });
+        } else {
+            // Remove from profile photos
+            response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/profile-photo`, {
+                method: 'DELETE'
+            });
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error: ' + data.error);
+            // Reload to revert checkbox
+            loadAgentMedia(agentName);
+            return;
+        }
+        
+        // Success - reload media list
+        loadAgentMedia(agentName);
+        
+    } catch (error) {
+        console.error('Error toggling profile photo:', error);
+        alert('Error updating profile photo');
+        loadAgentMedia(agentName);
+    }
+}
+
+async function deleteMedia(agentName, uniqueId) {
+    if (!confirm('Delete this media from Saved Messages?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error deleting media: ' + data.error);
+            return;
+        }
+        
+        // Remove from UI
+        const item = document.querySelector(`.media-item[data-unique-id="${uniqueId}"]`);
+        if (item) {
+            item.remove();
+        }
+        
+        // Check if empty
+        const container = document.getElementById('agents-media-list');
+        if (container && container.children.length === 0) {
+            container.innerHTML = '<div class="loading">No media found. Upload media or save from conversations.</div>';
+        }
+        
+    } catch (error) {
+        console.error('Error deleting media:', error);
+        alert('Error deleting media');
+    }
+}
+
+async function uploadMediaFile(agentName, file) {
+    const container = document.getElementById('agents-media-list');
+    if (!container) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error uploading: ' + data.error);
+            return;
+        }
+        
+        // Reload media list
+        loadAgentMedia(agentName);
+        
+    } catch (error) {
+        console.error('Error uploading media:', error);
+        alert('Error uploading media');
+    }
+}
+
+function setupMediaDropZone() {
+    const dropZone = document.getElementById('agents-media-drop-zone');
+    if (!dropZone) return;
+    
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+    
+    // Highlight on drag over
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        }, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        }, false);
+    });
+    
+    // Handle dropped files
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        const agentName = document.getElementById('agents-agent-select')?.value;
+        if (!agentName) {
+            alert('Please select an agent first');
+            return;
+        }
+        
+        if (files.length > 0) {
+            uploadMediaFile(agentName, files[0]);
+        }
+    }, false);
+    
+    // Make it clickable
+    dropZone.addEventListener('click', () => {
+        document.getElementById('agents-media-upload-file')?.click();
+    });
+}
+
+function setupMediaUploadButton() {
+    const uploadBtn = document.getElementById('agents-media-upload-file');
+    if (!uploadBtn) return;
+    
+    // Create hidden file input
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*,video/*,audio/*';
+    fileInput.style.display = 'none';
+    fileInput.onchange = () => {
+        const agentName = document.getElementById('agents-agent-select')?.value;
+        if (!agentName) {
+            alert('Please select an agent first');
+            return;
+        }
+        
+        if (fileInput.files.length > 0) {
+            uploadMediaFile(agentName, fileInput.files[0]);
+        }
+    };
+    
+    uploadBtn.parentElement.appendChild(fileInput);
+    uploadBtn.onclick = () => fileInput.click();
+}
+
+// Initialize media upload features when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        setupMediaDropZone();
+        setupMediaUploadButton();
+    });
+} else {
+    setupMediaDropZone();
+    setupMediaUploadButton();
+}
+

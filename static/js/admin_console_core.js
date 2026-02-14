@@ -594,6 +594,8 @@ function switchSubtab(subtabName) {
                 loadAgentDocs(agentName);
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
+            } else if (subtabName === 'media') {
+                loadAgentMedia(agentName);
             }
         } else {
             // No agent selected - clear profile if switching to profile subtab

@@ -77,9 +77,14 @@ The admin console provides three main tabs:
   - **Parameters** — Global system parameters (DEFAULT_AGENT_LLM, MEDIA_MODEL, TRANSLATION_MODEL, etc.)
   - **LLMs** — Manage available LLM models in the database (add, edit, delete, reorder)
 - **Agents** — Agent management with subtabs:
+  - **Profile** — View and edit agent profile information (name, username, bio, birthday, profile photo)
+  - **Contacts** — Manage agent's Telegram contacts
   - **Parameters** — View and manage agent configuration parameters
   - **Memories** — View and manage global agent memories (visible across all conversations)
   - **Intentions** — View and manage agent intentions
+  - **Documents** — Manage agent-specific documentation
+  - **Memberships** — View and manage agent's channel/group memberships
+  - **Media** — Manage agent's media library (Saved Messages and profile photos)
 - **Conversations** — Conversation management with subtabs:
   - **Notes** — View and manage per-user notes (conversation-specific memories) for specific conversation partners
   - **Conversation LLM** — Override LLM model for specific conversations
@@ -147,6 +152,42 @@ The "Delete All Pending Tasks" button clears all tasks from the conversation's w
 
 **Note**: Deleting the work queue is a destructive operation and requires confirmation. The agent will create a new task graph when the next message is received.
 
+### Agents Tab - Media Management
+
+The **Media** subtab (under Agents) provides comprehensive management of an agent's media library, including photos, videos, and stickers from Saved Messages and profile photos.
+
+**Features:**
+- **Media Library View**: Grid display of all media from the agent's Saved Messages and profile photos
+- **Upload Media**: Add new media via file picker or drag-and-drop
+- **Profile Picture Management**: 
+  - Toggle photos, videos, and stickers as profile pictures with a checkbox
+  - When unchecked, media is automatically saved to Saved Messages before removal from profile
+  - Multiple profile photos supported
+- **Description Editing**: Click any description to edit inline (Ctrl+Enter or blur to save)
+- **AI Refresh**: Regenerate descriptions using AI by clearing the cache
+- **Delete Media**: Remove media from Saved Messages (requires confirmation)
+- **Save from Conversations**: Use the "Save to Agent Media" button in any conversation to capture media to the agent's library
+
+**Media Types Supported:**
+- **Photos** ✅ (can be profile picture)
+- **Videos** ✅ (can be profile picture)
+- **Stickers** ✅ (can be profile picture)
+- **Audio** ❌ (cannot be profile picture)
+- **Documents** ❌ (cannot be profile picture)
+
+**Save from Conversations Workflow:**
+1. Navigate to Conversations → Select conversation → View messages with media
+2. Click "Save to Agent Media" button on any media item
+3. Media is uploaded to agent's Saved Messages
+4. If cached in `state/media/`, it's automatically promoted to `{agent.config_directory}/media/` for permanent storage
+5. Media appears in the agent's Media tab
+
+**Technical Details:**
+- Media is deduplicated by `unique_id` (if same media exists in both Saved Messages and profile photos, shown once)
+- Descriptions are cached in MySQL (`state/media/`) or config directories (`{config_dir}/media/`)
+- Profile photo operations use Telegram's `UploadProfilePhotoRequest` and `DeletePhotosRequest`
+- The "Save from Conversations" feature promotes media from transient state cache to permanent config storage
+
 ---
 
 ## Media Editor Tab
@@ -211,8 +252,12 @@ For developers, the implementation lives under:
 
 - `src/admin_console/app.py` — Flask factory + background server helper
 - `src/admin_console/llms.py` — LLM management routes and API endpoints
+- `src/admin_console/agents/media.py` — Agent media management routes
+- `src/admin_console/agents/conversation_media.py` — Conversation media serving and save endpoint
 - `src/db/available_llms.py` — Database operations for LLM management
 - `src/media_editor.py` — Blueprint, routes, and AI integrations
 - `templates/admin_console.html` — Full admin console interface with tabs (Global, Agents, Conversations)
+- `static/js/admin_console_agents.js` — Agent media management UI
+- `static/js/admin_console_conversations.js` — Conversation view with media save functionality
 
 Feel free to update this document as new capabilities are added. ***

@@ -1214,10 +1214,14 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                         
                         if (isVideoSticker) {
                             // Video stickers (e.g. webm from "OSAKA's video pack") - use video tag
-                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}" type="${mimeType || 'video/webm'}"></video></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}" type="${mimeType || 'video/webm'}"></video>
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                            </div>`;
                         } else if (mediaKind === 'photo' || (mediaKind === 'sticker' && !isAnimatedSticker)) {
                             // Static images and regular stickers
-                            contentHtml += `<div style="margin-bottom: 4px;"><img src="${mediaUrl}" alt="${part.sticker_name || uniqueId}" style="max-width: 300px; max-height: 300px; border-radius: 8px;"></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><img src="${mediaUrl}" alt="${part.sticker_name || uniqueId}" style="max-width: 300px; max-height: 300px; border-radius: 8px;">
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                            </div>`;
                         } else if (isAnimatedSticker) {
                             // Animated stickers (TGS) - use Lottie player like in media editor
                             contentHtml += `<div style="margin-bottom: 4px; position: relative; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
@@ -1228,19 +1232,26 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                                         <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 11px;">Download TGS</a>
                                     </div>
                                 </div>
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
                             </div>`;
                         } else if (mediaKind === 'video' || mediaKind === 'animation' || mediaKind === 'gif') {
                             // Videos, animations, and GIFs
-                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video>
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                            </div>`;
                         } else if (mediaKind === 'audio') {
-                            contentHtml += `<div style="margin-bottom: 4px;"><audio controls style="width: 100%; max-width: 400px;"><source src="${mediaUrl}"></audio></div>`;
+                            contentHtml += `<div style="margin-bottom: 4px;"><audio controls style="width: 100%; max-width: 400px;"><source src="${mediaUrl}"></audio>
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                            </div>`;
                         } else {
                             // Fallback: show description with download link
                             const renderedText = part.rendered_text || '';
                             const stickerInfo = part.sticker_set_name 
                                 ? ` (${part.sticker_set_name}${part.sticker_name ? ` / ${part.sticker_name}` : ''})`
                                 : '';
-                            contentHtml += `<div style="color: #666; font-style: italic; margin-bottom: 4px;">${renderedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${stickerInfo} <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none;">[Download]</a></div>`;
+                            contentHtml += `<div style="color: #666; font-style: italic; margin-bottom: 4px;">${renderedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${stickerInfo} <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none;">[Download]</a>
+                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                            </div>`;
                         }
                         
                         // Add description text if available (below the media)
@@ -2388,6 +2399,54 @@ const WorkQueueUI = {
         });
     }
 };
+
+// ============================================================================
+// Save Conversation Media Function
+// ============================================================================
+
+async function saveConversationMedia(agentName, userId, messageId, uniqueId) {
+    try {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+        
+        const response = await fetchWithAuth(
+            `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/media/${messageId}/${uniqueId}/save`,
+            {
+                method: 'POST'
+            }
+        );
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            alert('Error saving media: ' + data.error);
+            btn.textContent = originalText;
+            btn.disabled = false;
+            return;
+        }
+        
+        // Success!
+        btn.textContent = 'Saved!';
+        btn.style.background = '#6c757d';
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.disabled = false;
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Error saving media:', error);
+        alert('Error saving media');
+        if (event.target) {
+            event.target.textContent = 'Save to Agent Media';
+            event.target.disabled = false;
+        }
+    }
+}
 
 // Initialize on page load
 loadAgents();

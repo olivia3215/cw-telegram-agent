@@ -319,6 +319,7 @@
                 <button class="tab-button" data-subtab="intentions">Intentions</button>
                 <button class="tab-button" data-subtab="documents-agent">Documents</button>
                 <button class="tab-button" data-subtab="memberships">Memberships</button>
+                <button class="tab-button" data-subtab="media">Media</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector">
@@ -447,6 +448,28 @@
                 <div class="subtab-panel" data-subtab-panel="memberships">
                     <div id="memberships-container">
                         <div class="loading">Select an agent to manage memberships</div>
+                    </div>
+                </div>
+
+                <!-- Media Subtab -->
+                <div class="subtab-panel" data-subtab-panel="media">
+                    <div id="agents-media-container">
+                        <div class="media-upload-section" style="margin-bottom: 24px;">
+                            <h3>Add Media</h3>
+                            <div class="media-upload-buttons" style="display: flex; gap: 12px; margin-bottom: 16px;">
+                                <button id="agents-media-upload-file" class="button">Upload File</button>
+                            </div>
+                            <div id="agents-media-drop-zone" class="drop-zone">
+                                Drag and drop media files here
+                            </div>
+                        </div>
+                        
+                        <div class="media-list-section">
+                            <h3>Media Library</h3>
+                            <div id="agents-media-list" class="media-grid">
+                                <div class="loading">Select an agent to view media</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
