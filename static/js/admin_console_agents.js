@@ -2806,113 +2806,160 @@ function renderMediaItem(agentName, mediaItem) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'media-item-content';
     
-    // Description
-    const descDiv = document.createElement('div');
-    descDiv.className = 'media-description';
-    descDiv.textContent = mediaItem.description || '(No description - click to add)';
-    descDiv.title = 'Click to edit';
-    descDiv.onclick = () => editMediaDescription(agentName, mediaItem.unique_id, descDiv);
-    contentDiv.appendChild(descDiv);
+    // Description textarea (like media editor)
+    const textarea = document.createElement('textarea');
+    textarea.id = `agent-media-desc-${mediaItem.unique_id}`;
+    textarea.placeholder = 'Enter description...';
+    textarea.value = mediaItem.description || '';
+    textarea.style.width = '100%';
+    textarea.style.minHeight = '80px';
+    textarea.style.padding = '8px';
+    textarea.style.border = '1px solid #ddd';
+    textarea.style.borderRadius = '4px';
+    textarea.style.fontFamily = 'inherit';
+    textarea.style.fontSize = '14px';
+    textarea.style.resize = 'vertical';
+    textarea.style.boxSizing = 'border-box';
+    textarea.oninput = () => scheduleMediaDescriptionSave(agentName, mediaItem.unique_id);
+    contentDiv.appendChild(textarea);
+    
+    // Controls row (status + buttons)
+    const controlsDiv = document.createElement('div');
+    controlsDiv.style.display = 'flex';
+    controlsDiv.style.alignItems = 'center';
+    controlsDiv.style.marginTop = '8px';
+    controlsDiv.style.gap = '10px';
+    controlsDiv.style.flexWrap = 'wrap';
+    
+    // Save status indicator
+    const statusSpan = document.createElement('span');
+    statusSpan.id = `agent-media-status-${mediaItem.unique_id}`;
+    statusSpan.style.fontSize = '12px';
+    statusSpan.style.color = '#28a745';
+    statusSpan.textContent = 'Saved';
+    controlsDiv.appendChild(statusSpan);
+    
+    // Refresh from AI button
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = 'Refresh from AI';
+    refreshBtn.style.padding = '4px 8px';
+    refreshBtn.style.fontSize = '11px';
+    refreshBtn.style.background = '#6c757d';
+    refreshBtn.style.color = 'white';
+    refreshBtn.style.border = 'none';
+    refreshBtn.style.borderRadius = '3px';
+    refreshBtn.style.cursor = 'pointer';
+    refreshBtn.onclick = () => refreshMediaDescription(agentName, mediaItem.unique_id);
+    controlsDiv.appendChild(refreshBtn);
     
     // Profile Picture checkbox
-    const checkboxDiv = document.createElement('div');
-    checkboxDiv.className = 'media-profile-checkbox';
+    const checkboxLabel = document.createElement('label');
+    checkboxLabel.style.display = 'flex';
+    checkboxLabel.style.alignItems = 'center';
+    checkboxLabel.style.gap = '6px';
+    checkboxLabel.style.fontSize = '11px';
+    checkboxLabel.style.cursor = mediaItem.can_be_profile_photo ? 'pointer' : 'not-allowed';
+    if (!mediaItem.can_be_profile_photo) {
+        checkboxLabel.style.opacity = '0.5';
+        checkboxLabel.title = 'This media type cannot be used as a profile picture';
+    }
     
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = mediaItem.is_profile_photo || false;
     checkbox.disabled = !mediaItem.can_be_profile_photo;
-    checkbox.id = `profile-checkbox-${mediaItem.unique_id}`;
     checkbox.onchange = () => toggleProfilePhoto(agentName, mediaItem.unique_id, checkbox.checked);
     
-    const label = document.createElement('label');
-    label.htmlFor = checkbox.id;
-    label.textContent = 'Profile Picture';
-    if (!mediaItem.can_be_profile_photo) {
-        label.title = 'This media type cannot be used as a profile picture';
-        label.style.opacity = '0.5';
-    }
+    const checkboxText = document.createTextNode('Profile');
+    checkboxLabel.appendChild(checkbox);
+    checkboxLabel.appendChild(checkboxText);
+    controlsDiv.appendChild(checkboxLabel);
     
-    checkboxDiv.appendChild(checkbox);
-    checkboxDiv.appendChild(label);
-    contentDiv.appendChild(checkboxDiv);
-    
-    // Actions
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'media-actions';
-    
-    const refreshBtn = document.createElement('button');
-    refreshBtn.className = 'primary';
-    refreshBtn.textContent = 'Refresh from AI';
-    refreshBtn.title = 'Regenerate description using AI';
-    refreshBtn.onclick = () => refreshMediaDescription(agentName, mediaItem.unique_id);
-    actionsDiv.appendChild(refreshBtn);
-    
+    // Delete button
     const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'delete';
     deleteBtn.textContent = 'Delete';
+    deleteBtn.style.padding = '4px 8px';
+    deleteBtn.style.fontSize = '11px';
+    deleteBtn.style.background = '#dc3545';
+    deleteBtn.style.color = 'white';
+    deleteBtn.style.border = 'none';
+    deleteBtn.style.borderRadius = '3px';
+    deleteBtn.style.cursor = 'pointer';
     deleteBtn.onclick = () => deleteMedia(agentName, mediaItem.unique_id);
-    actionsDiv.appendChild(deleteBtn);
+    controlsDiv.appendChild(deleteBtn);
     
-    contentDiv.appendChild(actionsDiv);
+    contentDiv.appendChild(controlsDiv);
     div.appendChild(contentDiv);
     
     return div;
 }
 
-function editMediaDescription(agentName, uniqueId, descDiv) {
-    const currentText = descDiv.textContent === '(No description)' ? '' : descDiv.textContent;
+// Auto-save timers for media descriptions
+const mediaDescriptionSaveTimers = {};
+
+function scheduleMediaDescriptionSave(agentName, uniqueId) {
+    // Clear existing timer
+    if (mediaDescriptionSaveTimers[uniqueId]) {
+        clearTimeout(mediaDescriptionSaveTimers[uniqueId]);
+    }
     
-    // Create textarea
-    const textarea = document.createElement('textarea');
-    textarea.value = currentText;
-    textarea.style.width = '100%';
-    textarea.style.minHeight = '60px';
-    textarea.style.padding = '6px';
-    textarea.style.border = '1px solid #ddd';
-    textarea.style.borderRadius = '4px';
-    textarea.style.fontSize = '13px';
+    // Update status to "typing..."
+    const statusEl = document.getElementById(`agent-media-status-${uniqueId}`);
+    if (statusEl) {
+        statusEl.textContent = 'Typing...';
+        statusEl.style.color = '#007bff';
+    }
     
-    // Replace description with textarea
-    const parent = descDiv.parentElement;
-    parent.replaceChild(textarea, descDiv);
-    textarea.focus();
+    // Set new timer for 1 second delay
+    mediaDescriptionSaveTimers[uniqueId] = setTimeout(() => {
+        saveMediaDescription(agentName, uniqueId);
+    }, 1000);
+}
+
+async function saveMediaDescription(agentName, uniqueId) {
+    const textarea = document.getElementById(`agent-media-desc-${uniqueId}`);
+    const statusEl = document.getElementById(`agent-media-status-${uniqueId}`);
     
-    // Save on blur
-    const save = async () => {
-        const newDescription = textarea.value.trim();
+    if (!textarea) return;
+    
+    const description = textarea.value.trim();
+    
+    if (statusEl) {
+        statusEl.textContent = 'Saving...';
+        statusEl.style.color = '#007bff';
+    }
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/description`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: description })
+        });
         
-        try {
-            const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/description`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description: newDescription })
-            });
-            
-            const data = await response.json();
-            if (data.error) {
-                alert('Error updating description: ' + data.error);
+        const data = await response.json();
+        if (data.error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error';
+                statusEl.style.color = '#dc3545';
             }
-            
-            // Restore description div
-            descDiv.textContent = newDescription || '(No description)';
-            parent.replaceChild(descDiv, textarea);
-            
-        } catch (error) {
-            console.error('Error updating description:', error);
-            alert('Error updating description');
-            parent.replaceChild(descDiv, textarea);
+        } else {
+            if (statusEl) {
+                statusEl.textContent = 'Saved';
+                statusEl.style.color = '#28a745';
+            }
         }
-    };
-    
-    textarea.onblur = save;
-    textarea.onkeydown = (e) => {
-        if (e.key === 'Escape') {
-            parent.replaceChild(descDiv, textarea);
-        } else if (e.key === 'Enter' && e.ctrlKey) {
-            save();
+    } catch (error) {
+        console.error('Error saving description:', error);
+        if (statusEl) {
+            statusEl.textContent = 'Error';
+            statusEl.style.color = '#dc3545';
         }
-    };
+    }
+}
+
+function editMediaDescription(agentName, uniqueId, descDiv) {
+    // This function is no longer used - descriptions are now always editable via textarea
+    // Kept for compatibility but can be removed
 }
 
 async function refreshMediaDescription(agentName, uniqueId) {
