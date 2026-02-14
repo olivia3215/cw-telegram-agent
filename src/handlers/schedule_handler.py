@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from handlers.registry import register_immediate_task_handler
 from schedule import ScheduleActivity
 from task_graph import TaskNode
+from utils.formatting import format_log_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +344,7 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
         agent._save_schedule(schedule)
         
         logger.info(
-            f"[{agent.name}] Created schedule entry: {activity_name} "
+            f"{format_log_prefix(agent.name)} Created schedule entry: {activity_name} "
             f"({start_time.isoformat()} - {end_time.isoformat()})"
         )
         return True
@@ -366,7 +367,7 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
         # Load existing schedule
         schedule = agent._load_schedule()
         if not schedule:
-            logger.warning(f"[{agent.name}] No schedule found for update")
+            logger.warning(f"{format_log_prefix(agent.name)} No schedule found for update")
             return False
         
         # Find the activity to update and get its current times
@@ -391,7 +392,7 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                 break
         
         if not found:
-            logger.warning(f"[{agent.name}] Schedule entry {activity_id} not found for update")
+            logger.warning(f"{format_log_prefix(agent.name)} Schedule entry {activity_id} not found for update")
             return False
         
         # Parse and validate new times if provided
@@ -469,7 +470,7 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
         # Save schedule
         agent._save_schedule(schedule)
         
-        logger.info(f"[{agent.name}] Updated schedule entry: {activity_id}")
+        logger.info(f"{format_log_prefix(agent.name)} Updated schedule entry: {activity_id}")
         return True
         
     except Exception as e:
@@ -490,7 +491,7 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         # Load existing schedule
         schedule = agent._load_schedule()
         if not schedule:
-            logger.warning(f"[{agent.name}] No schedule found for delete")
+            logger.warning(f"{format_log_prefix(agent.name)} No schedule found for delete")
             return False
         
         # Remove the activity
@@ -499,7 +500,7 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         schedule["activities"] = [act for act in activities if act.get("id") != activity_id]
         
         if len(schedule["activities"]) == original_count:
-            logger.warning(f"[{agent.name}] Schedule entry {activity_id} not found for delete")
+            logger.warning(f"{format_log_prefix(agent.name)} Schedule entry {activity_id} not found for delete")
             return False
         
         # Sort activities by start_time (order shouldn't change, but ensures consistency)
@@ -508,7 +509,7 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         # Save schedule
         agent._save_schedule(schedule)
         
-        logger.info(f"[{agent.name}] Deleted schedule entry: {activity_id}")
+        logger.info(f"{format_log_prefix(agent.name)} Deleted schedule entry: {activity_id}")
         return True
         
     except Exception as e:

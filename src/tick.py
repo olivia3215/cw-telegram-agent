@@ -22,6 +22,8 @@ from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
+from utils.formatting import format_log_prefix
+from utils.telegram import get_channel_name
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +172,7 @@ async def trigger_typing_indicators():
                     except (UserBannedInChannelError, ChatWriteForbiddenError):
                         # It's okay if we can't show ourselves as typing
                         logger.debug(
-                            f"[{agent.name}] Cannot send typing indicator to channel {channel_id}"
+                            f"{format_log_prefix(agent.name)} Cannot send typing indicator to channel {channel_id}"
                         )
                 
                 # For online=True: send cancel action to show online without typing indicator
@@ -188,7 +190,7 @@ async def trigger_typing_indicators():
                         )
                     except Exception as e:
                         logger.debug(
-                            f"[{agent.name}] Error sending online status for channel {channel_id}: {e}"
+                            f"{format_log_prefix(agent.name)} Error sending online status for channel {channel_id}: {e}"
                         )
 
         except Exception as e:
@@ -238,16 +240,21 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         return
 
     agent_id = graph.context.get("agent_id")
+    channel_id = graph.context.get("channel_id")
     agent = None
     agent_name = f"agent:{agent_id}" if agent_id else "unknown-agent"
+    channel_name = None
     if agent_id:
         try:
             agent = get_agent_for_id(agent_id)
             if agent:
                 agent_name = agent.name
+                # Get channel name for logging
+                if channel_id:
+                    channel_name = await get_channel_name(agent, channel_id)
                 if agent.is_disabled:
                     logger.info(
-                        f"[{agent_name}] Agent is disabled, cancelling task graph {graph.id}"
+                        f"{format_log_prefix(agent_name, channel_name)} Agent is disabled, cancelling task graph {graph.id}"
                     )
                     work_queue.remove(graph)
                     return
@@ -255,7 +262,7 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
             logger.exception(f"run_one_tick: error resolving agent {agent_id}: {e}")
             return
 
-    logger.info(f"[{agent_name}] Running task {task.id} of type {task.type}")
+    logger.info(f"{format_log_prefix(agent_name, channel_name)} Running task {task.id} of type {task.type}")
 
     try:
         task.status = TaskStatus.ACTIVE
@@ -263,11 +270,11 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         # This prevents tests from accidentally writing to the persisted state file
         if state_file_path:
             work_queue.save(state_file_path)
-        logger.info(f"[{agent_name}] Task {task.id} is now active.")
+        logger.info(f"{format_log_prefix(agent_name, channel_name)} Task {task.id} is now active.")
         
         handled = await dispatch_task(task.type, task, graph)
         if not handled:
-            raise ValueError(f"[{agent_name}] Unknown task type: {task.type}")
+            raise ValueError(f"{format_log_prefix(agent_name, channel_name)} Unknown task type: {task.type}")
         
         # Only mark as DONE if task is still ACTIVE (handler may have reset it to PENDING)
         if task.status == TaskStatus.ACTIVE:
@@ -282,7 +289,7 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         if isinstance(e, PeerIdInvalidError) and agent:
             agent.clear_entity_cache()
         else:
-            logger.exception(f"[{agent_name}] Task {task.id} raised exception: {e}")
+            logger.exception(f"{format_log_prefix(agent_name, channel_name)} Task {task.id} raised exception: {e}")
         
         # Log the task failure
         _log_task_failure(graph, task, error_msg)
@@ -291,13 +298,13 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
-        logger.info(f"[{agent_name}] Graph {graph.id} completed and removed.")
+        logger.info(f"{format_log_prefix(agent_name, channel_name)} Graph {graph.id} completed and removed.")
 
     # Only save if explicitly requested via parameter, not based on _state_file_path
     # This prevents tests from accidentally writing to the persisted state file
     if state_file_path:
         work_queue.save(state_file_path)
-        logger.debug(f"[{agent_name}] Work queue state saved")
+        logger.debug(f"{format_log_prefix(agent_name, channel_name)} Work queue state saved")
 
 
 async def run_tick_loop(

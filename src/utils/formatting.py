@@ -3,6 +3,37 @@
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
+
+
+def format_log_prefix(agent_name: str, channel_name: str | None = None) -> str:
+    """
+    Format a log prefix as [agent_name->channel_name] or [agent_name].
+    
+    Args:
+        agent_name: The name of the agent
+        channel_name: Optional channel name. If None, only agent name is used.
+        
+    Returns:
+        Formatted log prefix string
+        
+    Examples:
+        >>> format_log_prefix("Alice")
+        "[Alice]"
+        >>> format_log_prefix("Alice", "Bob")
+        "[Alice->Bob]"
+        >>> format_log_prefix("Alice", "Very Long Channel Name Here")
+        "[Alice->Very Long Channel Name H…]"
+    """
+    if channel_name is None:
+        return f"[{agent_name}]"
+    
+    # Truncate channel name to 25 characters with ellipsis if needed
+    if len(channel_name) > 25:
+        channel_name = channel_name[:25] + "…"
+    
+    return f"[{agent_name}->{channel_name}]"
+
+
 def format_message_content_for_logging(message) -> str:
     """
     Format a Telegram message for logging purposes.

@@ -7,7 +7,9 @@ import logging
 
 from agent import Agent, get_agent_for_id
 from utils import coerce_to_int
+from utils.formatting import format_log_prefix
 from utils.ids import ensure_int_id
+from utils.telegram import get_channel_name
 from task_graph import TaskGraph, TaskNode
 from handlers.registry import register_task_handler
 
@@ -31,9 +33,12 @@ async def handle_photo(task: TaskNode, graph: TaskGraph, work_queue=None):
     unique_id = task.params.get("unique_id")
     reply_to_raw = task.params.get("reply_to")
     in_reply_to = coerce_to_int(reply_to_raw)
+    
+    # Get channel name for logging
+    channel_name = await get_channel_name(agent, channel_id)
 
     if not unique_id:
-        raise ValueError(f"[{agent.name}] Photo task missing 'unique_id' parameter.")
+        raise ValueError(f"{format_log_prefix(agent.name, channel_name)} Photo task missing 'unique_id' parameter.")
 
     # Look up photo in cache
     photos = getattr(agent, "photos", {})
@@ -41,7 +46,7 @@ async def handle_photo(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     if not photo:
         raise ValueError(
-            f"[{agent.name}] Photo with unique_id {unique_id!r} not found in cache. "
+            f"{format_log_prefix(agent.name, channel_name)} Photo with unique_id {unique_id!r} not found in cache. "
             "Photo may have been deleted from saved messages or cache needs refresh."
         )
 
@@ -70,5 +75,5 @@ async def handle_photo(task: TaskNode, graph: TaskGraph, work_queue=None):
                 # Don't fail the photo send if activity tracking fails
                 logger.debug(f"Failed to update agent activity: {e}")
     except Exception as e:
-        logger.exception(f"[{agent.name}] Failed to send photo: {e}")
+        logger.exception(f"{format_log_prefix(agent.name, channel_name)} Failed to send photo: {e}")
 

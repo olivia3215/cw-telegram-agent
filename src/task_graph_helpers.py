@@ -10,6 +10,7 @@ from typing import Dict
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
+from utils.formatting import format_log_prefix
 from utils.telegram import get_channel_name, is_group_or_channel
 from utils.ids import ensure_int_id
 
@@ -133,7 +134,7 @@ async def insert_received_task_for_conversation(
     
     if agent.is_disabled:
         logger.info(
-            f"[{agent.name}] Skipping received task creation for disabled agent"
+            f"{format_log_prefix(agent.name)} Skipping received task creation for disabled agent"
         )
         return
     
@@ -141,23 +142,26 @@ async def insert_received_task_for_conversation(
     agent_id_int = ensure_int_id(recipient_id)
     channel_id_int = ensure_int_id(channel_id)
     
+    # Get channel name for logging
+    channel_name = await get_channel_name(agent, channel_id_int)
+    
     # Check if conversation is gagged (unless bypass_gagged is True, e.g., for xsend)
     if not bypass_gagged:
         try:
             gagged = await agent.is_conversation_gagged(channel_id_int)
             if gagged:
                 logger.debug(
-                    f"[{agent.name}] Skipping received task creation for channel {channel_id} - conversation is gagged"
+                    f"{format_log_prefix(agent.name, channel_name)} Skipping received task creation for channel {channel_id} - conversation is gagged"
                 )
                 return
         except Exception as e:
-            logger.warning(f"[{agent.name}] Error checking gagged status: {e}")
+            logger.warning(f"{format_log_prefix(agent.name, channel_name)} Error checking gagged status: {e}")
             # On error, continue (don't block received task creation)
     
     # Try to reconnect if client is disconnected
     if agent.client is None or not agent.client.is_connected():
         logger.debug(
-            f"[{agent.name}] Client not connected, attempting to reconnect before creating received task..."
+            f"{format_log_prefix(agent.name, channel_name)} Client not connected, attempting to reconnect before creating received task..."
         )
         if not await agent.ensure_client_connected():
             raise RuntimeError(
@@ -183,7 +187,7 @@ async def insert_received_task_for_conversation(
                         if reaction_message_id in existing_reaction_ids:
                             # This exact reaction is already being handled - skip duplicate
                             logger.info(
-                                f"[{agent.name}] Preventing duplicate received task - reaction on message "
+                                f"{format_log_prefix(agent.name, channel_name)} Preventing duplicate received task - reaction on message "
                                 f"{reaction_message_id} already in tracked list {existing_reaction_ids} "
                                 f"for active task {task.id} (status: {task.status})"
                             )
@@ -200,12 +204,12 @@ async def insert_received_task_for_conversation(
                                 updated = True
                             if updated:
                                 work_queue.save()
-                                logger.debug(f"[{agent.name}] Updated flags on existing task {task.id}")
+                                logger.debug(f"{format_log_prefix(agent.name, channel_name)} Updated flags on existing task {task.id}")
                             return
                         else:
                             # New reaction - will be added to the list below
                             logger.info(
-                                f"[{agent.name}] Adding reaction on message {reaction_message_id} "
+                                f"{format_log_prefix(agent.name, channel_name)} Adding reaction on message {reaction_message_id} "
                                 f"to existing tracked reactions {existing_reaction_ids} in task {task.id}"
                             )
                     
@@ -229,12 +233,12 @@ async def insert_received_task_for_conversation(
                         f"[{agent.name}] Skipping received task creation - active received task {task.id} "
                         f"(status: {task.status}) already exists for conversation {channel_id}"
                     )
-                    # Save the work queue state after updating existing task params
+                    # Save the work queue state after updating existing task params                    
                     try:
                         work_queue.save()
-                        logger.debug(f"[{agent.name}] Saved work queue state after updating task {task.id}")
+                        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Saved work queue state after updating task {task.id}")
                     except Exception as e:
-                        logger.error(f"[{agent.name}] Failed to save work queue state: {e}")
+                        logger.error(f"{format_log_prefix(agent.name, channel_name)} Failed to save work queue state: {e}")
                     return
             
             # Also check recently completed received tasks for duplicate reactions
