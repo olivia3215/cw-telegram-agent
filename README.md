@@ -473,7 +473,7 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 3. Start the service and open the console:
    ```bash
    ./run.sh
-   open http://localhost:5001/admin
+   open "http://localhost:${CINDY_ADMIN_CONSOLE_PORT:-5001}/admin"
    ```
 
 **Enabling HTTPS (Optional)**
@@ -512,7 +512,7 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
 
 4. **Access via HTTPS:**
    ```bash
-   open https://localhost:5001/admin
+   open "https://localhost:${CINDY_ADMIN_CONSOLE_PORT:-5001}/admin"
    ```
 
 **Browser Security Warning:** Self-signed certificates trigger a "Your connection is not private" warning. This is expected.
