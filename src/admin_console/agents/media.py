@@ -296,11 +296,12 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
     # Download media bytes
     media_bytes = await download_media_bytes(client, media_obj)
     
-    # Upload as profile photo (works for both photos and videos)
-    uploaded_file = await client.upload_file(media_bytes)
-    
-    # Check if it's a video
+    # Determine file extension
     is_video = hasattr(media_obj, "mime_type") and getattr(media_obj, "mime_type", "").startswith("video/")
+    file_ext = ".mp4" if is_video else ".jpg"
+    
+    # Upload as profile photo with proper filename
+    uploaded_file = await client.upload_file(media_bytes, file_name=f"profile{file_ext}")
     
     if is_video:
         # Upload video profile photo
