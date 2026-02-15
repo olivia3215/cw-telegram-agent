@@ -694,7 +694,7 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     raise ValueError(f"Message {message_id} not found in conversation with {user_id}")
                 
                 # Extract media from message
-                media_items = list(iter_media_parts(message, include_text_urls=False))
+                media_items = list(iter_media_parts(message))
                 if not media_items:
                     raise ValueError("No media found in message")
                 

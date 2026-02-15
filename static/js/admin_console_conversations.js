@@ -2428,15 +2428,9 @@ async function saveConversationMedia(agentName, userId, messageId, uniqueId) {
         }
         
         // Success!
-        btn.textContent = 'Saved!';
-        btn.style.background = '#6c757d';
-        
-        // Reset button after 2 seconds
-        setTimeout(() => {
-            btn.textContent = originalText;
-            btn.style.background = '';
-            btn.disabled = false;
-        }, 2000);
+        btn.textContent = 'Saved';
+        btn.disabled = true;  // Keep it disabled
+        // Remove the timeout that re-enables it
         
     } catch (error) {
         console.error('Error saving media:', error);
