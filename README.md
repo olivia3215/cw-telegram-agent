@@ -457,6 +457,8 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 | `CINDY_ADMIN_CONSOLE_SSL_CERT` | _(unset)_ | Path to SSL certificate file for HTTPS (optional, requires `SSL_KEY`) |
 | `CINDY_ADMIN_CONSOLE_SSL_KEY` | _(unset)_ | Path to SSL private key file for HTTPS (optional, requires `SSL_CERT`) |
 
+`CINDY_ADMIN_CONSOLE_PORT` is optional. If unset (or set to an invalid value), the admin console defaults to port `5001`.
+
 **Quick start**
 1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):
    ```bash
@@ -465,6 +467,8 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
    export CINDY_ADMIN_CONSOLE_SECRET_KEY="copy-the-generated-value-here"
    export CINDY_ADMIN_CONSOLE_ENABLED=true
    export CINDY_AGENT_LOOP_ENABLED=true
+   # Optional: override the admin console port (default is 5001)
+   export CINDY_ADMIN_CONSOLE_PORT=5002
    ```
 2. Log in to Telegram for the puppet master and each agent:
    ```bash
