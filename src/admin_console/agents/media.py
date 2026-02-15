@@ -259,24 +259,50 @@ async def _upload_media_to_saved_messages(agent, client, file_bytes: bytes, file
 
     # Upload to Saved Messages
     message = await client.send_file("me", **send_kwargs)
-    
-    # Get unique_id from the uploaded photo
-    photo = getattr(message, "photo", None)
-    if not photo:
-        raise ValueError("Uploaded file did not result in a photo message")
-    
-    unique_id_val = get_unique_id(photo)
+
+    # Accept both photo and document results; Telegram may store images as documents.
+    media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+    if not media_obj:
+        raise ValueError("Uploaded file did not result in a media message")
+
+    unique_id_val = get_unique_id(media_obj)
     if not unique_id_val:
-        raise ValueError("Could not get unique_id from uploaded photo")
-    
+        raise ValueError("Could not get unique_id from uploaded media")
+
+    media_kind = "photo"
+    can_be_profile = True
+    document = getattr(message, "document", None)
+    if document:
+        mime_type = getattr(document, "mime_type", "") or ""
+        attrs = getattr(document, "attributes", []) or []
+        is_sticker_attr = any(
+            getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
+            for attr in attrs
+        )
+        if mime_type.startswith("video/"):
+            media_kind = "video"
+            can_be_profile = True
+        elif mime_type.startswith("audio/"):
+            media_kind = "audio"
+            can_be_profile = False
+        elif mime_type == "application/x-tgsticker" or is_sticker_attr:
+            media_kind = "sticker"
+            can_be_profile = True
+        elif mime_type.startswith("image/"):
+            media_kind = "photo"
+            can_be_profile = True
+        else:
+            media_kind = "document"
+            can_be_profile = False
+
     unique_id_str = str(unique_id_val)
-    
+
     return {
         "unique_id": unique_id_str,
         "message_id": message.id,
         "is_profile_photo": False,
-        "can_be_profile_photo": True,
-        "media_kind": "photo",
+        "can_be_profile_photo": can_be_profile,
+        "media_kind": media_kind,
         "description": None,
     }
 
@@ -353,7 +379,13 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
     return True
 
 
-async def _remove_profile_photo(agent, client, source_unique_id: str) -> bool:
+async def _remove_profile_photo(
+    agent,
+    client,
+    source_unique_id: str,
+    *,
+    ensure_media_in_saved_messages: bool = True,
+) -> bool:
     """
     Remove profile photos linked to this source media.
     
@@ -391,8 +423,9 @@ async def _remove_profile_photo(agent, client, source_unique_id: str) -> bool:
                 media_in_saved_messages = True
                 break
     
-    # If source media is NOT in Saved Messages, copy it before deleting profile photo
-    if not media_in_saved_messages:
+    # If source media is NOT in Saved Messages, copy it before deleting profile photo.
+    # This safety behavior is skipped for explicit delete flows.
+    if ensure_media_in_saved_messages and not media_in_saved_messages:
         logger.info(f"Source media {source_unique_id} not in Saved Messages, copying before profile photo deletion")
         profile_photos = await client.get_profile_photos(me, limit=None)
         
@@ -487,7 +520,12 @@ async def _delete_from_saved_messages(agent, client, unique_id: str) -> bool:
                 unique_id,
                 len(mapped_profile_ids),
             )
-            await _remove_profile_photo(agent, client, unique_id)
+            await _remove_profile_photo(
+                agent,
+                client,
+                unique_id,
+                ensure_media_in_saved_messages=False,
+            )
             return True
 
         logger.info(
@@ -500,8 +538,14 @@ async def _delete_from_saved_messages(agent, client, unique_id: str) -> bool:
     await client.delete_messages("me", [message_to_delete.id])
 
     # Also remove linked profile photos if this media is currently used as profile source.
+    # Do not restore media into Saved Messages during explicit delete.
     try:
-        await _remove_profile_photo(agent, client, unique_id)
+        await _remove_profile_photo(
+            agent,
+            client,
+            unique_id,
+            ensure_media_in_saved_messages=False,
+        )
     except Exception as e:
         logger.debug("Non-fatal: failed removing linked profile photos for %s: %s", unique_id, e)
 
@@ -834,14 +878,19 @@ def register_media_routes(agents_bp: Blueprint):
                             if uid and str(uid) == unique_id:
                                 media_obj = document
                                 hinted_mime = getattr(document, "mime_type", None) or hinted_mime
+                                attrs = getattr(document, "attributes", []) or []
+                                is_sticker_attr = any(
+                                    getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
+                                    for attr in attrs
+                                )
                                 if hinted_mime.startswith("video/"):
                                     object_kind_hint = "video"
                                 elif hinted_mime.startswith("audio/"):
                                     object_kind_hint = "audio"
-                                elif hinted_mime == "application/x-tgsticker":
+                                elif hinted_mime == "application/x-tgsticker" or is_sticker_attr:
                                     object_kind_hint = "animated_sticker"
                                 elif hinted_mime.startswith("image/"):
-                                    object_kind_hint = "sticker"
+                                    object_kind_hint = "photo"
                                 else:
                                     object_kind_hint = "document"
                                 break
