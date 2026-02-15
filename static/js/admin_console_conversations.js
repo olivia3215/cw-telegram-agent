@@ -56,6 +56,10 @@ async function loadRecentConversations() {
 let newAgentFormInitialized = false;
 let newAgentConfigNames = new Set();
 
+function newAgentRolePromptFilenameExcluded(filename) {
+    return filename.startsWith('Instructions') && filename.endsWith('.md');
+}
+
 async function initializeNewAgentForm() {
     if (newAgentFormInitialized) {
         await refreshNewAgentConfigNames();
@@ -66,25 +70,61 @@ async function initializeNewAgentForm() {
     const configSelect = document.getElementById('new-agent-config-directory');
     const configNameInput = document.getElementById('new-agent-config-name');
     const displayNameInput = document.getElementById('new-agent-display-name');
+    const rolePromptsSelect = document.getElementById('new-agent-role-prompts');
+    const dailyScheduleEnabled = document.getElementById('new-agent-daily-schedule-enabled');
+    const dailyScheduleTextarea = document.getElementById('new-agent-daily-schedule');
 
     try {
-        const [configResponse, agentsResponse] = await Promise.all([
+        const [configResponse, agentsResponse, promptsResponse] = await Promise.all([
             fetchWithAuth(`${API_BASE}/config-directories`),
-            fetchWithAuth(`${API_BASE}/agents`)
+            fetchWithAuth(`${API_BASE}/agents`),
+            fetchWithAuth(`${API_BASE}/prompts`)
         ]);
         const configData = await configResponse.json();
         const agentsData = await agentsResponse.json();
+        const promptsData = await promptsResponse.json();
         newAgentConfigNames = new Set((agentsData.agents || []).map(agent => agent.config_name));
 
         if (configSelect) {
             configSelect.innerHTML = '<option value="">Choose a config directory...</option>';
-            (configData.directories || []).forEach(dir => {
+            const dirs = configData.directories || [];
+            dirs.forEach(dir => {
                 const option = document.createElement('option');
                 const path = (typeof dir === 'object') ? dir.path : dir;
                 const display = (typeof dir === 'object') ? dir.display_path : dir;
                 option.value = path;
                 option.textContent = display;
                 configSelect.appendChild(option);
+            });
+            if (dirs.length > 0) {
+                const lastDir = dirs[dirs.length - 1];
+                const lastPath = (typeof lastDir === 'object') ? lastDir.path : lastDir;
+                configSelect.value = lastPath;
+            }
+        }
+
+        if (rolePromptsSelect) {
+            const prompts = promptsData.prompts || [];
+            const seenStems = new Set();
+            rolePromptsSelect.innerHTML = '';
+            prompts.forEach(p => {
+                const filename = p.filename || p;
+                if (newAgentRolePromptFilenameExcluded(filename)) return;
+                const stem = filename.replace(/\.md$/i, '');
+                if (seenStems.has(stem)) return;
+                seenStems.add(stem);
+                const option = document.createElement('option');
+                option.value = stem;
+                option.textContent = stem;
+                rolePromptsSelect.appendChild(option);
+            });
+        }
+
+        if (dailyScheduleEnabled && dailyScheduleTextarea) {
+            dailyScheduleEnabled.addEventListener('change', () => {
+                dailyScheduleTextarea.disabled = !dailyScheduleEnabled.checked;
+                if (!dailyScheduleEnabled.checked) dailyScheduleTextarea.value = '';
+                updateNewAgentCreateState();
             });
         }
     } catch (error) {
@@ -105,7 +145,15 @@ async function initializeNewAgentForm() {
     configSelect?.addEventListener('change', handleConfigChange);
     configNameInput?.addEventListener('input', updateNewAgentCreateState);
     displayNameInput?.addEventListener('input', updateNewAgentCreateState);
+    document.getElementById('new-agent-phone')?.addEventListener('input', updateNewAgentCreateState);
+    document.getElementById('new-agent-prompt')?.addEventListener('input', updateNewAgentCreateState);
+    rolePromptsSelect?.addEventListener('change', updateNewAgentCreateState);
     updateNewAgentCreateState();
+
+    if (configSelect?.value) {
+        await loadNewAgentDefaults(configSelect.value);
+        updateNewAgentCreateState();
+    }
 }
 
 async function refreshNewAgentConfigNames() {
@@ -133,12 +181,26 @@ async function loadNewAgentDefaults(configDirectory) {
         document.getElementById('new-agent-config-name').value = defaults.config_name || 'Untitled';
         document.getElementById('new-agent-display-name').value = defaults.name || 'Untitled Agent';
         document.getElementById('new-agent-phone').value = defaults.phone || '+1234567890';
-        document.getElementById('new-agent-prompt').value = defaults.instructions || '';
-        document.getElementById('new-agent-role-prompts').value = (defaults.role_prompt_names || []).join('\n');
+        document.getElementById('new-agent-prompt').value = defaults.instructions ?? 'You are a helpful assistant.';
+        const roleNames = defaults.role_prompt_names || [];
+        const roleSelect = document.getElementById('new-agent-role-prompts');
+        if (roleSelect) {
+            Array.from(roleSelect.options).forEach(opt => {
+                opt.selected = roleNames.includes(opt.value);
+            });
+        }
         document.getElementById('new-agent-sticker-sets').value = (defaults.sticker_set_names || []).join('\n');
         document.getElementById('new-agent-explicit-stickers').value = (defaults.explicit_stickers || []).join('\n');
-        document.getElementById('new-agent-daily-schedule').value = defaults.daily_schedule_description || '';
+        const dailyDesc = defaults.daily_schedule_description || '';
+        const dailyEnabled = document.getElementById('new-agent-daily-schedule-enabled');
+        const dailyTextarea = document.getElementById('new-agent-daily-schedule');
+        if (dailyEnabled && dailyTextarea) {
+            dailyEnabled.checked = !!dailyDesc;
+            dailyTextarea.disabled = !dailyEnabled.checked;
+            dailyTextarea.value = dailyDesc;
+        }
         document.getElementById('new-agent-reset-context').checked = !!defaults.reset_context_on_first_message;
+        document.getElementById('new-agent-clear-summaries').checked = !!defaults.clear_summaries_on_first_message;
         document.getElementById('new-agent-gagged').checked = !!defaults.is_gagged;
         document.getElementById('new-agent-start-typing-delay').value = defaults.start_typing_delay ?? '';
         document.getElementById('new-agent-typing-speed').value = defaults.typing_speed ?? '';
@@ -178,6 +240,10 @@ function updateNewAgentCreateState() {
     const configDir = document.getElementById('new-agent-config-directory')?.value.trim();
     const configName = document.getElementById('new-agent-config-name')?.value.trim();
     const displayName = document.getElementById('new-agent-display-name')?.value.trim();
+    const phone = document.getElementById('new-agent-phone')?.value.trim();
+    const instructions = document.getElementById('new-agent-prompt')?.value.trim();
+    const roleSelect = document.getElementById('new-agent-role-prompts');
+    const selectedRoleCount = roleSelect ? Array.from(roleSelect.selectedOptions).length : 0;
     const statusEl = document.getElementById('new-agent-config-name-status');
     const createBtn = document.getElementById('new-agent-create-btn');
 
@@ -203,6 +269,18 @@ function updateNewAgentCreateState() {
         isValid = false;
     }
 
+    if (!phone) {
+        isValid = false;
+    }
+
+    if (!instructions) {
+        isValid = false;
+    }
+
+    if (selectedRoleCount === 0) {
+        isValid = false;
+    }
+
     if (statusEl) {
         statusEl.textContent = statusText;
         statusEl.style.color = statusText ? '#dc3545' : '#666';
@@ -212,6 +290,12 @@ function updateNewAgentCreateState() {
         createBtn.style.opacity = isValid ? '1' : '0.6';
         createBtn.style.cursor = isValid ? 'pointer' : 'not-allowed';
     }
+}
+
+function getNewAgentSelectedRolePrompts() {
+    const roleSelect = document.getElementById('new-agent-role-prompts');
+    if (!roleSelect) return [];
+    return Array.from(roleSelect.selectedOptions).map(opt => opt.value);
 }
 
 async function createNewAgentFromForm() {
@@ -231,19 +315,23 @@ async function createNewAgentFromForm() {
             createBtn.textContent = 'Creating...';
         }
 
+        const dailyScheduleEnabled = document.getElementById('new-agent-daily-schedule-enabled')?.checked;
+        const dailyScheduleTextarea = document.getElementById('new-agent-daily-schedule');
+
         const payload = {
             config_directory: configDirectory,
             config_name: configName,
             name: displayName,
             phone: document.getElementById('new-agent-phone')?.value.trim(),
             instructions: document.getElementById('new-agent-prompt')?.value,
-            role_prompt_names: document.getElementById('new-agent-role-prompts')?.value,
+            role_prompt_names: getNewAgentSelectedRolePrompts(),
             llm: document.getElementById('new-agent-llm')?.value.trim(),
             timezone: document.getElementById('new-agent-timezone')?.value.trim(),
             sticker_set_names: document.getElementById('new-agent-sticker-sets')?.value,
             explicit_stickers: document.getElementById('new-agent-explicit-stickers')?.value,
-            daily_schedule_description: document.getElementById('new-agent-daily-schedule')?.value,
+            daily_schedule_description: dailyScheduleEnabled && dailyScheduleTextarea ? dailyScheduleTextarea.value : '',
             reset_context_on_first_message: document.getElementById('new-agent-reset-context')?.checked,
+            clear_summaries_on_first_message: document.getElementById('new-agent-clear-summaries')?.checked,
             start_typing_delay: document.getElementById('new-agent-start-typing-delay')?.value,
             typing_speed: document.getElementById('new-agent-typing-speed')?.value,
             is_gagged: document.getElementById('new-agent-gagged')?.checked
