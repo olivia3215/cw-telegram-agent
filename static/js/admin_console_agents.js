@@ -154,6 +154,10 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
             } else if (subtabName === 'media') {
+                // Mark that Media Editor may need refresh due to Agent->Media changes
+                window.mediaEditorNeedsRefresh = true;
+                
+                // Always reload to ensure fresh data if Media Editor made changes
                 loadAgentMedia(agentName);
             }
         }
