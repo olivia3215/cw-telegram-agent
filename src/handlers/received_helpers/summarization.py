@@ -234,6 +234,7 @@ async def perform_summarization(
             history_size=len(combined_history),
             timeout_s=None,
             allowed_task_types=allowed_task_types,
+            agent_name=agent.name,
         )
     except Exception as e:
         logger.exception(
