@@ -680,6 +680,21 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     InputDocument,
                     InputPeerSelf
                 )
+                from media.agent_media import get_agent_media_dir
+                
+                # First, check if media already exists in Saved Messages
+                try:
+                    async for message in agent.client.iter_messages("me", limit=None):
+                        # Check both photo and document
+                        media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+                        if media_obj:
+                            msg_unique_id = get_unique_id(media_obj)
+                            if msg_unique_id and str(msg_unique_id) == unique_id:
+                                # Media already exists in Saved Messages
+                                return {"already_exists": True, "message": "Media already in agent's library"}
+                except Exception as e:
+                    logger.warning(f"Error checking for existing media: {e}")
+                    # Continue anyway - it's better to potentially duplicate than to fail
                 
                 # Get the message and send the specific media to Saved Messages
                 try:
@@ -777,8 +792,13 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     record = media_metadata.load_media_metadata(unique_id)
                     if record:
                         # Move from state/media to agent's config directory media folder
-                        if hasattr(agent, "config_directory") and agent.config_directory:
-                            config_media_dir = Path(agent.config_directory) / "media"
+                        try:
+                            config_media_dir = get_agent_media_dir(agent)
+                        except Exception as e:
+                            logger.warning(f"Agent has no config directory; cannot promote media {unique_id}: {e}")
+                            config_media_dir = None
+
+                        if config_media_dir:
                             
                             # Ensure config media directory exists
                             config_media_dir.mkdir(parents=True, exist_ok=True)
@@ -826,6 +846,37 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                                 logger.info(f"Deleted media {unique_id} from state cache after moving to config")
                             except Exception as e:
                                 logger.warning(f"Failed to delete from state cache: {e}")
+
+                    # Regardless of whether a MySQL record existed, ensure we do not keep a duplicate
+                    # physical copy in state/media after the media has been saved to the agent.
+                    try:
+                        from admin_console.media import MEDIA_FILE_EXTENSIONS
+
+                        # Remove common patterns unique_id.ext
+                        for ext in MEDIA_FILE_EXTENSIONS:
+                            candidate = Path(state_media_path) / f"{unique_id}{ext}"
+                            if candidate.exists() and candidate.is_file():
+                                try:
+                                    candidate.unlink()
+                                except Exception:
+                                    pass
+
+                        # Also remove the recorded media_file if present (covers non-standard filenames)
+                        if record and record.get("media_file"):
+                            candidate = Path(state_media_path) / record["media_file"]
+                            if candidate.exists() and candidate.is_file():
+                                try:
+                                    candidate.unlink()
+                                except Exception:
+                                    pass
+
+                        # And delete any metadata if it still exists
+                        try:
+                            media_metadata.delete_media_metadata(unique_id)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.debug(f"Failed state/media cleanup for {unique_id}: {e}")
                 
                 return {
                     "success": True,

@@ -974,6 +974,7 @@ function loadConversation() {
             const taskLogs = data.task_logs || [];
             const agentTimezone = data.agent_timezone;
             const isBlocked = data.is_blocked || false;
+            const savedMediaUniqueIds = new Set(data.saved_media_unique_ids || []);
             conversationMessages = messages;
             conversationTranslations = {};
             conversationAgentTimezone = agentTimezone;
@@ -982,7 +983,7 @@ function loadConversation() {
             // Preserve showTranslation state instead of resetting it
             // showTranslation state is preserved
             
-            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked);
+            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds);
             
             // Restore checkbox state after rendering if it was checked
             const checkbox = document.getElementById('translation-toggle');
@@ -1015,7 +1016,7 @@ function refreshConversation() {
     });
 }
 
-function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false) {
+function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set()) {
     const container = document.getElementById('conversation-container');
     let html = '';
     
@@ -1205,6 +1206,9 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                         const messageId = part.message_id || msg.id;
                         const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/media/${messageId}/${uniqueId}`;
                         
+                        // Check if this media is already saved
+                        const isAlreadySaved = savedMediaUniqueIds.has(uniqueId);
+                        
                         // Render actual media based on type
                         // Check if sticker is animated (either via media_kind or is_animated flag)
                         const isAnimatedSticker = mediaKind === 'animated_sticker' || (mediaKind === 'sticker' && part.is_animated);
@@ -1214,16 +1218,25 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                         
                         if (isVideoSticker) {
                             // Video stickers (e.g. webm from "OSAKA's video pack") - use video tag
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}" type="${mimeType || 'video/webm'}"></video>
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         } else if (mediaKind === 'photo' || (mediaKind === 'sticker' && !isAnimatedSticker)) {
                             // Static images and regular stickers
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="margin-bottom: 4px;"><img src="${mediaUrl}" alt="${part.sticker_name || uniqueId}" style="max-width: 300px; max-height: 300px; border-radius: 8px;">
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         } else if (isAnimatedSticker) {
                             // Animated stickers (TGS) - use Lottie player like in media editor
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="margin-bottom: 4px; position: relative; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
                                 <div id="tgs-player-${uniqueId}" class="tgs-animation-container" data-message-id="${messageId}" data-unique-id="${uniqueId}" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
                                     <div style="text-align: center; color: #666;">
@@ -1232,16 +1245,22 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                                         <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 11px;">Download TGS</a>
                                     </div>
                                 </div>
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         } else if (mediaKind === 'video' || mediaKind === 'animation' || mediaKind === 'gif') {
                             // Videos, animations, and GIFs
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="margin-bottom: 4px;"><video controls loop muted preload="auto" style="max-width: 300px; max-height: 300px; border-radius: 8px;"><source src="${mediaUrl}"></video>
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         } else if (mediaKind === 'audio') {
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="margin-bottom: 4px;"><audio controls style="width: 100%; max-width: 400px;"><source src="${mediaUrl}"></audio>
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         } else {
                             // Fallback: show description with download link
@@ -1249,8 +1268,11 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
                             const stickerInfo = part.sticker_set_name 
                                 ? ` (${part.sticker_set_name}${part.sticker_name ? ` / ${part.sticker_name}` : ''})`
                                 : '';
+                            const saveButtonHtml = isAlreadySaved
+                                ? '<button class="save-media-btn" disabled style="opacity: 0.5; cursor: not-allowed;">Already Saved</button>'
+                                : `<button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>`;
                             contentHtml += `<div style="color: #666; font-style: italic; margin-bottom: 4px;">${renderedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${stickerInfo} <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none;">[Download]</a>
-                                <button class="save-media-btn" onclick="saveConversationMedia('${agentName}', '${userId}', '${messageId}', '${uniqueId}')">Save to Agent Media</button>
+                                ${saveButtonHtml}
                             </div>`;
                         }
                         
@@ -2419,6 +2441,13 @@ async function saveConversationMedia(agentName, userId, messageId, uniqueId) {
         );
         
         const data = await response.json();
+        
+        if (data.already_exists) {
+            // Media is already in library - keep button disabled and change text
+            btn.textContent = 'Already Saved';
+            btn.disabled = true;
+            return;
+        }
         
         if (data.error) {
             alert('Error saving media: ' + data.error);

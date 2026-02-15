@@ -36,7 +36,10 @@ from config import (
     OPENROUTER_API_KEY,
     TELEGRAM_SYSTEM_USER_ID,
 )
+from media.file_resolver import find_media_file_with_fallback as _find_media_file_with_fallback
+from media.file_resolver import find_media_file as _find_media_file_no_fallback
 from media.media_sources import get_resolved_state_media_path, iter_directory_media_sources
+from media.state_path import is_state_media_directory as _is_state_media_directory
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
 from utils.formatting import format_log_prefix
@@ -77,28 +80,10 @@ def find_media_file(media_dir: Path, unique_id: str) -> Path | None:
     Returns:
         Path to the media file if found, None otherwise
     """
-    import glob as glob_module
-
-    search_dirs: list[Path] = [media_dir]
-
-    # Fallback to AI cache directory if media not present in curated directory
+    # Maintain existing behavior: allow state/media fallback for callers that rely on it.
+    # The media pipeline itself should prefer explicit resolution rules.
     fallback_dir = get_state_media_path()
-    if fallback_dir is not None and fallback_dir != media_dir:
-        search_dirs.append(fallback_dir)
-
-    escaped_unique_id = glob_module.escape(unique_id)
-    for directory in search_dirs:
-        for file_path in directory.glob(f"{escaped_unique_id}.*"):
-            if file_path.suffix.lower() != ".json":
-                if directory != media_dir:
-                    logger.debug(
-                        "find_media_file: using fallback media directory %s for %s",
-                        directory,
-                        unique_id,
-                    )
-                return file_path
-
-    return None
+    return _find_media_file_with_fallback(media_dir, unique_id, fallback_dir)
 
 
 def get_state_media_path() -> Path | None:
@@ -115,14 +100,7 @@ def is_state_media_directory(media_dir: Path) -> bool:
     paths from STATE_DIRECTORY (which may be relative or contain ~). Both
     resolve to canonical absolute paths before comparison.
     """
-    state_path = get_state_media_path()
-    if state_path is None:
-        return False
-    try:
-        resolved = Path(media_dir).expanduser().resolve()
-        return resolved == state_path
-    except (OSError, RuntimeError):
-        return False
+    return _is_state_media_directory(media_dir)
 
 
 def resolve_media_path(directory_path: str) -> Path:

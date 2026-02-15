@@ -2,6 +2,9 @@
 // Copyright (c) 2025-2026 Cindy's World LLC and contributors
 // Licensed under the MIT License. See LICENSE.md for details.
 
+// Cached copy of media shown on the current page.
+let currentPageMediaFiles = [];
+
 function loadMediaFiles(directoryPath, preservePage = false) {
     // Show loading spinner
     showLoadingSpinner('media-container', 'Loading media files...');
@@ -50,6 +53,7 @@ function loadMediaFiles(directoryPath, preservePage = false) {
 
             // Process media files for display (add display names)
             const mediaFiles = data.media_files || [];
+            currentPageMediaFiles = mediaFiles;
             for (const [stickerSet, items] of Object.entries(data.grouped_media || {})) {
                 if (!Array.isArray(items) || items.length === 0) {
                     continue;
@@ -735,18 +739,18 @@ function refreshFromAI(uniqueId) {
         if (data.error) {
             alert('Error refreshing from AI: ' + data.error);
         } else {
-            // Update the cached data in allMediaFiles array so pagination shows updated data
-            const mediaIndex = allMediaFiles.findIndex(m => m.unique_id === uniqueId);
+            // Update the cached data in current page array.
+            const mediaIndex = currentPageMediaFiles.findIndex(m => m.unique_id === uniqueId);
             if (mediaIndex !== -1) {
-                allMediaFiles[mediaIndex].description = data.description || null;
-                allMediaFiles[mediaIndex].status = data.status || 'ok';
+                currentPageMediaFiles[mediaIndex].description = data.description || null;
+                currentPageMediaFiles[mediaIndex].status = data.status || 'ok';
                 // Clear failure_reason if status is successful
                 if (data.status && (
                     data.status === 'generated' || 
                     data.status === 'curated' ||
                     (data.status === 'budget_exhausted' && data.description)
                 )) {
-                    allMediaFiles[mediaIndex].failure_reason = null;
+                    currentPageMediaFiles[mediaIndex].failure_reason = null;
                 }
             }
 

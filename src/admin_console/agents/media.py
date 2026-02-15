@@ -10,11 +10,13 @@ Manages media in agent's Saved Messages and profile photos.
 
 import base64
 import logging
+import shutil
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, jsonify, request, send_file  # pyright: ignore[reportMissingImports]
+from telethon import TelegramClient  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import SendMediaRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.photos import (  # pyright: ignore[reportMissingImports]
     DeletePhotosRequest,
@@ -35,6 +37,13 @@ from admin_console.helpers import (
 from config import CONFIG_DIRECTORIES
 from db import media_metadata
 from db import agent_profile_photos
+from media.agent_media import get_agent_media_dir
+from media.mime_utils import (
+    detect_mime_type_from_bytes,
+    get_file_extension_for_mime_type,
+    is_image_mime_type,
+)
+from media.media_service import get_media_service
 from media.media_sources import get_directory_media_source
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id
@@ -155,18 +164,24 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                     unique_id_str = str(unique_id_val)
                     
                     # Determine media kind and profile photo eligibility
+                    attrs = getattr(document, "attributes", []) or []
+                    is_sticker_attr = any(
+                        getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
+                        for attr in attrs
+                    )
+
                     if mime_type.startswith("video/"):
                         media_kind = "video"
                         can_be_profile = True
                     elif mime_type.startswith("audio/"):
                         media_kind = "audio"
                         can_be_profile = False
-                    elif mime_type == "application/x-tgsticker":
+                    elif mime_type == "application/x-tgsticker" or is_sticker_attr:
                         media_kind = "sticker"
                         can_be_profile = True  # Stickers can be profile pictures
                     elif mime_type.startswith("image/"):
-                        # Image documents (like stickers)
-                        media_kind = "sticker"
+                        # Plain image documents should behave as photos.
+                        media_kind = "photo"
                         can_be_profile = True
                     else:
                         media_kind = "document"
@@ -194,22 +209,20 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
     # (Agent media should never use MySQL cache - that's only for state/media)
     for unique_id_str, media_item in media_by_unique_id.items():
         try:
-            # Load from config directory only
-            if hasattr(agent, "config_directory") and agent.config_directory:
-                config_media_dir = Path(agent.config_directory) / "media"
-                if config_media_dir.exists():
-                    json_file = config_media_dir / f"{unique_id_str}.json"
-                    if json_file.exists():
-                        import json
-                        try:
-                            with open(json_file, "r", encoding="utf-8") as f:
-                                config_record = json.load(f)
-                                if config_record.get("description"):
-                                    media_item["description"] = config_record["description"]
-                                if config_record.get("status"):
-                                    media_item["status"] = config_record["status"]
-                        except Exception as e:
-                            logger.debug(f"Error reading config media JSON for {unique_id_str}: {e}")
+            # Load from config directory via DirectoryMediaSource (keeps in-memory cache consistent)
+            try:
+                config_media_dir = get_agent_media_dir(agent)
+            except Exception:
+                config_media_dir = None
+
+            if config_media_dir and config_media_dir.exists():
+                dir_source = get_directory_media_source(config_media_dir)
+                config_record = dir_source.get_cached_record(unique_id_str)
+                if config_record:
+                    if config_record.get("description"):
+                        media_item["description"] = config_record["description"]
+                    if config_record.get("status"):
+                        media_item["status"] = config_record["status"]
         except Exception as e:
             logger.debug(f"Error loading metadata for {unique_id_str}: {e}")
     
@@ -229,8 +242,23 @@ async def _upload_media_to_saved_messages(agent, client, file_bytes: bytes, file
     Returns:
         Media metadata dict
     """
+    # Keep filename/extension so Telegram classifies images as photo messages.
+    original_name = (filename or "").strip() or "upload"
+    suffix = Path(original_name).suffix
+    detected_mime = detect_mime_type_from_bytes(file_bytes[:1024]) if file_bytes else None
+    if not suffix and detected_mime:
+        ext = get_file_extension_for_mime_type(detected_mime)
+        if ext and ext != "bin":
+            original_name = f"{original_name}.{ext}"
+
+    upload_file = BytesIO(file_bytes)
+    upload_file.name = original_name
+
+    # Don't force attributes for images; Telegram can downgrade to document when attrs are forced.
+    send_kwargs: dict[str, Any] = {"force_document": False, "file": upload_file}
+
     # Upload to Saved Messages
-    message = await client.send_file("me", file_bytes, attributes=[])
+    message = await client.send_file("me", **send_kwargs)
     
     # Get unique_id from the uploaded photo
     photo = getattr(message, "photo", None)
@@ -329,6 +357,8 @@ async def _remove_profile_photo(agent, client, source_unique_id: str) -> bool:
     """
     Remove profile photos linked to this source media.
     
+    Before deletion, ensures the media exists in Saved Messages to prevent data loss.
+    
     Args:
         agent: Agent instance
         client: Telethon client
@@ -350,6 +380,44 @@ async def _remove_profile_photo(agent, client, source_unique_id: str) -> bool:
     if not profile_photo_ids:
         logger.info(f"No profile photos found for source {source_unique_id}")
         return True
+    
+    # Check if source media exists in Saved Messages
+    media_in_saved_messages = False
+    async for message in client.iter_messages("me", limit=None):
+        media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+        if media_obj:
+            msg_unique_id = get_unique_id(media_obj)
+            if msg_unique_id and str(msg_unique_id) == source_unique_id:
+                media_in_saved_messages = True
+                break
+    
+    # If source media is NOT in Saved Messages, copy it before deleting profile photo
+    if not media_in_saved_messages:
+        logger.info(f"Source media {source_unique_id} not in Saved Messages, copying before profile photo deletion")
+        profile_photos = await client.get_profile_photos(me, limit=None)
+        
+        # Find the profile photo that matches the source
+        for photo in profile_photos:
+            photo_unique_id = get_unique_id(photo)
+            if photo_unique_id and str(photo_unique_id) in profile_photo_ids:
+                try:
+                    # Copy to Saved Messages using SendMediaRequest (preserves unique_id!)
+                    await client(SendMediaRequest(
+                        peer=InputPeerSelf(),
+                        media=InputMediaPhoto(
+                            id=InputPhoto(
+                                id=photo.id,
+                                access_hash=photo.access_hash,
+                                file_reference=photo.file_reference
+                            )
+                        ),
+                        message=""
+                    ))
+                    logger.info(f"Copied profile photo {photo_unique_id} to Saved Messages")
+                    break
+                except Exception as e:
+                    logger.error(f"Failed to copy profile photo {photo_unique_id} to Saved Messages: {e}")
+                    return False
     
     # Get current profile photos
     profile_photos = await client.get_profile_photos(me, limit=None)
@@ -393,30 +461,58 @@ async def _delete_from_saved_messages(agent, client, unique_id: str) -> bool:
     Returns:
         True if successful
     """
-    # Find the message with this photo
+    # Find the message with this media (photo or document).
     message_to_delete = None
     async for message in client.iter_messages("me", limit=None):
-        photo = getattr(message, "photo", None)
-        if not photo:
+        media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+        if not media_obj:
             continue
-            
-        unique_id_val = get_unique_id(photo)
+
+        unique_id_val = get_unique_id(media_obj)
         if unique_id_val and str(unique_id_val) == unique_id:
             message_to_delete = message
             break
-    
+
+    # If it's not in Saved Messages, handle profile-only/stale states gracefully.
     if not message_to_delete:
-        raise ValueError(f"Photo with unique_id {unique_id} not found in Saved Messages")
-    
-    # Delete the message
+        me = await client.get_me()
+        agent_telegram_id = me.id
+        mapped_profile_ids = agent_profile_photos.get_profile_photos_for_source(
+            agent_telegram_id,
+            unique_id,
+        )
+        if mapped_profile_ids:
+            logger.info(
+                "Media %s not found in Saved Messages; removing %d linked profile photo(s)",
+                unique_id,
+                len(mapped_profile_ids),
+            )
+            await _remove_profile_photo(agent, client, unique_id)
+            return True
+
+        logger.info(
+            "Media %s already absent from Saved Messages and has no linked profile photos",
+            unique_id,
+        )
+        return True
+
+    # Delete the Saved Messages item.
     await client.delete_messages("me", [message_to_delete.id])
-    
+
+    # Also remove linked profile photos if this media is currently used as profile source.
+    try:
+        await _remove_profile_photo(agent, client, unique_id)
+    except Exception as e:
+        logger.debug("Non-fatal: failed removing linked profile photos for %s: %s", unique_id, e)
+
     return True
 
 
 async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     """
     Get media bytes for display (full resolution, CSS handles sizing).
+    
+    Uses media pipeline to retrieve cached files when available.
     
     Args:
         agent: Agent instance
@@ -426,6 +522,27 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     Returns:
         Media bytes or None
     """
+    # First, try to get from agent's config media directory via DirectoryMediaSource
+    try:
+        config_media_dir = get_agent_media_dir(agent)
+    except Exception:
+        config_media_dir = None
+
+    if config_media_dir and config_media_dir.exists():
+        dir_source = get_directory_media_source(config_media_dir)
+        record = dir_source.get_cached_record(unique_id)
+        
+        if record and record.get("media_file"):
+            media_file = config_media_dir / record["media_file"]
+            if media_file.exists():
+                logger.debug(f"Using cached media file for {unique_id}: {media_file}")
+                try:
+                    return media_file.read_bytes()
+                except Exception as e:
+                    logger.warning(f"Failed to read cached file {media_file}: {e}")
+                    # Fall through to download from Telegram
+    
+    # Not cached, need to download from Telegram
     # Try to find media in Saved Messages or Profile Photos
     media_obj = None
     
@@ -552,14 +669,8 @@ def register_media_routes(agents_bp: Blueprint):
             
             # Save to agent's config directory using DirectoryMediaSource
             # This ensures both the file AND the in-memory cache are updated
-            if not hasattr(agent, "config_directory") or not agent.config_directory:
-                return jsonify({"error": "Agent has no config directory"}), 400
-            
-            config_media_dir = Path(agent.config_directory) / "media"
+            config_media_dir = get_agent_media_dir(agent)
             config_media_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Get or create the directory media source for this directory
-            from media.media_sources import get_directory_media_source
             dir_source = get_directory_media_source(config_media_dir)
             
             # Load existing record
@@ -577,7 +688,7 @@ def register_media_routes(agents_bp: Blueprint):
             # Save using DirectoryMediaSource which updates both file and cache
             dir_source.put(unique_id, record)
             
-            return jsonify({"success": True, "description": description})
+            return jsonify({"success": True, "description": description, "status": "curated"})
             
         except Exception as e:
             logger.error(f"Error updating description for {unique_id}: {e}")
@@ -585,7 +696,7 @@ def register_media_routes(agents_bp: Blueprint):
     
     @agents_bp.route("/api/agents/<agent_config_name>/media/<unique_id>/refresh-description", methods=["POST"])
     def api_refresh_media_description(agent_config_name: str, unique_id: str):
-        """Refresh media description using AI."""
+        """Refresh media description using AI - identical to Media Editor's refresh."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -594,25 +705,338 @@ def register_media_routes(agents_bp: Blueprint):
             if not agent.client:
                 return jsonify({"error": "Agent is not authenticated"}), 400
             
-            # Delete from agent's config directory using DirectoryMediaSource
-            if hasattr(agent, "config_directory") and agent.config_directory:
-                config_media_dir = Path(agent.config_directory) / "media"
-                if config_media_dir.exists():
-                    from media.media_sources import get_directory_media_source
-                    dir_source = get_directory_media_source(config_media_dir)
-                    
-                    # Use DirectoryMediaSource's delete method which updates both file and cache
-                    try:
-                        dir_source.delete_record(unique_id)
-                        logger.info(f"Deleted description cache for {unique_id}")
-                    except Exception as e:
-                        logger.warning(f"Error deleting cached record for {unique_id}: {e}")
+            # Get agent's config media directory
+            config_media_dir = get_agent_media_dir(agent)
+            config_media_dir.mkdir(parents=True, exist_ok=True)
+            media_cache_source = get_directory_media_source(config_media_dir)
             
-            # The next time the media is accessed, it will be regenerated by AI
-            return jsonify({"success": True, "message": "Description cache cleared, will regenerate on next access"})
+            # Load the record (or bootstrap one if media exists but metadata is not curated yet)
+            data = media_cache_source.get_cached_record(unique_id)
+            if not data:
+                data = {"unique_id": unique_id, "kind": "photo"}
+                logger.debug(
+                    "Refresh-from-AI: bootstrapping missing metadata record for %s in agent %s",
+                    unique_id,
+                    agent_config_name,
+                )
+            
+            # Force the AI pipeline to regenerate a fresh description
+            logger.debug(
+                "Refresh-from-AI: clearing cached description for %s in agent %s",
+                unique_id,
+                agent_config_name,
+            )
+            data["description"] = None
+            data.pop("failure_reason", None)
+            from media.media_source import MediaStatus
+            data["status"] = MediaStatus.TEMPORARY_FAILURE.value
+            
+            # Save the updated record
+            media_cache_source.put(unique_id, data)
+            
+            # Find the media file
+            media_file = None
+            if data.get("media_file"):
+                candidate = config_media_dir / data["media_file"]
+                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
+                    media_file = candidate
+            
+            if not media_file:
+                from media.file_resolver import find_media_file
+                media_file = find_media_file(config_media_dir, unique_id)
+                if media_file and not data.get("media_file"):
+                    try:
+                        data["media_file"] = media_file.name
+                        media_cache_source.put(unique_id, data)
+                    except Exception as e:
+                        logger.debug(f"Could not patch media_file for {unique_id}: {e}")
+
+            # If the file is not in the agent config media dir, attempt promotion from state/media.
+            if not media_file:
+                try:
+                    state_media_dir = get_state_media_path()
+                    if state_media_dir and state_media_dir.exists():
+                        state_svc = get_media_service(state_media_dir)
+                        state_record = state_svc.get_record(unique_id)
+                        state_media_file = state_svc.resolve_media_file(unique_id, state_record)
+                        if state_media_file and state_media_file.exists():
+                            config_media_dir.mkdir(parents=True, exist_ok=True)
+                            promoted_target = config_media_dir / state_media_file.name
+                            if not promoted_target.exists():
+                                shutil.move(str(state_media_file), str(promoted_target))
+                            media_file = promoted_target
+
+                            merged = (state_record or {}).copy()
+                            # Keep existing state metadata when present; only force refresh-specific fields.
+                            for key, value in data.items():
+                                if key in {"description", "status", "failure_reason", "unique_id", "media_file"}:
+                                    merged[key] = value
+                                elif key not in merged:
+                                    merged[key] = value
+                            merged["unique_id"] = unique_id
+                            merged["media_file"] = promoted_target.name
+                            media_cache_source.put(unique_id, merged)
+                            data = merged
+
+                            # Remove state metadata and any leftover state-side files to avoid duplicates.
+                            try:
+                                state_svc.delete_media_files(unique_id, record=state_record)
+                            except Exception as e:
+                                logger.debug("State media file cleanup failed for %s: %s", unique_id, e)
+                            try:
+                                state_svc.delete_record(unique_id)
+                            except Exception as e:
+                                logger.debug("State media metadata cleanup failed for %s: %s", unique_id, e)
+
+                            logger.info(
+                                "Refresh-from-AI: promoted %s from state/media to %s",
+                                unique_id,
+                                config_media_dir,
+                            )
+                except Exception as e:
+                    logger.debug(
+                        "Refresh-from-AI: state/media promotion failed for %s: %s",
+                        unique_id,
+                        e,
+                    )
+
+            # Last-resort fallback: pull media directly from Telegram and cache in config media dir.
+            if not media_file:
+                async def _download_from_telegram(client: TelegramClient):
+                    from media.mime_utils import (
+                        detect_mime_type_from_bytes,
+                        get_file_extension_from_mime_or_bytes,
+                        is_audio_mime_type,
+                        is_image_mime_type,
+                        is_tgs_mime_type,
+                        is_video_mime_type,
+                    )
+
+                    media_obj = None
+                    object_kind_hint = "photo"
+                    hinted_mime = "image/jpeg"
+
+                    async for message in client.iter_messages("me", limit=None):
+                        photo = getattr(message, "photo", None)
+                        if photo:
+                            uid = get_unique_id(photo)
+                            if uid and str(uid) == unique_id:
+                                media_obj = photo
+                                # Profile/video photos should be treated as video.
+                                is_video_photo = bool(getattr(photo, "video_sizes", None))
+                                object_kind_hint = "video" if is_video_photo else "photo"
+                                hinted_mime = "video/mp4" if is_video_photo else "image/jpeg"
+                                break
+
+                        document = getattr(message, "document", None)
+                        if document:
+                            uid = get_unique_id(document)
+                            if uid and str(uid) == unique_id:
+                                media_obj = document
+                                hinted_mime = getattr(document, "mime_type", None) or hinted_mime
+                                if hinted_mime.startswith("video/"):
+                                    object_kind_hint = "video"
+                                elif hinted_mime.startswith("audio/"):
+                                    object_kind_hint = "audio"
+                                elif hinted_mime == "application/x-tgsticker":
+                                    object_kind_hint = "animated_sticker"
+                                elif hinted_mime.startswith("image/"):
+                                    object_kind_hint = "sticker"
+                                else:
+                                    object_kind_hint = "document"
+                                break
+
+                    if not media_obj:
+                        me = await client.get_me()
+                        profile_photos = await client.get_profile_photos(me, limit=None)
+                        for photo in profile_photos:
+                            uid = get_unique_id(photo)
+                            if uid and str(uid) == unique_id:
+                                media_obj = photo
+                                is_video_photo = bool(getattr(photo, "video_sizes", None))
+                                object_kind_hint = "video" if is_video_photo else "photo"
+                                hinted_mime = "video/mp4" if is_video_photo else "image/jpeg"
+                                break
+
+                    if not media_obj:
+                        return None
+
+                    media_bytes = await download_media_bytes(client, media_obj)
+                    if not media_bytes:
+                        return None
+
+                    # Use all available signals (Telegram object + hinted MIME + detected bytes)
+                    # to pick both metadata kind and cached file extension.
+                    detected_mime = detect_mime_type_from_bytes(media_bytes[:1024])
+                    final_mime = hinted_mime
+                    if detected_mime and detected_mime != "application/octet-stream":
+                        final_mime = detected_mime
+
+                    if is_tgs_mime_type(final_mime):
+                        final_kind = "animated_sticker"
+                    elif final_mime == "audio/mp4" or is_audio_mime_type(final_mime):
+                        final_kind = "audio"
+                    elif is_video_mime_type(final_mime):
+                        final_kind = "video"
+                    elif is_image_mime_type(final_mime):
+                        # Keep sticker intent for known sticker-like documents; otherwise treat as photo.
+                        final_kind = "sticker" if object_kind_hint in {"sticker", "animated_sticker"} else "photo"
+                    else:
+                        final_kind = object_kind_hint or "photo"
+
+                    file_extension = get_file_extension_from_mime_or_bytes(final_mime, media_bytes) or ".jpg"
+                    return {
+                        "media_bytes": media_bytes,
+                        "file_extension": file_extension,
+                        "kind": final_kind,
+                        "mime_type": final_mime,
+                    }
+
+                try:
+                    downloaded = agent.execute(_download_from_telegram(agent.client), timeout=120.0)
+                    if downloaded and downloaded.get("media_bytes"):
+                        data["kind"] = downloaded.get("kind") or data.get("kind") or "photo"
+                        data["mime_type"] = downloaded.get("mime_type") or data.get("mime_type")
+                        media_cache_source.put(
+                            unique_id,
+                            data,
+                            media_bytes=downloaded["media_bytes"],
+                            file_extension=downloaded.get("file_extension") or ".jpg",
+                        )
+                        refreshed = media_cache_source.get_cached_record(unique_id) or data
+                        data = refreshed
+                        if refreshed.get("media_file"):
+                            candidate = config_media_dir / refreshed["media_file"]
+                            if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
+                                media_file = candidate
+                                logger.info(
+                                    "Refresh-from-AI: downloaded and cached %s to %s",
+                                    unique_id,
+                                    candidate,
+                                )
+                except Exception as e:
+                    logger.debug(
+                        "Refresh-from-AI: Telegram download fallback failed for %s: %s",
+                        unique_id,
+                        e,
+                    )
+            
+            if not media_file:
+                return jsonify({"error": "Media file not found"}), 404
+            
+            # Reset the media description budget for this refresh request
+            import config
+            from media.media_budget import reset_description_budget
+            reset_description_budget(config.MEDIA_DESC_BUDGET_PER_TICK)
+            logger.info(
+                f"Refresh-from-AI: reset budget to {config.MEDIA_DESC_BUDGET_PER_TICK} for {unique_id}"
+            )
+            
+            # Create media chain for AI generation
+            from media.media_source import (
+                AIGeneratingMediaSource,
+                AIChainMediaSource,
+                CompositeMediaSource,
+                UnsupportedFormatMediaSource,
+                BudgetExhaustedMediaSource,
+            )
+            
+            unsupported_source = UnsupportedFormatMediaSource()
+            budget_source = BudgetExhaustedMediaSource()
+            ai_source = AIGeneratingMediaSource(cache_directory=config_media_dir)
+            
+            media_chain = CompositeMediaSource(
+                [
+                    AIChainMediaSource(
+                        cache_source=media_cache_source,
+                        unsupported_source=unsupported_source,
+                        budget_source=budget_source,
+                        ai_source=ai_source,
+                    )
+                ]
+            )
+            
+            # Determine media kind from MIME type
+            from media.mime_utils import (
+                get_mime_type_from_file_extension,
+                is_tgs_mime_type,
+                is_audio_mime_type,
+                is_video_mime_type,
+                is_image_mime_type,
+            )
+            
+            mime_type = data.get("mime_type")
+            if not mime_type:
+                mime_type = get_mime_type_from_file_extension(media_file)
+            
+            if is_tgs_mime_type(mime_type):
+                media_kind = "animated_sticker"
+            elif mime_type == "audio/mp4":
+                media_kind = "audio"
+            elif is_audio_mime_type(mime_type):
+                media_kind = "audio"
+            elif is_video_mime_type(mime_type):
+                media_kind = "video"
+            elif is_image_mime_type(mime_type):
+                media_kind = "photo"
+            else:
+                media_kind = data.get("kind", "photo")
+            
+            # Run the media chain in agent's event loop
+            async def _refresh_coro(client: TelegramClient):
+                logger.info(
+                    "Refreshing AI description for %s using agent %s",
+                    unique_id,
+                    agent_config_name,
+                )
+                
+                record = await media_chain.get(
+                    unique_id=unique_id,
+                    agent=agent,
+                    doc=media_file,  # Path object
+                    kind=media_kind,
+                    sticker_set_name=data.get("sticker_set_name"),
+                    sticker_name=data.get("sticker_name"),
+                    sender_id=None,
+                    sender_name=None,
+                    channel_id=None,
+                    channel_name=None,
+                    media_ts=None,
+                    duration=data.get("duration"),
+                    mime_type=mime_type,
+                    skip_fallback=True,
+                )
+                return record
+            
+            try:
+                record = agent.execute(_refresh_coro(agent.client), timeout=120.0)
+            except Exception as e:
+                logger.error(f"Failed to refresh AI description: {e}")
+                return jsonify({"error": f"Failed to refresh AI description: {e}"}), 500
+            
+            if record:
+                new_description = record.get("description")
+                new_status = record.get("status", "ok")
+                logger.info(
+                    "Got fresh AI description for %s (status=%s): %s",
+                    unique_id,
+                    new_status,
+                    (new_description[:50] + "…") if new_description else "None",
+                )
+                
+                # Return the new data like Media Editor does
+                return jsonify({
+                    "description": new_description,
+                    "status": new_status,
+                    "failure_reason": record.get("failure_reason")
+                })
+            else:
+                return jsonify({"error": "Failed to generate description"}), 500
             
         except Exception as e:
             logger.error(f"Error refreshing description for {unique_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({"error": str(e)}), 500
     
     @agents_bp.route("/api/agents/<agent_config_name>/media/<unique_id>/set-profile-photo", methods=["POST"])

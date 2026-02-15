@@ -2832,6 +2832,7 @@ function renderMediaItem(agentName, mediaItem) {
     
     // Status
     const statusPara = document.createElement('p');
+    statusPara.id = `agent-media-status-display-${mediaItem.unique_id}`;
     statusPara.style.margin = '4px 0';
     statusPara.innerHTML = `<strong>Status:</strong> ${mediaItem.status || 'unknown'}`;
     contentDiv.appendChild(statusPara);
@@ -2978,6 +2979,17 @@ async function saveMediaDescription(agentName, uniqueId) {
                 statusEl.textContent = 'Saved';
                 statusEl.style.color = '#28a745';
             }
+
+            // Mark Media Editor stale so it reloads when navigating back
+            window.mediaEditorNeedsRefresh = true;
+            
+            // Update status display if returned
+            if (data.status) {
+                const statusPara = document.getElementById(`agent-media-status-display-${uniqueId}`);
+                if (statusPara) {
+                    statusPara.innerHTML = `<strong>Status:</strong> ${data.status}`;
+                }
+            }
         }
     } catch (error) {
         console.error('Error saving description:', error);
@@ -2994,9 +3006,39 @@ function editMediaDescription(agentName, uniqueId, descDiv) {
 }
 
 async function refreshMediaDescription(agentName, uniqueId) {
-    if (!confirm('Regenerate description using AI? This will clear the current description.')) {
+    const textarea = document.getElementById(`agent-media-desc-${uniqueId}`);
+    
+    if (!textarea) {
+        console.error(`Textarea not found for ${uniqueId}`);
         return;
     }
+    
+    // Find the button by looking for the parent container and finding the refresh button
+    const mediaItemContainer = textarea.closest('.media-item');
+    if (!mediaItemContainer) {
+        console.error(`Media item container not found for ${uniqueId}`);
+        return;
+    }
+    
+    // Find the refresh button within this media item
+    const buttons = mediaItemContainer.querySelectorAll('button');
+    let button = null;
+    for (const btn of buttons) {
+        if (btn.textContent.includes('Refresh from AI') || btn.textContent.includes('Generating...')) {
+            button = btn;
+            break;
+        }
+    }
+    
+    if (!button) {
+        console.error(`Refresh button not found for ${uniqueId}`);
+        return;
+    }
+    
+    // Disable button and show loading state
+    button.disabled = true;
+    button.textContent = 'Generating...';
+    button.style.background = '#007bff';
     
     try {
         const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/refresh-description`, {
@@ -3005,16 +3047,38 @@ async function refreshMediaDescription(agentName, uniqueId) {
         
         const data = await response.json();
         if (data.error) {
-            alert('Error refreshing description: ' + data.error);
+            alert('Error refreshing from AI: ' + data.error);
+            button.textContent = 'Refresh from AI';
+            button.style.background = '#6c757d';
+            button.disabled = false;
             return;
         }
         
-        alert('Description cache cleared. It will regenerate on next access.');
-        loadAgentMedia(agentName);
+        // Update the textarea with the new AI-generated description
+        textarea.value = data.description || '';
+        
+        // Update status display if returned
+        if (data.status) {
+            const statusPara = document.getElementById(`agent-media-status-display-${uniqueId}`);
+            if (statusPara) {
+                statusPara.innerHTML = `<strong>Status:</strong> ${data.status}`;
+            }
+        }
+
+        // Mark Media Editor stale so it reloads when navigating back
+        window.mediaEditorNeedsRefresh = true;
+        
+        // Reset button
+        button.textContent = 'Refresh from AI';
+        button.style.background = '#6c757d';
+        button.disabled = false;
         
     } catch (error) {
         console.error('Error refreshing description:', error);
         alert('Error refreshing description');
+        button.textContent = 'Refresh from AI';
+        button.style.background = '#6c757d';
+        button.disabled = false;
     }
 }
 

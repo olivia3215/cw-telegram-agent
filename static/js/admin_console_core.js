@@ -595,6 +595,8 @@ function switchSubtab(subtabName) {
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
             } else if (subtabName === 'media') {
+                // Visiting Agent->Media should mark Media Editor stale
+                window.mediaEditorNeedsRefresh = true;
                 // Always reload to ensure fresh data if Media Editor made changes
                 loadAgentMedia(agentName);
             }

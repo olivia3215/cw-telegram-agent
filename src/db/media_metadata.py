@@ -15,6 +15,125 @@ from db.connection import get_db_connection
 logger = logging.getLogger(__name__)
 
 
+def list_media_unique_ids(
+    *,
+    page: int,
+    page_size: int,
+    limit: int | None,
+    search: str | None,
+    media_type: str,
+) -> "media.media_service.MediaListingResult":
+    """
+    List unique_ids from media_metadata with optional filtering and pagination.
+
+    This is used for the `state/media` directory (MySQL-backed) listing in the media editor.
+
+    Notes:
+    - `media_type` must be one of: all, stickers, emoji, video, photos, audio, other
+    - When `limit` is provided, filtering is applied to only the N most recent items
+      by `updated_at`, then paginated.
+    """
+    # Local import to avoid circular import at module import time
+    from media.media_service import MediaListingResult
+
+    page = max(1, int(page))
+    page_size = max(1, min(100, int(page_size)))
+
+    valid_media_types = {"all", "stickers", "emoji", "video", "photos", "audio", "other"}
+    if media_type not in valid_media_types:
+        media_type = "all"
+
+    where_clauses: list[str] = []
+    params: list[Any] = []
+
+    # Apply media type filter
+    if media_type != "all":
+        if media_type == "stickers":
+            where_clauses.append(
+                "(kind IN ('sticker', 'animated_sticker') AND (is_emoji_set IS NULL OR is_emoji_set = 0))"
+            )
+        elif media_type == "emoji":
+            where_clauses.append(
+                "(kind IN ('sticker', 'animated_sticker') AND is_emoji_set = 1)"
+            )
+        elif media_type == "video":
+            where_clauses.append("kind IN ('video', 'animation')")
+        elif media_type == "photos":
+            where_clauses.append("kind = 'photo'")
+        elif media_type == "audio":
+            where_clauses.append("kind = 'audio'")
+        elif media_type == "other":
+            where_clauses.append(
+                "kind NOT IN ('sticker', 'animated_sticker', 'video', 'animation', 'photo', 'audio')"
+            )
+
+    # Apply search filter
+    if search:
+        search_pattern = f"%{search}%"
+        where_clauses.append(
+            "(unique_id LIKE %s OR description LIKE %s OR sticker_set_name LIKE %s OR sticker_name LIKE %s)"
+        )
+        params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+    unique_ids: list[str] = []
+    total_count = 0
+    offset = (page - 1) * page_size
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            # Total count
+            if limit:
+                count_sql = f"""
+                    SELECT COUNT(*) as total FROM (
+                        SELECT unique_id, kind, is_emoji_set, description,
+                               sticker_set_name, sticker_name
+                        FROM media_metadata
+                        ORDER BY updated_at DESC
+                        LIMIT %s
+                    ) AS limited
+                    WHERE {where_sql}
+                """
+                cursor.execute(count_sql, [limit] + params)
+            else:
+                count_sql = f"SELECT COUNT(*) as total FROM media_metadata WHERE {where_sql}"
+                cursor.execute(count_sql, params)
+            total_count = int(cursor.fetchone()["total"])
+
+            # Page unique_ids
+            if limit:
+                query_sql = f"""
+                    SELECT unique_id FROM (
+                        SELECT unique_id, updated_at, kind, is_emoji_set, description,
+                               sticker_set_name, sticker_name, mime_type
+                        FROM media_metadata
+                        ORDER BY updated_at DESC
+                        LIMIT %s
+                    ) AS limited
+                    WHERE {where_sql}
+                    ORDER BY updated_at DESC
+                    LIMIT %s OFFSET %s
+                """
+                cursor.execute(query_sql, [limit] + params + [page_size, offset])
+            else:
+                query_sql = f"""
+                    SELECT unique_id FROM media_metadata
+                    WHERE {where_sql}
+                    ORDER BY updated_at DESC
+                    LIMIT %s OFFSET %s
+                """
+                cursor.execute(query_sql, params + [page_size, offset])
+
+            rows = cursor.fetchall()
+            unique_ids = [row["unique_id"] for row in rows]
+        finally:
+            cursor.close()
+
+    return MediaListingResult(unique_ids=unique_ids, total_count=total_count)
+
+
 def load_media_metadata(unique_id: str) -> dict[str, Any] | None:
     """
     Load media metadata by unique ID.

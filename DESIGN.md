@@ -595,6 +595,28 @@ CompositeMediaSource([
 **Priority order**: Global curated > AI cache > AI generation
 **Within each level**: Earlier config directories in `CINDY_AGENT_CONFIG_PATH` take precedence
 
+### Separation of Responsibilities (Media Pipeline vs Admin Console)
+
+To keep behavior consistent and avoid “double sources of truth”, we maintain a clean split:
+
+- **Media pipeline (`src/media/`) owns**:
+  - **Which backend** is authoritative for a given directory (configdir JSON vs MySQL for `state/media`)
+  - **Resolving media files** (finding `{unique_id}.*`, honoring `media_file`, patching `media_file` when missing)
+  - **Caching rules** and invariants (e.g., curated overrides AI cache)
+  - **Directory-specific writes**: updates apply only to the backend corresponding to the directory being edited
+
+- **Admin console (`src/admin_console/` + `static/js/`) owns**:
+  - Request validation, auth, response formatting
+  - UI behavior (pagination/search, refresh triggers, etc.)
+  - Calling pipeline/service APIs (it should not “guess” storage backends or crawl directories ad-hoc)
+
+To support this, common primitives are centralized:
+
+- **Agent curated media directory**: `media.agent_media.get_agent_media_dir(agent)` returns the canonical path:
+  - `{agent.config_directory}/media`
+- **Media file resolution**: `media.file_resolver.find_media_file(media_dir, unique_id)` resolves `{unique_id}.*` within a directory
+  - Callers that explicitly want curated→state fallback can use `find_media_file_with_fallback(...)`, but the pipeline should decide when fallback is appropriate.
+
 ### Directory Hierarchy
 
 Curated descriptions (human-generated) are in **config directories**, NOT state:
@@ -1410,6 +1432,8 @@ Once verified, the admin console can impersonate any agent by making explicit AP
 
 The Media Editor provides a REST API for browsing, searching, and managing media descriptions. The API is designed to handle large media collections efficiently through backend pagination and filtering.
 
+**Implementation note:** The admin console routes delegate backend decisions (MySQL vs JSON), listing/filtering/pagination, and media-file resolution (`media_file` vs `{unique_id}.*`) to `media.media_service.MediaService`. This keeps HTTP handlers thin and ensures operations apply only to the backend corresponding to the directory being edited.
+
 ### Pagination and Filtering
 
 **Query Parameters:**
@@ -1543,14 +1567,14 @@ LIMIT @page_size OFFSET @offset
 ```
 
 **Filesystem Backend (config directories):**
-- Loads all JSON files from directory
+- Loads JSON records via `DirectoryMediaSource` through `MediaService`
 - Filters in-memory by media type and search
 - Sorts by file modification time
 - Paginates in-memory
 - Expected performance: < 5 seconds for < 1000 items
 
 **Fallback Behavior:**
-If MySQL query fails (connection error, etc.), the system automatically falls back to filesystem implementation with logging. SQL syntax errors are returned to the user as they indicate a bug.
+If MySQL listing fails for `state/media` (connection error, SQL failure, etc.), the API request fails with an error response and logs the root cause. There is no automatic fallback to filesystem for `state/media` because that backend is intentionally authoritative for metadata.
 
 ### Security
 

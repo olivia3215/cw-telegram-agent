@@ -1015,9 +1015,28 @@ def api_get_conversation(agent_config_name: str, user_id: str):
 
         # Use agent.execute() to run the coroutines on the agent's event loop
         try:
+            # Get saved media unique_ids from agent's Saved Messages
+            async def _get_saved_media_unique_ids():
+                """Get list of unique_ids for all media in agent's Saved Messages."""
+                from telegram_media import get_unique_id
+                saved_unique_ids = set()
+                try:
+                    async for message in agent.client.iter_messages("me", limit=None):
+                        # Check both photo and document
+                        media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+                        if media_obj:
+                            unique_id = get_unique_id(media_obj)
+                            if unique_id:
+                                saved_unique_ids.add(str(unique_id))
+                except Exception as e:
+                    logger.warning(f"Error fetching saved media unique_ids: {e}")
+                return list(saved_unique_ids)
+            
             messages = agent.execute(_get_messages(), timeout=30.0)
             # Check blocked status
             is_blocked = agent.execute(_check_blocked_status(), timeout=10.0)
+            # Get saved media unique_ids
+            saved_media_unique_ids = agent.execute(_get_saved_media_unique_ids(), timeout=30.0)
             # Get agent timezone identifier (IANA format for JavaScript compatibility)
             agent_tz_id = agent.get_timezone_identifier()
 
@@ -1034,7 +1053,8 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 "summaries": summaries,
                 "agent_timezone": agent_tz_id,
                 "is_blocked": is_blocked,
-                "task_logs": filtered_task_logs
+                "task_logs": filtered_task_logs,
+                "saved_media_unique_ids": saved_media_unique_ids
             })
         except RuntimeError as e:
             error_msg = str(e).lower()
