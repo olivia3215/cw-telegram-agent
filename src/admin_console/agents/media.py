@@ -190,33 +190,26 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error loading Saved Messages photos for {agent.name}: {e}")
     
-    # Load descriptions and status from cache (state/media or config/media)
+    # Load descriptions and status from agent's config directory only
+    # (Agent media should never use MySQL cache - that's only for state/media)
     for unique_id_str, media_item in media_by_unique_id.items():
         try:
-            # Try MySQL cache first
-            record = media_metadata.load_media_metadata(unique_id_str)
-            if record:
-                if record.get("description"):
-                    media_item["description"] = record["description"]
-                if record.get("status"):
-                    media_item["status"] = record["status"]
-            else:
-                # Try config directory media
-                if hasattr(agent, "config_directory") and agent.config_directory:
-                    config_media_dir = Path(agent.config_directory) / "media"
-                    if config_media_dir.exists():
-                        json_file = config_media_dir / f"{unique_id_str}.json"
-                        if json_file.exists():
-                            import json
-                            try:
-                                with open(json_file, "r", encoding="utf-8") as f:
-                                    config_record = json.load(f)
-                                    if config_record.get("description"):
-                                        media_item["description"] = config_record["description"]
-                                    if config_record.get("status"):
-                                        media_item["status"] = config_record["status"]
-                            except Exception as e:
-                                logger.debug(f"Error reading config media JSON for {unique_id_str}: {e}")
+            # Load from config directory only
+            if hasattr(agent, "config_directory") and agent.config_directory:
+                config_media_dir = Path(agent.config_directory) / "media"
+                if config_media_dir.exists():
+                    json_file = config_media_dir / f"{unique_id_str}.json"
+                    if json_file.exists():
+                        import json
+                        try:
+                            with open(json_file, "r", encoding="utf-8") as f:
+                                config_record = json.load(f)
+                                if config_record.get("description"):
+                                    media_item["description"] = config_record["description"]
+                                if config_record.get("status"):
+                                    media_item["status"] = config_record["status"]
+                        except Exception as e:
+                            logger.debug(f"Error reading config media JSON for {unique_id_str}: {e}")
         except Exception as e:
             logger.debug(f"Error loading metadata for {unique_id_str}: {e}")
     
