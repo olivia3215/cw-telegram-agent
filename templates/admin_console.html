@@ -230,52 +230,57 @@
 
                             <div class="agent-param-section">
                                 <h3>Agent Instructions</h3>
-                                <textarea id="new-agent-prompt" class="agent-param-input" rows="6" style="resize: vertical;"></textarea>
+                                <textarea id="new-agent-prompt" class="agent-param-input" rows="6" style="resize: vertical;">You are a helpful assistant.</textarea>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Agent LLM</h3>
+                                    <h3>Agent LLM (optional)</h3>
                                     <input id="new-agent-llm" type="text" class="agent-param-input" list="new-agent-llm-options" placeholder="Type or select an LLM model...">
                                     <datalist id="new-agent-llm-options"></datalist>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Agent Timezone</h3>
+                                    <h3>Agent Timezone (optional)</h3>
                                     <select id="new-agent-timezone" class="agent-param-input"></select>
                                 </div>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Role Prompts (one per line)</h3>
-                                    <textarea id="new-agent-role-prompts" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                                    <h3>Role Prompts</h3>
+                                    <select id="new-agent-role-prompts" class="agent-param-input" multiple size="6" style="min-width: 200px;"></select>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Select one or more (Ctrl/Cmd+click)</div>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Sticker Sets (one per line)</h3>
+                                    <h3>Sticker Sets (optional) (one per line)</h3>
                                     <textarea id="new-agent-sticker-sets" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
                                 </div>
                             </div>
 
                             <div class="agent-param-section">
-                                <h3>Explicit Stickers (one per line, SET :: STICKER)</h3>
+                                <h3>Explicit Stickers (optional) (one per line, SET :: STICKER)</h3>
                                 <textarea id="new-agent-explicit-stickers" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
                             </div>
 
                             <div class="agent-param-section">
-                                <h3>Daily Schedule</h3>
-                                <textarea id="new-agent-daily-schedule" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
+                                <h3>Daily Schedule (optional)</h3>
+                                <label style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <input id="new-agent-daily-schedule-enabled" type="checkbox">
+                                    Enabled
+                                </label>
+                                <textarea id="new-agent-daily-schedule" class="agent-param-input" rows="4" style="resize: vertical;" disabled></textarea>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Reset Context On First Message</h3>
+                                    <h3>Reset Context On First Message (optional)</h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-reset-context" type="checkbox">
                                         Enabled
                                     </label>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Clear Summaries On First Message</h3>
+                                    <h3>Clear Summaries On First Message (optional)</h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-clear-summaries" type="checkbox">
                                         Enabled
@@ -285,7 +290,7 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Gagged</h3>
+                                    <h3>Gagged (optional)</h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-gagged" type="checkbox">
                                         Enabled
@@ -295,11 +300,11 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Start Typing Delay (seconds)</h3>
+                                    <h3>Start Typing Delay (optional) (seconds)</h3>
                                     <input id="new-agent-start-typing-delay" type="number" class="agent-param-input" min="1" max="3600" step="0.1">
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Typing Speed (chars/sec)</h3>
+                                    <h3>Typing Speed (optional) (chars/sec)</h3>
                                     <input id="new-agent-typing-speed" type="number" class="agent-param-input" min="1" max="1000" step="0.1">
                                 </div>
                             </div>
