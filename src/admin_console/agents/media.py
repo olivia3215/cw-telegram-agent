@@ -10,10 +10,11 @@ Manages media in agent's Saved Messages and profile photos.
 
 import base64
 import logging
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, jsonify, request, send_file  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import SendMediaRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.photos import (  # pyright: ignore[reportMissingImports]
     DeletePhotosRequest,
@@ -632,9 +633,9 @@ def register_media_routes(agents_bp: Blueprint):
             logger.error(f"Error removing profile photo {unique_id} for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
     
-    @agents_bp.route("/api/agents/<agent_config_name>/media/<unique_id>/thumbnail", methods=["GET"])
-    def api_get_media_thumbnail(agent_config_name: str, unique_id: str):
-        """Get media thumbnail."""
+    @agents_bp.route("/api/agents/<agent_config_name>/media/<unique_id>/file", methods=["GET"])
+    def api_get_media_file(agent_config_name: str, unique_id: str):
+        """Get media file."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -643,21 +644,22 @@ def register_media_routes(agents_bp: Blueprint):
             if not agent.client:
                 return jsonify({"error": "Agent is not authenticated"}), 400
             
-            thumbnail_bytes = agent.execute(
+            media_bytes = agent.execute(
                 _get_media_thumbnail(agent, agent.client, unique_id),
                 timeout=30.0
             )
             
-            if not thumbnail_bytes:
-                return jsonify({"error": "Thumbnail not found"}), 404
+            if not media_bytes:
+                return jsonify({"error": "Media not found"}), 404
             
-            # Return as base64 data URL
+            # Return raw image bytes
             mime_type = "image/jpeg"  # Default for Telegram photos
-            base64_data = base64.b64encode(thumbnail_bytes).decode("utf-8")
-            data_url = f"data:{mime_type};base64,{base64_data}"
-            
-            return jsonify({"thumbnail": data_url})
+            return send_file(
+                BytesIO(media_bytes),
+                mimetype=mime_type,
+                as_attachment=False
+            )
             
         except Exception as e:
-            logger.error(f"Error getting thumbnail for {unique_id}: {e}")
+            logger.error(f"Error getting media file for {unique_id}: {e}")
             return jsonify({"error": str(e)}), 500
