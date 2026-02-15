@@ -14,11 +14,16 @@ from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import SendMediaRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.photos import (  # pyright: ignore[reportMissingImports]
     DeletePhotosRequest,
     UploadProfilePhotoRequest,
 )
-from telethon.tl.types import InputPhoto  # pyright: ignore[reportMissingImports]
+from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
+    InputMediaPhoto,
+    InputPeerSelf,
+    InputPhoto,
+)
 
 from admin_console.helpers import (
     get_agent_by_name,
@@ -38,51 +43,78 @@ logger = logging.getLogger(__name__)
 
 async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
     """
-    List media from agent's Saved Messages and Profile Photos.
+    List media from agent's Saved Messages with profile photo indicators.
     
     Args:
         agent: Agent instance
         client: Telethon client
         
     Returns:
-        List of media items with deduplicated unique_ids
+        List of media items from Saved Messages with is_profile_photo flags
     """
     media_by_unique_id: dict[str, dict[str, Any]] = {}
     
-    # Get profile photos
+    # Get agent's Telegram ID and current profile photos
     try:
         me = await client.get_me()
-        profile_photos = await client.get_profile_photos(me, limit=None)
+        agent_telegram_id = me.id
         
+        # Get current profile photo unique_ids
+        profile_photo_unique_ids = []
+        profile_photos = await client.get_profile_photos(me, limit=None)
         for photo in profile_photos:
             unique_id_val = get_unique_id(photo)
-            if not unique_id_val:
-                continue
+            if unique_id_val:
+                profile_photo_unique_ids.append(str(unique_id_val))
+        
+        # Query database for source media that have profile photos
+        source_media_with_profiles = agent_profile_photos.get_source_media_with_profile_photos(
+            agent_telegram_id, 
+            profile_photo_unique_ids
+        )
+        
+        # ORPHAN RECOVERY: Copy unmapped profile photos to Saved Messages
+        # This handles profile photos that existed before this feature, or after DB reset
+        for profile_photo_id in profile_photo_unique_ids:
+            mapping = agent_profile_photos.get_sources_for_profile_photos(
+                agent_telegram_id, [profile_photo_id]
+            )
+            if not mapping:  # Orphaned - has no source mapping
+                logger.info(f"Found orphaned profile photo {profile_photo_id}, copying to Saved Messages")
                 
-            unique_id_str = str(unique_id_val)
-            
-            # Determine media kind (profile photos can be photo or video)
-            # Check if it's a video by looking at photo attributes
-            is_video = hasattr(photo, 'video_sizes') and photo.video_sizes
-            media_kind = "video" if is_video else "photo"
-            can_be_profile = True  # Photos and videos can be profile pictures
-            
-            # Get or create media entry
-            if unique_id_str not in media_by_unique_id:
-                media_by_unique_id[unique_id_str] = {
-                    "unique_id": unique_id_str,
-                    "is_profile_photo": True,
-                    "can_be_profile_photo": can_be_profile,
-                    "media_kind": media_kind,
-                    "description": None,
-                    "message_id": None,
-                }
-            else:
-                # Mark existing entry as profile photo
-                media_by_unique_id[unique_id_str]["is_profile_photo"] = True
+                # Find the profile photo object
+                for photo in profile_photos:
+                    if str(get_unique_id(photo)) == profile_photo_id:
+                        try:
+                            # Copy to Saved Messages using SendMediaRequest (preserves unique_id!)
+                            result = await client(SendMediaRequest(
+                                peer=InputPeerSelf(),
+                                media=InputMediaPhoto(
+                                    id=InputPhoto(
+                                        id=photo.id,
+                                        access_hash=photo.access_hash,
+                                        file_reference=photo.file_reference
+                                    )
+                                ),
+                                message=""
+                            ))
+                            
+                            # Create self-mapping: profile photo IS its own source
+                            agent_profile_photos.add_profile_photo_mapping(
+                                agent_telegram_id,
+                                profile_photo_id,
+                                profile_photo_id  # Same ID!
+                            )
+                            
+                            source_media_with_profiles.add(profile_photo_id)
+                            logger.info(f"Recovered orphaned profile photo {profile_photo_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to recover orphaned profile photo {profile_photo_id}: {e}")
+                        break
                 
     except Exception as e:
-        logger.error(f"Error loading profile photos for {agent.name}: {e}")
+        logger.error(f"Error loading profile photo mappings for {agent.name}: {e}")
+        source_media_with_profiles = set()
     
     # Get photos from Saved Messages
     try:
@@ -98,20 +130,19 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                     is_video = hasattr(photo, 'video_sizes') and photo.video_sizes
                     media_kind = "video" if is_video else "photo"
                     
-                    # Get or create media entry
+                    # Check if this source media has a profile photo
+                    is_profile = unique_id_str in source_media_with_profiles
+                    
+                    # Create media entry (only from Saved Messages now)
                     if unique_id_str not in media_by_unique_id:
                         media_by_unique_id[unique_id_str] = {
                             "unique_id": unique_id_str,
-                            "is_profile_photo": False,
+                            "is_profile_photo": is_profile,
                             "can_be_profile_photo": True,
                             "media_kind": media_kind,
                             "description": None,
                             "message_id": message.id,
                         }
-                    else:
-                        # Update message_id if not set
-                        if media_by_unique_id[unique_id_str]["message_id"] is None:
-                            media_by_unique_id[unique_id_str]["message_id"] = message.id
             
             # Check for video/document (videos can also be profile pictures)
             document = getattr(message, "document", None)
@@ -139,20 +170,19 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                         media_kind = "document"
                         can_be_profile = False
                     
-                    # Get or create media entry
+                    # Check if this source media has a profile photo
+                    is_profile = unique_id_str in source_media_with_profiles
+                    
+                    # Create media entry (only from Saved Messages now)
                     if unique_id_str not in media_by_unique_id:
                         media_by_unique_id[unique_id_str] = {
                             "unique_id": unique_id_str,
-                            "is_profile_photo": False,
+                            "is_profile_photo": is_profile,
                             "can_be_profile_photo": can_be_profile,
                             "media_kind": media_kind,
                             "description": None,
                             "message_id": message.id,
                         }
-                    else:
-                        # Update message_id if not set
-                        if media_by_unique_id[unique_id_str]["message_id"] is None:
-                            media_by_unique_id[unique_id_str]["message_id"] = message.id
                     
     except Exception as e:
         logger.error(f"Error loading Saved Messages photos for {agent.name}: {e}")
@@ -234,6 +264,10 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
     Returns:
         True if successful
     """
+    # Get agent's Telegram ID
+    me = await client.get_me()
+    agent_telegram_id = me.id
+    
     # Find the media in Saved Messages (can be photo or video)
     media_obj = None
     async for message in client.iter_messages("me", limit=None):
@@ -269,76 +303,79 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
     
     if is_video:
         # Upload video profile photo
-        await client(UploadProfilePhotoRequest(video=uploaded_file))
+        result = await client(UploadProfilePhotoRequest(video=uploaded_file))
     else:
         # Upload photo profile photo
-        await client(UploadProfilePhotoRequest(file=uploaded_file))
+        result = await client(UploadProfilePhotoRequest(file=uploaded_file))
+    
+    # Extract new profile photo unique_id and record mapping
+    if hasattr(result, 'photo'):
+        new_profile_photo = result.photo
+        new_profile_unique_id = get_unique_id(new_profile_photo)
+        if new_profile_unique_id:
+            agent_profile_photos.add_profile_photo_mapping(
+                agent_telegram_id,
+                str(new_profile_unique_id),
+                unique_id  # source media unique_id
+            )
+            logger.info(f"Recorded profile photo mapping: {new_profile_unique_id} -> {unique_id}")
     
     return True
 
 
-async def _remove_profile_photo(agent, client, unique_id: str) -> bool:
+async def _remove_profile_photo(agent, client, source_unique_id: str) -> bool:
     """
-    Remove photo from profile photos and ensure it's in Saved Messages.
+    Remove profile photos linked to this source media.
     
     Args:
         agent: Agent instance
         client: Telethon client
-        unique_id: Media unique ID
+        source_unique_id: Source media unique ID
         
     Returns:
         True if successful
     """
+    # Get agent's Telegram ID
     me = await client.get_me()
+    agent_telegram_id = me.id
+    
+    # Get profile photo IDs for this source
+    profile_photo_ids = agent_profile_photos.get_profile_photos_for_source(
+        agent_telegram_id,
+        source_unique_id
+    )
+    
+    if not profile_photo_ids:
+        logger.info(f"No profile photos found for source {source_unique_id}")
+        return True
+    
+    # Get current profile photos
     profile_photos = await client.get_profile_photos(me, limit=None)
     
-    # Find the photo with matching unique_id
-    target_photo = None
+    # Delete matching profile photos
+    deleted_count = 0
     for photo in profile_photos:
-        unique_id_val = get_unique_id(photo)
-        if unique_id_val and str(unique_id_val) == unique_id:
-            target_photo = photo
-            break
+        photo_unique_id = get_unique_id(photo)
+        if photo_unique_id and str(photo_unique_id) in profile_photo_ids:
+            try:
+                await client(DeletePhotosRequest(
+                    id=[InputPhoto(
+                        id=photo.id,
+                        access_hash=photo.access_hash,
+                        file_reference=photo.file_reference
+                    )]
+                ))
+                
+                agent_profile_photos.remove_profile_photo_mapping(
+                    agent_telegram_id,
+                    str(photo_unique_id)
+                )
+                deleted_count += 1
+                logger.info(f"Deleted profile photo {photo_unique_id} for source {source_unique_id}")
+            except Exception as e:
+                logger.error(f"Error deleting profile photo {photo_unique_id}: {e}")
     
-    if not target_photo:
-        raise ValueError(f"Photo with unique_id {unique_id} not found in profile photos")
-    
-    # Check if media already exists in Saved Messages
-    already_in_saved = False
-    async for message in client.iter_messages("me", limit=None):
-        photo = getattr(message, "photo", None)
-        if photo:
-            msg_unique_id = get_unique_id(photo)
-            if msg_unique_id and str(msg_unique_id) == unique_id:
-                already_in_saved = True
-                break
-        
-        # Check documents (for videos)
-        document = getattr(message, "document", None)
-        if document:
-            msg_unique_id = get_unique_id(document)
-            if msg_unique_id and str(msg_unique_id) == unique_id:
-                already_in_saved = True
-                break
-    
-    # If not in Saved Messages, upload it there first
-    if not already_in_saved:
-        # Download the media
-        media_bytes = await download_media_bytes(client, target_photo)
-        
-        # Upload to Saved Messages
-        await client.send_file("me", media_bytes, attributes=[])
-        logger.info(f"Uploaded media {unique_id} to Saved Messages before removing from profile")
-    
-    # Now delete from profile photos
-    await client(DeletePhotosRequest(
-        id=[InputPhoto(
-            id=target_photo.id,
-            access_hash=target_photo.access_hash,
-            file_reference=target_photo.file_reference
-        )]
-    ))
-    
+    logger.info(f"Deleted {deleted_count} profile photo(s) for source {source_unique_id}")
     return True
 
 
