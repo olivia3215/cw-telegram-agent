@@ -896,7 +896,16 @@ function moveMedia(uniqueId) {
 }
 
 function deleteMedia(uniqueId) {
-    const mediaName = document.querySelector(`#desc-${uniqueId}`).placeholder || 'this media item';
+    const descElement = document.querySelector(`#desc-${uniqueId}`);
+    let mediaName = uniqueId;
+    
+    if (descElement) {
+        // Use the value if present, otherwise use unique_id (not placeholder)
+        const descValue = descElement.value ? descElement.value.trim() : '';
+        if (descValue) {
+            mediaName = descValue;
+        }
+    }
 
     if (confirm(`Are you sure you want to delete ${mediaName}? This will permanently remove both the media file and description.`)) {
         const button = document.getElementById(`delete-btn-${uniqueId}`);

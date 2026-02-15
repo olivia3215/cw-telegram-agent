@@ -672,15 +672,23 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 from db import media_metadata
                 from media.media_sources import get_directory_media_source
                 from telegram_media import get_unique_id
+                from telethon.tl.functions.messages import SendMediaRequest
+                from telethon.tl.types import (
+                    InputMediaPhoto,
+                    InputMediaDocument,
+                    InputPhoto,
+                    InputDocument,
+                    InputPeerSelf
+                )
                 
-                # Get the message and download media
+                # Get the message and send the specific media to Saved Messages
                 try:
                     user_id_int = int(user_id)
                     message_id_int = int(message_id)
                 except ValueError:
                     raise ValueError("Invalid user_id or message_id")
                 
-                # Get the message
+                # Get the message to verify it exists and has media
                 message = await agent.client.get_messages(user_id_int, ids=message_id_int)
                 if not message:
                     raise ValueError(f"Message {message_id} not found in conversation with {user_id}")
@@ -701,20 +709,66 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                 if not target_media:
                     raise ValueError(f"Media with unique_id {unique_id} not found in message")
                 
-                # Download media bytes
-                media_bytes = await download_media_bytes(agent.client, target_media.media)
+                # Get the actual Telegram media object (Photo or Document)
+                media_obj = target_media.file_ref
                 
-                # Upload to Saved Messages
-                sent_message = await agent.client.send_file("me", media_bytes, attributes=[])
+                # Send only this specific media to Saved Messages using SendMediaRequest
+                # This preserves unique_id and avoids copying unwanted content from the message
+                if hasattr(media_obj, 'id'):  # It's a Photo
+                    result = await agent.client(SendMediaRequest(
+                        peer=InputPeerSelf(),
+                        media=InputMediaPhoto(
+                            id=InputPhoto(
+                                id=media_obj.id,
+                                access_hash=media_obj.access_hash,
+                                file_reference=media_obj.file_reference
+                            )
+                        ),
+                        message=""
+                    ))
+                elif hasattr(media_obj, 'id'):  # It's a Document
+                    result = await agent.client(SendMediaRequest(
+                        peer=InputPeerSelf(),
+                        media=InputMediaDocument(
+                            id=InputDocument(
+                                id=media_obj.id,
+                                access_hash=media_obj.access_hash,
+                                file_reference=media_obj.file_reference
+                            )
+                        ),
+                        message=""
+                    ))
+                else:
+                    raise ValueError(f"Media object for {unique_id} does not have required attributes")
                 
-                # Get unique_id from sent message to verify
+                # Extract the sent message from the result
+                sent_message = None
+                if hasattr(result, 'updates'):
+                    for update in result.updates:
+                        if hasattr(update, 'message'):
+                            sent_message = update.message
+                            break
+                
+                if not sent_message:
+                    raise ValueError("Failed to send media to Saved Messages")
+                
+                # Verify the sent message has media
                 sent_photo = getattr(sent_message, "photo", None)
-                if not sent_photo:
-                    raise ValueError("Failed to upload media to Saved Messages")
+                sent_document = getattr(sent_message, "document", None)
                 
-                sent_unique_id = get_unique_id(sent_photo)
+                if not sent_photo and not sent_document:
+                    raise ValueError("Sent message does not contain media")
+                
+                # Get unique_id from sent message - should match original
+                sent_unique_id = get_unique_id(sent_photo or sent_document)
                 if not sent_unique_id:
-                    raise ValueError("Could not get unique_id from uploaded media")
+                    raise ValueError("Could not get unique_id from sent media")
+                
+                # Verify unique_id matches (it should, since we used InputMedia)
+                if str(sent_unique_id) != unique_id:
+                    logger.warning(f"Sent media unique_id {sent_unique_id} does not match original {unique_id}")
+                
+                logger.info(f"Saved media {unique_id} to Saved Messages (message {sent_message.id}, unique_id preserved)")
                 
                 # Check if media is cached in state/media
                 state_media_path = get_state_media_path()

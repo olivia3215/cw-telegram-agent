@@ -2778,33 +2778,59 @@ async function loadAgentMedia(agentName) {
 }
 
 function renderMediaItem(agentName, mediaItem) {
+    // Skip items without unique_id
+    if (!mediaItem || !mediaItem.unique_id) {
+        console.error('Media item missing unique_id:', mediaItem);
+        return document.createElement('div'); // Return empty div
+    }
+    
     const div = document.createElement('div');
     div.className = 'media-item';
     div.dataset.uniqueId = mediaItem.unique_id;
     
-    // Thumbnail
+    // Thumbnail container (like media-preview)
+    const thumbnailDiv = document.createElement('div');
+    thumbnailDiv.className = 'media-thumbnail';
+    
     const img = document.createElement('img');
-    img.className = 'media-thumbnail';
-    img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Loading...</text></svg>';
+    img.src = `${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/file`;
     img.alt = 'Media';
+    img.onerror = function() {
+        console.error('Failed to load media:', mediaItem.unique_id);
+        this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Failed to load</text></svg>';
+    };
     
-    // Load thumbnail asynchronously
-    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/thumbnail`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.thumbnail) {
-                img.src = data.thumbnail;
-            }
-        })
-        .catch(error => {
-            console.error('Error loading thumbnail:', error);
-        });
-    
-    div.appendChild(img);
+    thumbnailDiv.appendChild(img);
+    div.appendChild(thumbnailDiv);
     
     // Content container
     const contentDiv = document.createElement('div');
     contentDiv.className = 'media-item-content';
+    
+    // Title with filename and unique_id
+    const title = document.createElement('h3');
+    title.style.marginTop = '0';
+    title.style.marginBottom = '10px';
+    title.style.fontSize = '16px';
+    // Show unique_id if no filename, or filename + unique_id if both
+    if (mediaItem.file_name) {
+        title.textContent = `${mediaItem.file_name} (${mediaItem.unique_id})`;
+    } else {
+        title.textContent = mediaItem.unique_id;
+    }
+    contentDiv.appendChild(title);
+    
+    // Type
+    const typePara = document.createElement('p');
+    typePara.style.margin = '4px 0';
+    typePara.innerHTML = `<strong>Type:</strong> ${mediaItem.media_kind || 'unknown'}`;
+    contentDiv.appendChild(typePara);
+    
+    // Status
+    const statusPara = document.createElement('p');
+    statusPara.style.margin = '4px 0';
+    statusPara.innerHTML = `<strong>Status:</strong> ${mediaItem.status || 'unknown'}`;
+    contentDiv.appendChild(statusPara);
     
     // Description textarea (like media editor)
     const textarea = document.createElement('textarea');
@@ -2820,6 +2846,7 @@ function renderMediaItem(agentName, mediaItem) {
     textarea.style.fontSize = '14px';
     textarea.style.resize = 'vertical';
     textarea.style.boxSizing = 'border-box';
+    textarea.style.marginTop = '10px';
     textarea.oninput = () => scheduleMediaDescriptionSave(agentName, mediaItem.unique_id);
     contentDiv.appendChild(textarea);
     
@@ -2885,7 +2912,7 @@ function renderMediaItem(agentName, mediaItem) {
     deleteBtn.style.border = 'none';
     deleteBtn.style.borderRadius = '3px';
     deleteBtn.style.cursor = 'pointer';
-    deleteBtn.onclick = () => deleteMedia(agentName, mediaItem.unique_id);
+    deleteBtn.onclick = () => deleteAgentMedia(agentName, mediaItem.unique_id);
     controlsDiv.appendChild(deleteBtn);
     
     contentDiv.appendChild(controlsDiv);
@@ -3020,7 +3047,7 @@ async function toggleProfilePhoto(agentName, uniqueId, isChecked) {
     }
 }
 
-async function deleteMedia(agentName, uniqueId) {
+async function deleteAgentMedia(agentName, uniqueId) {
     if (!confirm('Delete this media from Saved Messages?')) {
         return;
     }

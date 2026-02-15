@@ -28,6 +28,7 @@ from admin_console.helpers import (
 )
 from config import CONFIG_DIRECTORIES
 from db import media_metadata
+from db import agent_profile_photos
 from media.media_sources import get_directory_media_source
 from telegram_download import download_media_bytes
 from telegram_media import get_unique_id

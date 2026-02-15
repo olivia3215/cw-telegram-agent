@@ -1576,3 +1576,124 @@ If MySQL query fails (connection error, etc.), the system automatically falls ba
 - Directory paths validated and resolved via `resolve_media_path()`
 - Paths checked against configured media directories
 - Relative paths and symbolic links handled safely
+
+## Agent Profile Photo Management
+
+The admin console provides a Media management page for each agent that allows managing profile photos and media in the agent's Saved Messages. This system tracks the relationship between profile photos and their source media.
+
+### The Profile Photo Problem
+
+In Telegram's architecture, **profile photos and Saved Messages photos are separate objects with different unique_ids**. When you upload a photo from Saved Messages to the profile, Telegram's API creates a completely new photo object with a new unique_id. This creates a tracking challenge:
+
+- Source photo in Saved Messages: `unique_id = "12345"`
+- Upload to profile → New profile photo: `unique_id = "67890"`
+- These are **different objects** in Telegram's system
+
+### Solution: Database Mapping
+
+We maintain a MySQL table that maps profile photo unique_ids back to their source media:
+
+```sql
+CREATE TABLE agent_profile_photos (
+    agent_telegram_id BIGINT NOT NULL,
+    profile_photo_unique_id VARCHAR(255) NOT NULL,
+    source_media_unique_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (agent_telegram_id, profile_photo_unique_id),
+    INDEX idx_source (agent_telegram_id, source_media_unique_id)
+);
+```
+
+**Key Design Points:**
+- Each row represents: "Profile photo X came from source media Y for agent Z"
+- Composite primary key on (agent_telegram_id, profile_photo_unique_id)
+- Index on (agent_telegram_id, source_media_unique_id) for reverse lookup
+- Supports multiple agents using the same media (different profile photo IDs)
+
+### Workflow
+
+**Setting a Profile Photo:**
+1. User checks "Profile" checkbox on a Saved Messages photo
+2. Backend downloads photo from Saved Messages
+3. Backend uploads to Telegram profile (creates new profile photo with new unique_id)
+4. Backend records mapping: `(agent_id, new_profile_unique_id, source_unique_id)`
+
+**Listing Media:**
+1. Backend fetches agent's current profile photos from Telegram
+2. Backend queries database for source media that map to current profile photos
+3. Backend marks those source media as `is_profile_photo = true` in API response
+4. Frontend shows checkbox as checked
+
+**Removing Profile Photo:**
+1. User unchecks "Profile" checkbox
+2. Backend queries database for profile photo IDs linked to this source media
+3. Backend deletes those profile photos from Telegram
+4. Backend removes mappings from database
+
+**Orphan Cleanup:**
+- Periodically remove mappings for profile photos that no longer exist
+- Prevents database bloat from deleted profile photos
+
+**Orphaned Profile Photo Recovery:**
+- Profile photos without database mappings (e.g., from before feature launch, after DB reset, manually uploaded)
+- Automatically detected during media listing
+- Copied to Saved Messages using `SendMediaRequest` which **preserves unique_id**
+- Creates self-mapping where profile photo ID equals source media ID
+- Result: Orphaned photo appears in Saved Messages with checkbox checked
+
+### How Orphan Recovery Works
+
+When a profile photo has no database mapping:
+
+```python
+# Copy profile photo to Saved Messages
+result = await client(SendMediaRequest(
+    peer=InputPeerSelf(),
+    media=InputMediaPhoto(
+        id=InputPhoto(
+            id=profile_photo.id,
+            access_hash=profile_photo.access_hash,
+            file_reference=profile_photo.file_reference
+        )
+    ),
+    message=""
+))
+
+# Create self-mapping: profile photo IS its own source
+add_profile_photo_mapping(agent_id, profile_photo_id, profile_photo_id)
+```
+
+**Key insight:** `SendMediaRequest` with `InputMediaPhoto` preserves the unique_id because Telegram recognizes it's referencing the same server-side media object.
+
+### API Module
+
+**Location:** `src/db/agent_profile_photos.py`
+
+**Functions:**
+- `add_profile_photo_mapping(agent_telegram_id, profile_photo_unique_id, source_media_unique_id)`
+- `remove_profile_photo_mapping(agent_telegram_id, profile_photo_unique_id)`
+- `get_profile_photos_for_source(agent_telegram_id, source_media_unique_id)` → list[str]
+- `get_source_media_with_profile_photos(agent_telegram_id, profile_photo_unique_ids)` → set[str]
+- `cleanup_orphaned_mappings(agent_telegram_id, current_profile_photo_unique_ids)`
+
+### Why Not Store in JSON?
+
+We considered storing the profile photo list in each media's JSON metadata file (in the config directory), but chose MySQL because:
+
+1. **Multiple agents**: Config directories are shared; JSON would need complex agent-specific structure
+2. **State media**: Photos cached in `state/media` use MySQL, not JSON
+3. **Querying**: Database queries are simpler than scanning JSON files
+4. **Consistency**: All profile photo state in one place
+
+### Integration Points
+
+**Admin Console Routes:** `src/admin_console/agents/media.py`
+- `api_list_agent_media()` - Uses database to mark profile photos
+- `api_set_profile_photo()` - Adds mapping after upload
+- `api_remove_profile_photo()` - Queries and deletes mapped photos
+
+**Frontend:** `static/js/admin_console_agents.js`
+- Checkbox state driven by `is_profile_photo` field from API
+- Toggle checkbox calls set/remove API endpoints
+- UI only shows Saved Messages photos (not profile photos directly)
+
