@@ -469,6 +469,11 @@ class DirectoryMediaSource(MediaSource):
             record = self._mem_cache.get(unique_id)
             return record.copy() if record else None
 
+    def list_unique_ids(self) -> list[str]:
+        """Return all cached unique IDs for this directory source."""
+        with self._lock:
+            return list(self._mem_cache.keys())
+
     def delete_record(self, unique_id: str) -> None:
         """Delete the JSON and media cache for a record."""
         with self._lock:

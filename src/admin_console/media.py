@@ -48,6 +48,7 @@ from media.media_source import (
     get_emoji_unicode_name,
 )
 from media.media_sources import get_directory_media_source
+from media.media_service import get_media_service
 from media.mime_utils import (
     detect_mime_type_from_bytes,
     get_mime_type_from_file_extension,
@@ -162,12 +163,16 @@ def api_media_list():
         state_media_path = get_state_media_path()
 
         # Use MediaSource API to read media descriptions
-        # For state/media, use the default chain (includes MySQLMediaSource)
-        # For other directories, use directory source only
+        # IMPORTANT:
+        # - For state/media, we must NOT consult curated config directories, otherwise the state view
+        #   will show (and appear to edit) metadata from config dirs, causing confusing duplicates.
+        # - For other directories, use directory source only.
         if is_state_media:
-            # Use the default media source chain which includes MySQL
-            media_chain = get_default_media_source_chain()
-            cache_source = None  # Not used when MySQL is enabled
+            from media.mysql_media_source import MySQLMediaSource
+
+            cache_source = MySQLMediaSource(directory_source=get_directory_media_source(media_dir))
+            unsupported_source = UnsupportedFormatMediaSource()
+            media_chain = CompositeMediaSource([cache_source, unsupported_source])
         else:
             # Create a chain with DirectoryMediaSource and UnsupportedFormatMediaSource
             # but without AIGeneratingMediaSource (no AI generation in listing)
@@ -232,195 +237,18 @@ def api_media_list():
         asyncio.set_event_loop(loop)
         
         try:
-            # Get unique IDs with filtering applied at database level for MySQL
-            unique_ids = []
-            total_count = 0  # Total count matching filters (for pagination)
+            # MediaService handles listing/filtering/pagination for both backends.
+            svc = get_media_service(media_dir)
+            listing = svc.list_unique_ids(
+                page=page,
+                page_size=page_size,
+                limit=limit,
+                search=search_query,
+                media_type=media_type,
+            )
+            unique_ids = listing.unique_ids
+            total_count = listing.total_count
             use_mysql = is_state_media
-            
-            if is_state_media:
-                # For MySQL, build query with limit, media_type, search, and pagination
-                try:
-                    from db.connection import get_db_connection
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        try:
-                            # Build WHERE clause for filters
-                            where_clauses = []
-                            params = []
-                            
-                            # Apply media type filter
-                            if media_type != "all":
-                                if media_type == "stickers":
-                                    where_clauses.append("(kind IN ('sticker', 'animated_sticker') AND (is_emoji_set IS NULL OR is_emoji_set = 0))")
-                                elif media_type == "emoji":
-                                    where_clauses.append("(kind IN ('sticker', 'animated_sticker') AND is_emoji_set = 1)")
-                                elif media_type == "video":
-                                    where_clauses.append("kind IN ('video', 'animation')")
-                                elif media_type == "photos":
-                                    where_clauses.append("kind = 'photo'")
-                                elif media_type == "audio":
-                                    where_clauses.append("kind = 'audio'")
-                                elif media_type == "other":
-                                    where_clauses.append("kind NOT IN ('sticker', 'animated_sticker', 'video', 'animation', 'photo', 'audio')")
-                            
-                            # Apply search filter
-                            if search_query:
-                                search_pattern = f"%{search_query}%"
-                                where_clauses.append(
-                                    "(unique_id LIKE %s OR description LIKE %s OR sticker_set_name LIKE %s OR sticker_name LIKE %s)"
-                                )
-                                params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
-                            
-                            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-                            
-                            # Note: where_sql is constructed from hardcoded clauses only (media_type is validated
-                            # against a whitelist) and parameterized search patterns. No user input is interpolated
-                            # directly into the SQL string, making this safe from SQL injection.
-                            
-                            # Get total count matching filters (within limit if specified)
-                            if limit:
-                                # Count only within the N most recent items
-                                # Use updated_at for sorting (most recent first)
-                                # IMPORTANT: Must select all columns needed for WHERE clause
-                                count_sql = f"""
-                                    SELECT COUNT(*) as total FROM (
-                                        SELECT unique_id, kind, is_emoji_set, description, 
-                                               sticker_set_name, sticker_name
-                                        FROM media_metadata
-                                        ORDER BY updated_at DESC
-                                        LIMIT %s
-                                    ) AS limited
-                                    WHERE {where_sql}
-                                """
-                                cursor.execute(count_sql, [limit] + params)
-                            else:
-                                count_sql = f"SELECT COUNT(*) as total FROM media_metadata WHERE {where_sql}"
-                                cursor.execute(count_sql, params)
-                            
-                            total_count = cursor.fetchone()["total"]
-                            
-                            # Get paginated unique_ids
-                            offset = (page - 1) * page_size
-                            
-                            if limit:
-                                # Query within the N most recent items
-                                query_sql = f"""
-                                    SELECT unique_id FROM (
-                                        SELECT unique_id, updated_at, kind, is_emoji_set, description, 
-                                               sticker_set_name, sticker_name, mime_type
-                                        FROM media_metadata
-                                        ORDER BY updated_at DESC
-                                        LIMIT %s
-                                    ) AS limited
-                                    WHERE {where_sql}
-                                    ORDER BY updated_at DESC
-                                    LIMIT %s OFFSET %s
-                                """
-                                cursor.execute(query_sql, [limit] + params + [page_size, offset])
-                            else:
-                                query_sql = f"""
-                                    SELECT unique_id FROM media_metadata
-                                    WHERE {where_sql}
-                                    ORDER BY updated_at DESC
-                                    LIMIT %s OFFSET %s
-                                """
-                                cursor.execute(query_sql, params + [page_size, offset])
-                            
-                            rows = cursor.fetchall()
-                            unique_ids = [row["unique_id"] for row in rows]
-                        finally:
-                            cursor.close()
-                except Exception as e:
-                    logger.warning(f"Failed to load unique IDs from MySQL: {e}, falling back to filesystem")
-                    use_mysql = False
-                    # Fall back to filesystem - initialize cache_source and media_chain
-                    cache_source = get_directory_media_source(media_dir)
-                    unsupported_source = UnsupportedFormatMediaSource()
-                    media_chain = CompositeMediaSource(
-                        [
-                            cache_source,
-                            unsupported_source,
-                        ]
-                    )
-                    # Fall through to filesystem handling below
-            
-            if not use_mysql:
-                # Filesystem implementation: load all, filter, sort, paginate
-                all_json_files = list(media_dir.glob("*.json"))
-                
-                # Load metadata for filtering
-                all_items = []
-                for json_file in all_json_files:
-                    try:
-                        unique_id = json_file.stem
-                        record = cache_source.get_cached_record(unique_id)
-                        if not record:
-                            continue
-                        
-                        # Get file modification time for sorting
-                        media_file_path = find_media_file(media_dir, unique_id)
-                        mod_time = media_file_path.stat().st_mtime if media_file_path and media_file_path.exists() else 0
-                        
-                        all_items.append({
-                            "unique_id": unique_id,
-                            "record": record,
-                            "mod_time": mod_time
-                        })
-                    except Exception as e:
-                        logger.debug(f"Error loading {json_file}: {e}")
-                        continue
-                
-                # Sort by modification time (most recent first)
-                all_items.sort(key=lambda x: x["mod_time"], reverse=True)
-                
-                # Apply limit if specified
-                if limit:
-                    all_items = all_items[:limit]
-                
-                # Apply media type filter
-                if media_type != "all":
-                    filtered_items = []
-                    for item in all_items:
-                        record = item["record"]
-                        kind = record.get("kind", "unknown")
-                        is_emoji_set = record.get("is_emoji_set", False)
-                        
-                        if media_type == "stickers" and kind in ("sticker", "animated_sticker") and not is_emoji_set:
-                            filtered_items.append(item)
-                        elif media_type == "emoji" and kind in ("sticker", "animated_sticker") and is_emoji_set:
-                            filtered_items.append(item)
-                        elif media_type == "video" and kind in ("video", "animation"):
-                            filtered_items.append(item)
-                        elif media_type == "photos" and kind == "photo":
-                            filtered_items.append(item)
-                        elif media_type == "audio" and kind == "audio":
-                            filtered_items.append(item)
-                        elif media_type == "other" and kind not in ("sticker", "animated_sticker", "video", "animation", "photo", "audio"):
-                            filtered_items.append(item)
-                    all_items = filtered_items
-                
-                # Apply search filter
-                if search_query:
-                    search_lower = search_query.lower()
-                    filtered_items = []
-                    for item in all_items:
-                        record = item["record"]
-                        unique_id = item["unique_id"]
-                        
-                        # Search in unique_id, description, sticker_set_name, sticker_name
-                        if (search_lower in unique_id.lower() or
-                            search_lower in (record.get("description") or "").lower() or
-                            search_lower in (record.get("sticker_set_name") or "").lower() or
-                            search_lower in (record.get("sticker_name") or "").lower()):
-                            filtered_items.append(item)
-                    all_items = filtered_items
-                
-                total_count = len(all_items)
-                
-                # Paginate
-                offset = (page - 1) * page_size
-                paginated_items = all_items[offset:offset + page_size]
-                unique_ids = [item["unique_id"] for item in paginated_items]
             
             # Process each unique ID
             for unique_id in unique_ids:
@@ -433,6 +261,40 @@ def api_media_list():
                     if not record:
                         logger.warning(f"No record found for {unique_id}")
                         continue
+
+                    # If we are listing state/media and this unique_id already exists in any config directory,
+                    # it has been "promoted"/curated and should not also appear in state/media.
+                    # Clean up the state copy (MySQL + any leftover files) to avoid duplicates.
+                    if is_state_media and state_media_path:
+                        try:
+                            from config import CONFIG_DIRECTORIES
+
+                            curated_exists = False
+                            for config_dir in CONFIG_DIRECTORIES:
+                                config_media_dir = Path(config_dir) / "media"
+                                if not config_media_dir.exists() or not config_media_dir.is_dir():
+                                    continue
+                                if find_media_file(config_media_dir, unique_id) is not None:
+                                    curated_exists = True
+                                    break
+
+                            if curated_exists:
+                                # Remove state/media copy (MySQL + any leftover files) to avoid duplicates.
+                                try:
+                                    state_svc = get_media_service(state_media_path)
+                                    state_svc.delete_media_files(unique_id, record=record)
+                                    state_svc.delete_record(unique_id)
+                                except Exception as e:
+                                    logger.debug(
+                                        "Failed to delete state media for %s: %s",
+                                        unique_id,
+                                        e,
+                                    )
+
+                                # Skip this item so it doesn't appear in state/media list
+                                continue
+                        except Exception as e:
+                            logger.debug("Curated-duplicate cleanup failed for %s: %s", unique_id, e)
 
                     # Look for associated media file: (1) use metadata first, (2) glob then patch
                     media_file_path = None
@@ -455,11 +317,7 @@ def api_media_list():
                             try:
                                 record["media_file"] = media_file_path.name
                                 base_dir = media_file_path.parent
-                                if is_state_media_directory(base_dir):
-                                    from db import media_metadata
-                                    media_metadata.save_media_metadata(record)
-                                else:
-                                    get_directory_media_source(base_dir).put(unique_id, record)
+                                get_media_service(base_dir).put_record(unique_id, record)
                             except Exception as e:
                                 logger.debug(f"Could not patch media_file for {unique_id}: {e}")
                     media_file = str(media_file_path) if media_file_path else None
@@ -573,8 +431,7 @@ def api_media_list():
                                     record["sticker_set_title"] = sticker_set_title
                                 # Save to MySQL or filesystem
                                 if use_mysql:
-                                    from db import media_metadata
-                                    media_metadata.save_media_metadata(record)
+                                    get_media_service(media_dir).put_record(unique_id, record)
                                 else:
                                     cache_source.put(unique_id, record)
                     else:
@@ -697,38 +554,15 @@ def api_media_file(unique_id: str):
         is_state_media = is_state_media_directory(media_dir)
         state_media_path = get_state_media_path()
 
-        # (1) Use media_file from metadata first; (2) if missing, glob then patch
-        media_file = None
-        record = None
-        if is_state_media:
-            from db import media_metadata
-            record = media_metadata.load_media_metadata(unique_id)
-        else:
-            record = get_directory_media_source(media_dir).get_cached_record(unique_id)
-        if record and record.get("media_file"):
-            bases = [media_dir]
-            if state_media_path:
-                bases.append(state_media_path)
-            for base in bases:
-                if not base or not base.exists():
-                    continue
-                candidate = base / record["media_file"]
-                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
-                    media_file = candidate
-                    break
-        if not media_file:
-            media_file = find_media_file(media_dir, unique_id)
-            if media_file and record and not record.get("media_file"):
-                try:
-                    record["media_file"] = media_file.name
-                    base_dir = media_file.parent
-                    if is_state_media_directory(base_dir):
-                        from db import media_metadata
-                        media_metadata.save_media_metadata(record)
-                    else:
-                        get_directory_media_source(base_dir).put(unique_id, record)
-                except Exception as e:
-                    logger.debug(f"Could not patch media_file for {unique_id}: {e}")
+        # (1) Use media_file from metadata first; (2) if missing, resolve within directory and patch
+        svc = get_media_service(media_dir)
+        record = svc.get_record(unique_id)
+        media_file = svc.resolve_media_file(unique_id, record)
+        if media_file and record:
+            try:
+                svc.patch_media_file_in_record(unique_id, record, media_file)
+            except Exception as e:
+                logger.debug(f"Could not patch media_file for {unique_id}: {e}")
         if media_file:
             # Use MIME sniffing to detect the correct MIME type
             try:
@@ -762,46 +596,18 @@ def api_update_description(unique_id: str):
         if not isinstance(media_dir, Path):
             media_dir = Path(media_dir)
         
-        # Check if this is the state/media directory and MySQL backend is enabled
-        # Always use MySQL for state/media
-        is_state_media = is_state_media_directory(media_dir)
-        
-        if is_state_media:
-            # Load from MySQL
-            from db import media_metadata
-            record = media_metadata.load_media_metadata(unique_id)
-            if not record:
-                return jsonify({"error": "Media record not found"}), 404
-            
-            # Update description
-            new_description = request.json.get("description", "").strip()
-            record["description"] = new_description if new_description else None
-            
-            # Clear error fields if description is provided
-            if new_description:
-                record.pop("failure_reason", None)
-                record["status"] = "curated"  # Mark as curated when user edits description
-            
-            # Save to MySQL
-            media_metadata.save_media_metadata(record)
-        else:
-            # Use filesystem
-            source = get_directory_media_source(media_dir)
-            record = source.get_cached_record(unique_id)
+        svc = get_media_service(media_dir)
+        record = svc.get_record(unique_id)
+        if not record:
+            return jsonify({"error": "Media record not found"}), 404
 
-            if not record:
-                return jsonify({"error": "Media record not found"}), 404
+        new_description = request.json.get("description", "").strip()
+        record["description"] = new_description if new_description else None
+        if new_description:
+            record.pop("failure_reason", None)
+            record["status"] = "curated"
 
-            # Update description
-            new_description = request.json.get("description", "").strip()
-            record["description"] = new_description if new_description else None
-
-            # Clear error fields if description is provided
-            if new_description:
-                record.pop("failure_reason", None)
-                record["status"] = "curated"  # Mark as curated when user edits description
-
-            source.put(unique_id, record)
+        svc.put_record(unique_id, record)
 
         return jsonify({"success": True})
 
@@ -825,14 +631,9 @@ def api_refresh_from_ai(unique_id: str):
         
         # Always use MySQL for state/media
         is_state_media = is_state_media_directory(media_dir)
-        
-        # Load the record - use MySQL for state/media, otherwise filesystem
-        if is_state_media:
-            from db import media_metadata
-            data = media_metadata.load_media_metadata(unique_id)
-        else:
-            media_cache_source = get_directory_media_source(media_dir)
-            data = media_cache_source.get_cached_record(unique_id)
+
+        svc = get_media_service(media_dir)
+        data = svc.get_record(unique_id)
 
         if not data:
             return jsonify({"error": "Media record not found"}), 404
@@ -848,12 +649,7 @@ def api_refresh_from_ai(unique_id: str):
         data["status"] = MediaStatus.TEMPORARY_FAILURE.value
         
         # Save the updated record using the appropriate backend
-        if is_state_media:
-            from db import media_metadata
-            media_metadata.save_media_metadata(data)
-        else:
-            media_cache_source = get_directory_media_source(media_dir)
-            media_cache_source.put(unique_id, data)
+        svc.put_record(unique_id, data)
 
         # Use the puppetmaster's client for media operations
         # (The client isn't actually used when doc is a Path, but the interface requires it)
@@ -873,33 +669,13 @@ def api_refresh_from_ai(unique_id: str):
                 "error": f"Puppetmaster is required for media operations. {str(e)}"
             }), 400
         
-        # Find the media file: (1) use metadata first; (2) if missing, glob then patch
-        state_media_path = get_state_media_path()
-        media_file = None
-        if data.get("media_file"):
-            bases = [media_dir]
-            if state_media_path:
-                bases.append(state_media_path)
-            for base in bases:
-                if not base or not base.exists():
-                    continue
-                candidate = base / data["media_file"]
-                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() != ".json":
-                    media_file = candidate
-                    break
-        if not media_file:
-            media_file = find_media_file(media_dir, unique_id)
-            if media_file and not data.get("media_file"):
-                try:
-                    data["media_file"] = media_file.name
-                    base_dir = media_file.parent
-                    if is_state_media_directory(base_dir):
-                        from db import media_metadata
-                        media_metadata.save_media_metadata(data)
-                    else:
-                        get_directory_media_source(base_dir).put(unique_id, data)
-                except Exception as e:
-                    logger.debug(f"Could not patch media_file for {unique_id}: {e}")
+        # Find the media file: (1) use metadata first; (2) if missing, resolve within directory and patch
+        media_file = svc.resolve_media_file(unique_id, data)
+        if media_file and not data.get("media_file"):
+            try:
+                svc.patch_media_file_in_record(unique_id, data, media_file)
+            except Exception as e:
+                logger.debug(f"Could not patch media_file for {unique_id}: {e}")
         if not media_file:
             return jsonify({"error": "Media file not found"}), 404
 
@@ -1066,8 +842,7 @@ def api_move_media(unique_id: str):
         # Handle no-op case (moving state/media to itself)
         if is_from_state_media and is_to_state_media:
             # Verify record exists before returning success (consistent with other branches)
-            from db import media_metadata
-            record = media_metadata.load_media_metadata(unique_id)
+            record = get_media_service(from_dir).get_record(unique_id)
             if not record:
                 return jsonify({"error": "Media record not found"}), 404
             logger.info(f"Moving media {unique_id} from state/media to itself (no-op)")
@@ -1075,8 +850,7 @@ def api_move_media(unique_id: str):
 
         if is_from_state_media:
             # Load from MySQL
-            from db import media_metadata
-            record = media_metadata.load_media_metadata(unique_id)
+            record = get_media_service(from_dir).get_record(unique_id)
             if not record:
                 return jsonify({"error": "Media record not found"}), 404
 
@@ -1143,7 +917,7 @@ def api_move_media(unique_id: str):
                 logger.warning(f"No media file found for {unique_id} in {from_dir}")
 
             # Delete from MySQL only after successful write and file move
-            media_metadata.delete_media_metadata(unique_id)
+            get_media_service(from_dir).delete_record(unique_id)
             logger.info(f"Moved media {unique_id} from MySQL ({from_directory}) to {to_directory}")
         elif is_to_state_media:
             # Moving TO state/media (MySQL) from another directory
@@ -1169,11 +943,11 @@ def api_move_media(unique_id: str):
 
             # Save to MySQL FIRST (filters fields automatically)
             # Only move file after successful save to prevent inconsistent state
-            from db import media_metadata
+            to_svc = get_media_service(to_dir)
             # Check if MySQL already has a record (for rollback purposes)
-            original_mysql_record = media_metadata.load_media_metadata(unique_id)
+            original_mysql_record = to_svc.get_record(unique_id)
             try:
-                media_metadata.save_media_metadata(record)
+                to_svc.put_record(unique_id, record)
             except Exception as e:
                 logger.error(f"Failed to save media {unique_id} to MySQL: {e}")
                 return jsonify({"error": f"Failed to save to MySQL: {str(e)}"}), 500
@@ -1193,11 +967,11 @@ def api_move_media(unique_id: str):
                         try:
                             if original_mysql_record:
                                 # Restore the original record
-                                media_metadata.save_media_metadata(original_mysql_record)
+                                to_svc.put_record(unique_id, original_mysql_record)
                                 logger.debug(f"Restored original MySQL metadata for {unique_id} during rollback")
                             else:
                                 # No original record existed, delete the one we created
-                                media_metadata.delete_media_metadata(unique_id)
+                                to_svc.delete_record(unique_id)
                                 logger.debug(f"Deleted MySQL metadata for {unique_id} during rollback")
                         except Exception as rollback_error:
                             logger.error(f"Failed to rollback metadata save for {unique_id}: {rollback_error}")
@@ -1247,38 +1021,14 @@ def api_delete_media(unique_id: str):
         is_state_media = is_state_media_directory(media_dir)
         state_media_path = get_state_media_path()
         
+        svc = get_media_service(media_dir)
+        record = svc.get_record(unique_id)
+        if not record:
+            return jsonify({"error": "Media record not found"}), 404
+
         if is_state_media and state_media_path:
-            # Delete from MySQL and also delete the media file from disk
-            from db import media_metadata
-            record = media_metadata.load_media_metadata(unique_id)
-            if not record:
-                return jsonify({"error": "Media record not found"}), 404
-            
-            # Delete the media file from disk (similar to DirectoryMediaSource.delete_record)
-            media_file_name = record.get("media_file")
-            if media_file_name:
-                media_path = state_media_path / media_file_name
-                if media_path.exists():
-                    media_path.unlink()
-                    logger.debug(f"Deleted media file {media_file_name} from {state_media_path}")
-            else:
-                # Try common extensions if media_file field is not set
-                for ext in MEDIA_FILE_EXTENSIONS:
-                    media_path = state_media_path / f"{unique_id}{ext}"
-                    if media_path.exists():
-                        media_path.unlink()
-                        logger.debug(f"Deleted media file {unique_id}{ext} from {state_media_path}")
-                        break
-            
-            # Delete metadata from MySQL
-            media_metadata.delete_media_metadata(unique_id)
-        else:
-            # Delete from filesystem
-            source = get_directory_media_source(media_dir)
-            record = source.get_cached_record(unique_id)
-            if not record:
-                return jsonify({"error": "Media record not found"}), 404
-            source.delete_record(unique_id)
+            svc.delete_media_files(unique_id, record=record)
+        svc.delete_record(unique_id)
 
         logger.info(f"Deleted media {unique_id} from {directory_path}")
         return jsonify({"success": True})

@@ -16,6 +16,7 @@ from admin_console.agents import (
     conversation_llm,
     intentions,
     login,
+    media,
     memory,
     memberships,
     partners,
@@ -32,6 +33,7 @@ conversation.register_conversation_routes(agents_bp)
 conversation_llm.register_conversation_llm_routes(agents_bp)
 intentions.register_intention_routes(agents_bp)
 login.register_login_routes(agents_bp)
+media.register_media_routes(agents_bp)
 memory.register_memory_routes(agents_bp)
 memberships.register_membership_routes(agents_bp)
 partners.register_partner_routes(agents_bp)

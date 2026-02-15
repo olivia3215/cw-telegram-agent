@@ -11,7 +11,14 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 MAIN_SCRIPT="$PROJECT_ROOT/src/run.py"
 # Get state directory from environment variable, defaulting to "state"
 STATE_DIR="${CINDY_AGENT_STATE_DIR:-state}"
-PID_FILE="$PROJECT_ROOT/$STATE_DIR/run.pid"
+# Handle both relative and absolute paths for STATE_DIR
+if [[ "$STATE_DIR" = /* ]]; then
+    # STATE_DIR is already an absolute path
+    PID_FILE="$STATE_DIR/run.pid"
+else
+    # STATE_DIR is relative, prefix with PROJECT_ROOT
+    PID_FILE="$PROJECT_ROOT/$STATE_DIR/run.pid"
+fi
 LOG_BASE_NAME="run"
 SERVICE_NAME="Agent Server"
 

@@ -594,6 +594,11 @@ function switchSubtab(subtabName) {
                 loadAgentDocs(agentName);
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
+            } else if (subtabName === 'media') {
+                // Visiting Agent->Media should mark Media Editor stale
+                window.mediaEditorNeedsRefresh = true;
+                // Always reload to ensure fresh data if Media Editor made changes
+                loadAgentMedia(agentName);
             }
         } else {
             // No agent selected - clear profile if switching to profile subtab
@@ -602,6 +607,14 @@ function switchSubtab(subtabName) {
             }
         }
     } else if (mainTabName === 'global') {
+        // Check if Media Editor needs refresh due to Agent->Media edits
+        if (subtabName === 'media' && window.mediaEditorNeedsRefresh) {
+            window.mediaEditorNeedsRefresh = false;
+            if (currentDirectory) {
+                loadMediaFiles(currentDirectory, true); // Preserve current page
+            }
+        }
+        
         if (subtabName === 'documents-global') {
             loadGlobalDocsConfigDirectories();
         } else if (subtabName === 'role-prompts') {

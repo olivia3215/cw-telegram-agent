@@ -153,6 +153,12 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                 loadAgentDocs(agentName);
             } else if (subtabName === 'memberships') {
                 loadMemberships(agentName);
+            } else if (subtabName === 'media') {
+                // Mark that Media Editor may need refresh due to Agent->Media changes
+                window.mediaEditorNeedsRefresh = true;
+                
+                // Always reload to ensure fresh data if Media Editor made changes
+                loadAgentMedia(agentName);
             }
         }
     } else {
@@ -2737,3 +2743,520 @@ function scheduleAgentPromptAutoSave(agentName) {
 }
 
 // Load recent conversations dropdown
+
+// ============================================================================
+// Media Management Functions
+// ============================================================================
+
+async function loadAgentMedia(agentName) {
+    const container = document.getElementById('agents-media-list');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading">Loading media...</div>';
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media`);
+        const data = await response.json();
+        
+        if (data.error) {
+            container.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+            return;
+        }
+        
+        const media = data.media || [];
+        
+        if (media.length === 0) {
+            container.innerHTML = '<div class="loading">No media found. Upload media or save from conversations.</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        media.forEach(item => {
+            container.appendChild(renderMediaItem(agentName, item));
+        });
+        
+    } catch (error) {
+        console.error('Error loading media:', error);
+        container.innerHTML = `<div class="error">Error loading media</div>`;
+    }
+}
+
+function renderMediaItem(agentName, mediaItem) {
+    // Skip items without unique_id
+    if (!mediaItem || !mediaItem.unique_id) {
+        console.error('Media item missing unique_id:', mediaItem);
+        return document.createElement('div'); // Return empty div
+    }
+    
+    const div = document.createElement('div');
+    div.className = 'media-item';
+    div.dataset.uniqueId = mediaItem.unique_id;
+    
+    // Thumbnail container (like media-preview)
+    const thumbnailDiv = document.createElement('div');
+    thumbnailDiv.className = 'media-thumbnail';
+    
+    const img = document.createElement('img');
+    img.src = `${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/file`;
+    img.alt = 'Media';
+    img.onerror = function() {
+        console.error('Failed to load media:', mediaItem.unique_id);
+        this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Failed to load</text></svg>';
+    };
+    
+    thumbnailDiv.appendChild(img);
+    div.appendChild(thumbnailDiv);
+    
+    // Content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'media-item-content';
+    
+    // Title with filename and unique_id
+    const title = document.createElement('h3');
+    title.style.marginTop = '0';
+    title.style.marginBottom = '10px';
+    title.style.fontSize = '16px';
+    // Show unique_id if no filename, or filename + unique_id if both
+    if (mediaItem.file_name) {
+        title.textContent = `${mediaItem.file_name} (${mediaItem.unique_id})`;
+    } else {
+        title.textContent = mediaItem.unique_id;
+    }
+    contentDiv.appendChild(title);
+    
+    // Type
+    const typePara = document.createElement('p');
+    typePara.style.margin = '4px 0';
+    typePara.innerHTML = `<strong>Type:</strong> ${mediaItem.media_kind || 'unknown'}`;
+    contentDiv.appendChild(typePara);
+    
+    // Status
+    const statusPara = document.createElement('p');
+    statusPara.id = `agent-media-status-display-${mediaItem.unique_id}`;
+    statusPara.style.margin = '4px 0';
+    statusPara.innerHTML = `<strong>Status:</strong> ${mediaItem.status || 'unknown'}`;
+    contentDiv.appendChild(statusPara);
+    
+    // Description textarea (like media editor)
+    const textarea = document.createElement('textarea');
+    textarea.id = `agent-media-desc-${mediaItem.unique_id}`;
+    textarea.placeholder = 'Enter description...';
+    textarea.value = mediaItem.description || '';
+    textarea.style.width = '100%';
+    textarea.style.minHeight = '80px';
+    textarea.style.padding = '8px';
+    textarea.style.border = '1px solid #ddd';
+    textarea.style.borderRadius = '4px';
+    textarea.style.fontFamily = 'inherit';
+    textarea.style.fontSize = '14px';
+    textarea.style.resize = 'vertical';
+    textarea.style.boxSizing = 'border-box';
+    textarea.style.marginTop = '10px';
+    textarea.oninput = () => scheduleMediaDescriptionSave(agentName, mediaItem.unique_id);
+    contentDiv.appendChild(textarea);
+    
+    // Controls row (status + buttons)
+    const controlsDiv = document.createElement('div');
+    controlsDiv.style.display = 'flex';
+    controlsDiv.style.alignItems = 'center';
+    controlsDiv.style.marginTop = '8px';
+    controlsDiv.style.gap = '10px';
+    controlsDiv.style.flexWrap = 'wrap';
+    
+    // Save status indicator
+    const statusSpan = document.createElement('span');
+    statusSpan.id = `agent-media-status-${mediaItem.unique_id}`;
+    statusSpan.style.fontSize = '12px';
+    statusSpan.style.color = '#28a745';
+    statusSpan.textContent = 'Saved';
+    controlsDiv.appendChild(statusSpan);
+    
+    // Refresh from AI button
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = 'Refresh from AI';
+    refreshBtn.style.padding = '4px 8px';
+    refreshBtn.style.fontSize = '11px';
+    refreshBtn.style.background = '#6c757d';
+    refreshBtn.style.color = 'white';
+    refreshBtn.style.border = 'none';
+    refreshBtn.style.borderRadius = '3px';
+    refreshBtn.style.cursor = 'pointer';
+    refreshBtn.onclick = () => refreshMediaDescription(agentName, mediaItem.unique_id);
+    controlsDiv.appendChild(refreshBtn);
+    
+    // Profile Picture checkbox
+    const checkboxLabel = document.createElement('label');
+    checkboxLabel.style.display = 'flex';
+    checkboxLabel.style.alignItems = 'center';
+    checkboxLabel.style.gap = '6px';
+    checkboxLabel.style.fontSize = '11px';
+    checkboxLabel.style.cursor = mediaItem.can_be_profile_photo ? 'pointer' : 'not-allowed';
+    if (!mediaItem.can_be_profile_photo) {
+        checkboxLabel.style.opacity = '0.5';
+        checkboxLabel.title = 'This media type cannot be used as a profile picture';
+    }
+    
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = mediaItem.is_profile_photo || false;
+    checkbox.disabled = !mediaItem.can_be_profile_photo;
+    checkbox.onchange = () => toggleProfilePhoto(agentName, mediaItem.unique_id, checkbox.checked);
+    
+    const checkboxText = document.createTextNode('Profile');
+    checkboxLabel.appendChild(checkbox);
+    checkboxLabel.appendChild(checkboxText);
+    controlsDiv.appendChild(checkboxLabel);
+    
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.style.padding = '4px 8px';
+    deleteBtn.style.fontSize = '11px';
+    deleteBtn.style.background = '#dc3545';
+    deleteBtn.style.color = 'white';
+    deleteBtn.style.border = 'none';
+    deleteBtn.style.borderRadius = '3px';
+    deleteBtn.style.cursor = 'pointer';
+    deleteBtn.onclick = () => deleteAgentMedia(agentName, mediaItem.unique_id);
+    controlsDiv.appendChild(deleteBtn);
+    
+    contentDiv.appendChild(controlsDiv);
+    div.appendChild(contentDiv);
+    
+    return div;
+}
+
+// Auto-save timers for media descriptions
+const mediaDescriptionSaveTimers = {};
+
+function scheduleMediaDescriptionSave(agentName, uniqueId) {
+    // Clear existing timer
+    if (mediaDescriptionSaveTimers[uniqueId]) {
+        clearTimeout(mediaDescriptionSaveTimers[uniqueId]);
+    }
+    
+    // Update status to "typing..."
+    const statusEl = document.getElementById(`agent-media-status-${uniqueId}`);
+    if (statusEl) {
+        statusEl.textContent = 'Typing...';
+        statusEl.style.color = '#007bff';
+    }
+    
+    // Set new timer for 1 second delay
+    mediaDescriptionSaveTimers[uniqueId] = setTimeout(() => {
+        saveMediaDescription(agentName, uniqueId);
+    }, 1000);
+}
+
+async function saveMediaDescription(agentName, uniqueId) {
+    const textarea = document.getElementById(`agent-media-desc-${uniqueId}`);
+    const statusEl = document.getElementById(`agent-media-status-${uniqueId}`);
+    
+    if (!textarea) return;
+    
+    const description = textarea.value.trim();
+    
+    if (statusEl) {
+        statusEl.textContent = 'Saving...';
+        statusEl.style.color = '#007bff';
+    }
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/description`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: description })
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            if (statusEl) {
+                statusEl.textContent = 'Error';
+                statusEl.style.color = '#dc3545';
+            }
+        } else {
+            if (statusEl) {
+                statusEl.textContent = 'Saved';
+                statusEl.style.color = '#28a745';
+            }
+
+            // Mark Media Editor stale so it reloads when navigating back
+            window.mediaEditorNeedsRefresh = true;
+            
+            // Update status display if returned
+            if (data.status) {
+                const statusPara = document.getElementById(`agent-media-status-display-${uniqueId}`);
+                if (statusPara) {
+                    statusPara.innerHTML = `<strong>Status:</strong> ${data.status}`;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error saving description:', error);
+        if (statusEl) {
+            statusEl.textContent = 'Error';
+            statusEl.style.color = '#dc3545';
+        }
+    }
+}
+
+function editMediaDescription(agentName, uniqueId, descDiv) {
+    // This function is no longer used - descriptions are now always editable via textarea
+    // Kept for compatibility but can be removed
+}
+
+async function refreshMediaDescription(agentName, uniqueId) {
+    const textarea = document.getElementById(`agent-media-desc-${uniqueId}`);
+    
+    if (!textarea) {
+        console.error(`Textarea not found for ${uniqueId}`);
+        return;
+    }
+    
+    // Find the button by looking for the parent container and finding the refresh button
+    const mediaItemContainer = textarea.closest('.media-item');
+    if (!mediaItemContainer) {
+        console.error(`Media item container not found for ${uniqueId}`);
+        return;
+    }
+    
+    // Find the refresh button within this media item
+    const buttons = mediaItemContainer.querySelectorAll('button');
+    let button = null;
+    for (const btn of buttons) {
+        if (btn.textContent.includes('Refresh from AI') || btn.textContent.includes('Generating...')) {
+            button = btn;
+            break;
+        }
+    }
+    
+    if (!button) {
+        console.error(`Refresh button not found for ${uniqueId}`);
+        return;
+    }
+    
+    // Disable button and show loading state
+    button.disabled = true;
+    button.textContent = 'Generating...';
+    button.style.background = '#007bff';
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/refresh-description`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error refreshing from AI: ' + data.error);
+            button.textContent = 'Refresh from AI';
+            button.style.background = '#6c757d';
+            button.disabled = false;
+            return;
+        }
+        
+        // Update the textarea with the new AI-generated description
+        textarea.value = data.description || '';
+        
+        // Update status display if returned
+        if (data.status) {
+            const statusPara = document.getElementById(`agent-media-status-display-${uniqueId}`);
+            if (statusPara) {
+                statusPara.innerHTML = `<strong>Status:</strong> ${data.status}`;
+            }
+        }
+
+        // Mark Media Editor stale so it reloads when navigating back
+        window.mediaEditorNeedsRefresh = true;
+        
+        // Reset button
+        button.textContent = 'Refresh from AI';
+        button.style.background = '#6c757d';
+        button.disabled = false;
+        
+    } catch (error) {
+        console.error('Error refreshing description:', error);
+        alert('Error refreshing description');
+        button.textContent = 'Refresh from AI';
+        button.style.background = '#6c757d';
+        button.disabled = false;
+    }
+}
+
+async function toggleProfilePhoto(agentName, uniqueId, isChecked) {
+    try {
+        let response;
+        if (isChecked) {
+            // Set as profile photo
+            response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/set-profile-photo`, {
+                method: 'POST'
+            });
+        } else {
+            // Remove from profile photos
+            response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}/profile-photo`, {
+                method: 'DELETE'
+            });
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error: ' + data.error);
+            // Reload to revert checkbox
+            loadAgentMedia(agentName);
+            return;
+        }
+        
+        // Success - reload media list
+        loadAgentMedia(agentName);
+        
+    } catch (error) {
+        console.error('Error toggling profile photo:', error);
+        alert('Error updating profile photo');
+        loadAgentMedia(agentName);
+    }
+}
+
+async function deleteAgentMedia(agentName, uniqueId) {
+    if (!confirm('Delete this media from Saved Messages?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(uniqueId)}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error deleting media: ' + data.error);
+            return;
+        }
+        
+        // Remove from UI
+        const item = document.querySelector(`.media-item[data-unique-id="${uniqueId}"]`);
+        if (item) {
+            item.remove();
+        }
+        
+        // Check if empty
+        const container = document.getElementById('agents-media-list');
+        if (container && container.children.length === 0) {
+            container.innerHTML = '<div class="loading">No media found. Upload media or save from conversations.</div>';
+        }
+        
+    } catch (error) {
+        console.error('Error deleting media:', error);
+        alert('Error deleting media');
+    }
+}
+
+async function uploadMediaFile(agentName, file) {
+    const container = document.getElementById('agents-media-list');
+    if (!container) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/media/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        if (data.error) {
+            alert('Error uploading: ' + data.error);
+            return;
+        }
+        
+        // Reload media list
+        loadAgentMedia(agentName);
+        
+    } catch (error) {
+        console.error('Error uploading media:', error);
+        alert('Error uploading media');
+    }
+}
+
+function setupMediaDropZone() {
+    const dropZone = document.getElementById('agents-media-drop-zone');
+    if (!dropZone) return;
+    
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+    
+    // Highlight on drag over
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        }, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        }, false);
+    });
+    
+    // Handle dropped files
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        const agentName = document.getElementById('agents-agent-select')?.value;
+        if (!agentName) {
+            alert('Please select an agent first');
+            return;
+        }
+        
+        if (files.length > 0) {
+            uploadMediaFile(agentName, files[0]);
+        }
+    }, false);
+    
+    // Make it clickable
+    dropZone.addEventListener('click', () => {
+        document.getElementById('agents-media-upload-file')?.click();
+    });
+}
+
+function setupMediaUploadButton() {
+    const uploadBtn = document.getElementById('agents-media-upload-file');
+    if (!uploadBtn) return;
+    
+    // Create hidden file input
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*,video/*,audio/*';
+    fileInput.style.display = 'none';
+    fileInput.onchange = () => {
+        const agentName = document.getElementById('agents-agent-select')?.value;
+        if (!agentName) {
+            alert('Please select an agent first');
+            return;
+        }
+        
+        if (fileInput.files.length > 0) {
+            uploadMediaFile(agentName, fileInput.files[0]);
+        }
+    };
+    
+    uploadBtn.parentElement.appendChild(fileInput);
+    uploadBtn.onclick = () => fileInput.click();
+}
+
+// Initialize media upload features when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        setupMediaDropZone();
+        setupMediaUploadButton();
+    });
+} else {
+    setupMediaDropZone();
+    setupMediaUploadButton();
+}
+

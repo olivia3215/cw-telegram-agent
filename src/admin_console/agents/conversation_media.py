@@ -654,3 +654,239 @@ def register_conversation_media_routes(agents_bp: Blueprint):
         except Exception as e:
             logger.error(f"Error getting media for {agent_config_name}/{user_id}/{message_id}/{unique_id}: {e}")
             return jsonify({"error": str(e)}), 500
+    
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/media/<message_id>/<unique_id>/save", methods=["POST"])
+    def api_save_conversation_media(agent_config_name: str, user_id: str, message_id: str, unique_id: str):
+        """Save media from conversation to agent's Saved Messages and promote to config directory if cached."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+            
+            async def _save_media():
+                from admin_console.helpers import get_state_media_path, is_state_media_directory, resolve_media_path
+                from admin_console.media import api_move_media
+                from db import media_metadata
+                from media.media_sources import get_directory_media_source
+                from telegram_media import get_unique_id
+                from telethon.tl.functions.messages import SendMediaRequest
+                from telethon.tl.types import (
+                    InputMediaPhoto,
+                    InputMediaDocument,
+                    InputPhoto,
+                    InputDocument,
+                    InputPeerSelf
+                )
+                from media.agent_media import get_agent_media_dir
+                
+                # First, check if media already exists in Saved Messages
+                try:
+                    async for message in agent.client.iter_messages("me", limit=None):
+                        # Check both photo and document
+                        media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+                        if media_obj:
+                            msg_unique_id = get_unique_id(media_obj)
+                            if msg_unique_id and str(msg_unique_id) == unique_id:
+                                # Media already exists in Saved Messages
+                                return {"already_exists": True, "message": "Media already in agent's library"}
+                except Exception as e:
+                    logger.warning(f"Error checking for existing media: {e}")
+                    # Continue anyway - it's better to potentially duplicate than to fail
+                
+                # Get the message and send the specific media to Saved Messages
+                try:
+                    user_id_int = int(user_id)
+                    message_id_int = int(message_id)
+                except ValueError:
+                    raise ValueError("Invalid user_id or message_id")
+                
+                # Get the message to verify it exists and has media
+                message = await agent.client.get_messages(user_id_int, ids=message_id_int)
+                if not message:
+                    raise ValueError(f"Message {message_id} not found in conversation with {user_id}")
+                
+                # Extract media from message
+                media_items = list(iter_media_parts(message))
+                if not media_items:
+                    raise ValueError("No media found in message")
+                
+                # Find the media item with matching unique_id
+                target_media = None
+                for item in media_items:
+                    item_unique_id = str(item.unique_id) if item.unique_id else None
+                    if item_unique_id == unique_id:
+                        target_media = item
+                        break
+                
+                if not target_media:
+                    raise ValueError(f"Media with unique_id {unique_id} not found in message")
+                
+                # Get the actual Telegram media object (Photo or Document)
+                media_obj = target_media.file_ref
+                
+                # Send only this specific media to Saved Messages using SendMediaRequest
+                # This preserves unique_id and avoids copying unwanted content from the message
+                if hasattr(media_obj, 'id'):  # It's a Photo
+                    result = await agent.client(SendMediaRequest(
+                        peer=InputPeerSelf(),
+                        media=InputMediaPhoto(
+                            id=InputPhoto(
+                                id=media_obj.id,
+                                access_hash=media_obj.access_hash,
+                                file_reference=media_obj.file_reference
+                            )
+                        ),
+                        message=""
+                    ))
+                elif hasattr(media_obj, 'id'):  # It's a Document
+                    result = await agent.client(SendMediaRequest(
+                        peer=InputPeerSelf(),
+                        media=InputMediaDocument(
+                            id=InputDocument(
+                                id=media_obj.id,
+                                access_hash=media_obj.access_hash,
+                                file_reference=media_obj.file_reference
+                            )
+                        ),
+                        message=""
+                    ))
+                else:
+                    raise ValueError(f"Media object for {unique_id} does not have required attributes")
+                
+                # Extract the sent message from the result
+                sent_message = None
+                if hasattr(result, 'updates'):
+                    for update in result.updates:
+                        if hasattr(update, 'message'):
+                            sent_message = update.message
+                            break
+                
+                if not sent_message:
+                    raise ValueError("Failed to send media to Saved Messages")
+                
+                # Verify the sent message has media
+                sent_photo = getattr(sent_message, "photo", None)
+                sent_document = getattr(sent_message, "document", None)
+                
+                if not sent_photo and not sent_document:
+                    raise ValueError("Sent message does not contain media")
+                
+                # Get unique_id from sent message - should match original
+                sent_unique_id = get_unique_id(sent_photo or sent_document)
+                if not sent_unique_id:
+                    raise ValueError("Could not get unique_id from sent media")
+                
+                # Verify unique_id matches (it should, since we used InputMedia)
+                if str(sent_unique_id) != unique_id:
+                    logger.warning(f"Sent media unique_id {sent_unique_id} does not match original {unique_id}")
+                
+                logger.info(f"Saved media {unique_id} to Saved Messages (message {sent_message.id}, unique_id preserved)")
+                
+                # Check if media is cached in state/media
+                state_media_path = get_state_media_path()
+                if state_media_path:
+                    # Check if media exists in state cache
+                    record = media_metadata.load_media_metadata(unique_id)
+                    if record:
+                        # Move from state/media to agent's config directory media folder
+                        try:
+                            config_media_dir = get_agent_media_dir(agent)
+                        except Exception as e:
+                            logger.warning(f"Agent has no config directory; cannot promote media {unique_id}: {e}")
+                            config_media_dir = None
+
+                        if config_media_dir:
+                            
+                            # Ensure config media directory exists
+                            config_media_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            # Use the existing move logic from global media.py
+                            from admin_console.media import MEDIA_FILE_EXTENSIONS
+                            
+                            # Check if destination already has the media
+                            dest_source = get_directory_media_source(config_media_dir)
+                            original_dest_record = dest_source.get_cached_record(unique_id)
+                            
+                            # Determine media file name
+                            media_file_name = record.get("media_file")
+                            if not media_file_name:
+                                # Try common extensions
+                                for ext in MEDIA_FILE_EXTENSIONS:
+                                    source_media = state_media_path / f"{unique_id}{ext}"
+                                    if source_media.exists():
+                                        media_file_name = source_media.name
+                                        record["media_file"] = media_file_name
+                                        break
+                            
+                            # Write JSON to config directory
+                            try:
+                                dest_source.put(unique_id, record)
+                            except Exception as e:
+                                logger.error(f"Failed to write media {unique_id} to config: {e}")
+                                # Continue anyway - media is still in Saved Messages
+                            
+                            # Move media file from state to config
+                            if media_file_name:
+                                source_media = state_media_path / media_file_name
+                                if source_media.exists():
+                                    target_media_file = config_media_dir / media_file_name
+                                    try:
+                                        source_media.replace(target_media_file)
+                                        logger.info(f"Moved media file {media_file_name} from state to config for agent {agent.name}")
+                                    except Exception as e:
+                                        logger.warning(f"Failed to move media file: {e}")
+                                        # Continue - we still have it in state
+                            
+                            # Delete from MySQL cache since it's now in config
+                            try:
+                                media_metadata.delete_media_metadata(unique_id)
+                                logger.info(f"Deleted media {unique_id} from state cache after moving to config")
+                            except Exception as e:
+                                logger.warning(f"Failed to delete from state cache: {e}")
+
+                    # Regardless of whether a MySQL record existed, ensure we do not keep a duplicate
+                    # physical copy in state/media after the media has been saved to the agent.
+                    try:
+                        from admin_console.media import MEDIA_FILE_EXTENSIONS
+
+                        # Remove common patterns unique_id.ext
+                        for ext in MEDIA_FILE_EXTENSIONS:
+                            candidate = Path(state_media_path) / f"{unique_id}{ext}"
+                            if candidate.exists() and candidate.is_file():
+                                try:
+                                    candidate.unlink()
+                                except Exception:
+                                    pass
+
+                        # Also remove the recorded media_file if present (covers non-standard filenames)
+                        if record and record.get("media_file"):
+                            candidate = Path(state_media_path) / record["media_file"]
+                            if candidate.exists() and candidate.is_file():
+                                try:
+                                    candidate.unlink()
+                                except Exception:
+                                    pass
+
+                        # And delete any metadata if it still exists
+                        try:
+                            media_metadata.delete_media_metadata(unique_id)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.debug(f"Failed state/media cleanup for {unique_id}: {e}")
+                
+                return {
+                    "success": True,
+                    "unique_id": str(sent_unique_id),
+                    "message_id": sent_message.id,
+                }
+            
+            result = agent.execute(_save_media(), timeout=30.0)
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"Error saving media for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
