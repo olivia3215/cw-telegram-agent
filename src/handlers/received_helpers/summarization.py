@@ -21,17 +21,6 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_CONSOLIDATION_THRESHOLD = 7
 SUMMARY_CONSOLIDATION_BATCH_SIZE = 5
-SUMMARY_CONSOLIDATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "summary": {
-            "type": "string",
-            "description": "A concise single-paragraph summary of the provided summaries.",
-        }
-    },
-    "required": ["summary"],
-    "additionalProperties": False,
-}
 
 
 def _coerce_int_or_none(value) -> int | None:
@@ -121,31 +110,36 @@ async def consolidate_oldest_summaries_if_needed(
         return False
 
     summaries_to_merge = summaries_list[:SUMMARY_CONSOLIDATION_BATCH_SIZE]
-    source_payload = []
-    for summary in summaries_to_merge:
-        source_payload.append(
-            {
-                "id": summary.get("id"),
-                "content": summary.get("content", ""),
-                "min_message_id": summary.get("min_message_id"),
-                "max_message_id": summary.get("max_message_id"),
-                "first_message_date": summary.get("first_message_date"),
-                "last_message_date": summary.get("last_message_date"),
-            }
+    summary_sections: list[str] = []
+    for idx, summary in enumerate(summaries_to_merge, start=1):
+        content = str(summary.get("content", "")).strip()
+        min_id = summary.get("min_message_id")
+        max_id = summary.get("max_message_id")
+        first_date = summary.get("first_message_date") or "N/A"
+        last_date = summary.get("last_message_date") or "N/A"
+        summary_sections.append(
+            f"Summary {idx}\n"
+            f"- Message ID range: {min_id} - {max_id}\n"
+            f"- Date range: {first_date} - {last_date}\n"
+            f"- Text: {content}"
         )
 
     prompt_template = load_system_prompt("Instructions-Consolidate-Summaries")
     prompt = (
         f"{prompt_template}\n\n"
-        "Summaries to consolidate:\n"
-        f"```json\n{json.dumps(source_payload, indent=2, ensure_ascii=False)}\n```"
+        "Summaries to consolidate:\n\n"
+        f"{chr(10).join(summary_sections)}"
     )
 
     try:
-        response = await llm.query_with_json_schema(
+        response = await llm.query_structured(
             system_prompt=prompt,
-            json_schema=SUMMARY_CONSOLIDATION_SCHEMA,
+            now_iso=datetime.now(UTC).isoformat(timespec="seconds"),
+            chat_type="direct",
+            history=[],
+            history_size=1,
             timeout_s=None,
+            allowed_task_types=None,
             agent_name=agent.name,
         )
     except Exception as exc:
@@ -157,11 +151,11 @@ async def consolidate_oldest_summaries_if_needed(
         )
         return False
 
-    try:
-        parsed = json.loads(response)
-        consolidated_content = str(parsed.get("summary", "")).strip()
-    except Exception:
-        consolidated_content = ""
+    consolidated_content = str(response or "").strip()
+    # Normalize to single paragraph plain text.
+    if consolidated_content.startswith("```"):
+        consolidated_content = consolidated_content.strip("`").strip()
+    consolidated_content = " ".join(consolidated_content.split())
 
     if not consolidated_content:
         logger.warning(

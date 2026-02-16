@@ -47,21 +47,19 @@ def test_merge_summary_metadata_uses_full_oldest_range():
 @pytest.mark.asyncio
 async def test_consolidation_skips_when_below_threshold():
     agent = SimpleNamespace(is_authenticated=True, agent_id=1, name="TestAgent")
-    llm = SimpleNamespace(query_with_json_schema=AsyncMock())
+    llm = SimpleNamespace(query_structured=AsyncMock())
 
     with patch("db.summaries.load_summaries", return_value=[{"id": "s1"}]):
         changed = await consolidate_oldest_summaries_if_needed(agent, 123, llm)
 
     assert changed is False
-    llm.query_with_json_schema.assert_not_called()
+    llm.query_structured.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_consolidation_merges_oldest_five_when_threshold_met():
     agent = SimpleNamespace(is_authenticated=True, agent_id=1, name="TestAgent")
-    llm = SimpleNamespace(
-        query_with_json_schema=AsyncMock(return_value='{"summary":"Merged summary paragraph."}')
-    )
+    llm = SimpleNamespace(query_structured=AsyncMock(return_value="Merged summary paragraph."))
     seven = [
         {
             "id": f"s{i}",
@@ -86,7 +84,10 @@ async def test_consolidation_merges_oldest_five_when_threshold_met():
         changed = await consolidate_oldest_summaries_if_needed(agent, 123, llm)
 
     assert changed is True
-    assert llm.query_with_json_schema.call_count == 1
+    assert llm.query_structured.call_count == 1
+    call_kwargs = llm.query_structured.call_args.kwargs
+    assert "Summary 1" in call_kwargs["system_prompt"]
+    assert "```json" not in call_kwargs["system_prompt"]
     mock_save.assert_called_once()
     save_kwargs = mock_save.call_args.kwargs
     assert save_kwargs["agent_telegram_id"] == 1
@@ -106,7 +107,7 @@ async def test_consolidation_merges_oldest_five_when_threshold_met():
 @pytest.mark.asyncio
 async def test_consolidation_does_not_delete_when_llm_returns_empty():
     agent = SimpleNamespace(is_authenticated=True, agent_id=1, name="TestAgent")
-    llm = SimpleNamespace(query_with_json_schema=AsyncMock(return_value='{"summary":""}'))
+    llm = SimpleNamespace(query_structured=AsyncMock(return_value=""))
     seven = [
         {
             "id": f"s{i}",
