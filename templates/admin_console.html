@@ -353,12 +353,19 @@
                         <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
                             <!-- Profile Photo -->
                             <div style="text-align: center;">
-                                <img id="agent-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showProfilePhotoFullscreen()">
-                                <div style="margin-top: 8px; font-size: 12px; color: #666;">Click to enlarge</div>
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                    <button id="agent-profile-photo-prev" onclick="showPreviousAgentProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8249;</button>
+                                    <img id="agent-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showProfilePhotoFullscreen()">
+                                    <button id="agent-profile-photo-next" onclick="showNextAgentProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8250;</button>
+                                </div>
+                                <div id="agent-profile-photo-index" style="margin-top: 6px; font-size: 12px; color: #666; min-height: 16px;"></div>
+                                <div style="margin-top: 2px; font-size: 12px; color: #666;">Click to enlarge</div>
                             </div>
                             <!-- Profile Photo Fullscreen Modal -->
                             <div id="profile-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer;" onclick="closeProfilePhotoFullscreen()">
+                                <button id="profile-photo-fullscreen-prev" onclick="showPreviousAgentProfilePhoto(event, true)" style="display: none; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
                                 <img id="profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
+                                <button id="profile-photo-fullscreen-next" onclick="showNextAgentProfilePhoto(event, true)" style="display: none; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
                             </div>
                             <!-- Profile Fields -->
                             <div style="display: grid; gap: 16px;">
@@ -424,6 +431,11 @@
                 <div class="subtab-panel" data-subtab-panel="contacts">
                     <div id="agent-contacts-container">
                         <div class="loading">Select an agent to view contacts</div>
+                    </div>
+                    <div id="contacts-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer; overflow: auto;" onclick="closeContactPhotoFullscreen()">
+                        <button id="contacts-photo-fullscreen-prev" onclick="showPreviousContactPhoto(event)" style="display: none; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
+                        <img id="contacts-photo-fullscreen" src="" alt="Contact Photo" style="display: block; margin: 24px auto; max-width: 90%; max-height: none; border-radius: 8px;">
+                        <button id="contacts-photo-fullscreen-next" onclick="showNextContactPhoto(event)" style="display: none; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
                     </div>
                 </div>
                 <div class="subtab-panel" data-subtab-panel="parameters">
@@ -536,11 +548,18 @@
                         <div id="conversation-profile-deleted" style="display: none; margin-bottom: 12px; color: #dc3545; font-weight: 500;">Deleted account</div>
                         <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
                             <div style="text-align: center;">
-                                <img id="conversation-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showConversationProfilePhotoFullscreen()">
-                                <div style="margin-top: 8px; font-size: 12px; color: #666;">Click to enlarge</div>
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                    <button id="conversation-profile-photo-prev" onclick="showPreviousConversationProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8249;</button>
+                                    <img id="conversation-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showConversationProfilePhotoFullscreen()">
+                                    <button id="conversation-profile-photo-next" onclick="showNextConversationProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8250;</button>
+                                </div>
+                                <div id="conversation-profile-photo-index" style="margin-top: 6px; font-size: 12px; color: #666; min-height: 16px;"></div>
+                                <div style="margin-top: 2px; font-size: 12px; color: #666;">Click to enlarge</div>
                             </div>
                             <div id="conversation-profile-photo-modal" style="display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); cursor: pointer;" onclick="closeConversationProfilePhotoFullscreen()">
+                                <button id="conversation-profile-photo-fullscreen-prev" onclick="showPreviousConversationProfilePhoto(event, true)" style="display: none; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
                                 <img id="conversation-profile-photo-fullscreen" src="" alt="Profile Photo" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
+                                <button id="conversation-profile-photo-fullscreen-next" onclick="showNextConversationProfilePhoto(event, true)" style="display: none; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
                             </div>
                             <div style="display: grid; gap: 16px;">
                                 <div id="conversation-profile-name-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

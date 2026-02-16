@@ -25,19 +25,21 @@ from telegram_download import download_media_bytes
 logger = logging.getLogger(__name__)
 
 
-async def _get_profile_photo_data_url(client, entity) -> str | None:
+async def _get_profile_photo_data_urls(client, entity) -> list[str]:
     try:
-        photos = await client.get_profile_photos(entity, limit=1)
+        photos = await client.get_profile_photos(entity)
         if not photos:
-            return None
-        photo = photos[0]
-        photo_bytes = await download_media_bytes(client, photo)
-        mime_type = "image/jpeg"
-        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-        return f"data:{mime_type};base64,{base64_data}"
+            return []
+        data_urls: list[str] = []
+        for photo in photos:
+            photo_bytes = await download_media_bytes(client, photo)
+            mime_type = "image/jpeg"
+            base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+            data_urls.append(f"data:{mime_type};base64,{base64_data}")
+        return data_urls
     except Exception as e:
         logger.debug(f"Error getting profile photo: {e}")
-        return None
+        return []
 
 
 def _extract_username(entity) -> str | None:
@@ -127,7 +129,7 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
             except Exception as e:
                 logger.debug(f"Failed to fetch full channel info for {entity.id}: {e}")
 
-    profile_photo = await _get_profile_photo_data_url(client, entity)
+    profile_photos = await _get_profile_photo_data_urls(client, entity)
     username = _extract_username(entity) or ""
     partner_type = "user"
     if is_chat:
@@ -147,7 +149,8 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
         "telegram_id": telegram_id,
         "bio": bio,
         "birthday": birthday,
-        "profile_photo": profile_photo,
+        "profile_photo": profile_photos[0] if profile_photos else None,
+        "profile_photos": profile_photos,
         "is_contact": is_contact,
         "is_deleted": is_deleted,
         "can_edit_contact": is_user,

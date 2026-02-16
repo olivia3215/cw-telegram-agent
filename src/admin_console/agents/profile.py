@@ -23,35 +23,32 @@ logger = logging.getLogger(__name__)
 
 
 
-async def _get_profile_photo_data_url(client) -> str | None:
+async def _get_profile_photo_data_urls(client) -> list[str]:
     """
-    Get the agent's profile photo as a data URL (async version).
+    Get all of the agent's profile photos as data URLs (async version).
     
     Args:
         client: Telethon client instance
         
     Returns:
-        str: Data URL (base64 encoded image) or None if no photo
+        list[str]: Data URLs (base64 encoded images), newest first
     """
     try:
         me = await client.get_me()
-        photos = await client.get_profile_photos(me, limit=1)
+        photos = await client.get_profile_photos(me)
         if not photos:
-            return None
-        
-        photo = photos[0]
-        # Download photo bytes
-        photo_bytes = await download_media_bytes(client, photo)
-        
-        # Determine MIME type (Telegram profile photos are typically JPEG)
-        mime_type = "image/jpeg"  # Default
-        
-        # Convert to base64 data URL
-        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-        return f"data:{mime_type};base64,{base64_data}"
+            return []
+
+        data_urls: list[str] = []
+        for photo in photos:
+            photo_bytes = await download_media_bytes(client, photo)
+            mime_type = "image/jpeg"
+            base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+            data_urls.append(f"data:{mime_type};base64,{base64_data}")
+        return data_urls
     except Exception as e:
         logger.debug(f"Error getting profile photo: {e}")
-        return None
+        return []
 
 
 def register_profile_routes(agents_bp: Blueprint):
@@ -74,7 +71,7 @@ def register_profile_routes(agents_bp: Blueprint):
                 full_user_response = await agent.client(GetFullUserRequest(input_user))
                 
                 # Get profile photo
-                profile_photo = await _get_profile_photo_data_url(agent.client)
+                profile_photos = await _get_profile_photo_data_urls(agent.client)
                 
                 # GetFullUserRequest returns a UserFull object
                 # The 'about' and 'birthday' fields are on the UserFull object directly
@@ -128,7 +125,8 @@ def register_profile_routes(agents_bp: Blueprint):
                     "telegram_id": me.id,
                     "bio": bio or "",
                     "birthday": birthday,
-                    "profile_photo": profile_photo,
+                    "profile_photo": profile_photos[0] if profile_photos else None,
+                    "profile_photos": profile_photos,
                     "is_premium": is_premium,
                     "bio_limit": 140 if is_premium else 70
                 }
@@ -252,7 +250,7 @@ def register_profile_routes(agents_bp: Blueprint):
                 input_user = await agent.client.get_input_entity(me.id)
                 full_user_response = await agent.client(GetFullUserRequest(input_user))
                 
-                profile_photo = await _get_profile_photo_data_url(agent.client)
+                profile_photos = await _get_profile_photo_data_urls(agent.client)
                 
                 # GetFullUserRequest returns a UserFull object
                 # Access bio and birthday with fallback for nested structure
@@ -303,7 +301,8 @@ def register_profile_routes(agents_bp: Blueprint):
                     "telegram_id": me.id,
                     "bio": bio or "",
                     "birthday": birthday,
-                    "profile_photo": profile_photo,
+                    "profile_photo": profile_photos[0] if profile_photos else None,
+                    "profile_photos": profile_photos,
                     "is_premium": is_premium,
                     "bio_limit": bio_limit
                 }
