@@ -5,15 +5,200 @@
 #
 import json
 import logging
+import uuid
 from datetime import UTC
+from datetime import date
+from datetime import datetime
 
 from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import process_message_history
 from handlers.registry import dispatch_immediate_task
+from prompt_loader import load_system_prompt
 from utils import get_dialog_name, is_group_or_channel
 from utils.formatting import format_log_prefix
 
 logger = logging.getLogger(__name__)
+
+SUMMARY_CONSOLIDATION_THRESHOLD = 7
+SUMMARY_CONSOLIDATION_BATCH_SIZE = 5
+SUMMARY_CONSOLIDATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "description": "A concise single-paragraph summary of the provided summaries.",
+        }
+    },
+    "required": ["summary"],
+    "additionalProperties": False,
+}
+
+
+def _coerce_int_or_none(value) -> int | None:
+    """Convert a value to int when possible."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _coerce_date_or_none(value) -> date | None:
+    """Convert YYYY-MM-DD style values to a date when possible."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        date_part = text.split("T")[0].split(" ")[0]
+        return datetime.strptime(date_part, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _merge_summary_metadata(summaries_to_merge: list[dict]) -> dict:
+    """
+    Merge metadata for a consolidated summary entry.
+
+    Returns:
+        Dict with min/max message IDs and first/last dates suitable for save_summary().
+    """
+    min_ids = [
+        msg_id
+        for msg_id in (_coerce_int_or_none(s.get("min_message_id")) for s in summaries_to_merge)
+        if msg_id is not None
+    ]
+    max_ids = [
+        msg_id
+        for msg_id in (_coerce_int_or_none(s.get("max_message_id")) for s in summaries_to_merge)
+        if msg_id is not None
+    ]
+    first_dates = [
+        dt
+        for dt in (_coerce_date_or_none(s.get("first_message_date")) for s in summaries_to_merge)
+        if dt is not None
+    ]
+    last_dates = [
+        dt
+        for dt in (_coerce_date_or_none(s.get("last_message_date")) for s in summaries_to_merge)
+        if dt is not None
+    ]
+
+    return {
+        "min_message_id": min(min_ids) if min_ids else None,
+        "max_message_id": max(max_ids) if max_ids else None,
+        "first_message_date": min(first_dates).isoformat() if first_dates else None,
+        "last_message_date": max(last_dates).isoformat() if last_dates else None,
+    }
+
+
+async def consolidate_oldest_summaries_if_needed(
+    agent,
+    channel_id: int,
+    llm,
+    channel_name: str | None = None,
+) -> bool:
+    """
+    Consolidate the oldest summaries into one when there are too many entries.
+
+    If summary count is >= SUMMARY_CONSOLIDATION_THRESHOLD, this condenses the
+    oldest SUMMARY_CONSOLIDATION_BATCH_SIZE summaries into a single replacement
+    summary and deletes the originals.
+    """
+    if not agent.is_authenticated:
+        return False
+
+    from db import summaries as db_summaries
+
+    summaries_list = db_summaries.load_summaries(agent.agent_id, channel_id)
+    if len(summaries_list) < SUMMARY_CONSOLIDATION_THRESHOLD:
+        return False
+
+    summaries_to_merge = summaries_list[:SUMMARY_CONSOLIDATION_BATCH_SIZE]
+    source_payload = []
+    for summary in summaries_to_merge:
+        source_payload.append(
+            {
+                "id": summary.get("id"),
+                "content": summary.get("content", ""),
+                "min_message_id": summary.get("min_message_id"),
+                "max_message_id": summary.get("max_message_id"),
+                "first_message_date": summary.get("first_message_date"),
+                "last_message_date": summary.get("last_message_date"),
+            }
+        )
+
+    prompt_template = load_system_prompt("Instructions-Consolidate-Summaries")
+    prompt = (
+        f"{prompt_template}\n\n"
+        "Summaries to consolidate:\n"
+        f"```json\n{json.dumps(source_payload, indent=2, ensure_ascii=False)}\n```"
+    )
+
+    try:
+        response = await llm.query_with_json_schema(
+            system_prompt=prompt,
+            json_schema=SUMMARY_CONSOLIDATION_SCHEMA,
+            timeout_s=None,
+            agent_name=agent.name,
+        )
+    except Exception as exc:
+        logger.warning(
+            "%s Failed to consolidate summaries for channel %s: %s",
+            format_log_prefix(agent.name, channel_name),
+            channel_id,
+            exc,
+        )
+        return False
+
+    try:
+        parsed = json.loads(response)
+        consolidated_content = str(parsed.get("summary", "")).strip()
+    except Exception:
+        consolidated_content = ""
+
+    if not consolidated_content:
+        logger.warning(
+            "%s Skipping summary consolidation for channel %s: empty LLM response",
+            format_log_prefix(agent.name, channel_name),
+            channel_id,
+        )
+        return False
+
+    merged_metadata = _merge_summary_metadata(summaries_to_merge)
+    replacement_summary_id = f"summary-{uuid.uuid4().hex[:8]}"
+
+    # Save replacement first so consolidation failures never lose historical content.
+    db_summaries.save_summary(
+        agent_telegram_id=agent.agent_id,
+        channel_id=channel_id,
+        summary_id=replacement_summary_id,
+        content=consolidated_content,
+        min_message_id=merged_metadata["min_message_id"],
+        max_message_id=merged_metadata["max_message_id"],
+        first_message_date=merged_metadata["first_message_date"],
+        last_message_date=merged_metadata["last_message_date"],
+    )
+
+    for summary in summaries_to_merge:
+        summary_id = summary.get("id")
+        if summary_id:
+            db_summaries.delete_summary(agent.agent_id, channel_id, summary_id)
+
+    logger.info(
+        "%s Consolidated %d summary entries into %s for channel %s",
+        format_log_prefix(agent.name, channel_name),
+        len(summaries_to_merge),
+        replacement_summary_id,
+        channel_id,
+    )
+    return True
 
 
 def get_highest_summarized_message_id(agent, channel_id: int, channel_name: str | None = None) -> int | None:
@@ -246,6 +431,12 @@ async def perform_summarization(
         logger.info(
             f"[{agent.name}] LLM decided not to create summary for channel {channel_id}"
         )
+        await consolidate_oldest_summaries_if_needed(
+            agent=agent,
+            channel_id=channel_id,
+            llm=llm,
+            channel_name=channel_name,
+        )
         return
     
     # Parse and validate response - only allow think and summarize tasks
@@ -293,6 +484,13 @@ async def perform_summarization(
             logger.info(
                 f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id}"
             )
+
+        await consolidate_oldest_summaries_if_needed(
+            agent=agent,
+            channel_id=channel_id,
+            llm=llm,
+            channel_name=channel_name,
+        )
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to process summarization response for channel {channel_id}: {e}"
