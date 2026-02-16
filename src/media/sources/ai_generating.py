@@ -254,6 +254,7 @@ class AIGeneratingMediaSource(MediaSource):
         # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
+            usage_channel_telegram_id = metadata.get("channel_id")
 
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
@@ -262,10 +263,11 @@ class AIGeneratingMediaSource(MediaSource):
                 duration = metadata.get("duration")
                 desc = await media_llm.describe_video(
                     data,
-                    agent.name,
+                    agent,
                     final_mime_type,
                     duration=duration,
                     timeout_s=get_describe_timeout_secs(),
+                    channel_telegram_id=usage_channel_telegram_id,
                 )
             elif kind == "audio" or is_audio_mime_type(final_mime_type):
                 # Audio files (including voice messages)
@@ -286,10 +288,11 @@ class AIGeneratingMediaSource(MediaSource):
                     duration = metadata.get("duration")
                     desc = await media_llm.describe_audio(
                         data,
-                        agent.name,
+                        agent,
                         audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
                         duration=duration,
                         timeout_s=get_describe_timeout_secs(),
+                        channel_telegram_id=usage_channel_telegram_id,
                     )
                 else:
                     # LLM doesn't support audio description - this shouldn't happen, but fall through to describe_image
@@ -298,7 +301,11 @@ class AIGeneratingMediaSource(MediaSource):
                     )
                     # Fall through to describe_image which will raise ValueError
                     desc = await media_llm.describe_image(
-                        data, agent.name, None, timeout_s=get_describe_timeout_secs()
+                        data,
+                        agent,
+                        None,
+                        timeout_s=get_describe_timeout_secs(),
+                        channel_telegram_id=usage_channel_telegram_id,
                     )
             else:
                 # Ensure we have a valid MIME type before calling describe_image
@@ -309,7 +316,11 @@ class AIGeneratingMediaSource(MediaSource):
                     f"(final_mime_type={final_mime_type}, detected={detected_mime_type}, from_ext={'mime_type' in metadata})"
                 )
                 desc = await media_llm.describe_image(
-                    data, agent.name, image_mime_type, timeout_s=get_describe_timeout_secs()
+                    data,
+                    agent,
+                    image_mime_type,
+                    timeout_s=get_describe_timeout_secs(),
+                    channel_telegram_id=usage_channel_telegram_id,
                 )
             desc = (desc or "").strip()
         except httpx.TimeoutException:

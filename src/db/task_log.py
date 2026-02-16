@@ -273,3 +273,156 @@ def format_action_details(action_kind: str, params: dict) -> str:
         return json.dumps({"action": action_kind})
     
     return json.dumps(filtered_params)
+
+
+def _parse_cost_value(action_details: Any) -> float | None:
+    """
+    Parse cost from action_details payload.
+
+    Accepts either:
+    - JSON string containing {"cost": "$0.0123"} or {"cost": 0.0123}
+    - dict containing the same shape
+    """
+    details_obj: dict[str, Any] | None = None
+
+    if isinstance(action_details, dict):
+        details_obj = action_details
+    elif isinstance(action_details, str):
+        try:
+            parsed = json.loads(action_details)
+            if isinstance(parsed, dict):
+                details_obj = parsed
+        except Exception:
+            return None
+
+    if not details_obj:
+        return None
+
+    raw_cost = details_obj.get("cost")
+    if raw_cost is None:
+        return None
+
+    if isinstance(raw_cost, (int, float)):
+        return float(raw_cost)
+
+    if isinstance(raw_cost, str):
+        normalized = raw_cost.strip()
+        if normalized.startswith("$"):
+            normalized = normalized[1:]
+        try:
+            return float(normalized)
+        except ValueError:
+            return None
+
+    return None
+
+
+def _build_cost_entry(row: dict[str, Any]) -> dict[str, Any]:
+    """Convert a task_execution_log row into a normalized cost entry."""
+    timestamp = row.get("timestamp")
+    if timestamp and timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+
+    action_details = row.get("action_details")
+    details_obj: dict[str, Any] = {}
+    if isinstance(action_details, dict):
+        details_obj = action_details
+    elif isinstance(action_details, str):
+        try:
+            parsed = json.loads(action_details)
+            if isinstance(parsed, dict):
+                details_obj = parsed
+        except Exception:
+            details_obj = {}
+
+    cost = _parse_cost_value(action_details)
+
+    return {
+        "id": row.get("id"),
+        "timestamp": timestamp.isoformat() if timestamp else None,
+        "agent_telegram_id": row.get("agent_telegram_id"),
+        "channel_telegram_id": row.get("channel_telegram_id"),
+        "task_identifier": row.get("task_identifier"),
+        "operation": details_obj.get("operation"),
+        "model_name": details_obj.get("model_name"),
+        "input_tokens": details_obj.get("input_tokens"),
+        "output_tokens": details_obj.get("output_tokens"),
+        "cost": cost,
+    }
+
+
+def _get_cost_logs_with_filter(where_clause: str, params: tuple[Any, ...]) -> dict[str, Any]:
+    """
+    Fetch llm_usage logs with a custom WHERE clause and compute total weekly cost.
+
+    Returns:
+        {
+            "logs": [...],
+            "total_cost": float
+        }
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT id, timestamp, agent_telegram_id, channel_telegram_id, task_identifier, action_details
+                FROM task_execution_log
+                WHERE action_kind = 'llm_usage'
+                  AND {where_clause}
+                ORDER BY timestamp DESC
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+
+        logs = []
+        total_cost = 0.0
+        for row in rows:
+            entry = _build_cost_entry(row)
+            logs.append(entry)
+            if entry["cost"] is not None:
+                total_cost += entry["cost"]
+
+        return {
+            "logs": logs,
+            "total_cost": total_cost,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch cost logs: {e}")
+        return {
+            "logs": [],
+            "total_cost": 0.0,
+        }
+
+
+def get_conversation_cost_logs(
+    agent_telegram_id: int,
+    channel_telegram_id: int,
+    days: int = 7,
+) -> dict[str, Any]:
+    """Get llm_usage cost logs for one conversation from the past N days."""
+    cutoff_time = clock.now(UTC) - timedelta(days=days)
+    return _get_cost_logs_with_filter(
+        "agent_telegram_id = %s AND channel_telegram_id = %s AND timestamp >= %s",
+        (agent_telegram_id, channel_telegram_id, cutoff_time),
+    )
+
+
+def get_agent_cost_logs(agent_telegram_id: int, days: int = 7) -> dict[str, Any]:
+    """Get llm_usage cost logs for one agent across all conversations from the past N days."""
+    cutoff_time = clock.now(UTC) - timedelta(days=days)
+    return _get_cost_logs_with_filter(
+        "agent_telegram_id = %s AND timestamp >= %s",
+        (agent_telegram_id, cutoff_time),
+    )
+
+
+def get_global_cost_logs(days: int = 7) -> dict[str, Any]:
+    """Get llm_usage cost logs globally from the past N days."""
+    cutoff_time = clock.now(UTC) - timedelta(days=days)
+    return _get_cost_logs_with_filter(
+        "timestamp >= %s",
+        (cutoff_time,),
+    )

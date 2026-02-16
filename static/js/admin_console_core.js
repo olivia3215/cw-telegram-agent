@@ -613,11 +613,18 @@ function switchSubtab(subtabName) {
                 window.mediaEditorNeedsRefresh = true;
                 // Always reload to ensure fresh data if Media Editor made changes
                 loadAgentMedia(agentName);
+            } else if (subtabName === 'costs') {
+                loadAgentCosts(agentName);
             }
         } else {
             // No agent selected - clear profile if switching to profile subtab
             if (subtabName === 'profile') {
                 loadAgentProfile('');
+            } else if (subtabName === 'costs') {
+                const container = document.getElementById('agent-costs-container');
+                if (container) {
+                    container.innerHTML = '<div class="loading">Select an agent to view costs</div>';
+                }
             }
         }
     } else if (mainTabName === 'global') {
@@ -637,6 +644,8 @@ function switchSubtab(subtabName) {
             loadGlobalParameters();
         } else if (subtabName === 'llms-global') {
             loadGlobalLLMs();
+        } else if (subtabName === 'costs-global') {
+            loadGlobalCosts();
         } else if (subtabName === 'new-agent') {
             initializeNewAgentForm();
         }
@@ -666,6 +675,8 @@ function switchSubtab(subtabName) {
                 loadPlans();
             } else if (subtabName === 'conversation') {
                 loadConversation();
+            } else if (subtabName === 'costs-conv') {
+                loadConversationCosts();
             } else if (subtabName === 'xsend') {
                 // Show XSend content
                 const xsendContainer = document.getElementById('xsend-container');

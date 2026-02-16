@@ -96,9 +96,10 @@ class GrokLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -177,7 +178,13 @@ class GrokLLM(LLM):
                 raise RuntimeError(f"Grok returned no content: {response}")
             
             # Log usage
-            self._log_usage_from_openai_response(response, agent_name, model_name, "describe_image")
+            self._log_usage_from_openai_response(
+                response,
+                agent,
+                model_name,
+                "describe_image",
+                channel_telegram_id=channel_telegram_id,
+            )
             
             return text
 
@@ -190,7 +197,8 @@ class GrokLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -207,7 +215,8 @@ class GrokLLM(LLM):
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
-        agent_name: str | None = None,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -352,7 +361,8 @@ class GrokLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Build messages using the parts-aware builder and call Grok with structured output.
@@ -418,7 +428,13 @@ class GrokLLM(LLM):
                 raise RuntimeError(f"Grok returned no content: {response}")
             
             # Log usage
-            self._log_usage_from_openai_response(response, agent_name, model_name, "query_structured")
+            self._log_usage_from_openai_response(
+                response,
+                agent,
+                model_name,
+                "query_structured",
+                channel_telegram_id=channel_telegram_id,
+            )
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder
@@ -438,7 +454,8 @@ class GrokLLM(LLM):
         system_prompt: str,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """Query Grok for plain text without schema constraints."""
         model_name = model or self.model_name
@@ -460,7 +477,11 @@ class GrokLLM(LLM):
             raise RuntimeError(f"Grok returned no content: {response}")
 
         self._log_usage_from_openai_response(
-            response, agent_name, model_name, "query_plain_text"
+            response,
+            agent,
+            model_name,
+            "query_plain_text",
+            channel_telegram_id=channel_telegram_id,
         )
         return text or ""
 
@@ -471,7 +492,8 @@ class GrokLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Query Grok with a JSON schema constraint on the response.
@@ -529,7 +551,13 @@ class GrokLLM(LLM):
                 raise RuntimeError(f"Grok returned no content: {response}")
             
             # Log usage
-            self._log_usage_from_openai_response(response, agent_name, model_name, "query_with_json_schema")
+            self._log_usage_from_openai_response(
+                response,
+                agent,
+                model_name,
+                "query_with_json_schema",
+                channel_telegram_id=channel_telegram_id,
+            )
 
             if text.startswith("⟦"):
                 # Reject response that starts with a metadata placeholder

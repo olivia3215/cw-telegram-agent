@@ -391,7 +391,8 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
                                         model=None,
                                         timeout_s=None,
-                                        agent_name="admin-translation",
+                                        agent=agent,
+                                        channel_telegram_id=channel_id,
                                     )
 
                                     if result_text:

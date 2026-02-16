@@ -91,7 +91,12 @@ def _merge_summary_metadata(summaries_to_merge: list[dict]) -> dict:
     }
 
 
-async def _query_consolidation_plain_text(llm, prompt: str, agent_name: str) -> str:
+async def _query_consolidation_plain_text(
+    llm,
+    prompt: str,
+    agent,
+    channel_telegram_id: int | None = None,
+) -> str:
     """
     Query the LLM for plain text with no JSON schema.
     """
@@ -99,7 +104,8 @@ async def _query_consolidation_plain_text(llm, prompt: str, agent_name: str) -> 
         return await llm.query_plain_text(
             system_prompt=prompt,
             timeout_s=60.0,
-            agent_name=agent_name,
+            agent=agent,
+            channel_telegram_id=channel_telegram_id,
         )
     raise RuntimeError(f"LLM does not implement query_plain_text: {type(llm).__name__}")
 
@@ -152,7 +158,8 @@ async def consolidate_oldest_summaries_if_needed(
         response = await _query_consolidation_plain_text(
             llm=llm,
             prompt=prompt,
-            agent_name=agent.name,
+            agent=agent,
+            channel_telegram_id=channel_id,
         )
     except Exception as exc:
         logger.warning(
@@ -425,7 +432,8 @@ async def perform_summarization(
             history_size=len(combined_history),
             timeout_s=None,
             allowed_task_types=allowed_task_types,
-            agent_name=agent.name,
+            agent=agent,
+            channel_telegram_id=channel_id,
         )
     except Exception as e:
         logger.exception(

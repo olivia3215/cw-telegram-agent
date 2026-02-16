@@ -76,7 +76,7 @@ async def test_roles_and_system_instruction_path():
         now_iso="2025-01-01T00:00:00",
         chat_type="group",
         history=history,
-        agent_name="TestAgent",
+        agent=types.SimpleNamespace(name="TestAgent"),
     )
 
     assert out == "ok"
@@ -119,7 +119,7 @@ async def test_empty_conversation_ends_with_user_role():
         now_iso="2025-01-01T00:00:00",
         chat_type="direct",
         history=history,
-        agent_name="TestAgent",
+        agent=types.SimpleNamespace(name="TestAgent"),
     )
 
     assert out == "ok"

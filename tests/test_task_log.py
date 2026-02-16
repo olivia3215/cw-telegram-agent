@@ -17,6 +17,9 @@ from clock import clock
 from db.task_log import (
     delete_old_logs,
     format_action_details,
+    get_agent_cost_logs,
+    get_conversation_cost_logs,
+    get_global_cost_logs,
     get_logs_after_timestamp,
     get_task_logs,
     log_task_execution,
@@ -234,6 +237,104 @@ class TestGetLogsAfterTimestamp:
         # Verify results
         assert len(logs) == 1
         assert logs[0]["id"] == 1
+
+
+class TestCostLogs:
+    """Tests for llm_usage cost log retrieval helpers."""
+
+    def test_get_conversation_cost_logs(self, mock_db):
+        """Test conversation-scoped cost log retrieval and total calculation."""
+        _, mock_cursor = mock_db
+        test_time = datetime(2026, 2, 9, 12, 0, 0, tzinfo=UTC)
+        mock_cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "timestamp": test_time,
+                "agent_telegram_id": 123,
+                "channel_telegram_id": 456,
+                "task_identifier": None,
+                "action_details": json.dumps(
+                    {
+                        "operation": "query_structured",
+                        "model_name": "gemini-3-flash-preview",
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cost": 0.002,
+                    }
+                ),
+            },
+            {
+                "id": 2,
+                "timestamp": test_time - timedelta(minutes=1),
+                "agent_telegram_id": 123,
+                "channel_telegram_id": 456,
+                "task_identifier": None,
+                "action_details": json.dumps(
+                    {
+                        "operation": "describe_image",
+                        "model_name": "gemini-3-flash-preview",
+                        "input_tokens": 500,
+                        "output_tokens": 100,
+                        "cost": "$0.0010",
+                    }
+                ),
+            },
+        ]
+
+        result = get_conversation_cost_logs(123, 456, days=7)
+        assert len(result["logs"]) == 2
+        assert result["total_cost"] == pytest.approx(0.003)
+        assert result["logs"][0]["operation"] == "query_structured"
+
+        call_args = mock_cursor.execute.call_args
+        assert "action_kind = 'llm_usage'" in call_args[0][0]
+        assert "agent_telegram_id = %s" in call_args[0][0]
+        assert "channel_telegram_id = %s" in call_args[0][0]
+
+    def test_get_agent_cost_logs(self, mock_db):
+        """Test agent-scoped cost log retrieval."""
+        _, mock_cursor = mock_db
+        test_time = datetime(2026, 2, 9, 12, 0, 0, tzinfo=UTC)
+        mock_cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "timestamp": test_time,
+                "agent_telegram_id": 123,
+                "channel_telegram_id": 111,
+                "task_identifier": None,
+                "action_details": json.dumps({"cost": 0.0015}),
+            }
+        ]
+
+        result = get_agent_cost_logs(123, days=7)
+        assert len(result["logs"]) == 1
+        assert result["total_cost"] == pytest.approx(0.0015)
+
+        call_args = mock_cursor.execute.call_args
+        assert "agent_telegram_id = %s" in call_args[0][0]
+        assert "timestamp >= %s" in call_args[0][0]
+
+    def test_get_global_cost_logs(self, mock_db):
+        """Test global cost log retrieval."""
+        _, mock_cursor = mock_db
+        test_time = datetime(2026, 2, 9, 12, 0, 0, tzinfo=UTC)
+        mock_cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "timestamp": test_time,
+                "agent_telegram_id": 123,
+                "channel_telegram_id": 111,
+                "task_identifier": None,
+                "action_details": json.dumps({"cost": "$0.0025"}),
+            }
+        ]
+
+        result = get_global_cost_logs(days=7)
+        assert len(result["logs"]) == 1
+        assert result["total_cost"] == pytest.approx(0.0025)
+
+        call_args = mock_cursor.execute.call_args
+        assert "timestamp >= %s" in call_args[0][0]
 
 
 class TestDeleteOldLogs:
