@@ -294,3 +294,20 @@ class LLM(ABC):
             RuntimeError: If the LLM doesn't support JSON schema or returns invalid response
         """
         ...
+
+    @abstractmethod
+    async def query_plain_text(
+        self,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        timeout_s: float | None = None,
+        agent_name: str,
+    ) -> str:
+        """
+        Query the LLM for an unconstrained plain-text response.
+
+        This must not apply JSON schema constraints and should still record
+        usage logging consistently with other query paths.
+        """
+        ...

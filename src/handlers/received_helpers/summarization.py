@@ -6,7 +6,6 @@
 import json
 import logging
 import uuid
-import asyncio
 from datetime import UTC
 from datetime import date
 from datetime import datetime
@@ -96,43 +95,13 @@ async def _query_consolidation_plain_text(llm, prompt: str, agent_name: str) -> 
     """
     Query the LLM for plain text with no JSON schema.
     """
-    llm_type = type(llm).__name__
-
-    # Gemini query_structured always uses JSON schema internally, so call SDK directly.
-    if llm_type == "GeminiLLM":
-        from google.genai.types import GenerateContentConfig
-        from llm.base import extract_gemini_response_text
-
-        config = GenerateContentConfig(
-            system_instruction=prompt,
-            safety_settings=getattr(llm, "safety_settings", None),
+    if hasattr(llm, "query_plain_text"):
+        return await llm.query_plain_text(
+            system_prompt=prompt,
+            timeout_s=60.0,
+            agent_name=agent_name,
         )
-        response = await asyncio.to_thread(
-            llm.client.models.generate_content,
-            model=getattr(llm, "model_name", None),
-            contents=[{
-                "role": "user",
-                "parts": [{"text": "⟦special⟧ Please respond to the instructions provided."}],
-            }],
-            config=config,
-        )
-        return extract_gemini_response_text(response).strip()
-
-    # OpenAI-compatible clients (OpenAI/Grok/OpenRouter): no response_format => plain text.
-    if hasattr(llm, "client") and hasattr(llm.client, "chat"):
-        response = await llm.client.chat.completions.create(
-            model=getattr(llm, "model_name", None),
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": "⟦special⟧ Please respond to the instructions provided."},
-            ],
-            timeout=60.0,
-        )
-        if response.choices and response.choices[0].message.content:
-            return response.choices[0].message.content.strip()
-        return ""
-
-    raise RuntimeError(f"Unsupported LLM for plain-text consolidation: {llm_type}")
+    raise RuntimeError(f"LLM does not implement query_plain_text: {type(llm).__name__}")
 
 
 async def consolidate_oldest_summaries_if_needed(

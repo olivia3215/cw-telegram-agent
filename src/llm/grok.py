@@ -432,6 +432,38 @@ class GrokLLM(LLM):
             logger.error("Grok API exception: %s", e)
             raise e
 
+    async def query_plain_text(
+        self,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        timeout_s: float | None = None,
+        agent_name: str,
+    ) -> str:
+        """Query Grok for plain text without schema constraints."""
+        model_name = model or self.model_name
+        response = await self.client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": "⟦special⟧ Please respond to the instructions provided.",
+                },
+            ],
+            timeout=timeout_s or 60.0,
+        )
+
+        if response.choices and response.choices[0].message.content:
+            text = response.choices[0].message.content.strip()
+        else:
+            raise RuntimeError(f"Grok returned no content: {response}")
+
+        self._log_usage_from_openai_response(
+            response, agent_name, model_name, "query_plain_text"
+        )
+        return text or ""
+
     async def query_with_json_schema(
         self,
         *,
