@@ -4,6 +4,7 @@
 
 // Cached copy of media shown on the current page.
 let currentPageMediaFiles = [];
+let savedByAgentsRequestSeq = 0;
 
 function loadMediaFiles(directoryPath, preservePage = false) {
     // Show loading spinner
@@ -86,6 +87,7 @@ function loadMediaFiles(directoryPath, preservePage = false) {
 
             // Display the media
             displayMediaPage(mediaFiles);
+            loadSavedByAgentsForCurrentPage(mediaFiles);
         })
         .catch(error => {
             if (error && error.message === 'unauthorized') {
@@ -430,6 +432,7 @@ function createMediaItemHTML(media) {
                 <h3 style="margin-top: 10px; margin-bottom: 10px;">${titleWithId}</h3>
                 <p><strong>Type:</strong> ${typeDisplay}</p>
                 ${(media.kind === 'sticker' || media.kind === 'animated_sticker') ? `<p><strong>Set:</strong> ${escapeHtml(media.sticker_set_display || media.sticker_set_name)}</p>` : ''}
+                <p id="saved-by-${media.unique_id}" style="display: none;"></p>
                 <p><strong>Status:</strong> ${escapeHtml(media.status)}</p>
                 ${media.failure_reason ? `<p class="error">${escapeHtml(media.failure_reason)}</p>` : ''}
 
@@ -447,6 +450,82 @@ function createMediaItemHTML(media) {
             </div>
         </div>
     `;
+}
+
+function loadSavedByAgentsForCurrentPage(mediaFiles) {
+    const uniqueIds = (mediaFiles || [])
+        .map(media => media.unique_id)
+        .filter(uniqueId => typeof uniqueId === 'string' && uniqueId.trim().length > 0);
+    const requestSeq = ++savedByAgentsRequestSeq;
+
+    if (uniqueIds.length === 0) {
+        updateSavedByAgentIndicators({});
+        return;
+    }
+
+    fetchWithAuth(`${API_BASE}/media/saved-by-agents`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ unique_ids: uniqueIds }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (requestSeq !== savedByAgentsRequestSeq) {
+                return;
+            }
+            if (data.error) {
+                console.warn('Error loading media ownership data:', data.error);
+                return;
+            }
+            updateSavedByAgentIndicators(data.saved_by_agents || {});
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') {
+                return;
+            }
+            console.warn('Error loading media ownership data:', error);
+        });
+}
+
+function updateSavedByAgentIndicators(savedByAgents) {
+    currentPageMediaFiles.forEach(media => {
+        const uniqueId = media.unique_id;
+        const savedByEl = document.getElementById(`saved-by-${uniqueId}`);
+        const deleteButton = document.getElementById(`delete-btn-${uniqueId}`);
+        const agents = Array.isArray(savedByAgents[uniqueId]) ? savedByAgents[uniqueId] : [];
+
+        if (agents.length > 0) {
+            const agentList = agents.join(', ');
+            if (savedByEl) {
+                savedByEl.innerHTML = `<strong>Saved by:</strong> ${escapeHtml(agentList)}`;
+                savedByEl.style.display = 'block';
+            }
+            if (deleteButton) {
+                deleteButton.disabled = true;
+                deleteButton.textContent = 'Delete disabled';
+                deleteButton.style.background = '#6c757d';
+                deleteButton.style.cursor = 'not-allowed';
+                deleteButton.title = `Saved by: ${agentList}`;
+                deleteButton.dataset.savedByAgents = agentList;
+            }
+            return;
+        }
+
+        if (savedByEl) {
+            savedByEl.textContent = '';
+            savedByEl.style.display = 'none';
+        }
+        if (deleteButton) {
+            deleteButton.disabled = false;
+            deleteButton.textContent = 'Delete';
+            deleteButton.style.background = '#dc3545';
+            deleteButton.style.cursor = 'pointer';
+            deleteButton.title = '';
+            delete deleteButton.dataset.savedByAgents;
+        }
+    });
 }
 
 async function loadTGSAnimations() {
@@ -809,6 +888,13 @@ function moveMedia(uniqueId) {
 }
 
 function deleteMedia(uniqueId) {
+    const deleteButton = document.getElementById(`delete-btn-${uniqueId}`);
+    const savedByAgents = deleteButton ? deleteButton.dataset.savedByAgents : '';
+    if (savedByAgents) {
+        alert(`Cannot delete this media because it is saved by: ${savedByAgents}`);
+        return;
+    }
+
     const descElement = document.querySelector(`#desc-${uniqueId}`);
     let mediaName = uniqueId;
     

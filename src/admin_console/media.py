@@ -35,6 +35,7 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
+from register_agents import register_all_agents, all_agents as get_all_agents
 from db import media_metadata
 from media.media_budget import reset_description_budget
 from media.media_source import (
@@ -120,6 +121,94 @@ async def _query_sticker_set_info(
     except Exception as e:
         logger.warning(f"Failed to query Telegram for sticker set {sticker_set_name}: {e}")
         return (None, None)
+
+
+def _get_agents_saving_media(unique_ids: list[str]) -> dict[str, list[str]]:
+    """
+    Return mapping unique_id -> sorted list of agent config names that have it.
+
+    "Saved by agent" means the media unique_id exists in that agent's
+    Telegram Saved Messages.
+    """
+    normalized_unique_ids: list[str] = []
+    seen: set[str] = set()
+    for unique_id in unique_ids:
+        unique_id_str = str(unique_id).strip()
+        if not unique_id_str or unique_id_str in seen:
+            continue
+        normalized_unique_ids.append(unique_id_str)
+        seen.add(unique_id_str)
+
+    saved_by_agents: dict[str, list[str]] = {
+        unique_id: [] for unique_id in normalized_unique_ids
+    }
+    if not normalized_unique_ids:
+        return saved_by_agents
+
+    unique_id_set = set(normalized_unique_ids)
+
+    try:
+        register_all_agents()
+        agents = list(get_all_agents(include_disabled=True))
+    except Exception as e:
+        logger.warning("Could not load agents for media ownership check: %s", e)
+        return saved_by_agents
+
+    for agent in agents:
+        config_name = getattr(agent, "config_name", None)
+        if not config_name or not getattr(agent, "client", None):
+            continue
+
+        found_unique_ids = _list_agent_saved_media_unique_ids(agent, unique_id_set)
+        for unique_id in found_unique_ids:
+            if unique_id in saved_by_agents:
+                saved_by_agents[unique_id].append(config_name)
+
+    for unique_id in saved_by_agents:
+        saved_by_agents[unique_id].sort(key=str.lower)
+
+    return saved_by_agents
+
+
+def _list_agent_saved_media_unique_ids(agent, candidate_ids: set[str]) -> set[str]:
+    """Return candidate IDs found in an agent's Saved Messages."""
+    if not candidate_ids:
+        return set()
+
+    client = getattr(agent, "client", None)
+    if client is None:
+        return set()
+
+    async def _collect() -> list[str]:
+        found: set[str] = set()
+        async for message in client.iter_messages("me", limit=None):
+            media_obj = getattr(message, "photo", None) or getattr(message, "document", None)
+            if not media_obj:
+                continue
+
+            unique_id = get_unique_id(media_obj)
+            if not unique_id:
+                continue
+
+            unique_id_str = str(unique_id)
+            if unique_id_str in candidate_ids:
+                found.add(unique_id_str)
+                # Stop early when we have found every candidate on this page.
+                if len(found) == len(candidate_ids):
+                    break
+        return list(found)
+
+    try:
+        result = agent.execute(_collect(), timeout=30.0)
+        return set(result or [])
+    except Exception as e:
+        config_name = getattr(agent, "config_name", "<unknown>")
+        logger.debug(
+            "Failed loading Saved Messages ownership for %s: %s",
+            config_name,
+            e,
+        )
+        return set()
 
 @media_bp.route("/api/media")
 def api_media_list():
@@ -1050,6 +1139,21 @@ def api_cleanup_unused_media():
         return jsonify({"error": str(e)}), 500
 
 
+@media_bp.route("/api/media/saved-by-agents", methods=["POST"])
+def api_media_saved_by_agents():
+    """Return mapping of media unique IDs to agent config names that saved them."""
+    try:
+        data = request.get_json(silent=True) or {}
+        unique_ids = data.get("unique_ids")
+        if not isinstance(unique_ids, list):
+            return jsonify({"error": "unique_ids must be a list"}), 400
+
+        return jsonify({"saved_by_agents": _get_agents_saving_media(unique_ids)})
+    except Exception as e:
+        logger.error("Error checking which agents saved media: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @media_bp.route("/api/media/<unique_id>/delete", methods=["DELETE"])
 def api_delete_media(unique_id: str):
     """Delete a media item and its description."""
@@ -1072,6 +1176,21 @@ def api_delete_media(unique_id: str):
         record = svc.get_record(unique_id)
         if not record:
             return jsonify({"error": "Media record not found"}), 404
+
+        saved_by_agents = _get_agents_saving_media([unique_id]).get(unique_id, [])
+        if saved_by_agents:
+            agent_list = ", ".join(saved_by_agents)
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "Cannot delete media that is saved by agents: "
+                            f"{agent_list}"
+                        )
+                    }
+                ),
+                409,
+            )
 
         if is_state_media and state_media_path:
             svc.delete_media_files(unique_id, record=record)

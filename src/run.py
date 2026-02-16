@@ -404,6 +404,12 @@ async def scan_unread_messages(agent: Agent):
             await ensure_photo_cache(agent, client)
         except Exception as e:
             logger.debug(f"{format_log_prefix(agent.name)} Error refreshing photo cache during scan: {e}")
+        try:
+            await ensure_saved_message_sticker_cache(agent, client)
+        except Exception as e:
+            logger.debug(
+                f"{format_log_prefix(agent.name)} Error refreshing saved-message sticker cache during scan: {e}"
+            )
     
     # Refresh username cache to pick up username changes
     try:
@@ -461,50 +467,151 @@ async def ensure_sticker_cache(agent, client):
         agent.loaded_sticker_sets = set()
     loaded = agent.loaded_sticker_sets
 
-    # If we've already loaded all required sets, nothing to do
-    if required_sets and required_sets.issubset(loaded):
-        return
-
     # Ensure stickers dict exists
     if not hasattr(agent, "stickers"):
         agent.stickers = {}
+    if not hasattr(agent, "_config_sticker_keys"):
+        agent._config_sticker_keys = set()
+    if not hasattr(agent, "_saved_message_sticker_keys"):
+        agent._saved_message_sticker_keys = set()
 
-    for set_short in sorted(required_sets):
-        if set_short in loaded:
-            continue  # already fetched
+    # Load config-defined sticker sets once, then always merge Saved Messages stickers.
+    if not required_sets or not required_sets.issubset(loaded):
+        for set_short in sorted(required_sets):
+            if set_short in loaded:
+                continue  # already fetched
 
-        try:
-            result = await client(
-                GetStickerSetRequest(
-                    stickerset=InputStickerSetShortName(short_name=set_short),
-                    hash=0,
-                )
-            )
-
-            is_full_set = set_short in full_sets
-            explicit_names = explicit_by_set.get(set_short, set())
-
-            for doc in result.documents:
-                name = next(
-                    (a.alt for a in doc.attributes if hasattr(a, "alt")),
-                    f"sticker_{len(agent.stickers) + 1}",
+            try:
+                result = await client(
+                    GetStickerSetRequest(
+                        stickerset=InputStickerSetShortName(short_name=set_short),
+                        hash=0,
+                    )
                 )
 
-                # Only store if:
-                # 1. This is a full set, OR
-                # 2. This specific sticker is in explicit_stickers
-                if is_full_set or name in explicit_names:
-                    agent.stickers[(set_short, name)] = doc
-                    logger.debug(
-                        f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                is_full_set = set_short in full_sets
+                explicit_names = explicit_by_set.get(set_short, set())
+
+                for doc in result.documents:
+                    name = next(
+                        (a.alt for a in doc.attributes if hasattr(a, "alt")),
+                        f"sticker_{len(agent.stickers) + 1}",
                     )
 
-            loaded.add(set_short)
+                    # Only store if:
+                    # 1. This is a full set, OR
+                    # 2. This specific sticker is in explicit_stickers
+                    if is_full_set or name in explicit_names:
+                        key = (set_short, name)
+                        agent.stickers[key] = doc
+                        agent._config_sticker_keys.add(key)
+                        logger.debug(
+                            f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                        )
 
-        except Exception as e:
-            logger.exception(
-                f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+                loaded.add(set_short)
+
+            except Exception as e:
+                logger.exception(
+                    f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+                )
+
+    await ensure_saved_message_sticker_cache(agent, client)
+
+
+def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
+    """
+    Build a stable sticker key (set_short_name, sticker_name) from a Saved Messages document.
+    """
+    attrs = getattr(doc, "attributes", []) or []
+    for attr in attrs:
+        sticker_set = getattr(attr, "stickerset", None)
+        if sticker_set is None:
+            continue
+
+        set_short = (
+            getattr(sticker_set, "short_name", None)
+            or getattr(sticker_set, "name", None)
+            or getattr(sticker_set, "title", None)
+        )
+        sticker_name = getattr(attr, "alt", None)
+        unique_id = getattr(doc, "id", None)
+
+        set_short_value = str(set_short).strip() if set_short else "SavedMessages"
+        if sticker_name:
+            sticker_name_value = str(sticker_name).strip()
+        elif unique_id is not None:
+            sticker_name_value = f"sticker_{unique_id}"
+        else:
+            sticker_name_value = "sticker"
+
+        if set_short_value and sticker_name_value:
+            return (set_short_value, sticker_name_value)
+
+    return None
+
+
+async def ensure_saved_message_sticker_cache(agent, client):
+    """
+    Merge stickers from the agent's Saved Messages into agent.stickers.
+
+    This augments config-defined curated stickers and allows gradual migration
+    away from config-file sticker declarations.
+    """
+    # Agent must have agent_id to access saved messages.
+    if not hasattr(agent, "agent_id") or agent.agent_id is None:
+        logger.debug(
+            f"[{getattr(agent, 'name', 'agent')}] Cannot cache saved-message stickers: agent_id not set"
+        )
+        return
+
+    if not hasattr(agent, "stickers"):
+        agent.stickers = {}
+    if not hasattr(agent, "_config_sticker_keys"):
+        agent._config_sticker_keys = set()
+    if not hasattr(agent, "_saved_message_sticker_keys"):
+        agent._saved_message_sticker_keys = set()
+
+    seen_keys = set()
+    added = 0
+    updated = 0
+
+    try:
+        async for message in client.iter_messages("me", limit=None):
+            doc = getattr(message, "document", None)
+            if not doc:
+                continue
+
+            key = _extract_saved_message_sticker_key(doc)
+            if key is None:
+                continue
+
+            seen_keys.add(key)
+            if key in agent.stickers:
+                updated += 1
+            else:
+                added += 1
+            agent.stickers[key] = doc
+
+        # Remove stickers that disappeared from Saved Messages, but keep config-defined stickers.
+        removed = 0
+        previous_saved = set(agent._saved_message_sticker_keys)
+        for stale_key in previous_saved - seen_keys:
+            if stale_key not in agent._config_sticker_keys and stale_key in agent.stickers:
+                del agent.stickers[stale_key]
+            removed += 1
+
+        agent._saved_message_sticker_keys = seen_keys
+
+        if seen_keys:
+            logger.debug(
+                f"[{getattr(agent, 'name', 'agent')}] Saved-message sticker cache: "
+                f"{len(seen_keys)} stickers ({added} added, {updated} refreshed, {removed} removed)"
             )
+    except Exception as e:
+        logger.exception(
+            f"[{getattr(agent, 'name', 'agent')}] Failed to cache stickers from saved messages: {e}"
+        )
 
 
 async def ensure_photo_cache(agent, client):
