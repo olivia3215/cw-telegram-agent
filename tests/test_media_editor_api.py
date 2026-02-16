@@ -251,6 +251,28 @@ def test_is_state_media_directory_with_relative_path_and_non_repo_cwd(monkeypatc
         monkeypatch.chdir(orig_cwd)
 
 
+def test_get_agents_saving_media_uses_per_agent_saved_messages(monkeypatch):
+    from types import SimpleNamespace
+
+    from admin_console.media import _get_agents_saving_media
+
+    agent_a = SimpleNamespace(config_name="agent_a", client=object())
+    agent_b = SimpleNamespace(config_name="agent_b", client=object())
+
+    monkeypatch.setattr("admin_console.media.register_all_agents", lambda: None)
+    monkeypatch.setattr(
+        "admin_console.media.get_all_agents",
+        lambda include_disabled=True: [agent_a, agent_b],
+    )
+    monkeypatch.setattr(
+        "admin_console.media._list_agent_saved_media_unique_ids",
+        lambda agent, candidate_ids: {"u1"} if agent.config_name == "agent_a" else set(),
+    )
+
+    result = _get_agents_saving_media(["u1"])
+    assert result["u1"] == ["agent_a"]
+
+
 @pytest.mark.usefixtures("reset_media_sources")
 def test_api_media_saved_by_agents_returns_mapping(monkeypatch, tmp_path):
     media_dir = tmp_path / "media"

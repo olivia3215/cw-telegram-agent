@@ -29,6 +29,10 @@ class FakeClient:
         self.calls += 1
         return FakeResult([FakeDoc("Wink"), FakeDoc("Smile")])
 
+    async def iter_messages(self, *args, **kwargs):
+        if False:
+            yield None
+
 
 class FakeAgent:
     def __init__(self, name="Wendy", sticker_set_names=None):
@@ -36,6 +40,9 @@ class FakeAgent:
         self.sticker_set_names = sticker_set_names or ["WendyDancer"]
         self.stickers = {}
         self.loaded_sticker_sets = set()
+        self._config_sticker_keys = set()
+        self._saved_message_sticker_keys = set()
+        self.agent_id = 123
 
 
 @pytest.mark.asyncio
@@ -79,6 +86,10 @@ class FakeClientWithFailure:
             raise Exception(f"Sticker set '{set_name}' is invalid")
 
         return FakeResult([FakeDoc("Wink"), FakeDoc("Smile")])
+
+    async def iter_messages(self, *args, **kwargs):
+        if False:
+            yield None
 
 
 @pytest.mark.asyncio
@@ -136,6 +147,10 @@ class FakeClientWithAnimatedEmojies:
         else:
             return FakeResult([FakeDoc("Wink"), FakeDoc("Smile")])
 
+    async def iter_messages(self, *args, **kwargs):
+        if False:
+            yield None
+
 
 @pytest.mark.asyncio
 async def test_animatedemojies_never_full_set_but_explicit_allowed(monkeypatch, tmp_path):
@@ -177,3 +192,80 @@ async def test_animatedemojies_never_full_set_but_explicit_allowed(monkeypatch, 
     # Both sets should be marked as loaded
     assert "AnimatedEmojies" in agent.loaded_sticker_sets
     assert "OtherSet" in agent.loaded_sticker_sets
+
+
+class FakeStickerSet:
+    def __init__(self, short_name: str):
+        self.short_name = short_name
+
+
+class FakeStickerAttr:
+    def __init__(self, alt: str, short_name: str):
+        self.alt = alt
+        self.stickerset = FakeStickerSet(short_name)
+
+
+class FakeSavedStickerDoc:
+    def __init__(self, uid: int, alt: str, short_name: str):
+        self.id = uid
+        self.attributes = [FakeStickerAttr(alt, short_name)]
+
+
+class FakeSavedStickerMessage:
+    def __init__(self, uid: int, alt: str, short_name: str):
+        self.document = FakeSavedStickerDoc(uid, alt, short_name)
+        self.photo = None
+
+
+class FakeSavedStickerClient(FakeClient):
+    def __init__(self, messages):
+        super().__init__()
+        self._messages = messages
+
+    async def iter_messages(self, *args, **kwargs):
+        for message in self._messages:
+            yield message
+
+
+@pytest.mark.asyncio
+async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypatch, tmp_path):
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
+
+    import importlib
+
+    run = importlib.import_module("run")
+    ensure_sticker_cache = run.ensure_sticker_cache
+
+    agent = FakeAgent(name="MergedAgent", sticker_set_names=["WendyDancer"])
+    client = FakeSavedStickerClient(
+        [FakeSavedStickerMessage(1001, "😀", "SavedSet")]
+    )
+
+    await ensure_sticker_cache(agent, client)
+
+    # Existing config-defined stickers still present.
+    assert ("WendyDancer", "Wink") in agent.stickers
+    # Saved Messages sticker is merged into the curated set.
+    assert ("SavedSet", "😀") in agent.stickers
+    assert ("SavedSet", "😀") in agent._saved_message_sticker_keys
+
+
+@pytest.mark.asyncio
+async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
+
+    import importlib
+
+    run = importlib.import_module("run")
+    ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
+
+    agent = FakeAgent(name="RemovalAgent", sticker_set_names=[])
+    client_with_sticker = FakeSavedStickerClient(
+        [FakeSavedStickerMessage(2002, "😉", "SavedSet")]
+    )
+    await ensure_saved_message_sticker_cache(agent, client_with_sticker)
+    assert ("SavedSet", "😉") in agent.stickers
+
+    client_without_sticker = FakeSavedStickerClient([])
+    await ensure_saved_message_sticker_cache(agent, client_without_sticker)
+    assert ("SavedSet", "😉") not in agent.stickers

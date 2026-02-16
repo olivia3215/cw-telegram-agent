@@ -100,6 +100,9 @@ class Agent(
 
         # (set_short_name, sticker_name) -> InputDocument
         self.stickers = {}
+        # Internal provenance tracking for sticker cache maintenance.
+        self._config_sticker_keys = set()
+        self._saved_message_sticker_keys = set()
 
         self._client = None
         self._loop = None  # Cached event loop from the client
