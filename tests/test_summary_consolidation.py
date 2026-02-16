@@ -89,8 +89,11 @@ async def test_consolidation_merges_oldest_five_when_threshold_met():
     assert changed is True
     assert mock_query.call_count == 1
     call_kwargs = mock_query.call_args.kwargs
-    assert "Summary 1" in call_kwargs["prompt"]
+    assert "summary 1" in call_kwargs["prompt"]
+    assert "summary 5" in call_kwargs["prompt"]
     assert "```json" not in call_kwargs["prompt"]
+    assert "Message ID range" not in call_kwargs["prompt"]
+    assert "Date range" not in call_kwargs["prompt"]
     mock_save.assert_called_once()
     save_kwargs = mock_save.call_args.kwargs
     assert save_kwargs["agent_telegram_id"] == 1

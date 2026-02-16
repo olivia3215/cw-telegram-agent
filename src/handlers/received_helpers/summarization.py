@@ -154,25 +154,25 @@ async def consolidate_oldest_summaries_if_needed(
         return False
 
     summaries_to_merge = summaries_list[:SUMMARY_CONSOLIDATION_BATCH_SIZE]
-    summary_sections: list[str] = []
-    for idx, summary in enumerate(summaries_to_merge, start=1):
+    summary_texts: list[str] = []
+    for summary in summaries_to_merge:
         content = str(summary.get("content", "")).strip()
-        min_id = summary.get("min_message_id")
-        max_id = summary.get("max_message_id")
-        first_date = summary.get("first_message_date") or "N/A"
-        last_date = summary.get("last_message_date") or "N/A"
-        summary_sections.append(
-            f"Summary {idx}\n"
-            f"- Message ID range: {min_id} - {max_id}\n"
-            f"- Date range: {first_date} - {last_date}\n"
-            f"- Text: {content}"
+        if content:
+            summary_texts.append(content)
+
+    if not summary_texts:
+        logger.warning(
+            "%s Skipping summary consolidation for channel %s: no summary text",
+            format_log_prefix(agent.name, channel_name),
+            channel_id,
         )
+        return False
 
     prompt_template = load_system_prompt("Instructions-Consolidate-Summaries")
     prompt = (
         f"{prompt_template}\n\n"
         "Summaries to consolidate:\n\n"
-        f"{chr(10).join(summary_sections)}"
+        f"{chr(10).join(summary_texts)}"
     )
 
     try:
