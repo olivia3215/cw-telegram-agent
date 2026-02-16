@@ -62,7 +62,7 @@ To secure the admin console with HTTPS:
    open https://localhost:5001/admin
    ```
 
-**Note:** Self-signed certificates will trigger browser security warnings. For production deployments with public access, consider using a reverse proxy (Nginx) with Let's Encrypt certificates. See `tmp/https-options.md` for detailed deployment options.
+**Note:** Self-signed certificates will trigger browser security warnings. For production deployments with public access, consider using a reverse proxy (Nginx) with Let's Encrypt certificates. See [HTTPS.md](HTTPS.md) for quick setup and remote-access options.
 
 ---
 
