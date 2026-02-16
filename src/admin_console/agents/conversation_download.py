@@ -386,19 +386,14 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         f"{translation_prompt}"
                                     )
 
-                                    try:
-                                        translation_llm._usage_agent_telegram_id = getattr(agent, "agent_id", None)
-                                        translation_llm._usage_channel_telegram_id = channel_id
-                                        result_text = await translation_llm.query_with_json_schema(
-                                            system_prompt=system_prompt,
-                                            json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
-                                            model=None,
-                                            timeout_s=None,
-                                            agent_name="admin-translation",
-                                        )
-                                    finally:
-                                        translation_llm._usage_agent_telegram_id = None
-                                        translation_llm._usage_channel_telegram_id = None
+                                    result_text = await translation_llm.query_with_json_schema(
+                                        system_prompt=system_prompt,
+                                        json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                                        model=None,
+                                        timeout_s=None,
+                                        agent=agent,
+                                        channel_telegram_id=channel_id,
+                                    )
 
                                     if result_text:
                                         try:

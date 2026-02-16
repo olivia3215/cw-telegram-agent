@@ -249,19 +249,14 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     f"{translation_prompt}"
                                 )
 
-                                try:
-                                    translation_llm._usage_agent_telegram_id = getattr(agent, "agent_id", None)
-                                    translation_llm._usage_channel_telegram_id = channel_id_for_usage
-                                    result_text = await translation_llm.query_with_json_schema(
-                                        system_prompt=system_prompt,
-                                        json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
-                                        model=None,  # Use default model
-                                        timeout_s=None,  # Use default timeout
-                                        agent_name="admin-translation",
-                                    )
-                                finally:
-                                    translation_llm._usage_agent_telegram_id = None
-                                    translation_llm._usage_channel_telegram_id = None
+                                result_text = await translation_llm.query_with_json_schema(
+                                    system_prompt=system_prompt,
+                                    json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                                    model=None,  # Use default model
+                                    timeout_s=None,  # Use default timeout
+                                    agent=agent,
+                                    channel_telegram_id=channel_id_for_usage,
+                                )
 
                                 if result_text:
                                     # Parse JSON response with better error handling

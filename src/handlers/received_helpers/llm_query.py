@@ -205,22 +205,17 @@ async def run_llm_with_retrieval(
             agent.name,
             model_name,
         )
-        llm._usage_agent_telegram_id = agent_id
-        llm._usage_channel_telegram_id = channel_id
-        try:
-            reply = await llm.query_structured(
-                system_prompt=system_prompt,
-                now_iso=now_iso,
-                chat_type=chat_type,
-                history=combined_history,
-                history_size=llm.history_size,
-                timeout_s=None,
-                allowed_task_types=allowed_task_types,
-                agent_name=agent.name,
-            )
-        finally:
-            llm._usage_agent_telegram_id = None
-            llm._usage_channel_telegram_id = None
+        reply = await llm.query_structured(
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            history=combined_history,
+            history_size=llm.history_size,
+            timeout_s=None,
+            allowed_task_types=allowed_task_types,
+            agent=agent,
+            channel_telegram_id=channel_id,
+        )
     except Exception as e:
         # Use module-level function if not provided
         check_retryable = is_retryable_llm_error_fn if is_retryable_llm_error_fn is not None else is_retryable_llm_error

@@ -110,16 +110,17 @@ class GeminiLLM(LLM):
     def _log_usage_from_rest_response(
         self,
         obj: dict,
-        agent_name: str,
+        agent: Any | None,
         model_name: str,
         operation: str,
+        channel_telegram_id: int | None = None,
     ) -> None:
         """
         Log LLM usage from a REST API response.
         
         Args:
             obj: The parsed JSON response object
-            agent_name: Agent name for logging
+            agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "describe_video")
         """
@@ -135,13 +136,12 @@ class GeminiLLM(LLM):
             if input_tokens or total_output_tokens:
                 from .usage_logging import log_llm_usage
                 log_llm_usage(
-                    agent_name=agent_name,
+                    agent=agent,
                     model_name=model_name,
                     input_tokens=input_tokens,
                     output_tokens=total_output_tokens,
                     operation=operation,
-                    agent_telegram_id=getattr(self, "_usage_agent_telegram_id", None),
-                    channel_telegram_id=getattr(self, "_usage_channel_telegram_id", None),
+                    channel_telegram_id=channel_telegram_id,
                 )
         except Exception as e:
             # Don't fail the request if usage logging fails
@@ -150,16 +150,17 @@ class GeminiLLM(LLM):
     def _log_usage_from_sdk_response(
         self,
         response: Any,
-        agent_name: str,
+        agent: Any | None,
         model_name: str,
         operation: str | None = None,
+        channel_telegram_id: int | None = None,
     ) -> None:
         """
         Log LLM usage from an SDK response object.
         
         Args:
             response: The SDK response object
-            agent_name: Agent name for logging
+            agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Optional operation type (e.g., "query_structured")
         """
@@ -178,13 +179,12 @@ class GeminiLLM(LLM):
                 
                 from .usage_logging import log_llm_usage
                 log_llm_usage(
-                    agent_name=agent_name,
+                    agent=agent,
                     model_name=model_name,
                     input_tokens=input_tokens,
                     output_tokens=total_output_tokens,
                     operation=operation,
-                    agent_telegram_id=getattr(self, "_usage_agent_telegram_id", None),
-                    channel_telegram_id=getattr(self, "_usage_channel_telegram_id", None),
+                    channel_telegram_id=channel_telegram_id,
                 )
         except Exception as e:
             # Don't fail the request if usage logging fails
@@ -277,9 +277,10 @@ class GeminiLLM(LLM):
     async def describe_image(
         self,
         image_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -399,7 +400,13 @@ class GeminiLLM(LLM):
             text = parts[0]["text"].strip()
             
             # Log usage
-            self._log_usage_from_rest_response(obj, agent_name, model, "describe_image")
+            self._log_usage_from_rest_response(
+                obj,
+                agent,
+                model,
+                "describe_image",
+                channel_telegram_id=channel_telegram_id,
+            )
             
             return text
         except Exception as e:
@@ -408,10 +415,11 @@ class GeminiLLM(LLM):
     async def describe_video(
         self,
         video_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -584,7 +592,13 @@ class GeminiLLM(LLM):
             text = parts[0]["text"].strip()
             
             # Log usage
-            self._log_usage_from_rest_response(obj, agent_name, model, "describe_video")
+            self._log_usage_from_rest_response(
+                obj,
+                agent,
+                model,
+                "describe_video",
+                channel_telegram_id=channel_telegram_id,
+            )
             
             return text
         except Exception as e:
@@ -593,10 +607,11 @@ class GeminiLLM(LLM):
     async def describe_audio(
         self,
         audio_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -729,7 +744,13 @@ class GeminiLLM(LLM):
             text = parts[0]["text"].strip()
             
             # Log usage
-            self._log_usage_from_rest_response(obj, agent_name, model, "describe_audio")
+            self._log_usage_from_rest_response(
+                obj,
+                agent,
+                model,
+                "describe_audio",
+                channel_telegram_id=channel_telegram_id,
+            )
             
             return text
         except Exception as e:
@@ -743,8 +764,9 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
         system_instruction: str | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str,
+        agent: Any | None = None,
         operation: str | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Thin wrapper around the Gemini client for role-structured 'contents'.
@@ -844,7 +866,13 @@ class GeminiLLM(LLM):
             text = _extract_response_text(response)
             
             # Log usage
-            self._log_usage_from_sdk_response(response, agent_name, model_name, operation)
+            self._log_usage_from_sdk_response(
+                response,
+                agent,
+                model_name,
+                operation,
+                channel_telegram_id=channel_telegram_id,
+            )
 
             # Optional comprehensive logging for debugging
             if GEMINI_DEBUG_LOGGING:
@@ -1009,7 +1037,8 @@ class GeminiLLM(LLM):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -1033,8 +1062,9 @@ class GeminiLLM(LLM):
             timeout_s=timeout_s,
             system_instruction=system_prompt,
             allowed_task_types=allowed_task_types,
-            agent_name=agent_name,
+            agent=agent,
             operation="query_structured",
+            channel_telegram_id=channel_telegram_id,
         )
 
     async def query_plain_text(
@@ -1043,7 +1073,8 @@ class GeminiLLM(LLM):
         system_prompt: str,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """Query Gemini for plain text without JSON schema constraints."""
         client = getattr(self, "client", None)
@@ -1072,7 +1103,11 @@ class GeminiLLM(LLM):
 
         text = _extract_response_text(response).strip()
         self._log_usage_from_sdk_response(
-            response, agent_name, model_name, "query_plain_text"
+            response,
+            agent,
+            model_name,
+            "query_plain_text",
+            channel_telegram_id=channel_telegram_id,
         )
         return text or ""
 
@@ -1083,7 +1118,8 @@ class GeminiLLM(LLM):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Query Gemini with a JSON schema constraint on the response.
@@ -1158,7 +1194,13 @@ class GeminiLLM(LLM):
             text = _extract_response_text(response)
             
             # Log usage
-            self._log_usage_from_sdk_response(response, agent_name, model_name, "query_with_json_schema")
+            self._log_usage_from_sdk_response(
+                response,
+                agent,
+                model_name,
+                "query_with_json_schema",
+                channel_telegram_id=channel_telegram_id,
+            )
 
             # Optional comprehensive logging for debugging
             if GEMINI_DEBUG_LOGGING:

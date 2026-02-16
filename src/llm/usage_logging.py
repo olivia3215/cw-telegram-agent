@@ -10,7 +10,7 @@ Provides centralized logging for LLM invocations with token counts and estimated
 """
 import logging
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from utils.formatting import format_log_prefix
 
@@ -89,28 +89,34 @@ def calculate_cost(
 
 
 def log_llm_usage(
-    agent_name: str,
+    agent: Any | None,
     model_name: str,
     input_tokens: int,
     output_tokens: int,
     operation: Optional[str] = None,
     channel_name: Optional[str] = None,
-    agent_telegram_id: Optional[int] = None,
     channel_telegram_id: Optional[int] = None,
 ) -> None:
     """
     Log LLM usage with token counts and estimated cost.
     
     Args:
-        agent_name: Name of the agent making the request (required)
+        agent: Optional agent object for logging context
         model_name: The model used for the request
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
         operation: Optional operation type (e.g., "query", "describe_image", "describe_video")
         channel_name: Optional channel name for logging prefix
-        agent_telegram_id: Optional agent Telegram ID for task log persistence
         channel_telegram_id: Optional channel Telegram ID for task log persistence
     """
+    agent_name = str(getattr(agent, "name", None) or "unknown-agent")
+    agent_telegram_id = getattr(agent, "agent_id", None)
+    if agent_telegram_id is not None:
+        try:
+            agent_telegram_id = int(agent_telegram_id)
+        except (TypeError, ValueError):
+            agent_telegram_id = None
+
     cost = calculate_cost(model_name, input_tokens, output_tokens)
     
     # Format cost to the hundredth of a cent (4 decimal places)

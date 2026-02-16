@@ -7,6 +7,7 @@
 
 import json
 import pytest
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 from llm.usage_logging import (
@@ -88,7 +89,7 @@ def test_log_llm_usage():
     with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
         with patch("llm.usage_logging.logger") as mock_logger:
             log_llm_usage(
-                agent_name="TestAgent",
+                agent=SimpleNamespace(name="TestAgent"),
                 model_name="test-model",
                 input_tokens=1000,
                 output_tokens=500,
@@ -122,7 +123,7 @@ def test_log_llm_usage_without_operation():
     with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):
         with patch("llm.usage_logging.logger") as mock_logger:
             log_llm_usage(
-                agent_name="TestAgent",
+                agent=SimpleNamespace(name="TestAgent"),
                 model_name="test-model",
                 input_tokens=100,
                 output_tokens=50,
@@ -147,12 +148,11 @@ def test_log_llm_usage_persists_to_task_log_when_context_provided():
         with patch("llm.usage_logging.logger"):
             with patch("db.task_log.log_task_execution") as mock_log_task_execution:
                 log_llm_usage(
-                    agent_name="TestAgent",
+                    agent=SimpleNamespace(name="TestAgent", agent_id=123456),
                     model_name="test-model",
                     input_tokens=1000,
                     output_tokens=500,
                     operation="query_structured",
-                    agent_telegram_id=123456,
                     channel_telegram_id=78910,
                 )
 
@@ -178,7 +178,7 @@ def test_log_llm_usage_does_not_persist_without_context():
         with patch("llm.usage_logging.logger"):
             with patch("db.task_log.log_task_execution") as mock_log_task_execution:
                 log_llm_usage(
-                    agent_name="TestAgent",
+                    agent=SimpleNamespace(name="TestAgent"),
                     model_name="test-model",
                     input_tokens=100,
                     output_tokens=50,
@@ -218,7 +218,7 @@ def test_gemini_thinking_tokens_counted_in_rest_response():
                     # Call the logging method
                     gemini._log_usage_from_rest_response(
                         obj=mock_response,
-                        agent_name="TestAgent",
+                        agent=SimpleNamespace(name="TestAgent"),
                         model_name="gemini-3-flash-preview",
                         operation="describe_image",
                     )
@@ -259,7 +259,7 @@ def test_gemini_thinking_tokens_counted_in_sdk_response():
                     # Call the logging method
                     gemini._log_usage_from_sdk_response(
                         response=mock_response,
-                        agent_name="TestAgent",
+                        agent=SimpleNamespace(name="TestAgent"),
                         model_name="gemini-3-flash-preview",
                         operation="query_structured",
                     )
@@ -305,7 +305,7 @@ def test_gemini_no_thinking_tokens_still_works():
                     
                     gemini._log_usage_from_rest_response(
                         obj=mock_response,
-                        agent_name="TestAgent",
+                        agent=SimpleNamespace(name="TestAgent"),
                         model_name="gemini-2.0-flash",
                         operation="describe_image",
                     )

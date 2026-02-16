@@ -91,7 +91,12 @@ def _merge_summary_metadata(summaries_to_merge: list[dict]) -> dict:
     }
 
 
-async def _query_consolidation_plain_text(llm, prompt: str, agent_name: str) -> str:
+async def _query_consolidation_plain_text(
+    llm,
+    prompt: str,
+    agent,
+    channel_telegram_id: int | None = None,
+) -> str:
     """
     Query the LLM for plain text with no JSON schema.
     """
@@ -99,7 +104,8 @@ async def _query_consolidation_plain_text(llm, prompt: str, agent_name: str) -> 
         return await llm.query_plain_text(
             system_prompt=prompt,
             timeout_s=60.0,
-            agent_name=agent_name,
+            agent=agent,
+            channel_telegram_id=channel_telegram_id,
         )
     raise RuntimeError(f"LLM does not implement query_plain_text: {type(llm).__name__}")
 
@@ -152,7 +158,8 @@ async def consolidate_oldest_summaries_if_needed(
         response = await _query_consolidation_plain_text(
             llm=llm,
             prompt=prompt,
-            agent_name=agent.name,
+            agent=agent,
+            channel_telegram_id=channel_id,
         )
     except Exception as exc:
         logger.warning(
@@ -417,22 +424,17 @@ async def perform_summarization(
             agent.name,
             model_name,
         )
-        llm._usage_agent_telegram_id = agent.agent_id
-        llm._usage_channel_telegram_id = channel_id
-        try:
-            reply = await llm.query_structured(
-                system_prompt=system_prompt,
-                now_iso=now_iso,
-                chat_type=chat_type,
-                history=combined_history,
-                history_size=len(combined_history),
-                timeout_s=None,
-                allowed_task_types=allowed_task_types,
-                agent_name=agent.name,
-            )
-        finally:
-            llm._usage_agent_telegram_id = None
-            llm._usage_channel_telegram_id = None
+        reply = await llm.query_structured(
+            system_prompt=system_prompt,
+            now_iso=now_iso,
+            chat_type=chat_type,
+            history=combined_history,
+            history_size=len(combined_history),
+            timeout_s=None,
+            allowed_task_types=allowed_task_types,
+            agent=agent,
+            channel_telegram_id=channel_id,
+        )
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to perform summarization for channel {channel_id}: {e}"

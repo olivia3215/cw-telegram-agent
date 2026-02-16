@@ -111,9 +111,10 @@ class LLM(ABC):
     def _log_usage_from_openai_response(
         self,
         response: Any,
-        agent_name: str,
+        agent: Any | None,
         model_name: str,
         operation: str,
+        channel_telegram_id: int | None = None,
     ) -> None:
         """
         Log LLM usage from an OpenAI-compatible response.
@@ -122,7 +123,7 @@ class LLM(ABC):
         
         Args:
             response: The OpenAI-compatible response object
-            agent_name: Agent name for logging
+            agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "query_structured")
         """
@@ -134,13 +135,12 @@ class LLM(ABC):
                 if input_tokens or output_tokens:
                     from .usage_logging import log_llm_usage
                     log_llm_usage(
-                        agent_name=agent_name,
+                        agent=agent,
                         model_name=model_name,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         operation=operation,
-                        agent_telegram_id=getattr(self, "_usage_agent_telegram_id", None),
-                        channel_telegram_id=getattr(self, "_usage_channel_telegram_id", None),
+                        channel_telegram_id=channel_telegram_id,
                     )
             except Exception as e:
                 # Don't fail the request if usage logging fails
@@ -178,7 +178,8 @@ class LLM(ABC):
         model: str | None = None,
         timeout_s: float | None = None,
         allowed_task_types: set[str] | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
@@ -187,7 +188,7 @@ class LLM(ABC):
         Args:
             allowed_task_types: Optional set of task types to allow in the response schema.
                                If None, all task types are allowed.
-            agent_name: Agent name for usage logging (required).
+            agent: Optional agent object for usage logging context.
         """
         ...
 
@@ -203,9 +204,10 @@ class LLM(ABC):
     async def describe_image(
         self,
         image_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -214,7 +216,7 @@ class LLM(ABC):
 
         Args:
             image_bytes: The image data as bytes
-            agent_name: Agent name for usage logging (required)
+            agent: Optional agent object for usage logging context
             mime_type: Optional MIME type of the image
             timeout_s: Optional timeout in seconds for the request
         """
@@ -224,10 +226,11 @@ class LLM(ABC):
     async def describe_video(
         self,
         video_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -236,7 +239,7 @@ class LLM(ABC):
 
         Args:
             video_bytes: The video data as bytes
-            agent_name: Agent name for usage logging (required)
+            agent: Optional agent object for usage logging context
             mime_type: Optional MIME type of the video
             duration: Video duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
@@ -247,10 +250,11 @@ class LLM(ABC):
     async def describe_audio(
         self,
         audio_bytes: bytes,
-        agent_name: str,
+        agent: Any | None = None,
         mime_type: str | None = None,
         duration: int | None = None,
         timeout_s: float | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -259,7 +263,7 @@ class LLM(ABC):
 
         Args:
             audio_bytes: The audio data as bytes
-            agent_name: Agent name for usage logging (required)
+            agent: Optional agent object for usage logging context
             mime_type: Optional MIME type of the audio
             duration: Audio duration in seconds (optional, used for validation)
             timeout_s: Optional timeout in seconds for the request
@@ -274,7 +278,8 @@ class LLM(ABC):
         json_schema: dict,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Query the LLM with a JSON schema constraint on the response.
@@ -287,7 +292,7 @@ class LLM(ABC):
             json_schema: JSON schema dictionary that constrains the response format
             model: Optional model name override
             timeout_s: Optional timeout in seconds for the request
-            agent_name: Agent name for usage logging (required)
+            agent: Optional agent object for usage logging context
         
         Returns:
             JSON string response that matches the schema
@@ -304,7 +309,8 @@ class LLM(ABC):
         system_prompt: str,
         model: str | None = None,
         timeout_s: float | None = None,
-        agent_name: str,
+        agent: Any | None = None,
+        channel_telegram_id: int | None = None,
     ) -> str:
         """
         Query the LLM for an unconstrained plain-text response.
