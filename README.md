@@ -473,7 +473,10 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 3. Start the service and open the console:
    ```bash
    ./run.sh
-   open http://localhost:5001/admin
+   # Linux:
+   xdg-open http://localhost:5001/admin
+   # macOS:
+   # open http://localhost:5001/admin
    ```
 
 **Enabling HTTPS (Optional)**
@@ -493,13 +496,14 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
      -subj "/CN=localhost"
    ```
 
-2. **Configure environment variables in `.env`:**
+2. **Configure SSL environment variables:**
    ```bash
+   # If your shell has SCRIPT_DIR defined (for example from .env), you can use:
    export CINDY_ADMIN_CONSOLE_SSL_CERT="$SCRIPT_DIR/certs/cert.pem"
    export CINDY_ADMIN_CONSOLE_SSL_KEY="$SCRIPT_DIR/certs/key.pem"
    ```
    
-   Or set them temporarily in your shell:
+   Or set them directly with absolute paths:
    ```bash
    export CINDY_ADMIN_CONSOLE_SSL_CERT="$(pwd)/certs/cert.pem"
    export CINDY_ADMIN_CONSOLE_SSL_KEY="$(pwd)/certs/key.pem"
@@ -512,17 +516,15 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
 
 4. **Access via HTTPS:**
    ```bash
-   open https://localhost:5001/admin
+   # Linux:
+   xdg-open https://localhost:5001/admin
+   # macOS:
+   # open https://localhost:5001/admin
    ```
 
 **Browser Security Warning:** Self-signed certificates trigger a "Your connection is not private" warning. This is expected.
 - **For development/personal use:** Click "Advanced" → "Proceed to localhost (unsafe)"
 - **For production deployments:** Use a reverse proxy (Nginx/Apache) with Let's Encrypt certificates for trusted SSL
-
-**HTTPS Documentation:**
-- 📘 **Quick Start:** See `tmp/https-quickstart.md` for step-by-step instructions
-- 📗 **Deployment Options:** See `tmp/https-options.md` for comparison of 5 HTTPS approaches (reverse proxy, Cloudflare Tunnel, etc.)
-- 📙 **Certificate Management:** See `certs/README.md` for certificate renewal and troubleshooting
 
 **When to use HTTPS:**
 - ✅ Accessing the console over a network or the internet
@@ -603,6 +605,3 @@ For detailed information about the script management system and project architec
 * **Developer guide:** [DEVELOPER.md](DEVELOPER.md)
 * **Admin console:** [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md)
 * **Curated media descriptions:** [samples/media/README.md](samples/media/README.md)
-* **HTTPS deployment options:** [tmp/https-options.md](tmp/https-options.md) - Comprehensive comparison of HTTPS approaches
-* **HTTPS quick start:** [tmp/https-quickstart.md](tmp/https-quickstart.md) - Step-by-step HTTPS setup guide
-* **Certificate management:** [certs/README.md](certs/README.md) - SSL certificate generation and renewal
