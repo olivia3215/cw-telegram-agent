@@ -207,7 +207,7 @@ export CINDY_ADMIN_CONSOLE_SSL_KEY="$(pwd)/certs/key.pem"
 For production deployments:
 - Use Let's Encrypt with Certbot for free, trusted SSL certificates
 - Configure a reverse proxy (Nginx/Apache) for SSL termination
-- See `tmp/https-options.md` for detailed production deployment options
+- See [HTTPS.md](HTTPS.md) for detailed setup and remote-access options
 
 ## Step 10: Start the Server
 
@@ -302,7 +302,7 @@ After successful deployment:
 3. **Set up monitoring:** Check logs regularly for issues
 4. **Enable HTTPS:** For production or network access
 5. **Set up backups:** Back up `state/` directory and MySQL database
-6. **Review security:** See `tmp/https-options.md` for production hardening
+6. **Review security:** See [HTTPS.md](HTTPS.md) for HTTPS and remote-access guidance
 
 ## Additional Documentation
 
@@ -310,9 +310,7 @@ After successful deployment:
 - **Admin Console:** [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md) - Detailed console documentation
 - **Architecture:** [DESIGN.md](DESIGN.md) - System architecture and internals
 - **Developer Guide:** [DEVELOPER.md](DEVELOPER.md) - Development workflows
-- **HTTPS Options:** [tmp/https-options.md](tmp/https-options.md) - Comprehensive HTTPS deployment guide
-- **HTTPS Quick Start:** [tmp/https-quickstart.md](tmp/https-quickstart.md) - Quick HTTPS reference
-- **Certificate Management:** [certs/README.md](certs/README.md) - SSL certificate guides
+- **HTTPS Guide:** [HTTPS.md](HTTPS.md) - Quick start, security notes, and remote-access options
 
 ## Support
 

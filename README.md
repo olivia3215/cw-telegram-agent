@@ -531,6 +531,7 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
 **Browser Security Warning:** Self-signed certificates trigger a "Your connection is not private" warning. This is expected.
 - **For development/personal use:** Click "Advanced" → "Proceed to localhost (unsafe)"
 - **For production deployments:** Use a reverse proxy (Nginx/Apache) with Let's Encrypt certificates for trusted SSL
+- **More deployment options:** See [HTTPS.md](HTTPS.md) for quick setup and remote access guidance (including Cloudflare Tunnel)
 
 **When to use HTTPS:**
 - ✅ Accessing the console over a network or the internet
@@ -611,3 +612,4 @@ For detailed information about the script management system and project architec
 * **Developer guide:** [DEVELOPER.md](DEVELOPER.md)
 * **Admin console:** [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md)
 * **Curated media descriptions:** [samples/media/README.md](samples/media/README.md)
+* **HTTPS guide:** [HTTPS.md](HTTPS.md) - Self-signed quick start and remote-access options
