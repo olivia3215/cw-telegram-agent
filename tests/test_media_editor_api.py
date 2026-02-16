@@ -251,6 +251,92 @@ def test_is_state_media_directory_with_relative_path_and_non_repo_cwd(monkeypatc
         monkeypatch.chdir(orig_cwd)
 
 
+@pytest.mark.usefixtures("reset_media_sources")
+def test_api_media_saved_by_agents_returns_mapping(monkeypatch, tmp_path):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    unique_id = "saved_by_agent_1"
+    _write_json(
+        media_dir / f"{unique_id}.json",
+        {
+            "unique_id": unique_id,
+            "kind": "photo",
+            "description": None,
+            "status": "unknown",
+        },
+    )
+    (media_dir / f"{unique_id}.jpg").write_bytes(b"\xff\xd8\xff")
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
+
+    monkeypatch.setattr(
+        "admin_console.media._get_agents_saving_media",
+        lambda unique_ids: {
+            str(uid): ["alpha_agent"]
+            for uid in unique_ids
+        },
+    )
+
+    app = create_admin_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session[SESSION_VERIFIED_KEY] = True
+
+        response = client.post(
+            "/admin/api/media/saved-by-agents",
+            json={"unique_ids": [unique_id]},
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["saved_by_agents"][unique_id] == ["alpha_agent"]
+
+
+@pytest.mark.usefixtures("reset_media_sources")
+def test_api_delete_media_blocked_when_saved_by_agent(monkeypatch, tmp_path):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    unique_id = "cannot_delete_saved_media"
+    _write_json(
+        media_dir / f"{unique_id}.json",
+        {
+            "unique_id": unique_id,
+            "kind": "photo",
+            "description": None,
+            "status": "unknown",
+            "media_file": f"{unique_id}.jpg",
+        },
+    )
+    media_file = media_dir / f"{unique_id}.jpg"
+    media_file.write_bytes(b"\xff\xd8\xff")
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
+
+    monkeypatch.setattr(
+        "admin_console.media._get_agents_saving_media",
+        lambda unique_ids: {unique_id: ["alpha_agent", "beta_agent"]},
+    )
+
+    app = create_admin_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session[SESSION_VERIFIED_KEY] = True
+
+        response = client.delete(f"/admin/api/media/{unique_id}/delete?directory={media_dir}")
+        assert response.status_code == 409
+        payload = response.get_json()
+        assert "saved by agents" in payload["error"].lower()
+        assert media_file.exists()
+        assert (media_dir / f"{unique_id}.json").exists()
+
+
 @pytest.fixture
 def reset_media_sources():
     reset_media_source_registry()

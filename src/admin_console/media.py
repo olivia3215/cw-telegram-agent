@@ -35,7 +35,10 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
+from register_agents import register_all_agents, all_agents as get_all_agents
 from db import media_metadata
+from media.agent_media import get_agent_media_dir
+from media.file_resolver import find_media_file as find_media_file_in_directory
 from media.media_budget import reset_description_budget
 from media.media_source import (
     AIChainMediaSource,
@@ -120,6 +123,71 @@ async def _query_sticker_set_info(
     except Exception as e:
         logger.warning(f"Failed to query Telegram for sticker set {sticker_set_name}: {e}")
         return (None, None)
+
+
+def _get_agents_saving_media(unique_ids: list[str]) -> dict[str, list[str]]:
+    """
+    Return mapping unique_id -> sorted list of agent config names that have it.
+
+    "Saved by agent" for media editor purposes means the unique_id is present in
+    an agent's curated media directory as either metadata or a media file.
+    """
+    normalized_unique_ids: list[str] = []
+    seen: set[str] = set()
+    for unique_id in unique_ids:
+        unique_id_str = str(unique_id).strip()
+        if not unique_id_str or unique_id_str in seen:
+            continue
+        normalized_unique_ids.append(unique_id_str)
+        seen.add(unique_id_str)
+
+    saved_by_agents: dict[str, list[str]] = {
+        unique_id: [] for unique_id in normalized_unique_ids
+    }
+    if not normalized_unique_ids:
+        return saved_by_agents
+
+    try:
+        register_all_agents()
+        agents = list(get_all_agents(include_disabled=True))
+    except Exception as e:
+        logger.warning("Could not load agents for media ownership check: %s", e)
+        return saved_by_agents
+
+    for agent in agents:
+        config_name = getattr(agent, "config_name", None)
+        if not config_name:
+            continue
+
+        try:
+            agent_media_dir = get_agent_media_dir(agent)
+        except Exception:
+            continue
+
+        if not agent_media_dir.exists() or not agent_media_dir.is_dir():
+            continue
+
+        try:
+            directory_source = get_directory_media_source(agent_media_dir)
+        except Exception as e:
+            logger.debug(
+                "Failed loading media source for agent %s (%s): %s",
+                config_name,
+                agent_media_dir,
+                e,
+            )
+            continue
+
+        for unique_id in normalized_unique_ids:
+            has_record = directory_source.get_cached_record(unique_id) is not None
+            has_file = find_media_file_in_directory(agent_media_dir, unique_id) is not None
+            if has_record or has_file:
+                saved_by_agents[unique_id].append(config_name)
+
+    for unique_id in saved_by_agents:
+        saved_by_agents[unique_id].sort(key=str.lower)
+
+    return saved_by_agents
 
 @media_bp.route("/api/media")
 def api_media_list():
@@ -1050,6 +1118,21 @@ def api_cleanup_unused_media():
         return jsonify({"error": str(e)}), 500
 
 
+@media_bp.route("/api/media/saved-by-agents", methods=["POST"])
+def api_media_saved_by_agents():
+    """Return mapping of media unique IDs to agent config names that saved them."""
+    try:
+        data = request.get_json(silent=True) or {}
+        unique_ids = data.get("unique_ids")
+        if not isinstance(unique_ids, list):
+            return jsonify({"error": "unique_ids must be a list"}), 400
+
+        return jsonify({"saved_by_agents": _get_agents_saving_media(unique_ids)})
+    except Exception as e:
+        logger.error("Error checking which agents saved media: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @media_bp.route("/api/media/<unique_id>/delete", methods=["DELETE"])
 def api_delete_media(unique_id: str):
     """Delete a media item and its description."""
@@ -1072,6 +1155,21 @@ def api_delete_media(unique_id: str):
         record = svc.get_record(unique_id)
         if not record:
             return jsonify({"error": "Media record not found"}), 404
+
+        saved_by_agents = _get_agents_saving_media([unique_id]).get(unique_id, [])
+        if saved_by_agents:
+            agent_list = ", ".join(saved_by_agents)
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "Cannot delete media that is saved by agents: "
+                            f"{agent_list}"
+                        )
+                    }
+                ),
+                409,
+            )
 
         if is_state_media and state_media_path:
             svc.delete_media_files(unique_id, record=record)
