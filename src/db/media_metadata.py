@@ -330,6 +330,33 @@ def update_media_last_used(unique_id: str) -> None:
             cursor.close()
 
 
+def find_unused_media_unique_ids(cutoff_days: int = 7) -> list[str]:
+    """
+    Return media unique_ids whose last_used_at is older than cutoff_days
+    (or never set).
+
+    Args:
+        cutoff_days: Age threshold in days (minimum 1)
+    """
+    days = max(1, int(cutoff_days))
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT unique_id
+                FROM media_metadata
+                WHERE last_used_at IS NULL
+                   OR last_used_at < (CURRENT_TIMESTAMP - INTERVAL %s DAY)
+                """,
+                (days,),
+            )
+            rows = cursor.fetchall()
+            return [str(row["unique_id"]) for row in rows if row.get("unique_id")]
+        finally:
+            cursor.close()
+
+
 def delete_media_metadata(unique_id: str) -> None:
     """
     Delete media metadata.

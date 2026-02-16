@@ -61,6 +61,8 @@ function initializeApp() {
     const mediaSearchInput = document.getElementById('media-search');
     const mediaTypeContainer = document.getElementById('media-type-container');
     const mediaTypeSelect = document.getElementById('media-type-select');
+    const stateMediaCleanupContainer = document.getElementById('state-media-cleanup-container');
+    const stateMediaCleanupStatus = document.getElementById('cleanup-unused-status');
     const clearSearchBtn = document.getElementById('clear-search-btn');
     
     if (directorySelect) {
@@ -77,6 +79,12 @@ function initializeApp() {
                 }
                 if (mediaTypeContainer) {
                     show(mediaTypeContainer, 'block');
+                }
+                if (stateMediaCleanupContainer) {
+                    toggle(stateMediaCleanupContainer, isStateMedia, 'block');
+                }
+                if (stateMediaCleanupStatus) {
+                    stateMediaCleanupStatus.textContent = '';
                 }
                 if (mediaLimitInput && !isStateMedia) {
                     mediaLimitInput.value = ''; // Clear limit when switching away from state/media
@@ -118,6 +126,12 @@ function initializeApp() {
                 }
                 if (mediaTypeContainer) {
                     hide(mediaTypeContainer);
+                }
+                if (stateMediaCleanupContainer) {
+                    hide(stateMediaCleanupContainer);
+                }
+                if (stateMediaCleanupStatus) {
+                    stateMediaCleanupStatus.textContent = '';
                 }
                 if (mediaLimitInput) {
                     mediaLimitInput.value = '';
