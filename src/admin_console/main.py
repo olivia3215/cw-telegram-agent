@@ -25,13 +25,29 @@ if not logging.getLogger().handlers:
 logger = logging.getLogger(__name__)
 
 
+def _admin_console_port_from_env() -> int:
+    """Resolve admin console port from environment with a safe fallback."""
+    port_raw = os.getenv("CINDY_ADMIN_CONSOLE_PORT", "5001")
+    try:
+        return int(port_raw)
+    except ValueError:
+        logger.warning(
+            "Invalid CINDY_ADMIN_CONSOLE_PORT value %s; defaulting to 5001",
+            port_raw,
+        )
+        return 5001
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Admin Console for cw-telegram-agent"
     )
     parser.add_argument(
-        "--port", type=int, default=5001, help="Port to run the web server on"
+        "--port",
+        type=int,
+        default=_admin_console_port_from_env(),
+        help="Port to run the web server on (default: CINDY_ADMIN_CONSOLE_PORT or 5001)",
     )
     parser.add_argument(
         "--host",
