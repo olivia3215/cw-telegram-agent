@@ -46,6 +46,7 @@
                 <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
                 <button class="tab-button" data-subtab="parameters-global">Parameters</button>
                 <button class="tab-button" data-subtab="llms-global">LLMs</button>
+                <button class="tab-button" data-subtab="costs-global">Costs</button>
                 <button class="tab-button" data-subtab="new-agent">New Agent</button>
             </nav>
             <div id="global-container" class="main-container">
@@ -202,6 +203,15 @@
                     </div>
                 </div>
 
+                <!-- Costs Subtab (Global) -->
+                <div class="subtab-panel" data-subtab-panel="costs-global">
+                    <div class="main-container" style="margin-top: 16px;">
+                        <div id="global-costs-container">
+                            <div class="loading">Loading costs...</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- New Agent Subtab (Global) -->
                 <div class="subtab-panel" data-subtab-panel="new-agent">
                     <div class="main-container" style="margin-top: 16px;">
@@ -335,6 +345,7 @@
                 <button class="tab-button" data-subtab="documents-agent">Documents</button>
                 <button class="tab-button" data-subtab="memberships">Memberships</button>
                 <button class="tab-button" data-subtab="media">Media</button>
+                <button class="tab-button" data-subtab="costs">Costs</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector">
@@ -487,6 +498,12 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="subtab-panel" data-subtab-panel="costs">
+                    <div id="agent-costs-container">
+                        <div class="loading">Select an agent to view costs</div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -498,6 +515,7 @@
                 <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
                 <button class="tab-button" data-subtab="plans">Plans</button>
                 <button class="tab-button" data-subtab="conversation">Conversation</button>
+                <button class="tab-button" data-subtab="costs-conv">Costs</button>
                 <button class="tab-button" data-subtab="xsend">XSend</button>
                 <button class="tab-button" data-subtab="work-queue">Work Queue</button>
             </nav>
@@ -621,6 +639,11 @@
                 </div>
                 <div class="subtab-panel" data-subtab-panel="conversation">
                     <div id="conversation-container">
+                        <div class="loading">Select an agent and conversation partner</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="costs-conv">
+                    <div id="conversation-costs-container">
                         <div class="loading">Select an agent and conversation partner</div>
                     </div>
                 </div>

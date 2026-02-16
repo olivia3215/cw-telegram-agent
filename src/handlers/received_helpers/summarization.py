@@ -226,16 +226,22 @@ async def perform_summarization(
             agent.name,
             model_name,
         )
-        reply = await llm.query_structured(
-            system_prompt=system_prompt,
-            now_iso=now_iso,
-            chat_type=chat_type,
-            history=combined_history,
-            history_size=len(combined_history),
-            timeout_s=None,
-            allowed_task_types=allowed_task_types,
-            agent_name=agent.name,
-        )
+        llm._usage_agent_telegram_id = agent.agent_id
+        llm._usage_channel_telegram_id = channel_id
+        try:
+            reply = await llm.query_structured(
+                system_prompt=system_prompt,
+                now_iso=now_iso,
+                chat_type=chat_type,
+                history=combined_history,
+                history_size=len(combined_history),
+                timeout_s=None,
+                allowed_task_types=allowed_task_types,
+                agent_name=agent.name,
+            )
+        finally:
+            llm._usage_agent_telegram_id = None
+            llm._usage_channel_telegram_id = None
     except Exception as e:
         logger.exception(
             f"[{agent.name}] Failed to perform summarization for channel {channel_id}: {e}"

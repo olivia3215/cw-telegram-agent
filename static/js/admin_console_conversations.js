@@ -1093,6 +1093,77 @@ function loadConversation() {
         });
 }
 
+function loadConversationCosts() {
+    const agentSelect = document.getElementById('conversations-agent-select');
+    const partnerSelect = document.getElementById('conversations-partner-select');
+    const userIdInput = document.getElementById('conversations-user-id');
+
+    const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+    const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+    const container = document.getElementById('conversation-costs-container');
+    if (!container) return;
+
+    if (!agentName || !userId) {
+        container.innerHTML = '<div class="loading">Select an agent and conversation partner</div>';
+        return;
+    }
+
+    showLoading(container, 'Loading costs...');
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/costs`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showError(container, data.error);
+                return;
+            }
+
+            const days = data.days || 7;
+            const totalCost = Number(data.total_cost || 0);
+            const logs = data.logs || [];
+
+            let html = `
+                <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h3 style="margin-top: 0;">Conversation Costs (Last ${days} Days)</h3>
+                    <div style="font-size: 20px; font-weight: 600; margin-bottom: 12px;">Total: $${totalCost.toFixed(4)}</div>
+            `;
+
+            if (logs.length === 0) {
+                html += '<div class="placeholder-card">No cost logs found for this period.</div>';
+            } else {
+                html += '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
+                html += '<thead><tr style="border-bottom: 1px solid #ddd; text-align: left;">';
+                html += '<th style="padding: 8px;">Timestamp</th>';
+                html += '<th style="padding: 8px;">Operation</th>';
+                html += '<th style="padding: 8px;">Model</th>';
+                html += '<th style="padding: 8px;">Input</th>';
+                html += '<th style="padding: 8px;">Output</th>';
+                html += '<th style="padding: 8px;">Cost</th>';
+                html += '</tr></thead><tbody>';
+                html += logs.map(log => `
+                    <tr style="border-bottom: 1px solid #f0f0f0;">
+                        <td style="padding: 8px;">${escapeHtml(formatTimestamp(log.timestamp, conversationAgentTimezone))}</td>
+                        <td style="padding: 8px;">${escapeHtml(log.operation || '')}</td>
+                        <td style="padding: 8px;">${escapeHtml(log.model_name || '')}</td>
+                        <td style="padding: 8px;">${escapeHtml(String(log.input_tokens ?? ''))}</td>
+                        <td style="padding: 8px;">${escapeHtml(String(log.output_tokens ?? ''))}</td>
+                        <td style="padding: 8px;">$${Number(log.cost || 0).toFixed(4)}</td>
+                    </tr>
+                `).join('');
+                html += '</tbody></table></div>';
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') {
+                return;
+            }
+            container.innerHTML = `<div class="error">Error loading costs: ${escapeHtml(error.message || error)}</div>`;
+        });
+}
+
 function refreshConversation() {
     loadConversation().then(() => {
         // Wait for the next frame to ensure DOM has been updated

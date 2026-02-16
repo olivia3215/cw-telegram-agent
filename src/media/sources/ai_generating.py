@@ -254,6 +254,8 @@ class AIGeneratingMediaSource(MediaSource):
         # Call LLM to generate description (choose method based on media kind)
         try:
             t1 = time.perf_counter()
+            media_llm._usage_agent_telegram_id = getattr(agent, "agent_id", None)
+            media_llm._usage_channel_telegram_id = metadata.get("channel_id")
 
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
@@ -312,7 +314,11 @@ class AIGeneratingMediaSource(MediaSource):
                     data, agent.name, image_mime_type, timeout_s=get_describe_timeout_secs()
                 )
             desc = (desc or "").strip()
+            media_llm._usage_agent_telegram_id = None
+            media_llm._usage_channel_telegram_id = None
         except httpx.TimeoutException:
+            media_llm._usage_agent_telegram_id = None
+            media_llm._usage_channel_telegram_id = None
             logger.debug(
                 f"AIGeneratingMediaSource: timeout after {get_describe_timeout_secs()}s for {unique_id}"
             )
@@ -337,6 +343,8 @@ class AIGeneratingMediaSource(MediaSource):
                 **metadata,
             )
         except ValueError as e:
+            media_llm._usage_agent_telegram_id = None
+            media_llm._usage_channel_telegram_id = None
             # ValueError is raised for unsupported formats or videos that are too long
             # These are permanent failures
             logger.info(
@@ -362,6 +370,8 @@ class AIGeneratingMediaSource(MediaSource):
                 **metadata,
             )
         except RuntimeError as e:
+            media_llm._usage_agent_telegram_id = None
+            media_llm._usage_channel_telegram_id = None
             # RuntimeError is raised for API errors (400, 500, etc.)
             # Log the error with MIME type and file size info for debugging
             file_size_mb = len(data) / (1024 * 1024) if data else 0
@@ -451,6 +461,8 @@ class AIGeneratingMediaSource(MediaSource):
                 **metadata,
             )
         except Exception as e:
+            media_llm._usage_agent_telegram_id = None
+            media_llm._usage_channel_telegram_id = None
             logger.exception(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e}"
             )

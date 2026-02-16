@@ -2042,4 +2042,66 @@ async function addLLMFromSelect() {
     }
 }
 
+async function loadGlobalCosts() {
+    const container = document.getElementById('global-costs-container');
+    if (!container) return;
+
+    showLoading(container, 'Loading costs...');
+    try {
+        const response = await fetchWithAuth('/admin/api/global/costs');
+        const data = await response.json();
+        if (data.error) {
+            showError(container, data.error);
+            return;
+        }
+
+        const days = data.days || 7;
+        const totalCost = Number(data.total_cost || 0);
+        const logs = data.logs || [];
+
+        let html = `
+            <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0;">Global Costs (Last ${days} Days)</h3>
+                <div style="font-size: 20px; font-weight: 600; margin-bottom: 12px;">Total: $${totalCost.toFixed(4)}</div>
+        `;
+
+        if (logs.length === 0) {
+            html += '<div class="placeholder-card">No cost logs found for this period.</div>';
+        } else {
+            html += '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
+            html += '<thead><tr style="border-bottom: 1px solid #ddd; text-align: left;">';
+            html += '<th style="padding: 8px;">Timestamp</th>';
+            html += '<th style="padding: 8px;">Agent</th>';
+            html += '<th style="padding: 8px;">Channel</th>';
+            html += '<th style="padding: 8px;">Operation</th>';
+            html += '<th style="padding: 8px;">Model</th>';
+            html += '<th style="padding: 8px;">Input</th>';
+            html += '<th style="padding: 8px;">Output</th>';
+            html += '<th style="padding: 8px;">Cost</th>';
+            html += '</tr></thead><tbody>';
+            html += logs.map(log => `
+                <tr style="border-bottom: 1px solid #f0f0f0;">
+                    <td style="padding: 8px;">${escapeHtml(formatTimestamp(log.timestamp))}</td>
+                    <td style="padding: 8px;">${escapeHtml(String(log.agent_telegram_id || ''))}</td>
+                    <td style="padding: 8px;">${escapeHtml(String(log.channel_telegram_id || ''))}</td>
+                    <td style="padding: 8px;">${escapeHtml(log.operation || '')}</td>
+                    <td style="padding: 8px;">${escapeHtml(log.model_name || '')}</td>
+                    <td style="padding: 8px;">${escapeHtml(String(log.input_tokens ?? ''))}</td>
+                    <td style="padding: 8px;">${escapeHtml(String(log.output_tokens ?? ''))}</td>
+                    <td style="padding: 8px;">$${Number(log.cost || 0).toFixed(4)}</td>
+                </tr>
+            `).join('');
+            html += '</tbody></table></div>';
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (error) {
+        if (error && error.message === 'unauthorized') {
+            return;
+        }
+        container.innerHTML = `<div class="error">Error loading costs: ${escapeHtml(error.message || error)}</div>`;
+    }
+}
+
 

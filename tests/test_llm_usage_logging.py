@@ -5,6 +5,7 @@
 #
 """Tests for LLM usage logging."""
 
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -138,6 +139,53 @@ def test_log_llm_usage_without_operation():
             assert "LLM_USAGE" in log_message
             assert "operation=" not in log_message
             assert "model=test-model" in log_message
+
+
+def test_log_llm_usage_persists_to_task_log_when_context_provided():
+    """Test that llm usage is persisted to task_execution_log with conversation context."""
+    with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):
+        with patch("llm.usage_logging.logger"):
+            with patch("db.task_log.log_task_execution") as mock_log_task_execution:
+                log_llm_usage(
+                    agent_name="TestAgent",
+                    model_name="test-model",
+                    input_tokens=1000,
+                    output_tokens=500,
+                    operation="query_structured",
+                    agent_telegram_id=123456,
+                    channel_telegram_id=78910,
+                )
+
+                assert mock_log_task_execution.call_count == 1
+                kwargs = mock_log_task_execution.call_args.kwargs
+                assert kwargs["agent_telegram_id"] == 123456
+                assert kwargs["channel_telegram_id"] == 78910
+                assert kwargs["action_kind"] == "llm_usage"
+                assert kwargs["failure_message"] is None
+
+                details = kwargs["action_details"]
+                parsed = json.loads(details)
+                assert parsed["operation"] == "query_structured"
+                assert parsed["model_name"] == "test-model"
+                assert parsed["input_tokens"] == 1000
+                assert parsed["output_tokens"] == 500
+                assert parsed["cost"] == pytest.approx(0.0025)
+
+
+def test_log_llm_usage_does_not_persist_without_context():
+    """Test that llm usage is not persisted when conversation context is missing."""
+    with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):
+        with patch("llm.usage_logging.logger"):
+            with patch("db.task_log.log_task_execution") as mock_log_task_execution:
+                log_llm_usage(
+                    agent_name="TestAgent",
+                    model_name="test-model",
+                    input_tokens=100,
+                    output_tokens=50,
+                    operation="query_structured",
+                )
+
+                assert mock_log_task_execution.call_count == 0
 
 
 def test_gemini_thinking_tokens_counted_in_rest_response():

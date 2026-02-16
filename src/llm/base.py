@@ -139,6 +139,8 @@ class LLM(ABC):
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         operation=operation,
+                        agent_telegram_id=getattr(self, "_usage_agent_telegram_id", None),
+                        channel_telegram_id=getattr(self, "_usage_channel_telegram_id", None),
                     )
             except Exception as e:
                 # Don't fail the request if usage logging fails
