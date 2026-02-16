@@ -450,108 +450,17 @@ function createMediaItemHTML(media) {
 }
 
 async function loadTGSAnimations() {
-    // Find all TGS player containers
-    const tgsContainers = document.querySelectorAll('[id^="tgs-player-"]');
-    console.log(`Found ${tgsContainers.length} TGS containers to load`);
-
-    for (const container of tgsContainers) {
-        const uniqueId = container.id.replace('tgs-player-', '');
-        const encodedDir = encodeURIComponent(currentDirectory);
-        const mediaUrl = `${API_BASE}/media/${uniqueId}?directory=${encodedDir}`;
-        console.log(`Loading TGS for ${uniqueId} from ${mediaUrl}`);
-
-        try {
-            // Fetch the TGS file
-            const response = await fetchWithAuth(mediaUrl);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch TGS file: ${response.status}`);
-            }
-
-            const tgsData = await response.arrayBuffer();
-            console.log(`Fetched TGS data: ${tgsData.byteLength} bytes`);
-
-            // Decompress the gzipped Lottie data
-            let lottieJson;
-
-            // Try pako first since DecompressionStream is unreliable
-            if (typeof pako !== 'undefined') {
-                try {
-                    console.log('Attempting pako decompression...');
-                    const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
-                    lottieJson = JSON.parse(decompressed);
-                    console.log('Pako decompression successful');
-                } catch (pakoError) {
-                    console.error('Pako decompression failed:', pakoError);
-                    throw new Error('Failed to decompress TGS file with pako');
-                }
-            } else {
-                // Fallback to DecompressionStream if pako not available
-                try {
-                    console.log('Attempting DecompressionStream decompression...');
-                    const decompressedData = await decompressGzip(tgsData);
-                    const jsonText = new TextDecoder().decode(decompressedData);
-                    lottieJson = JSON.parse(jsonText);
-                    console.log('DecompressionStream decompression successful');
-                } catch (decompError) {
-                    console.error('DecompressionStream failed:', decompError.message);
-                    throw new Error('Failed to decompress TGS file - no suitable decompression method available');
-                }
-            }
-
-            // Clear the loading content and create a new container for Lottie
-            container.innerHTML = '';
-            const animationContainer = document.createElement('div');
-            animationContainer.style.width = '100%';
-            animationContainer.style.height = '100%';
-            animationContainer.style.display = 'flex';
-            animationContainer.style.alignItems = 'center';
-            animationContainer.style.justifyContent = 'center';
-            animationContainer.style.backgroundColor = 'transparent';
-            container.appendChild(animationContainer);
-
-            // Initialize Lottie animation
-            console.log('Initializing Lottie animation...');
-            const animation = lottie.loadAnimation({
-                container: animationContainer,
-                renderer: 'svg',
-                loop: true,
-                autoplay: true,
-                animationData: lottieJson
-            });
-            console.log('Lottie animation initialized successfully');
-
-            // Handle animation errors
-                    animation.addEventListener('error', (error) => {
-                        console.error('Lottie animation error:', error);
-                        container.innerHTML = `
-                            <div style="text-align: center; color: #dc3545;">
-                                <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
-                                <div style="font-size: 11px;">Animation Error</div>
-                                <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
-                            </div>
-                        `;
-                    });
-
-            // Handle successful loading
-            animation.addEventListener('DOMLoaded', () => {
-                console.log('Lottie animation DOM loaded successfully');
-            });
-
-        } catch (error) {
-            if (error && error.message === 'unauthorized') {
-                return;
-            }
-            console.error(`Failed to load TGS animation for ${uniqueId}:`, error);
-            container.innerHTML = `
-                <div style="text-align: center; color: #dc3545;">
-                    <div style="font-size: 16px; margin-bottom: 5px;">⚠️</div>
-                    <div style="font-size: 11px;">Load Failed</div>
-                    <div style="font-size: 10px; margin-top: 5px;">${escapeHtml(error.message || 'Unknown error')}</div>
-                    <a href="${mediaUrl}" download style="color: #007bff; text-decoration: none; font-size: 10px; margin-top: 5px; display: block;">Download TGS</a>
-                </div>
-            `;
-        }
-    }
+    const encodedDir = encodeURIComponent(currentDirectory);
+    await loadTGSAnimationsShared({
+        selector: '[id^="tgs-player-"]',
+        getMediaUrl: (container) => {
+            const uniqueId = container.id.replace('tgs-player-', '');
+            return `${API_BASE}/media/${uniqueId}?directory=${encodedDir}`;
+        },
+        loadingLabel: 'Loading TGS animation...',
+        errorLabel: 'Load Failed',
+        downloadLabel: 'Download TGS',
+    });
 }
 
 // Simple gzip decompression using browser APIs

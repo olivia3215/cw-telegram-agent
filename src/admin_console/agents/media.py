@@ -150,6 +150,7 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                             "is_profile_photo": is_profile,
                             "can_be_profile_photo": True,
                             "media_kind": media_kind,
+                            "mime_type": "video/mp4" if is_video else "image/jpeg",
                             "description": None,
                             "status": None,
                             "message_id": message.id,
@@ -178,7 +179,8 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                         can_be_profile = False
                     elif mime_type == "application/x-tgsticker" or is_sticker_attr:
                         media_kind = "sticker"
-                        can_be_profile = True  # Stickers can be profile pictures
+                        # Telegram profile uploads support photos/videos, not sticker docs.
+                        can_be_profile = False
                     elif mime_type.startswith("image/"):
                         # Plain image documents should behave as photos.
                         media_kind = "photo"
@@ -197,6 +199,7 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                             "is_profile_photo": is_profile,
                             "can_be_profile_photo": can_be_profile,
                             "media_kind": media_kind,
+                            "mime_type": mime_type or None,
                             "description": None,
                             "status": None,
                             "message_id": message.id,
@@ -215,14 +218,42 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
             except Exception:
                 config_media_dir = None
 
-            if config_media_dir and config_media_dir.exists():
+            if config_media_dir:
+                config_media_dir.mkdir(parents=True, exist_ok=True)
                 dir_source = get_directory_media_source(config_media_dir)
                 config_record = dir_source.get_cached_record(unique_id_str)
+                if not config_record:
+                    # Bootstrap a curated-record stub so media discovered in Saved Messages
+                    # appears in the Media Editor immediately, even before description refresh.
+                    bootstrap_kind = media_item.get("media_kind") or "photo"
+                    if bootstrap_kind == "animated_sticker":
+                        bootstrap_kind = "sticker"
+                    bootstrap_record: dict[str, Any] = {
+                        "unique_id": unique_id_str,
+                        "kind": bootstrap_kind,
+                        "status": "unknown",
+                        "description": None,
+                    }
+                    if media_item.get("mime_type"):
+                        bootstrap_record["mime_type"] = media_item["mime_type"]
+                    try:
+                        dir_source.put(unique_id_str, bootstrap_record, agent=agent)
+                        config_record = dir_source.get_cached_record(unique_id_str)
+                    except Exception as e:
+                        logger.debug(
+                            "Failed bootstrapping config media record for %s: %s",
+                            unique_id_str,
+                            e,
+                        )
                 if config_record:
                     if config_record.get("description"):
                         media_item["description"] = config_record["description"]
                     if config_record.get("status"):
                         media_item["status"] = config_record["status"]
+                    if config_record.get("mime_type") and not media_item.get("mime_type"):
+                        media_item["mime_type"] = config_record["mime_type"]
+                    if config_record.get("media_file"):
+                        media_item["media_file"] = config_record["media_file"]
         except Exception as e:
             logger.debug(f"Error loading metadata for {unique_id_str}: {e}")
     
@@ -287,7 +318,7 @@ async def _upload_media_to_saved_messages(agent, client, file_bytes: bytes, file
             can_be_profile = False
         elif mime_type == "application/x-tgsticker" or is_sticker_attr:
             media_kind = "sticker"
-            can_be_profile = True
+            can_be_profile = False
         elif mime_type.startswith("image/"):
             media_kind = "photo"
             can_be_profile = True
@@ -303,6 +334,7 @@ async def _upload_media_to_saved_messages(agent, client, file_bytes: bytes, file
         "is_profile_photo": False,
         "can_be_profile_photo": can_be_profile,
         "media_kind": media_kind,
+        "mime_type": getattr(document, "mime_type", None) if document else ("image/jpeg" if media_kind == "photo" else None),
         "description": None,
     }
 
@@ -323,8 +355,10 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
     me = await client.get_me()
     agent_telegram_id = me.id
     
-    # Find the media in Saved Messages (can be photo or video)
+    # Find the media in Saved Messages by unique_id.
     media_obj = None
+    matched_document_mime = ""
+    matched_document_is_sticker = False
     async for message in client.iter_messages("me", limit=None):
         # Check photo
         photo = getattr(message, "photo", None)
@@ -334,24 +368,49 @@ async def _set_as_profile_photo(agent, client, unique_id: str) -> bool:
                 media_obj = photo
                 break
         
-        # Check video/document
+        # Check any document (video/image/sticker/etc.)
         document = getattr(message, "document", None)
         if document:
-            mime_type = getattr(document, "mime_type", "")
-            if mime_type.startswith("video/"):
-                unique_id_val = get_unique_id(document)
-                if unique_id_val and str(unique_id_val) == unique_id:
-                    media_obj = document
-                    break
+            unique_id_val = get_unique_id(document)
+            if unique_id_val and str(unique_id_val) == unique_id:
+                media_obj = document
+                matched_document_mime = (getattr(document, "mime_type", "") or "").lower()
+                attrs = getattr(document, "attributes", []) or []
+                matched_document_is_sticker = any(
+                    getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
+                    for attr in attrs
+                )
+                break
     
     if not media_obj:
         raise ValueError(f"Media with unique_id {unique_id} not found in Saved Messages")
+
+    # Determine whether Telegram can accept this media as a profile photo.
+    if hasattr(media_obj, "mime_type"):
+        if matched_document_is_sticker or matched_document_mime == "application/x-tgsticker":
+            raise ValueError(
+                "This sticker cannot be set as a profile photo. Use a photo or video item instead."
+            )
+        if matched_document_mime.startswith("audio/"):
+            raise ValueError(
+                "Audio items cannot be set as profile photos. Use a photo or video item instead."
+            )
+        if matched_document_mime.startswith("video/"):
+            is_video = True
+        elif matched_document_mime.startswith("image/"):
+            is_video = False
+        else:
+            raise ValueError(
+                f"Unsupported media type for profile photo: {matched_document_mime or 'unknown'}"
+            )
+    else:
+        # Telethon photo object (possibly video profile photo)
+        is_video = bool(getattr(media_obj, "video_sizes", None))
     
     # Download media bytes
     media_bytes = await download_media_bytes(client, media_obj)
     
     # Determine file extension
-    is_video = hasattr(media_obj, "mime_type") and getattr(media_obj, "mime_type", "").startswith("video/")
     file_ext = ".mp4" if is_video else ".jpg"
     
     # Upload as profile photo with proper filename
@@ -572,7 +631,8 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     except Exception:
         config_media_dir = None
 
-    if config_media_dir and config_media_dir.exists():
+    if config_media_dir:
+        config_media_dir.mkdir(parents=True, exist_ok=True)
         dir_source = get_directory_media_source(config_media_dir)
         record = dir_source.get_cached_record(unique_id)
         
@@ -619,9 +679,65 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     
     if not media_obj:
         return None
-    
+
     # Download full media (CSS handles sizing in the UI)
-    return await download_media_bytes(client, media_obj)
+    media_bytes = await download_media_bytes(client, media_obj)
+
+    # Best-effort: persist discovered Saved Messages media to configdir/media so
+    # it also appears in Media Editor and does not require repeat Telegram fetches.
+    if media_bytes and config_media_dir:
+        try:
+            dir_source = get_directory_media_source(config_media_dir)
+            record = dir_source.get_cached_record(unique_id) or {}
+
+            hinted_mime = (getattr(media_obj, "mime_type", None) or "").lower()
+            detected_mime = detect_mime_type_from_bytes(media_bytes[:1024])
+            final_mime = hinted_mime or detected_mime
+            if detected_mime and detected_mime != "application/octet-stream":
+                final_mime = detected_mime
+            if final_mime == "application/gzip" and hinted_mime == "application/x-tgsticker":
+                final_mime = "application/x-tgsticker"
+
+            if hasattr(media_obj, "mime_type"):
+                if hinted_mime.startswith("video/"):
+                    kind = "video"
+                elif hinted_mime.startswith("audio/"):
+                    kind = "audio"
+                elif hinted_mime == "application/x-tgsticker":
+                    kind = "sticker"
+                elif hinted_mime.startswith("image/"):
+                    kind = "photo"
+                else:
+                    kind = "document"
+            else:
+                kind = "photo"
+
+            record.setdefault("unique_id", unique_id)
+            record.setdefault("status", "unknown")
+            record.setdefault("description", None)
+            record.setdefault("kind", kind)
+            if final_mime and not record.get("mime_type"):
+                record["mime_type"] = final_mime
+
+            ext = get_file_extension_for_mime_type(final_mime) if final_mime else None
+            file_extension = f".{ext}" if ext and ext != "bin" else None
+            if not file_extension:
+                file_extension = ".jpg" if kind == "photo" else ".mp4" if kind == "video" else None
+
+            if file_extension:
+                dir_source.put(
+                    unique_id,
+                    record,
+                    media_bytes=media_bytes,
+                    file_extension=file_extension,
+                    agent=agent,
+                )
+            else:
+                dir_source.put(unique_id, record, agent=agent)
+        except Exception as e:
+            logger.debug("Failed to persist cached media %s to config dir: %s", unique_id, e)
+
+    return media_bytes
 
 
 def register_media_routes(agents_bp: Blueprint):
@@ -1104,7 +1220,14 @@ def register_media_routes(agents_bp: Blueprint):
                 timeout=30.0
             )
             return jsonify({"success": success})
-            
+        except ValueError as e:
+            logger.warning(
+                "Profile photo request rejected for %s/%s: %s",
+                agent_config_name,
+                unique_id,
+                e,
+            )
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error setting profile photo {unique_id} for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -1149,8 +1272,12 @@ def register_media_routes(agents_bp: Blueprint):
             if not media_bytes:
                 return jsonify({"error": "Media not found"}), 404
             
-            # Return raw image bytes
-            mime_type = "image/jpeg"  # Default for Telegram photos
+            # Return raw media bytes with a MIME type derived from content.
+            # The previous hardcoded image/jpeg breaks sticker/webp/video previews.
+            mime_type = detect_mime_type_from_bytes(media_bytes[:1024]) if media_bytes else "application/octet-stream"
+            if mime_type == "application/gzip":
+                # Telegram animated stickers (TGS) are gzip-compressed Lottie data.
+                mime_type = "application/x-tgsticker"
             return send_file(
                 BytesIO(media_bytes),
                 mimetype=mime_type,

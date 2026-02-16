@@ -2774,6 +2774,7 @@ async function loadAgentMedia(agentName) {
         media.forEach(item => {
             container.appendChild(renderMediaItem(agentName, item));
         });
+        loadAgentTGSAnimations(agentName);
         
     } catch (error) {
         console.error('Error loading media:', error);
@@ -2796,15 +2797,50 @@ function renderMediaItem(agentName, mediaItem) {
     const thumbnailDiv = document.createElement('div');
     thumbnailDiv.className = 'media-thumbnail';
     
-    const img = document.createElement('img');
-    img.src = `${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/file`;
-    img.alt = 'Media';
-    img.onerror = function() {
-        console.error('Failed to load media:', mediaItem.unique_id);
-        this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Failed to load</text></svg>';
-    };
-    
-    thumbnailDiv.appendChild(img);
+    const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/file`;
+    const mimeType = (mediaItem.mime_type || '').toLowerCase();
+    const isTgs = mimeType.includes('tgsticker') || mimeType === 'application/gzip' || mediaItem.media_kind === 'animated_sticker';
+    const isVideo = mimeType.startsWith('video/') || mediaItem.media_kind === 'video';
+
+    if (isTgs) {
+        const tgsContainer = document.createElement('div');
+        tgsContainer.id = `agent-tgs-player-${mediaItem.unique_id}`;
+        tgsContainer.className = 'tgs-animation-container';
+        tgsContainer.dataset.mediaUrl = mediaUrl;
+        tgsContainer.style.width = '100%';
+        tgsContainer.style.height = '100%';
+        tgsContainer.style.display = 'flex';
+        tgsContainer.style.alignItems = 'center';
+        tgsContainer.style.justifyContent = 'center';
+        tgsContainer.innerHTML = `
+            <div style="text-align: center; color: #666;">
+                <div style="font-size: 24px; margin-bottom: 10px;">🎭</div>
+                <div style="font-size: 12px;">Loading animated sticker...</div>
+            </div>
+        `;
+        thumbnailDiv.appendChild(tgsContainer);
+    } else if (isVideo) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.preload = 'metadata';
+        video.style.width = '100%';
+        video.style.height = '100%';
+        const source = document.createElement('source');
+        source.src = mediaUrl;
+        source.type = mimeType || 'video/mp4';
+        video.appendChild(source);
+        thumbnailDiv.appendChild(video);
+    } else {
+        const img = document.createElement('img');
+        img.src = mediaUrl;
+        img.alt = 'Media';
+        img.onerror = function() {
+            console.error('Failed to load media:', mediaItem.unique_id);
+            this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Failed to load</text></svg>';
+        };
+        thumbnailDiv.appendChild(img);
+    }
+
     div.appendChild(thumbnailDiv);
     
     // Content container
@@ -2924,6 +2960,17 @@ function renderMediaItem(agentName, mediaItem) {
     div.appendChild(contentDiv);
     
     return div;
+}
+
+async function loadAgentTGSAnimations(agentName) {
+    void agentName; // Reserved for future route variants.
+    await loadTGSAnimationsShared({
+        selector: '[id^="agent-tgs-player-"]',
+        getMediaUrl: (container) => container.dataset.mediaUrl,
+        loadingLabel: 'Loading animated sticker...',
+        errorLabel: 'Animated sticker preview unavailable',
+        downloadLabel: 'Download',
+    });
 }
 
 // Auto-save timers for media descriptions

@@ -262,39 +262,10 @@ def api_media_list():
                         logger.warning(f"No record found for {unique_id}")
                         continue
 
-                    # If we are listing state/media and this unique_id already exists in any config directory,
-                    # it has been "promoted"/curated and should not also appear in state/media.
-                    # Clean up the state copy (MySQL + any leftover files) to avoid duplicates.
-                    if is_state_media and state_media_path:
-                        try:
-                            from config import CONFIG_DIRECTORIES
-
-                            curated_exists = False
-                            for config_dir in CONFIG_DIRECTORIES:
-                                config_media_dir = Path(config_dir) / "media"
-                                if not config_media_dir.exists() or not config_media_dir.is_dir():
-                                    continue
-                                if find_media_file(config_media_dir, unique_id) is not None:
-                                    curated_exists = True
-                                    break
-
-                            if curated_exists:
-                                # Remove state/media copy (MySQL + any leftover files) to avoid duplicates.
-                                try:
-                                    state_svc = get_media_service(state_media_path)
-                                    state_svc.delete_media_files(unique_id, record=record)
-                                    state_svc.delete_record(unique_id)
-                                except Exception as e:
-                                    logger.debug(
-                                        "Failed to delete state media for %s: %s",
-                                        unique_id,
-                                        e,
-                                    )
-
-                                # Skip this item so it doesn't appear in state/media list
-                                continue
-                        except Exception as e:
-                            logger.debug("Curated-duplicate cleanup failed for %s: %s", unique_id, e)
+                    # NOTE:
+                    # Do not mutate or delete records while listing state/media.
+                    # Listing-side duplicate cleanup can unintentionally remove media
+                    # that was explicitly moved into state/media moments earlier.
 
                     # Look for associated media file: (1) use metadata first, (2) glob then patch
                     media_file_path = None
