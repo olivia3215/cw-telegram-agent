@@ -19,6 +19,7 @@ handlers, which create tasks in the task graph for agent responses.
 """
 import asyncio
 import hashlib
+import inspect
 import logging
 import os
 
@@ -577,7 +578,7 @@ async def ensure_saved_message_sticker_cache(agent, client):
     updated = 0
 
     try:
-        async for message in client.iter_messages("me", limit=None):
+        async for message in _iter_saved_messages(client):
             doc = getattr(message, "document", None)
             if not doc:
                 continue
@@ -642,7 +643,7 @@ async def ensure_photo_cache(agent, client):
         seen_unique_ids = set()
 
         # Iterate through messages in saved messages (chat with self)
-        async for message in client.iter_messages("me", limit=None):
+        async for message in _iter_saved_messages(client):
             photo = getattr(message, "photo", None)
             if not photo:
                 continue
@@ -685,6 +686,28 @@ async def ensure_photo_cache(agent, client):
         logger.exception(
             f"[{getattr(agent, 'name', 'agent')}] Failed to cache photos from saved messages: {e}"
         )
+
+
+async def _iter_saved_messages(client):
+    """
+    Yield Saved Messages while tolerating test mocks that return awaitables.
+
+    Telethon returns an async iterator from iter_messages(). Some tests use
+    AsyncMock, which returns an awaitable instead. Handle both forms.
+    """
+    message_source = client.iter_messages("me", limit=None)
+    if inspect.isawaitable(message_source):
+        message_source = await message_source
+
+    if hasattr(message_source, "__aiter__"):
+        async for message in message_source:
+            yield message
+        return
+
+    logger.debug(
+        "iter_messages('me') returned non-iterable type %s; skipping cache scan",
+        type(message_source).__name__,
+    )
 
 
 async def authenticate_agent(agent: Agent):
