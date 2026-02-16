@@ -38,17 +38,114 @@ from config import CONFIG_DIRECTORIES
 from db import media_metadata
 from db import agent_profile_photos
 from media.agent_media import get_agent_media_dir
+from media.file_resolver import find_media_file
 from media.mime_utils import (
     detect_mime_type_from_bytes,
+    get_file_extension_from_mime_or_bytes,
     get_file_extension_for_mime_type,
     is_image_mime_type,
 )
 from media.media_service import get_media_service
 from media.media_sources import get_directory_media_source
 from telegram_download import download_media_bytes
-from telegram_media import get_unique_id
+from telegram_media import get_unique_id, iter_media_parts
 
 logger = logging.getLogger(__name__)
+
+
+def _promote_media_to_agent_config(
+    unique_id: str,
+    config_media_dir: Path,
+    *,
+    agent: Any = None,
+) -> None:
+    """
+    Move existing media/metadata into the agent config media directory.
+
+    Promotion order:
+    1) state/media (MySQL + file)
+    2) other config directories' media folders
+
+    This intentionally avoids synthesizing new records from downloaded previews.
+    """
+    try:
+        config_media_dir.mkdir(parents=True, exist_ok=True)
+        target_source = get_directory_media_source(config_media_dir)
+
+        # Already present in target; no promotion needed.
+        if target_source.get_cached_record(unique_id) or find_media_file(
+            config_media_dir, unique_id
+        ):
+            return
+
+        # 1) Promote from state/media (MySQL + file)
+        state_media_dir = get_state_media_path()
+        if state_media_dir and state_media_dir.exists():
+            state_svc = get_media_service(state_media_dir)
+            state_record = state_svc.get_record(unique_id)
+            if state_record:
+                record_to_write = state_record.copy()
+                media_file = state_svc.resolve_media_file(unique_id, state_record)
+                if media_file and media_file.exists():
+                    record_to_write["media_file"] = media_file.name
+
+                # Write metadata first, then move file.
+                target_source.put(unique_id, record_to_write, agent=agent)
+                if media_file and media_file.exists():
+                    target_media = config_media_dir / media_file.name
+                    media_file.replace(target_media)
+
+                # Remove state copy after successful promotion.
+                state_svc.delete_media_files(unique_id, record=state_record)
+                state_svc.delete_record(unique_id)
+                logger.info(
+                    "Promoted media %s from state/media to %s",
+                    unique_id,
+                    config_media_dir,
+                )
+                return
+
+        # 2) Promote from another config directory if present there.
+        target_resolved = config_media_dir.resolve()
+        for base in CONFIG_DIRECTORIES:
+            source_media_dir = (Path(base) / "media").resolve()
+            if source_media_dir == target_resolved:
+                continue
+            if not source_media_dir.exists() or not source_media_dir.is_dir():
+                continue
+
+            source = get_directory_media_source(source_media_dir)
+            source_record = source.get_cached_record(unique_id)
+            source_file = find_media_file(source_media_dir, unique_id)
+            if not source_record and not source_file:
+                continue
+
+            if not source_record and source_file:
+                # Legacy/file-only entry: create minimal metadata so we can move it cleanly.
+                source.put(
+                    unique_id,
+                    {
+                        "unique_id": unique_id,
+                        "kind": "photo",
+                        "status": "unknown",
+                        "description": None,
+                        "media_file": source_file.name,
+                    },
+                    agent=agent,
+                )
+
+            source.move_record_to(unique_id, target_source)
+            logger.info(
+                "Promoted media %s from %s to %s",
+                unique_id,
+                source_media_dir,
+                config_media_dir,
+            )
+            return
+    except Exception as e:
+        logger.debug(
+            "Failed promoting media %s into %s: %s", unique_id, config_media_dir, e
+        )
 
 
 async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
@@ -221,30 +318,10 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
             if config_media_dir:
                 config_media_dir.mkdir(parents=True, exist_ok=True)
                 dir_source = get_directory_media_source(config_media_dir)
+                _promote_media_to_agent_config(
+                    unique_id_str, config_media_dir, agent=agent
+                )
                 config_record = dir_source.get_cached_record(unique_id_str)
-                if not config_record:
-                    # Bootstrap a curated-record stub so media discovered in Saved Messages
-                    # appears in the Media Editor immediately, even before description refresh.
-                    bootstrap_kind = media_item.get("media_kind") or "photo"
-                    if bootstrap_kind == "animated_sticker":
-                        bootstrap_kind = "sticker"
-                    bootstrap_record: dict[str, Any] = {
-                        "unique_id": unique_id_str,
-                        "kind": bootstrap_kind,
-                        "status": "unknown",
-                        "description": None,
-                    }
-                    if media_item.get("mime_type"):
-                        bootstrap_record["mime_type"] = media_item["mime_type"]
-                    try:
-                        dir_source.put(unique_id_str, bootstrap_record, agent=agent)
-                        config_record = dir_source.get_cached_record(unique_id_str)
-                    except Exception as e:
-                        logger.debug(
-                            "Failed bootstrapping config media record for %s: %s",
-                            unique_id_str,
-                            e,
-                        )
                 if config_record:
                     if config_record.get("description"):
                         media_item["description"] = config_record["description"]
@@ -633,6 +710,7 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
 
     if config_media_dir:
         config_media_dir.mkdir(parents=True, exist_ok=True)
+        _promote_media_to_agent_config(unique_id, config_media_dir, agent=agent)
         dir_source = get_directory_media_source(config_media_dir)
         record = dir_source.get_cached_record(unique_id)
         
@@ -649,6 +727,7 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     # Not cached, need to download from Telegram
     # Try to find media in Saved Messages or Profile Photos
     media_obj = None
+    matched_message = None
     
     # Check Saved Messages
     async for message in client.iter_messages("me", limit=None):
@@ -657,6 +736,7 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
             unique_id_val = get_unique_id(photo)
             if unique_id_val and str(unique_id_val) == unique_id:
                 media_obj = photo
+                matched_message = message
                 break
         
         # Check documents (for videos)
@@ -665,6 +745,7 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
             unique_id_val = get_unique_id(document)
             if unique_id_val and str(unique_id_val) == unique_id:
                 media_obj = document
+                matched_message = message
                 break
     
     # If not found, check profile photos
@@ -683,59 +764,162 @@ async def _get_media_thumbnail(agent, client, unique_id: str) -> bytes | None:
     # Download full media (CSS handles sizing in the UI)
     media_bytes = await download_media_bytes(client, media_obj)
 
-    # Best-effort: persist discovered Saved Messages media to configdir/media so
-    # it also appears in Media Editor and does not require repeat Telegram fetches.
+    # Fallback import path:
+    # If this unique_id exists nowhere (state/media nor any config media dir),
+    # persist a new curated record/file from Saved Messages so Agent Media stops
+    # redownloading it on each open and Media Editor can manage it.
     if media_bytes and config_media_dir:
         try:
             dir_source = get_directory_media_source(config_media_dir)
-            record = dir_source.get_cached_record(unique_id) or {}
+            already_in_target = bool(
+                dir_source.get_cached_record(unique_id)
+                or find_media_file(config_media_dir, unique_id)
+            )
 
-            hinted_mime = (getattr(media_obj, "mime_type", None) or "").lower()
-            detected_mime = detect_mime_type_from_bytes(media_bytes[:1024])
-            final_mime = hinted_mime or detected_mime
-            if detected_mime and detected_mime != "application/octet-stream":
-                final_mime = detected_mime
-            if final_mime == "application/gzip" and hinted_mime == "application/x-tgsticker":
-                final_mime = "application/x-tgsticker"
+            exists_in_state = False
+            state_media_dir = get_state_media_path()
+            if state_media_dir and state_media_dir.exists():
+                try:
+                    exists_in_state = bool(
+                        get_media_service(state_media_dir).get_record(unique_id)
+                    )
+                except Exception:
+                    exists_in_state = False
 
-            if hasattr(media_obj, "mime_type"):
-                if hinted_mime.startswith("video/"):
-                    kind = "video"
-                elif hinted_mime.startswith("audio/"):
-                    kind = "audio"
-                elif hinted_mime == "application/x-tgsticker":
-                    kind = "sticker"
-                elif hinted_mime.startswith("image/"):
-                    kind = "photo"
+            exists_in_other_config = False
+            target_resolved = config_media_dir.resolve()
+            for base in CONFIG_DIRECTORIES:
+                other_media_dir = (Path(base) / "media").resolve()
+                if other_media_dir == target_resolved:
+                    continue
+                if not other_media_dir.exists() or not other_media_dir.is_dir():
+                    continue
+                other_source = get_directory_media_source(other_media_dir)
+                if other_source.get_cached_record(unique_id) or find_media_file(
+                    other_media_dir, unique_id
+                ):
+                    exists_in_other_config = True
+                    break
+
+            if not already_in_target and not exists_in_state and not exists_in_other_config:
+                # Use shared Telegram media parsing helper to preserve canonical sticker metadata.
+                parsed_item = None
+                if matched_message is not None:
+                    try:
+                        for item in iter_media_parts(matched_message):
+                            if item.unique_id == unique_id:
+                                parsed_item = item
+                                break
+                    except Exception as parse_error:
+                        logger.debug(
+                            "Failed parsing media metadata from message for %s: %s",
+                            unique_id,
+                            parse_error,
+                        )
+
+                resolved_sticker_set_name = None
+                resolved_sticker_set_title = None
+                if parsed_item is not None:
+                    try:
+                        is_sticker_item = (
+                            parsed_item.is_sticker()
+                            if hasattr(parsed_item, "is_sticker")
+                            else str(getattr(parsed_item, "kind", "")) == "sticker"
+                        )
+                        if is_sticker_item:
+                            # Reuse the same metadata resolver used by the media pipeline.
+                            from media.media_injector import _maybe_get_sticker_set_metadata
+
+                            (
+                                resolved_sticker_set_name,
+                                resolved_sticker_set_title,
+                            ) = await _maybe_get_sticker_set_metadata(agent, parsed_item)
+                    except Exception as sticker_meta_error:
+                        logger.debug(
+                            "Failed resolving sticker set metadata for %s: %s",
+                            unique_id,
+                            sticker_meta_error,
+                        )
+
+                hinted_mime = (
+                    (parsed_item.mime if parsed_item else None)
+                    or (getattr(media_obj, "mime_type", None) or "")
+                ).lower()
+                detected_mime = detect_mime_type_from_bytes(media_bytes[:1024])
+                final_mime = hinted_mime or detected_mime
+                if detected_mime and detected_mime != "application/octet-stream":
+                    final_mime = detected_mime
+                if final_mime == "application/gzip" and hinted_mime == "application/x-tgsticker":
+                    final_mime = "application/x-tgsticker"
+
+                if parsed_item is not None:
+                    kind = parsed_item.kind.value
                 else:
-                    kind = "document"
-            else:
-                kind = "photo"
+                    if hasattr(media_obj, "mime_type"):
+                        if hinted_mime.startswith("video/"):
+                            kind = "video"
+                        elif hinted_mime.startswith("audio/"):
+                            kind = "audio"
+                        elif hinted_mime == "application/x-tgsticker":
+                            kind = "sticker"
+                        elif hinted_mime.startswith("image/"):
+                            kind = "photo"
+                        else:
+                            kind = "document"
+                    else:
+                        kind = "photo"
 
-            record.setdefault("unique_id", unique_id)
-            record.setdefault("status", "unknown")
-            record.setdefault("description", None)
-            record.setdefault("kind", kind)
-            if final_mime and not record.get("mime_type"):
-                record["mime_type"] = final_mime
+                record: dict[str, Any] = {
+                    "unique_id": unique_id,
+                    "status": "unknown",
+                    "description": None,
+                    "kind": kind,
+                }
+                if final_mime:
+                    record["mime_type"] = final_mime
+                if parsed_item is not None:
+                    sticker_set_name = (
+                        resolved_sticker_set_name
+                        or getattr(parsed_item, "sticker_set_name", None)
+                    )
+                    sticker_set_title = (
+                        resolved_sticker_set_title
+                        or getattr(parsed_item, "sticker_set_title", None)
+                    )
+                    if sticker_set_name and sticker_set_name != "(unknown)":
+                        record["sticker_set_name"] = sticker_set_name
+                    if sticker_set_title and sticker_set_title != "(unknown)":
+                        record["sticker_set_title"] = sticker_set_title
+                    if parsed_item.sticker_name:
+                        record["sticker_name"] = parsed_item.sticker_name
 
-            ext = get_file_extension_for_mime_type(final_mime) if final_mime else None
-            file_extension = f".{ext}" if ext and ext != "bin" else None
-            if not file_extension:
-                file_extension = ".jpg" if kind == "photo" else ".mp4" if kind == "video" else None
-
-            if file_extension:
-                dir_source.put(
-                    unique_id,
-                    record,
-                    media_bytes=media_bytes,
-                    file_extension=file_extension,
-                    agent=agent,
+                file_extension = get_file_extension_from_mime_or_bytes(
+                    final_mime, media_bytes
                 )
-            else:
-                dir_source.put(unique_id, record, agent=agent)
+                if not file_extension:
+                    file_extension = (
+                        ".jpg" if kind == "photo" else ".mp4" if kind == "video" else None
+                    )
+
+                if file_extension:
+                    dir_source.put(
+                        unique_id,
+                        record,
+                        media_bytes=media_bytes,
+                        file_extension=file_extension,
+                        agent=agent,
+                    )
+                else:
+                    dir_source.put(unique_id, record, agent=agent)
+                logger.info(
+                    "Imported Saved Messages media %s into %s (no prior cache record found)",
+                    unique_id,
+                    config_media_dir,
+                )
         except Exception as e:
-            logger.debug("Failed to persist cached media %s to config dir: %s", unique_id, e)
+            logger.debug(
+                "Failed fallback import of Saved Messages media %s: %s", unique_id, e
+            )
 
     return media_bytes
 
