@@ -16,7 +16,9 @@ from flask import jsonify  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY
+from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import format_message_reactions
+from handlers.received_helpers.summarization import consolidate_oldest_summaries_if_needed
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
@@ -461,6 +463,34 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         except Exception as e:
             logger.warning(f"Cannot fetch conversation - event loop check failed: {e}")
             return jsonify({"error": "Agent client event loop is not available"}), 503
+
+        # Run at most one consolidation pass when opening the conversation.
+        # This keeps old data in shape even when no new inbound messages arrive.
+        try:
+            async def _consolidate_once():
+                llm = get_channel_llm(agent, channel_id, agent_config_name)
+                await consolidate_oldest_summaries_if_needed(
+                    agent=agent,
+                    channel_id=channel_id,
+                    llm=llm,
+                    channel_name=agent_config_name,
+                )
+
+            agent.execute(_consolidate_once(), timeout=60.0)
+        except Exception as e:
+            logger.warning(
+                "Failed summary consolidation on conversation load for %s/%s: %s",
+                agent_config_name,
+                channel_id,
+                e,
+            )
+
+        # Reload summaries after possible consolidation so response is current.
+        summaries = db_summaries.load_summaries(agent.agent_id, channel_id)
+        summaries.sort(key=lambda x: (x.get("min_message_id", 0), x.get("max_message_id", 0)))
+
+        # Recompute summarized cutoff after potential consolidation.
+        highest_summarized_id = _get_highest_summarized_message_id_for_api(agent.config_name, channel_id)
 
         # This is async, so we need to run it in the client's event loop
         # Cache for custom emoji documents (document_id -> document object)

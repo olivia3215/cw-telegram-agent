@@ -105,6 +105,39 @@ async def test_consolidation_merges_oldest_five_when_threshold_met():
 
 
 @pytest.mark.asyncio
+async def test_consolidation_runs_single_pass_even_with_many_entries():
+    agent = SimpleNamespace(is_authenticated=True, agent_id=1, name="TestAgent")
+    llm = SimpleNamespace(query_structured=AsyncMock(return_value="Merged summary paragraph."))
+    twelve = [
+        {
+            "id": f"s{i}",
+            "content": f"summary {i}",
+            "min_message_id": i * 10,
+            "max_message_id": i * 10 + 9,
+            "first_message_date": f"2026-02-{i:02d}",
+            "last_message_date": f"2026-02-{i:02d}",
+        }
+        for i in range(1, 13)
+    ]
+
+    with (
+        patch("db.summaries.load_summaries", return_value=twelve),
+        patch("db.summaries.save_summary") as mock_save,
+        patch("db.summaries.delete_summary") as mock_delete,
+        patch(
+            "handlers.received_helpers.summarization.load_system_prompt",
+            return_value="Consolidate these summaries.",
+        ),
+    ):
+        changed = await consolidate_oldest_summaries_if_needed(agent, 123, llm)
+
+    assert changed is True
+    assert llm.query_structured.call_count == 1
+    mock_save.assert_called_once()
+    assert mock_delete.call_count == 5
+
+
+@pytest.mark.asyncio
 async def test_consolidation_does_not_delete_when_llm_returns_empty():
     agent = SimpleNamespace(is_authenticated=True, agent_id=1, name="TestAgent")
     llm = SimpleNamespace(query_structured=AsyncMock(return_value=""))
