@@ -188,6 +188,25 @@ def test_log_llm_usage_does_not_persist_without_context():
                 assert mock_log_task_execution.call_count == 0
 
 
+def test_log_llm_usage_falls_back_to_agent_id_for_channel():
+    """Test that channel_id falls back to agent_id when conversation ID is missing."""
+    with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):
+        with patch("llm.usage_logging.logger"):
+            with patch("db.task_log.log_task_execution") as mock_log_task_execution:
+                log_llm_usage(
+                    agent=SimpleNamespace(name="TestAgent", agent_id=123456),
+                    model_name="test-model",
+                    input_tokens=100,
+                    output_tokens=50,
+                    operation="query_structured",
+                )
+
+                assert mock_log_task_execution.call_count == 1
+                kwargs = mock_log_task_execution.call_args.kwargs
+                assert kwargs["agent_telegram_id"] == 123456
+                assert kwargs["channel_telegram_id"] == 123456
+
+
 def test_gemini_thinking_tokens_counted_in_rest_response():
     """Test that thinking tokens are included in output token count for REST API."""
     from llm.gemini import GeminiLLM

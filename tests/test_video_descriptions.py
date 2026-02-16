@@ -604,7 +604,7 @@ async def test_ai_generating_source_calls_describe_video_for_animated_sticker(tm
                         assert (
                             call_args[0][0] == b"fake_video_bytes"
                         )  # First positional arg should be video bytes
-                        assert call_args[0][1] == agent.name  # Second should be agent name
+                        assert call_args[0][1] == agent  # Second should be agent object
                         # MIME type should be passed as keyword arg
                         assert call_args[1].get("mime_type") == "video/mp4" or call_args[0][2] == "video/mp4"
 

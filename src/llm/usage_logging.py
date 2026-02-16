@@ -107,7 +107,8 @@ def log_llm_usage(
         output_tokens: Number of output tokens
         operation: Optional operation type (e.g., "query", "describe_image", "describe_video")
         channel_name: Optional channel name for logging prefix
-        channel_telegram_id: Optional channel Telegram ID for task log persistence
+        channel_telegram_id: Optional channel Telegram ID for task log persistence.
+            If omitted, falls back to the agent's own Telegram ID.
     """
     agent_name = str(getattr(agent, "name", None) or "unknown-agent")
     agent_telegram_id = getattr(agent, "agent_id", None)
@@ -137,8 +138,8 @@ def log_llm_usage(
     
     logger.info(f"{format_log_prefix(agent_name, channel_name)} {log_message}")
 
-    # Persist to task execution logs when conversation context is available.
-    if agent_telegram_id is not None and channel_telegram_id is not None:
+    # Persist to task execution logs when attribution context is available.
+    if agent_telegram_id is not None:
         try:
             from db.task_log import log_task_execution
 
@@ -153,7 +154,7 @@ def log_llm_usage(
             )
             log_task_execution(
                 agent_telegram_id=agent_telegram_id,
-                channel_telegram_id=channel_telegram_id,
+                channel_telegram_id=channel_telegram_id or agent_telegram_id,
                 action_kind="llm_usage",
                 action_details=action_details,
                 failure_message=None,

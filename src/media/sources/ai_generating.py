@@ -262,9 +262,9 @@ class AIGeneratingMediaSource(MediaSource):
             if _needs_video_analysis(kind, final_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
                 desc = await media_llm.describe_video(
-                    video_bytes=data,
-                    agent=agent,
-                    mime_type=final_mime_type,
+                    data,
+                    agent,
+                    final_mime_type,
                     duration=duration,
                     timeout_s=get_describe_timeout_secs(),
                     channel_telegram_id=usage_channel_telegram_id,
@@ -287,9 +287,9 @@ class AIGeneratingMediaSource(MediaSource):
                     
                     duration = metadata.get("duration")
                     desc = await media_llm.describe_audio(
-                        audio_bytes=data,
-                        agent=agent,
-                        mime_type=audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
+                        data,
+                        agent,
+                        audio_mime_type,  # Will be None if not available, describe_audio will detect from bytes
                         duration=duration,
                         timeout_s=get_describe_timeout_secs(),
                         channel_telegram_id=usage_channel_telegram_id,
@@ -301,9 +301,9 @@ class AIGeneratingMediaSource(MediaSource):
                     )
                     # Fall through to describe_image which will raise ValueError
                     desc = await media_llm.describe_image(
-                        image_bytes=data,
-                        agent=agent,
-                        mime_type=None,
+                        data,
+                        agent,
+                        None,
                         timeout_s=get_describe_timeout_secs(),
                         channel_telegram_id=usage_channel_telegram_id,
                     )
@@ -316,9 +316,9 @@ class AIGeneratingMediaSource(MediaSource):
                     f"(final_mime_type={final_mime_type}, detected={detected_mime_type}, from_ext={'mime_type' in metadata})"
                 )
                 desc = await media_llm.describe_image(
-                    image_bytes=data,
-                    agent=agent,
-                    mime_type=image_mime_type,
+                    data,
+                    agent,
+                    image_mime_type,
                     timeout_s=get_describe_timeout_secs(),
                     channel_telegram_id=usage_channel_telegram_id,
                 )
