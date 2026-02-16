@@ -10,6 +10,7 @@ import asyncio
 from datetime import UTC
 from datetime import date
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import process_message_history
@@ -17,6 +18,7 @@ from handlers.registry import dispatch_immediate_task
 from prompt_loader import load_system_prompt
 from utils import get_dialog_name, is_group_or_channel
 from utils.formatting import format_log_prefix
+from utils.time import parse_datetime_with_optional_tz
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +48,10 @@ def _coerce_date_or_none(value) -> date | None:
         text = str(value).strip()
         if not text:
             return None
-        date_part = text.split("T")[0].split(" ")[0]
-        return datetime.strptime(date_part, "%Y-%m-%d").date()
+        parsed = parse_datetime_with_optional_tz(text, ZoneInfo("UTC"))
+        if parsed is not None:
+            return parsed.date()
+        return datetime.strptime(text, "%Y-%m-%d").date()
     except Exception:
         return None
 
