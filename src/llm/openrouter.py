@@ -462,6 +462,41 @@ class OpenRouterLLM(LLM):
             logger.error("OpenRouter API exception: %s", e)
             raise e
 
+    async def query_plain_text(
+        self,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        timeout_s: float | None = None,
+        agent_name: str,
+    ) -> str:
+        """Query OpenRouter for plain text without schema constraints."""
+        model_name = model or self.model_name
+        create_kwargs = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": "⟦special⟧ Please respond to the instructions provided.",
+                },
+            ],
+            "timeout": timeout_s or 60.0,
+        }
+        if self._is_gemini_model(model_name):
+            create_kwargs["extra_body"] = {"safety_settings": self.safety_settings}
+
+        response = await self.client.chat.completions.create(**create_kwargs)
+        if response.choices and response.choices[0].message.content:
+            text = response.choices[0].message.content.strip()
+        else:
+            raise RuntimeError(f"OpenRouter returned no content: {response}")
+
+        self._log_usage_from_openai_response(
+            response, agent_name, model_name, "query_plain_text"
+        )
+        return text or ""
+
     async def query_with_json_schema(
         self,
         *,

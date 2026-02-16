@@ -1033,6 +1033,45 @@ class GeminiLLM(LLM):
             operation="query_structured",
         )
 
+    async def query_plain_text(
+        self,
+        *,
+        system_prompt: str,
+        model: str | None = None,
+        timeout_s: float | None = None,
+        agent_name: str,
+    ) -> str:
+        """Query Gemini for plain text without JSON schema constraints."""
+        client = getattr(self, "client", None)
+        if client is None:
+            raise RuntimeError("Gemini client not initialized")
+
+        model_name = model or self.model_name
+        config = GenerateContentConfig(
+            system_instruction=system_prompt,
+            safety_settings=self.safety_settings,
+        )
+
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=model_name,
+            contents=[
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": "⟦special⟧ Please respond to the instructions provided."}
+                    ],
+                }
+            ],
+            config=config,
+        )
+
+        text = _extract_response_text(response).strip()
+        self._log_usage_from_sdk_response(
+            response, agent_name, model_name, "query_plain_text"
+        )
+        return text or ""
+
     async def query_with_json_schema(
         self,
         *,

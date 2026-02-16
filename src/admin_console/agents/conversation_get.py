@@ -6,6 +6,7 @@
 import asyncio
 import html
 import logging
+import threading
 from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,9 @@ from flask import jsonify  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY
+from handlers.received_helpers.llm_query import get_channel_llm
 from handlers.received_helpers.message_processing import format_message_reactions
+from handlers.received_helpers.summarization import consolidate_oldest_summaries_if_needed
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
@@ -32,6 +35,8 @@ from admin_console.agents.conversation import markdown_to_html
 from utils.telegram_entities import utf16_offset_to_python_index, entities_to_markdown
 
 logger = logging.getLogger(__name__)
+_SUMMARY_CONSOLIDATION_LOCK = threading.Lock()
+_SUMMARY_CONSOLIDATION_IN_FLIGHT: set[tuple[int, int]] = set()
 
 
 def _utf16_offset_to_python_index(text: str, utf16_offset: int) -> int:
@@ -461,6 +466,63 @@ def api_get_conversation(agent_config_name: str, user_id: str):
         except Exception as e:
             logger.warning(f"Cannot fetch conversation - event loop check failed: {e}")
             return jsonify({"error": "Agent client event loop is not available"}), 503
+
+        # Kick off at most one background consolidation pass when opening conversation.
+        # This avoids blocking the API request on long LLM calls.
+        try:
+            consolidation_key = (agent.agent_id, channel_id)
+            should_schedule = False
+            with _SUMMARY_CONSOLIDATION_LOCK:
+                if consolidation_key not in _SUMMARY_CONSOLIDATION_IN_FLIGHT:
+                    _SUMMARY_CONSOLIDATION_IN_FLIGHT.add(consolidation_key)
+                    should_schedule = True
+
+            if should_schedule:
+                async def _consolidate_once():
+                    try:
+                        llm = get_channel_llm(agent, channel_id, agent_config_name)
+                        await consolidate_oldest_summaries_if_needed(
+                            agent=agent,
+                            channel_id=channel_id,
+                            llm=llm,
+                            channel_name=agent_config_name,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed summary consolidation on conversation load for %s/%s: %s",
+                            agent_config_name,
+                            channel_id,
+                            e,
+                        )
+                    finally:
+                        with _SUMMARY_CONSOLIDATION_LOCK:
+                            _SUMMARY_CONSOLIDATION_IN_FLIGHT.discard(consolidation_key)
+
+                def _schedule_consolidation_task():
+                    task = asyncio.create_task(_consolidate_once())
+
+                    def _log_task_failure(done_task):
+                        if done_task.cancelled():
+                            return
+                        exc = done_task.exception()
+                        if exc:
+                            logger.warning(
+                                "Background consolidation task failed for %s/%s: %s",
+                                agent_config_name,
+                                channel_id,
+                                exc,
+                            )
+
+                    task.add_done_callback(_log_task_failure)
+
+                client_loop.call_soon_threadsafe(_schedule_consolidation_task)
+        except Exception as e:
+            logger.warning(
+                "Failed to schedule summary consolidation on conversation load for %s/%s: %s",
+                agent_config_name,
+                channel_id,
+                e,
+            )
 
         # This is async, so we need to run it in the client's event loop
         # Cache for custom emoji documents (document_id -> document object)
