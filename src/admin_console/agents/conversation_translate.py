@@ -10,7 +10,7 @@ import re
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name
+from admin_console.helpers import get_agent_by_name, resolve_user_id_and_handle_errors
 from llm.factory import create_llm_from_name
 from llm.exceptions import RetryableLLMError
 
@@ -75,6 +75,14 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
             except Exception as e:
                 logger.warning(f"Cannot translate conversation - event loop check failed: {e}")
                 return jsonify({"error": "Agent client event loop is not available"}), 503
+
+            channel_id_for_usage = None
+            try:
+                ch_id, err_resp = resolve_user_id_and_handle_errors(agent, user_id, logger)
+                if not err_resp:
+                    channel_id_for_usage = ch_id
+            except Exception:
+                pass
 
             def generate_translations():
                 """Generator function that yields SSE events for translations."""
@@ -241,13 +249,19 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     f"{translation_prompt}"
                                 )
 
-                                result_text = await translation_llm.query_with_json_schema(
-                                    system_prompt=system_prompt,
-                                    json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
-                                    model=None,  # Use default model
-                                    timeout_s=None,  # Use default timeout
-                                    agent_name="admin-translation",
-                                )
+                                try:
+                                    translation_llm._usage_agent_telegram_id = getattr(agent, "agent_id", None)
+                                    translation_llm._usage_channel_telegram_id = channel_id_for_usage
+                                    result_text = await translation_llm.query_with_json_schema(
+                                        system_prompt=system_prompt,
+                                        json_schema=copy.deepcopy(_TRANSLATION_SCHEMA),
+                                        model=None,  # Use default model
+                                        timeout_s=None,  # Use default timeout
+                                        agent_name="admin-translation",
+                                    )
+                                finally:
+                                    translation_llm._usage_agent_telegram_id = None
+                                    translation_llm._usage_channel_telegram_id = None
 
                                 if result_text:
                                     # Parse JSON response with better error handling
