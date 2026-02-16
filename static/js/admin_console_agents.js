@@ -1002,6 +1002,29 @@ async function loadAgentContacts(agentName) {
             </div>
         `;
 
+        function getAvatarFallbackInitial(displayName, fallbackId) {
+            const label = String(displayName || fallbackId || '').trim();
+            if (!label) return '?';
+            return label.charAt(0).toUpperCase();
+        }
+
+        function renderRoundAvatarButton(photoDataUrl, displayName, fallbackId, onClickJs, titleText = 'View profile photos') {
+            const initial = escapeHtml(getAvatarFallbackInitial(displayName, fallbackId));
+            if (photoDataUrl) {
+                return `
+                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}" style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">
+                        <img src="${escapeHtml(photoDataUrl)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                    </button>
+                `;
+            }
+
+            return `
+                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}" style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
+                    ${initial}
+                </button>
+            `;
+        }
+
         const contactsHtml = contacts.map(contact => {
             const deletedBadge = contact.is_deleted
                 ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Deleted account</span>'
@@ -1015,23 +1038,24 @@ async function loadAgentContacts(agentName) {
             const escapedAgentName = escJsAttr(agentName);
             const escapedUserId = escJsAttr(contact.user_id);
             const escapedContactName = escapeHtml(contact.name || contact.user_id);
+            const avatarHtml = renderRoundAvatarButton(
+                contact.avatar_photo,
+                contact.name,
+                contact.user_id,
+                `openContactPhotos('${escapedAgentName}', '${escapedUserId}'); return false;`
+            );
             return `
                 <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="display: flex; gap: 12px;">
+                    <div style="display: flex; align-items: start; gap: 12px;">
                             <label style="margin-top: 2px;">
                                 <input type="checkbox" data-contact-checkbox="true" ${isChecked} onchange="toggleAgentContactSelection('${escJsAttr(userId)}', this.checked)">
                             </label>
-                            <div>
+                            ${avatarHtml}
+                            <div style="min-width: 0;">
                             <div><strong>Name:</strong> <a href="#" onclick="openConversationFromContacts('${escapedAgentName}', '${escapedUserId}'); return false;">${escapedContactName}</a>${deletedBadge}${blockedBadge}</div>
                             <div><strong>ID:</strong> ${escapeHtml(contact.user_id)}</div>
                             ${usernameLine}
                             </div>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="openContactPhotos('${escapedAgentName}', '${escapedUserId}')" title="View profile photos" style="padding: 6px 8px; background: #f8f9fa; color: #495057; border: 1px solid #ced4da; border-radius: 999px; cursor: pointer; font-size: 14px; line-height: 1;">&#128247;</button>
-                            <button onclick="deleteAgentContact('${escapedAgentName}', '${escapedUserId}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                        </div>
                     </div>
                 </div>
             `;
@@ -1175,19 +1199,27 @@ async function openConversationFromContacts(agentName, userId) {
 }
 
 async function openContactPhotos(agentName, userId) {
+    return openEntityPhotos(agentName, userId, 'contact');
+}
+
+async function openMembershipPhotos(agentName, channelId) {
+    return openEntityPhotos(agentName, channelId, 'group/channel');
+}
+
+async function openEntityPhotos(agentName, userId, entityLabel) {
     if (!agentName || !userId) return;
     try {
         const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}`);
         const data = await response.json();
         if (data.error) {
-            alert('Error loading contact photos: ' + data.error);
+            alert(`Error loading ${entityLabel} photos: ` + data.error);
             return;
         }
         const photos = Array.isArray(data.profile_photos)
             ? data.profile_photos.filter(Boolean)
             : (data.profile_photo ? [data.profile_photo] : []);
         if (photos.length === 0) {
-            alert('No profile photos available for this contact.');
+            alert(`No profile photos available for this ${entityLabel}.`);
             return;
         }
         showContactPhotoFullscreen(photos);
@@ -1195,7 +1227,7 @@ async function openContactPhotos(agentName, userId) {
         if (error && error.message === 'unauthorized') {
             return;
         }
-        alert('Error loading contact photos: ' + error);
+        alert(`Error loading ${entityLabel} photos: ` + error);
     }
 }
 
@@ -1734,13 +1766,31 @@ function loadMemberships(agentName) {
                     const username = membership.username ? `@${membership.username}` : '';
                     const isMuted = membership.is_muted || false;
                     const isGagged = membership.is_gagged || false;
+                    const escapedAgentName = escJsAttr(agentName);
+                    const escapedChannelId = escJsAttr(channelId);
+                    const initialLabel = escapeHtml(String(name || channelId || '?').trim().charAt(0).toUpperCase() || '?');
+                    let avatarHtml = '';
+                    if (membership.profile_photo) {
+                        avatarHtml =
+                            '<button onclick="openMembershipPhotos(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" title="View profile photos" ' +
+                            'style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">' +
+                            '<img src="' + escapeHtml(membership.profile_photo) + '" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">' +
+                            '</button>';
+                    } else {
+                        avatarHtml =
+                            '<button onclick="openMembershipPhotos(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" title="View profile photos" ' +
+                            'style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">' +
+                            initialLabel +
+                            '</button>';
+                    }
                     
                     html += '<div style="padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; align-items: center; gap: 12px;">';
+                    html += avatarHtml;
                     html += '<div style="flex: 1; min-width: 0;">';
                     const nameLabel = escapeHtml(name);
                     let nameHtml = nameLabel;
                     if (channelId) {
-                        nameHtml = '<a href="#" onclick="openMembershipConversationProfile(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\'); return false;" style="color: #007bff; text-decoration: underline;">' + nameLabel + '</a>';
+                        nameHtml = '<a href="#" onclick="openMembershipConversationProfile(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" style="color: #007bff; text-decoration: underline;">' + nameLabel + '</a>';
                     }
                     html += '<div style="font-weight: 500; margin-bottom: 4px;">' + nameHtml + '</div>';
                     html += '<div style="font-size: 12px; color: #666;">';
@@ -1752,14 +1802,14 @@ function loadMemberships(agentName) {
                     html += '</div>';
                     html += '<div style="display: flex; align-items: center; gap: 8px;">';
                     html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
-                    html += '<input type="checkbox" ' + (isGagged ? 'checked' : '') + ' onchange="toggleGaggedMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                    html += '<input type="checkbox" ' + (isGagged ? 'checked' : '') + ' onchange="toggleGaggedMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', this.checked)" style="cursor: pointer;">';
                     html += '<span style="font-size: 14px;">Gagged</span>';
                     html += '</label>';
                     html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
-                    html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                    html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', this.checked)" style="cursor: pointer;">';
                     html += '<span style="font-size: 14px;">Muted</span>';
                     html += '</label>';
-                    html += '<button onclick="deleteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', \'' + escJsAttr(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
+                    html += '<button onclick="deleteMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', \'' + escJsAttr(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
                     html += '</div>';
                     html += '</div>';
                 });

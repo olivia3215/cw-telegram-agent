@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 import asyncio
+import base64
 import logging
 import re
 from datetime import UTC, datetime, timedelta
@@ -21,10 +22,35 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from admin_console.helpers import get_agent_by_name
+from telegram_download import download_media_bytes
 from utils import normalize_peer_id
 from utils.telegram import is_group_or_channel
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_first_profile_photo_data_url(client, entity) -> str | None:
+    try:
+        # Use limit=1 to keep memberships list responsive.
+        photos = await client.get_profile_photos(entity, limit=1)
+    except TypeError:
+        # Backward compatibility with mocked clients that do not accept limit.
+        photos = await client.get_profile_photos(entity)
+    except Exception as e:
+        logger.debug(f"Error getting first membership profile photo: {e}")
+        return None
+
+    if not photos:
+        return None
+
+    try:
+        photo_bytes = await download_media_bytes(client, photos[0])
+        mime_type = "image/jpeg"
+        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+        return f"data:{mime_type};base64,{base64_data}"
+    except Exception as e:
+        logger.debug(f"Error downloading first membership profile photo: {e}")
+        return None
 
 
 def register_membership_routes(agents_bp: Blueprint):
@@ -105,11 +131,15 @@ def register_membership_routes(agents_bp: Blueprint):
                         
                         # Check gagged status
                         is_gagged = await agent.is_conversation_gagged(dialog_id)
+                        profile_photo = None
+                        if getattr(entity, "photo", None):
+                            profile_photo = await _get_first_profile_photo_data_url(client, entity)
 
                         memberships.append({
                             "channel_id": channel_id,
                             "name": name,
                             "username": username,
+                            "profile_photo": profile_photo,
                             "is_muted": is_muted,
                             "is_gagged": is_gagged,
                         })

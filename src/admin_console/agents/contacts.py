@@ -42,6 +42,30 @@ async def _get_profile_photo_data_urls(client, entity) -> list[str]:
         return []
 
 
+async def _get_first_profile_photo_data_url(client, entity) -> str | None:
+    try:
+        # Use limit=1 to keep contacts list fast.
+        photos = await client.get_profile_photos(entity, limit=1)
+    except TypeError:
+        # Backward compatibility with mocked clients that do not accept limit.
+        photos = await client.get_profile_photos(entity)
+    except Exception as e:
+        logger.debug(f"Error getting first profile photo: {e}")
+        return None
+
+    if not photos:
+        return None
+
+    try:
+        photo_bytes = await download_media_bytes(client, photos[0])
+        mime_type = "image/jpeg"
+        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+        return f"data:{mime_type};base64,{base64_data}"
+    except Exception as e:
+        logger.debug(f"Error downloading first profile photo: {e}")
+        return None
+
+
 def _extract_username(entity) -> str | None:
     username = getattr(entity, "username", None)
     if username:
@@ -186,11 +210,15 @@ def register_contact_routes(agents_bp: Blueprint):
                     last = getattr(user, "last_name", None) or ""
                     username = _extract_username(user)
                     display_name = f"{first} {last}".strip() or username or str(user_id)
+                    avatar_photo = None
+                    if getattr(user, "photo", None):
+                        avatar_photo = await _get_first_profile_photo_data_url(agent.client, user)
                     contacts.append(
                         {
                             "user_id": str(user_id),
                             "name": display_name,
                             "username": username,
+                            "avatar_photo": avatar_photo,
                             "is_deleted": bool(getattr(user, "deleted", False)),
                             "is_blocked": user_id in blocked_ids,
                         }
