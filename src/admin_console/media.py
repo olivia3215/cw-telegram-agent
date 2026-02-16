@@ -35,6 +35,7 @@ from admin_console.puppet_master import (
     PuppetMasterUnavailable,
     get_puppet_master_manager,
 )
+from db import media_metadata
 from media.media_budget import reset_description_budget
 from media.media_source import (
     AIChainMediaSource,
@@ -971,6 +972,81 @@ def api_move_media(unique_id: str):
 
     except Exception as e:
         logger.error(f"Error moving media {unique_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@media_bp.route("/api/media/cleanup-unused", methods=["POST"])
+def api_cleanup_unused_media():
+    """
+    Delete stale state/media entries (metadata + files) by last_used_at age.
+    Only valid for the state/media directory.
+    """
+    try:
+        directory_path = request.args.get("directory")
+        if not directory_path:
+            return jsonify({"error": "Missing directory parameter"}), 400
+
+        media_dir = resolve_media_path(directory_path)
+        if not isinstance(media_dir, Path):
+            media_dir = Path(media_dir)
+
+        if not is_state_media_directory(media_dir):
+            return (
+                jsonify(
+                    {
+                        "error": "Cleanup is only available for the state/media directory."
+                    }
+                ),
+                400,
+            )
+
+        data = request.get_json(silent=True) or {}
+        cutoff_days = int(data.get("cutoff_days", 7))
+        cutoff_days = max(1, cutoff_days)
+
+        stale_ids = media_metadata.find_unused_media_unique_ids(cutoff_days=cutoff_days)
+        if not stale_ids:
+            return jsonify(
+                {
+                    "success": True,
+                    "deleted_count": 0,
+                    "checked_count": 0,
+                    "cutoff_days": cutoff_days,
+                }
+            )
+
+        svc = get_media_service(media_dir)
+        deleted_count = 0
+        errors: list[dict[str, str]] = []
+        for unique_id in stale_ids:
+            try:
+                record = svc.get_record(unique_id)
+                if record:
+                    svc.delete_media_files(unique_id, record=record)
+                svc.delete_record(unique_id)
+                deleted_count += 1
+            except Exception as e:
+                errors.append({"unique_id": unique_id, "error": str(e)})
+                logger.warning("Cleanup failed for media %s: %s", unique_id, e)
+
+        logger.info(
+            "State media cleanup complete: deleted=%s checked=%s cutoff_days=%s",
+            deleted_count,
+            len(stale_ids),
+            cutoff_days,
+        )
+        return jsonify(
+            {
+                "success": True,
+                "deleted_count": deleted_count,
+                "checked_count": len(stale_ids),
+                "cutoff_days": cutoff_days,
+                "errors": errors,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error cleaning up unused media: {e}")
         return jsonify({"error": str(e)}), 500
 
 

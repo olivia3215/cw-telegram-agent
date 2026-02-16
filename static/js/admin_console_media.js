@@ -859,6 +859,72 @@ function deleteMedia(uniqueId) {
     }
 }
 
+function cleanupUnusedStateMedia() {
+    if (!currentDirectory) {
+        return;
+    }
+    const isStateMedia = currentDirectory.includes('state/media') || currentDirectory.endsWith('state/media');
+    if (!isStateMedia) {
+        return;
+    }
+
+    const cutoffInput = document.getElementById('cleanup-cutoff-days');
+    const statusEl = document.getElementById('cleanup-unused-status');
+    const button = document.getElementById('cleanup-unused-btn');
+    const cutoffDays = Math.max(1, parseInt(cutoffInput?.value || '7', 10) || 7);
+
+    if (!confirm(`Delete all state/media entries not used in the last ${cutoffDays} day(s)? This cannot be undone.`)) {
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = 'Cleaning up...';
+        statusEl.style.color = '#666';
+    }
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Deleting...';
+    }
+
+    const encodedDir = encodeURIComponent(currentDirectory);
+    fetchWithAuth(`${API_BASE}/media/cleanup-unused?directory=${encodedDir}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cutoff_days: cutoffDays }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        const deleted = data.deleted_count || 0;
+        const checked = data.checked_count || 0;
+        const errors = Array.isArray(data.errors) ? data.errors.length : 0;
+        if (statusEl) {
+            statusEl.textContent = `Deleted ${deleted} of ${checked} unused item(s)` + (errors ? ` (${errors} error(s))` : '');
+            statusEl.style.color = errors ? '#b36b00' : '#28a745';
+        }
+        loadMediaFiles(currentDirectory, false);
+    })
+    .catch(error => {
+        if (error && error.message === 'unauthorized') {
+            return;
+        }
+        if (statusEl) {
+            statusEl.textContent = `Cleanup failed: ${error}`;
+            statusEl.style.color = '#dc3545';
+        }
+    })
+    .finally(() => {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Delete Unused';
+        }
+    });
+}
+
 function importStickerSet() {
     const stickerSetName = document.getElementById('sticker-set-name').value.trim();
     const statusDiv = document.getElementById('import-status');
