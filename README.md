@@ -74,7 +74,21 @@ pip install -r requirements.txt
 
 ### 3) Configure environment
 
-Set these environment variables (example uses a local `./state` dir):
+The easiest way to configure your environment is to copy the provided `.env-template` to a new file named `.env` and fill in your actual values:
+
+```bash
+cp .env-template .env
+# Edit .env with your favorite text editor
+nano .env
+```
+
+Then, source the `.env` file to set the environment variables:
+
+```bash
+source .env
+```
+
+Alternatively, you can set these environment variables directly (example uses a local `./state` dir):
 
 ```bash
 export CINDY_AGENT_STATE_DIR="$(pwd)/state"

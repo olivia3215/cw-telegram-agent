@@ -62,7 +62,15 @@ Only needed if using OpenRouter LLM for agent responses:
 
 ## Step 5: Configure Environment
 
-Create or edit your `.env` file in the project root:
+The easiest way to configure your environment is to copy the provided `.env-template` to a new file named `.env` and fill in your actual values:
+
+```bash
+cp .env-template .env
+# Edit .env with your favorite text editor
+nano .env
+```
+
+Alternatively, you can create or edit your `.env` file from scratch in the project root:
 
 ```bash
 # Basic configuration
