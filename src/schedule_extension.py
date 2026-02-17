@@ -233,6 +233,11 @@ def _build_schedule_system_prompt(
     
     # Join and apply template substitution
     final_prompt = "\n\n".join(prompt_parts)
-    final_prompt = substitute_templates(final_prompt, agent.name, "Schedule Extension")
+    final_prompt = substitute_templates(
+        final_prompt,
+        agent.name,
+        "Schedule Extension",
+        agent_telegram_id=getattr(agent, "agent_id", None),
+    )
     
     return final_prompt

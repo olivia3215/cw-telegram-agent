@@ -380,7 +380,11 @@ async def perform_summarization(
     summary_json = await agent._load_summary_content(channel_id, json_format=True)
     
     # Build system prompt with empty specific instructions (summarization instructions are in Instructions-Summarize.md)
-    system_prompt = agent.get_system_prompt_for_summarization(channel_name, specific_instructions="")
+    system_prompt = agent.get_system_prompt_for_summarization(
+        channel_name,
+        specific_instructions="",
+        channel_id=channel_id,
+    )
     
     # Add current summaries JSON immediately before the conversation history
     if summary_json:

@@ -92,7 +92,13 @@ class AgentPromptMixin:
 
         # Apply template substitution across the assembled prompt
         final_prompt = "\n\n".join(prompt_parts)
-        final_prompt = substitute_templates(final_prompt, self.name, channel_name)
+        final_prompt = substitute_templates(
+            final_prompt,
+            self.name,
+            channel_name,
+            agent_telegram_id=getattr(self, "agent_id", None),
+            channel_telegram_id=channel_id,
+        )
         return final_prompt
 
     def get_system_prompt(self, channel_name, specific_instructions, channel_id: int | None = None):
@@ -120,7 +126,7 @@ class AgentPromptMixin:
         """
         return self._build_system_prompt(channel_name, specific_instructions, channel_id=channel_id, for_summarization=False)
 
-    def get_system_prompt_for_summarization(self, channel_name, specific_instructions):
+    def get_system_prompt_for_summarization(self, channel_name, specific_instructions, channel_id: int | None = None):
         """
         Get the base system prompt for summarization tasks.
         
@@ -136,4 +142,9 @@ class AgentPromptMixin:
         Returns:
             Base system prompt string for summarization
         """
-        return self._build_system_prompt(channel_name, specific_instructions, for_summarization=True)
+        return self._build_system_prompt(
+            channel_name,
+            specific_instructions,
+            channel_id=channel_id,
+            for_summarization=True,
+        )
