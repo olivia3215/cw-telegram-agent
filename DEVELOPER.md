@@ -6,7 +6,8 @@ This document explains how to work on the codebase, how the Gemini integration i
 
 - Python 3.13
 - Create a venv and install deps.
-- Put your secrets/env in `.env` and `source` it before running.
+- Copy `.env-template` to `.env` and put your secrets/env there.
+- `source .env` before running.
 
 ## Run & test
 

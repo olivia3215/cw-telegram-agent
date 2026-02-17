@@ -4,11 +4,7 @@ Heidi
 
 # Agent Phone
 
-+14083607039
-
-# Telegram ID
-
-7359509635
++12345678901
 
 # Agent Timezone
 
@@ -25,7 +21,8 @@ Task-Retrieve
 Task-XSend
 Task-Photo
 Task-Plan
-Scambait
+Person
+Chatbot
 
 # Daily Schedule
 
@@ -81,3 +78,6 @@ If I want to send new pictures or join a group, I can use `xsend` to arrange for
 # Start Typing Delay
 
 8.0
+
+# Disabled
+

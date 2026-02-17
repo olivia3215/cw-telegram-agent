@@ -4,12 +4,7 @@ DungeonMaster
 
 # Agent Phone
 
-+18625796324
-
-
-# Telegram ID
-
-6690871595
++12345678901
 
 # Reset Context On First Message
 
@@ -48,3 +43,6 @@ A. Approach the brick building.
 B. Follow the stream into the gully.
 C. Walk into the forest.
 D. Follow the road back the way you came.
+
+# Disabled
+
