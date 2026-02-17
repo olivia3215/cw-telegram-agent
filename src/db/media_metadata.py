@@ -57,14 +57,14 @@ def list_media_unique_ids(
                 "(kind IN ('sticker', 'animated_sticker') AND is_emoji_set = 1)"
             )
         elif media_type == "video":
-            where_clauses.append("kind IN ('video', 'animation')")
+            where_clauses.append("kind IN ('video', 'animation', 'gif')")
         elif media_type == "photos":
             where_clauses.append("kind = 'photo'")
         elif media_type == "audio":
             where_clauses.append("kind = 'audio'")
         elif media_type == "other":
             where_clauses.append(
-                "kind NOT IN ('sticker', 'animated_sticker', 'video', 'animation', 'photo', 'audio')"
+                "kind NOT IN ('sticker', 'animated_sticker', 'video', 'animation', 'gif', 'photo', 'audio')"
             )
 
     # Apply search filter

@@ -214,6 +214,111 @@ def is_tgs_mime_type(mime_type: str) -> bool:
     return mime_type in ("application/gzip", "application/x-tgsticker")
 
 
+def classify_media_from_bytes_and_hints(
+    media_bytes: bytes | None,
+    *,
+    telegram_mime_type: str | None = None,
+    telegram_kind_hint: str | None = None,
+    file_name_hint: str | Path | None = None,
+    has_audio_attribute: bool = False,
+    has_sticker_attribute: bool = False,
+) -> tuple[str, str]:
+    """
+    Classify media kind and MIME type with byte sniffing as primary signal.
+
+    Rationale:
+    - Telegram metadata (mime/kind hints) is useful, but not always reliable.
+    - Magic-byte detection is usually more trustworthy when it yields a specific type.
+    - Some containers (notably MP4) are ambiguous from bytes alone. In those cases, we
+      use strong extension/audio hints to disambiguate audio-vs-video.
+
+    Returns:
+        Tuple (kind, mime_type), where kind is one of:
+        photo, sticker, gif, animation, video, audio, document.
+    """
+    hinted_mime = normalize_mime_type(telegram_mime_type)
+    hint_kind = (telegram_kind_hint or "").strip().lower() or None
+    extension_hint = None
+    if file_name_hint:
+        try:
+            extension_hint = Path(file_name_hint).suffix.lower()
+        except Exception:
+            extension_hint = None
+
+    detected_mime = None
+    if media_bytes:
+        detected_mime = normalize_mime_type(detect_mime_type_from_bytes(media_bytes[:1024]))
+
+    # Byte sniffing is primary when it yields a concrete type.
+    if detected_mime and detected_mime != "application/octet-stream":
+        final_mime = detected_mime
+    else:
+        final_mime = hinted_mime or "application/octet-stream"
+
+    # File extension is a stronger disambiguation signal than Telegram hints for
+    # MP4-family containers where bytes alone cannot distinguish audio/video.
+    if final_mime == "video/mp4" and extension_hint in {".m4a", ".m4b"}:
+        final_mime = "audio/mp4"
+
+    # MP4 container bytes are sometimes ambiguous; allow Telegram hints to disambiguate.
+    # We intentionally constrain this to a narrow case so Telegram doesn't override
+    # reliable byte signatures for other formats.
+    hinted_audio = bool(
+        has_audio_attribute
+        or (hinted_mime and hinted_mime.startswith("audio/"))
+        or hint_kind == "audio"
+    )
+    if final_mime == "video/mp4" and hinted_audio:
+        final_mime = "audio/mp4"
+
+    if is_tgs_mime_type(final_mime):
+        return "sticker", final_mime
+
+    if has_sticker_attribute or hint_kind in {"sticker", "animated_sticker"}:
+        return "sticker", final_mime
+
+    if final_mime == "image/gif":
+        return "gif", final_mime
+
+    if is_audio_mime_type(final_mime):
+        return "audio", final_mime
+
+    if is_video_mime_type(final_mime):
+        if hint_kind == "animation":
+            return "animation", final_mime
+        return "video", final_mime
+
+    if is_image_mime_type(final_mime):
+        if hint_kind in {"sticker", "animated_sticker"}:
+            return "sticker", final_mime
+        return "photo", final_mime
+
+    return hint_kind or "document", final_mime
+
+
+def classify_media_kind_from_mime_and_hint(
+    mime_type: str | None,
+    kind_hint: str | None = None,
+    *,
+    has_audio_attribute: bool = False,
+    has_sticker_attribute: bool = False,
+) -> str:
+    """
+    Classify media kind when bytes are unavailable.
+
+    This keeps admin views consistent by reusing the same precedence logic as
+    classify_media_from_bytes_and_hints(), but with MIME + semantic hints only.
+    """
+    kind, _ = classify_media_from_bytes_and_hints(
+        None,
+        telegram_mime_type=mime_type,
+        telegram_kind_hint=kind_hint,
+        has_audio_attribute=has_audio_attribute,
+        has_sticker_attribute=has_sticker_attribute,
+    )
+    return kind
+
+
 def get_file_extension_from_mime_or_bytes(
     mime_type: str | None = None, media_bytes: bytes | None = None
 ) -> str | None:

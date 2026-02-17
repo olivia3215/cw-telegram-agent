@@ -652,6 +652,25 @@ Manual descriptions are stored as JSON files in config directories:
 
 Curated descriptions override AI-generated ones and are checked first in the chain.
 
+### Media Classification Precedence (Byte-First)
+
+Media classification must treat Telegram metadata as advisory, not authoritative.
+
+**Why:** In practice, Telegram object hints (`kind`, `mime_type`, and even some attribute
+combinations) can be inconsistent with the actual file bytes. Relying on Telegram-first
+classification has caused real misclassification regressions.
+
+**Rule of precedence:**
+1. **Magic-byte sniffing first** (`detect_mime_type_from_bytes`) when it yields a concrete type.
+2. **Telegram hints second** only when bytes are unknown (`application/octet-stream`) or when
+   disambiguating known ambiguous containers (notably generic MP4 audio-vs-video).
+3. **Semantic hints preserved where appropriate** (for example sticker intent), but not allowed
+   to override clear byte signatures for unrelated formats.
+
+This policy is implemented in the shared helper
+`media.mime_utils.classify_media_from_bytes_and_hints(...)` and used by both the runtime media
+pipeline and admin refresh/download fallback paths.
+
 ### Known Issues
 
 - **AnimatedEmojies sticker set**: Causes repeated description attempts due to data fetch failures

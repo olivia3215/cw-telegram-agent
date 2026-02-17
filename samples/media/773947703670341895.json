@@ -7,5 +7,6 @@
   "is_emoji_set": false,
   "sticker_set_name": "UtyaDuck",
   "sticker_set_title": "Duck",
-  "sticker_name": "🌈"
+  "sticker_name": "🌈",
+  "mime_type": "application/x-tgsticker"
 }

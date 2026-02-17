@@ -6,6 +6,8 @@
 import pytest
 
 from media.mime_utils import (
+    classify_media_from_bytes_and_hints,
+    classify_media_kind_from_mime_and_hint,
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
     is_audio_mime_type,
@@ -86,3 +88,70 @@ def test_normalize_mime_type_aliases():
     assert normalize_mime_type("audio/mp3") == "audio/mpeg"
     assert normalize_mime_type("audio/X-MPEG") == "audio/mpeg"
     assert normalize_mime_type("audio/x-wav") == "audio/wav"
+
+
+def test_classify_media_prefers_byte_signature_over_telegram_hint():
+    png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        png_bytes,
+        telegram_mime_type="video/mp4",
+        telegram_kind_hint="video",
+    )
+    assert kind == "photo"
+    assert mime_type == "image/png"
+
+
+def test_classify_media_uses_hints_when_byte_sniffing_is_unknown():
+    unknown_bytes = b"\x00\x11\x22\x33" * 32
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        unknown_bytes,
+        telegram_mime_type="audio/mpeg",
+        telegram_kind_hint="audio",
+    )
+    assert kind == "audio"
+    assert mime_type == "audio/mpeg"
+
+
+def test_classify_media_disambiguates_mp4_audio_with_telegram_audio_attribute():
+    # Generic MP4 bytes are ambiguous (audio vs video); allow Telegram audio hints
+    # only for this disambiguation path.
+    mp4_bytes = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00"
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        mp4_bytes,
+        telegram_mime_type="application/octet-stream",
+        telegram_kind_hint="video",
+        has_audio_attribute=True,
+    )
+    assert kind == "audio"
+    assert mime_type == "audio/mp4"
+
+
+def test_classify_media_disambiguates_mp4_audio_with_m4a_extension_hint():
+    mp4_bytes = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00"
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        mp4_bytes,
+        telegram_mime_type="video/mp4",
+        telegram_kind_hint="video",
+        file_name_hint="track.m4a",
+    )
+    assert kind == "audio"
+    assert mime_type == "audio/mp4"
+
+
+def test_classify_media_kind_from_mime_and_hint_prefers_mime_over_stale_kind_hint():
+    kind = classify_media_kind_from_mime_and_hint(
+        "video/mp4",
+        "photo",
+    )
+    assert kind == "video"
+
+
+def test_classify_media_does_not_preserve_gif_hint_for_video_mime():
+    mp4_bytes = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00"
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        mp4_bytes,
+        telegram_mime_type="video/mp4",
+        telegram_kind_hint="gif",
+    )
+    assert kind == "video"
+    assert mime_type == "video/mp4"

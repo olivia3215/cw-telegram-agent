@@ -52,6 +52,7 @@ from media.media_source import (
 from media.media_sources import get_directory_media_source
 from media.media_service import get_media_service
 from media.mime_utils import (
+    classify_media_kind_from_mime_and_hint,
     detect_mime_type_from_bytes,
     get_mime_type_from_file_extension,
     is_tgs_mime_type,
@@ -385,8 +386,10 @@ def api_media_list():
 
                     mime_type = record.get("mime_type")
 
-                    # Attempt to detect MIME type when missing (common for legacy stickers)
-                    if (not mime_type) and media_file_path and media_file_path.exists():
+                    # Detect MIME type from bytes whenever the file is available.
+                    # This corrects stale metadata (for example records marked image/gif
+                    # even though the actual file bytes are video/mp4).
+                    if media_file_path and media_file_path.exists():
                         try:
                             with open(media_file_path, "rb") as media_fp:
                                 file_head = media_fp.read(1024)
@@ -397,7 +400,11 @@ def api_media_list():
                             ):
                                 mime_type = "application/x-tgsticker"
                             else:
-                                mime_type = detected_mime_type
+                                # Prefer concrete byte-sniffed type over stale metadata.
+                                if detected_mime_type != "application/octet-stream":
+                                    mime_type = detected_mime_type
+                                elif not mime_type:
+                                    mime_type = detected_mime_type
                             logger.debug(
                                 "Detected MIME type %s for %s",
                                 mime_type,
@@ -428,8 +435,11 @@ def api_media_list():
                     ):
                         mime_type = "application/x-tgsticker"
 
-                    # Group by sticker set for organization
-                    kind = record.get("kind", "unknown")
+                    # Derive display kind from MIME first, with stored kind as hint.
+                    # This keeps Media Editor classification aligned with Agent Media
+                    # even when older metadata has stale `kind` values.
+                    stored_kind = record.get("kind")
+                    kind = classify_media_kind_from_mime_and_hint(mime_type, stored_kind)
                     if kind == "sticker" and mime_type:
                         if is_tgs_mime_type(mime_type) or is_video_mime_type(mime_type):
                             kind = "animated_sticker"

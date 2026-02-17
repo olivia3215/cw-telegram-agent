@@ -30,6 +30,7 @@ from telegram_download import download_media_bytes
 
 from ..media_scratch import get_scratch_file
 from ..mime_utils import (
+    classify_media_from_bytes_and_hints,
     detect_mime_type_from_bytes,
     get_file_extension_from_mime_or_bytes,
     get_mime_type_from_file_extension,
@@ -162,34 +163,29 @@ class AIGeneratingMediaSource(MediaSource):
                 )
         dl_ms = (time.perf_counter() - t0) * 1000
 
-        # MIME type check is now handled by UnsupportedFormatMediaSource earlier in pipeline
-        # Detect MIME type before LLM call so it's available in exception handlers
-        # Use byte detection to verify/override extension-based detection
-        # BUT preserve audio/mp4 for .m4a files (byte detection can't distinguish M4A from MP4 video)
+        # Classify using byte sniffing as primary signal. Telegram MIME/kind hints are
+        # used only as fallback/disambiguation (notably MP4 audio-vs-video ambiguity).
+        attrs = getattr(doc, "attributes", None)
+        has_audio_attribute = False
+        has_sticker_attribute = False
+        if isinstance(attrs, (list, tuple)):
+            has_audio_attribute = any(
+                getattr(attr.__class__, "__name__", "") == "DocumentAttributeAudio"
+                for attr in attrs
+            )
+            has_sticker_attribute = any(hasattr(attr, "stickerset") for attr in attrs)
+
+        file_name_hint = getattr(doc, "file_name", None) or getattr(doc, "name", None)
+        effective_kind, final_mime_type = classify_media_from_bytes_and_hints(
+            data,
+            telegram_mime_type=metadata.get("mime_type"),
+            telegram_kind_hint=kind,
+            file_name_hint=file_name_hint,
+            has_audio_attribute=has_audio_attribute,
+            has_sticker_attribute=has_sticker_attribute,
+        )
         detected_mime_type = normalize_mime_type(detect_mime_type_from_bytes(data))
-        
-        # If this is a .m4a file, preserve audio/mp4 even if byte detection says video/mp4
-        # (byte detection can't distinguish M4A from MP4 video - they have the same container signature)
-        is_m4a_file = hasattr(doc, "suffix") and doc.suffix.lower() == ".m4a"
-        if is_m4a_file:
-            # Force audio/mp4 for M4A files regardless of byte detection
-            metadata["mime_type"] = normalize_mime_type("audio/mp4")
-            detected_mime_type = normalize_mime_type("audio/mp4")
-        elif detected_mime_type and detected_mime_type != "application/octet-stream":
-            # Prefer byte detection over extension-based detection (more accurate)
-            metadata["mime_type"] = detected_mime_type
-        elif detected_mime_type == "application/octet-stream" and "mime_type" in metadata:
-            # Keep extension-based MIME type if byte detection fails
-            # (byte detection can fail for some valid files)
-            # Use the extension-based MIME type for LLM calls
-            detected_mime_type = metadata["mime_type"]
-        elif detected_mime_type:
-            metadata["mime_type"] = detected_mime_type
-        
-        # Ensure we have a MIME type for LLM calls (use metadata if available, otherwise detected)
-        final_mime_type = metadata.get("mime_type") or detected_mime_type
-        if final_mime_type:
-            metadata["mime_type"] = final_mime_type
+        metadata["mime_type"] = final_mime_type
 
         # For TGS files (animated stickers), convert to video first
         video_file_path = None
@@ -244,14 +240,14 @@ class AIGeneratingMediaSource(MediaSource):
                     unique_id,
                     MediaStatus.PERMANENT_FAILURE,
                     f"TGS conversion failed: {str(e)[:100]}",
-                    kind=kind,
+                    kind=effective_kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
                     agent=agent,
                     **metadata,
                 )
 
-        # Call LLM to generate description (choose method based on media kind)
+        # Call LLM to generate description (choose method based on byte-first kind)
         try:
             t1 = time.perf_counter()
             usage_channel_telegram_id = metadata.get("channel_id")
@@ -259,7 +255,7 @@ class AIGeneratingMediaSource(MediaSource):
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
             # - Converted TGS files (now in video format)
-            if _needs_video_analysis(kind, final_mime_type) or is_converted_tgs:
+            if _needs_video_analysis(effective_kind, final_mime_type) or is_converted_tgs:
                 duration = metadata.get("duration")
                 desc = await media_llm.describe_video(
                     data,
@@ -269,7 +265,7 @@ class AIGeneratingMediaSource(MediaSource):
                     timeout_s=get_describe_timeout_secs(),
                     channel_telegram_id=usage_channel_telegram_id,
                 )
-            elif kind == "audio" or is_audio_mime_type(final_mime_type):
+            elif effective_kind == "audio" or is_audio_mime_type(final_mime_type):
                 # Audio files (including voice messages)
                 # Route to describe_audio if kind is audio OR MIME type indicates audio
                 if hasattr(media_llm, "is_audio_mime_type_supported"):
@@ -282,7 +278,7 @@ class AIGeneratingMediaSource(MediaSource):
                         # Audio MIME type not supported - this shouldn't happen for valid audio, but handle gracefully
                         logger.warning(
                             f"AIGeneratingMediaSource: audio MIME type {audio_mime_type} not supported for {unique_id}, "
-                            f"but kind={kind} indicates audio. Attempting describe_audio anyway."
+                            f"but kind={effective_kind} indicates audio. Attempting describe_audio anyway."
                         )
                     
                     duration = metadata.get("duration")
@@ -297,7 +293,7 @@ class AIGeneratingMediaSource(MediaSource):
                 else:
                     # LLM doesn't support audio description - this shouldn't happen, but fall through to describe_image
                     logger.warning(
-                        f"AIGeneratingMediaSource: kind={kind} indicates audio but LLM doesn't support audio description for {unique_id}"
+                        f"AIGeneratingMediaSource: kind={effective_kind} indicates audio but LLM doesn't support audio description for {unique_id}"
                     )
                     # Fall through to describe_image which will raise ValueError
                     desc = await media_llm.describe_image(
@@ -341,7 +337,7 @@ class AIGeneratingMediaSource(MediaSource):
                 MediaStatus.TEMPORARY_FAILURE,
                 f"timeout after {get_describe_timeout_secs()}s",
                 retryable=True,
-                kind=kind,
+                kind=effective_kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 agent=agent,
@@ -366,7 +362,7 @@ class AIGeneratingMediaSource(MediaSource):
                 unique_id,
                 MediaStatus.UNSUPPORTED,
                 str(e),
-                kind=kind,
+                kind=effective_kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 agent=agent,
@@ -379,7 +375,7 @@ class AIGeneratingMediaSource(MediaSource):
             logger.error(
                 f"AIGeneratingMediaSource: LLM failed for {unique_id}: {e} "
                 f"(MIME type: {final_mime_type}, detected: {detected_mime_type}, "
-                f"file size: {file_size_mb:.2f}MB, kind: {kind})"
+                f"file size: {file_size_mb:.2f}MB, kind: {effective_kind})"
             )
             
             # Clean up temporary TGS and video files if conversion succeeded
@@ -398,7 +394,7 @@ class AIGeneratingMediaSource(MediaSource):
                     unique_id,
                     MediaStatus.PERMANENT_FAILURE,
                     f"LLM API error: {error_str[:100]}",
-                    kind=kind,
+                    kind=effective_kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
                     agent=agent,
@@ -416,7 +412,7 @@ class AIGeneratingMediaSource(MediaSource):
                     unique_id,
                     MediaStatus.PERMANENT_FAILURE,
                     failure_reason,
-                    kind=kind,
+                    kind=effective_kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
                     agent=agent,
@@ -429,7 +425,7 @@ class AIGeneratingMediaSource(MediaSource):
                     MediaStatus.TEMPORARY_FAILURE,
                     f"LLM API error: {error_str[:100]}",
                     retryable=True,
-                    kind=kind,
+                    kind=effective_kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,
                     agent=agent,
@@ -455,7 +451,7 @@ class AIGeneratingMediaSource(MediaSource):
                 MediaStatus.TEMPORARY_FAILURE,
                 f"LLM error (retryable): {str(e)[:100]}",
                 retryable=True,
-                kind=kind,
+                kind=effective_kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 agent=agent,
@@ -478,7 +474,7 @@ class AIGeneratingMediaSource(MediaSource):
                 unique_id,
                 MediaStatus.PERMANENT_FAILURE,
                 f"description failed: {str(e)[:100]}",
-                kind=kind,
+                kind=effective_kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 agent=agent,
@@ -501,7 +497,7 @@ class AIGeneratingMediaSource(MediaSource):
                 unique_id,
                 MediaStatus.PERMANENT_FAILURE,
                 "LLM returned empty or invalid description",
-                kind=kind,
+                kind=effective_kind,
                 sticker_set_name=sticker_set_name,
                 sticker_name=sticker_name,
                 agent=agent,
@@ -518,7 +514,7 @@ class AIGeneratingMediaSource(MediaSource):
         
         record = {
             "unique_id": unique_id,
-            "kind": kind,
+            "kind": effective_kind,
             "sticker_set_name": sticker_set_name,
             "sticker_name": sticker_name,
             "description": desc,
