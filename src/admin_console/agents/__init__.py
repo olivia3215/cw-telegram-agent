@@ -24,6 +24,7 @@ from admin_console.agents import (
     plans,
     profile,
     routes,
+    schedule,
     summaries,
 )
 
@@ -42,4 +43,5 @@ partners.register_partner_routes(agents_bp)
 plans.register_plan_routes(agents_bp)
 profile.register_profile_routes(agents_bp)
 routes.register_main_routes(agents_bp)
+schedule.register_schedule_routes(agents_bp)
 summaries.register_summary_routes(agents_bp)
