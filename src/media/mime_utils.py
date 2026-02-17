@@ -286,8 +286,6 @@ def classify_media_from_bytes_and_hints(
     if is_video_mime_type(final_mime):
         if hint_kind == "animation":
             return "animation", final_mime
-        if hint_kind == "gif":
-            return "gif", final_mime
         return "video", final_mime
 
     if is_image_mime_type(final_mime):

@@ -386,8 +386,10 @@ def api_media_list():
 
                     mime_type = record.get("mime_type")
 
-                    # Attempt to detect MIME type when missing (common for legacy stickers)
-                    if (not mime_type) and media_file_path and media_file_path.exists():
+                    # Detect MIME type from bytes whenever the file is available.
+                    # This corrects stale metadata (for example records marked image/gif
+                    # even though the actual file bytes are video/mp4).
+                    if media_file_path and media_file_path.exists():
                         try:
                             with open(media_file_path, "rb") as media_fp:
                                 file_head = media_fp.read(1024)
@@ -398,7 +400,11 @@ def api_media_list():
                             ):
                                 mime_type = "application/x-tgsticker"
                             else:
-                                mime_type = detected_mime_type
+                                # Prefer concrete byte-sniffed type over stale metadata.
+                                if detected_mime_type != "application/octet-stream":
+                                    mime_type = detected_mime_type
+                                elif not mime_type:
+                                    mime_type = detected_mime_type
                             logger.debug(
                                 "Detected MIME type %s for %s",
                                 mime_type,

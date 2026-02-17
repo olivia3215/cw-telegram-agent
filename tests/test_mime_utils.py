@@ -144,3 +144,14 @@ def test_classify_media_kind_from_mime_and_hint_prefers_mime_over_stale_kind_hin
         "photo",
     )
     assert kind == "video"
+
+
+def test_classify_media_does_not_preserve_gif_hint_for_video_mime():
+    mp4_bytes = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00"
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        mp4_bytes,
+        telegram_mime_type="video/mp4",
+        telegram_kind_hint="gif",
+    )
+    assert kind == "video"
+    assert mime_type == "video/mp4"

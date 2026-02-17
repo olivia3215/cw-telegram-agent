@@ -7,13 +7,15 @@
 """
 Reclassify media metadata using byte sniffing as the primary signal.
 
-For each media directory under CINDY_AGENT_CONFIG_PATH:
+For each media directory under CINDY_AGENT_CONFIG_PATH plus state/media:
 - detect MIME from media bytes
 - classify media kind from detected MIME + existing metadata hints
 - rename media file to match canonical extension when needed
 - persist updated metadata through the proper backend:
   - state/media -> MySQL (via MediaService)
   - configdir media -> JSON files (via MediaService)
+- create metadata records when media exists but metadata is missing
+- delete orphan metadata rows in state/media when media file is missing
 
 Dry-run by default. Use --apply to write changes.
 """
@@ -31,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from db.connection import get_db_connection  # noqa: E402
 from media.media_service import get_media_service  # noqa: E402
+from media.sources.base import MEDIA_FILE_EXTENSIONS  # noqa: E402
 from media.mime_utils import (  # noqa: E402
     classify_media_kind_from_mime_and_hint,
     detect_mime_type_from_bytes,
@@ -39,14 +42,17 @@ from media.mime_utils import (  # noqa: E402
 )
 from media.state_path import is_state_media_directory  # noqa: E402
 
+MEDIA_EXTENSIONS = {ext.lower() for ext in MEDIA_FILE_EXTENSIONS}
+
 
 @dataclass
 class Change:
+    action: str
     unique_id: str
     old_kind: str | None
-    new_kind: str
+    new_kind: str | None
     old_mime: str | None
-    new_mime: str
+    new_mime: str | None
     old_media_file: str | None
     new_media_file: str | None
     media_dir: Path
@@ -57,6 +63,8 @@ class Change:
 class Stats:
     scanned: int = 0
     changed: int = 0
+    created_records: int = 0
+    deleted_orphan_records: int = 0
     skipped_no_record: int = 0
     skipped_no_file: int = 0
     skipped_unreadable_file: int = 0
@@ -79,14 +87,23 @@ def _iter_state_unique_ids() -> list[str]:
 def _iter_unique_ids_for_directory(media_dir: Path) -> list[str]:
     svc = get_media_service(media_dir)
     if svc.is_state_media:
-        return _iter_state_unique_ids()
+        ids = set(_iter_state_unique_ids())
+        for p in media_dir.iterdir() if media_dir.exists() else []:
+            if (
+                p.is_file()
+                and p.suffix.lower() in MEDIA_EXTENSIONS
+                and p.stem
+                and "." not in p.stem
+            ):
+                ids.add(p.stem)
+        return sorted(ids)
 
     ids: set[str] = set()
     for p in media_dir.glob("*.json"):
         if p.is_file() and p.stem:
             ids.add(p.stem)
     for p in media_dir.iterdir() if media_dir.exists() else []:
-        if p.is_file() and p.suffix.lower() != ".json" and p.stem:
+        if p.is_file() and p.suffix.lower() in MEDIA_EXTENSIONS and p.stem:
             ids.add(p.stem)
     return sorted(ids)
 
@@ -143,18 +160,57 @@ def _process_unique_id(
 ) -> Change | None:
     svc = get_media_service(media_dir)
     record = svc.get_record(unique_id)
-    if not record:
+    media_file = svc.resolve_media_file(unique_id, record)
+    is_state = svc.is_state_media
+
+    if not record and not media_file:
         stats.skipped_no_record += 1
         return None
 
-    media_file = svc.resolve_media_file(unique_id, record)
+    # In state/media, remove orphan metadata when file is missing.
+    if record and (not media_file or not media_file.exists() or not media_file.is_file()):
+        if is_state:
+            if apply:
+                try:
+                    svc.delete_record(unique_id)
+                except Exception:
+                    stats.write_failures += 1
+                    return None
+            stats.deleted_orphan_records += 1
+            return Change(
+                action="delete-orphan-record",
+                unique_id=unique_id,
+                old_kind=record.get("kind"),
+                new_kind=None,
+                old_mime=normalize_mime_type(record.get("mime_type")),
+                new_mime=None,
+                old_media_file=record.get("media_file"),
+                new_media_file=None,
+                media_dir=media_dir,
+                reason="state metadata had no media file",
+            )
+        stats.skipped_no_file += 1
+        return None
+
     if not media_file or not media_file.exists() or not media_file.is_file():
         stats.skipped_no_file += 1
         return None
 
-    old_kind = record.get("kind")
-    old_mime = normalize_mime_type(record.get("mime_type"))
-    old_media_file = record.get("media_file")
+    if not record:
+        record = {
+            "unique_id": unique_id,
+            "status": "unknown",
+        }
+        old_kind = None
+        old_mime = None
+        old_media_file = None
+    else:
+        old_kind = record.get("kind")
+        old_mime = normalize_mime_type(record.get("mime_type"))
+        old_media_file = record.get("media_file")
+
+    if not record.get("media_file"):
+        record["media_file"] = media_file.name
 
     try:
         new_mime, mime_reason = _canonical_mime_from_file(media_file, old_mime)
@@ -211,7 +267,13 @@ def _process_unique_id(
             stats.write_failures += 1
             return None
 
+    action = "update-record"
+    if old_kind is None and old_mime is None and old_media_file is None:
+        stats.created_records += 1
+        action = "create-record"
+
     return Change(
+        action=action,
         unique_id=unique_id,
         old_kind=old_kind,
         new_kind=new_kind,
@@ -240,6 +302,15 @@ def _resolve_config_media_dirs_from_env() -> list[Path]:
         media_dir = (cfg_dir / "media").resolve()
         out.append(media_dir)
     return out
+
+
+def _resolve_state_media_dir_from_env() -> Path:
+    state_dir = os.environ.get("CINDY_AGENT_STATE_DIR", "state").strip() or "state"
+    project_root = Path(__file__).parent.parent
+    state_path = Path(state_dir).expanduser()
+    if not state_path.is_absolute():
+        state_path = (project_root / state_path).resolve()
+    return (state_path / "media").resolve()
 
 
 def main() -> int:
@@ -273,9 +344,13 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    state_media_dir = _resolve_state_media_dir_from_env()
+    if state_media_dir not in media_dirs:
+        media_dirs.append(state_media_dir)
+
     print("Reclassify media metadata")
     print(f"- mode: {'APPLY' if apply else 'DRY-RUN'}")
-    print(f"- config media dirs: {len(media_dirs)}")
+    print(f"- media dirs: {len(media_dirs)}")
 
     all_changes: list[Change] = []
 
@@ -305,17 +380,26 @@ def main() -> int:
                 stats.changed += 1
                 all_changes.append(change)
                 if args.verbose:
-                    print(
-                        f"  * {change.unique_id}: "
-                        f"kind {change.old_kind!r}->{change.new_kind!r}, "
-                        f"mime {change.old_mime!r}->{change.new_mime!r}, "
-                        f"file {change.old_media_file!r}->{change.new_media_file!r} "
-                        f"[{change.reason}]"
-                    )
+                    if change.action == "delete-orphan-record":
+                        print(
+                            f"  * {change.unique_id}: "
+                            f"deleted orphan metadata [{change.reason}]"
+                        )
+                    else:
+                        print(
+                            f"  * {change.unique_id}: "
+                            f"{change.action}, "
+                            f"kind {change.old_kind!r}->{change.new_kind!r}, "
+                            f"mime {change.old_mime!r}->{change.new_mime!r}, "
+                            f"file {change.old_media_file!r}->{change.new_media_file!r} "
+                            f"[{change.reason}]"
+                        )
 
     print("\nSummary")
     print(f"- scanned: {stats.scanned}")
     print(f"- changed: {stats.changed}")
+    print(f"- created records: {stats.created_records}")
+    print(f"- deleted orphan state records: {stats.deleted_orphan_records}")
     print(f"- skipped (no record): {stats.skipped_no_record}")
     print(f"- skipped (no media file): {stats.skipped_no_file}")
     print(f"- skipped (unreadable media file): {stats.skipped_unreadable_file}")
@@ -326,12 +410,19 @@ def main() -> int:
     if not args.verbose and all_changes:
         print("\nSample changes (first 20)")
         for change in all_changes[:20]:
-            print(
-                f"- {change.unique_id} @ {change.media_dir.name}: "
-                f"{change.old_kind!r}->{change.new_kind!r}, "
-                f"{change.old_mime!r}->{change.new_mime!r}, "
-                f"{change.old_media_file!r}->{change.new_media_file!r}"
-            )
+            if change.action == "delete-orphan-record":
+                print(
+                    f"- {change.unique_id} @ {change.media_dir.name}: "
+                    f"deleted orphan metadata ({change.reason})"
+                )
+            else:
+                print(
+                    f"- {change.unique_id} @ {change.media_dir.name}: "
+                    f"{change.action}, "
+                    f"{change.old_kind!r}->{change.new_kind!r}, "
+                    f"{change.old_mime!r}->{change.new_mime!r}, "
+                    f"{change.old_media_file!r}->{change.new_media_file!r}"
+                )
 
     if not apply:
         print("\nDry-run complete. Re-run with --apply to persist changes.")

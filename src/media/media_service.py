@@ -180,13 +180,13 @@ class MediaService:
                     filtered.append(item)
                 elif media_type == "emoji" and kind in ("sticker", "animated_sticker") and is_emoji_set:
                     filtered.append(item)
-                elif media_type == "video" and kind in ("video", "animation"):
+                elif media_type == "video" and kind in ("video", "animation", "gif"):
                     filtered.append(item)
                 elif media_type == "photos" and kind == "photo":
                     filtered.append(item)
                 elif media_type == "audio" and kind == "audio":
                     filtered.append(item)
-                elif media_type == "other" and kind not in ("sticker", "animated_sticker", "video", "animation", "photo", "audio"):
+                elif media_type == "other" and kind not in ("sticker", "animated_sticker", "video", "animation", "gif", "photo", "audio"):
                     filtered.append(item)
             all_items = filtered
 
