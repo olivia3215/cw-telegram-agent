@@ -19,20 +19,26 @@ from telethon.tl.functions.messages import GetFullChatRequest  # pyright: ignore
 from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import Chat, Channel, User  # pyright: ignore[reportMissingImports]
 
-from admin_console.helpers import get_agent_by_name, resolve_user_id_and_handle_errors
+from admin_console.helpers import (
+    get_agent_by_name,
+    resolve_user_id_and_handle_errors,
+)
+from media.media_source import get_media_bytes_from_pipeline
 from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_profile_photo_data_urls(client, entity) -> list[str]:
+async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
     try:
         photos = await client.get_profile_photos(entity)
         if not photos:
             return []
         data_urls: list[str] = []
         for photo in photos:
-            photo_bytes = await download_media_bytes(client, photo)
+            photo_bytes = await _get_profile_photo_bytes(agent, client, photo)
+            if not photo_bytes:
+                continue
             mime_type = "image/jpeg"
             base64_data = base64.b64encode(photo_bytes).decode("utf-8")
             data_urls.append(f"data:{mime_type};base64,{base64_data}")
@@ -42,28 +48,30 @@ async def _get_profile_photo_data_urls(client, entity) -> list[str]:
         return []
 
 
-async def _get_first_profile_photo_data_url(client, entity) -> str | None:
-    try:
-        # Use limit=1 to keep contacts list fast.
-        photos = await client.get_profile_photos(entity, limit=1)
-    except TypeError:
-        # Backward compatibility with mocked clients that do not accept limit.
-        photos = await client.get_profile_photos(entity)
-    except Exception as e:
-        logger.debug(f"Error getting first profile photo: {e}")
-        return None
+async def _get_profile_photo_bytes(agent, client, photo) -> bytes | None:
+    """
+    Resolve profile photo bytes via media pipeline with zero description budget.
+    Falls back to direct Telegram download when needed.
+    """
+    from telegram_media import get_unique_id
 
-    if not photos:
-        return None
+    unique_id = get_unique_id(photo)
+    if not unique_id:
+        return await download_media_bytes(client, photo)
 
-    try:
-        photo_bytes = await download_media_bytes(client, photos[0])
-        mime_type = "image/jpeg"
-        base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-        return f"data:{mime_type};base64,{base64_data}"
-    except Exception as e:
-        logger.debug(f"Error downloading first profile photo: {e}")
-        return None
+    media_bytes = await get_media_bytes_from_pipeline(
+        unique_id=str(unique_id),
+        agent=agent,
+        doc=photo,
+        kind="photo",
+        update_last_used=True,
+        description_budget_override=0,
+    )
+    if media_bytes:
+        return media_bytes
+
+    # Fall back to direct download if the pipeline did not produce a readable cache file.
+    return await download_media_bytes(client, photo)
 
 
 def _extract_username(entity) -> str | None:
@@ -79,7 +87,7 @@ def _extract_username(entity) -> str | None:
     return None
 
 
-async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
+async def _build_partner_profile(agent, client, entity: Any) -> dict[str, Any]:
     is_user = isinstance(entity, User)
     is_chat = isinstance(entity, Chat)
     is_channel = isinstance(entity, Channel)
@@ -153,7 +161,7 @@ async def _build_partner_profile(client, entity: Any) -> dict[str, Any]:
             except Exception as e:
                 logger.debug(f"Failed to fetch full channel info for {entity.id}: {e}")
 
-    profile_photos = await _get_profile_photo_data_urls(client, entity)
+    profile_photos = await _get_profile_photo_data_urls(client, entity, agent=agent)
     username = _extract_username(entity) or ""
     partner_type = "user"
     if is_chat:
@@ -212,7 +220,15 @@ def register_contact_routes(agents_bp: Blueprint):
                     display_name = f"{first} {last}".strip() or username or str(user_id)
                     avatar_photo = None
                     if getattr(user, "photo", None):
-                        avatar_photo = await _get_first_profile_photo_data_url(agent.client, user)
+                        photos = await agent.client.get_profile_photos(user, limit=1)
+                        if photos:
+                            photo_bytes = await _get_profile_photo_bytes(
+                                agent, agent.client, photos[0]
+                            )
+                            if photo_bytes:
+                                mime_type = "image/jpeg"
+                                base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+                                avatar_photo = f"data:{mime_type};base64,{base64_data}"
                     contacts.append(
                         {
                             "user_id": str(user_id),
@@ -321,7 +337,7 @@ def register_contact_routes(agents_bp: Blueprint):
 
             async def _get_profile():
                 entity = await agent.client.get_entity(channel_id)
-                return await _build_partner_profile(agent.client, entity)
+                return await _build_partner_profile(agent, agent.client, entity)
 
             profile = agent.execute(_get_profile(), timeout=15.0)
             return jsonify(profile)
@@ -373,7 +389,7 @@ def register_contact_routes(agents_bp: Blueprint):
                     agent.entity_cache._contacts_cache_expiration = None
 
                 updated_entity = await agent.client.get_entity(channel_id)
-                return await _build_partner_profile(agent.client, updated_entity)
+                return await _build_partner_profile(agent, agent.client, updated_entity)
 
             profile = agent.execute(_update_contact(), timeout=20.0)
             return jsonify(profile)

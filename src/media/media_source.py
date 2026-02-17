@@ -15,6 +15,7 @@ compatibility. New code should import directly from media.sources.
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 
@@ -114,3 +115,89 @@ def _create_default_chain() -> CompositeMediaSource:
     )
 
     return CompositeMediaSource(sources)
+
+
+async def get_media_bytes_from_pipeline(
+    *,
+    unique_id: str,
+    agent: Any,
+    doc: Any | None = None,
+    kind: str | None = None,
+    update_last_used: bool = False,
+    description_budget_override: int | None = None,
+) -> bytes | None:
+    """
+    Resolve media bytes via the default media pipeline.
+
+    This helper intentionally lives in the media module so callers outside media
+    don't need to implement directory/media-file resolution themselves.
+
+    Args:
+        unique_id: Media unique identifier.
+        agent: Agent instance (required for chain lookup/download).
+        doc: Optional Telegram media object used on cache miss.
+        kind: Optional media kind hint passed into chain lookup.
+        update_last_used: Whether to update last-used timestamp for cache hit.
+        description_budget_override: Optional temporary budget value for this call.
+            Use 0 to prevent description generation attempts.
+
+    Returns:
+        Media bytes if a cached/downloaded file can be resolved, else None.
+    """
+    if not unique_id or not agent:
+        return None
+
+    # Local imports avoid broad module coupling for callers that only need core types.
+    from media.media_budget import get_remaining_description_budget, reset_description_budget
+    from media.media_service import get_media_service
+    from media.media_sources import iter_directory_media_sources
+    from media.state_path import get_resolved_state_media_path
+
+    budget_before: int | None = None
+    if description_budget_override is not None:
+        budget_before = get_remaining_description_budget()
+        reset_description_budget(description_budget_override)
+
+    try:
+        media_chain = get_default_media_source_chain()
+        record = await media_chain.get(
+            unique_id=unique_id,
+            agent=agent,
+            doc=doc,
+            kind=kind,
+            update_last_used=update_last_used,
+        )
+    except Exception as e:
+        logger.debug("Media pipeline lookup failed for %s: %s", unique_id, e)
+        record = None
+    finally:
+        if description_budget_override is not None and budget_before is not None:
+            reset_description_budget(budget_before)
+
+    try:
+        for source in iter_directory_media_sources():
+            media_dir = getattr(source, "directory", None)
+            if not media_dir:
+                continue
+            svc = get_media_service(media_dir)
+            media_file = svc.resolve_media_file(
+                unique_id,
+                record if isinstance(record, dict) else None,
+            )
+            if media_file and media_file.exists():
+                return media_file.read_bytes()
+    except Exception as e:
+        logger.debug("Failed resolving media bytes for %s from registered dirs: %s", unique_id, e)
+
+    # Final state/media probe in case registry has not been initialized with it yet.
+    try:
+        state_media_dir = get_resolved_state_media_path()
+        if state_media_dir:
+            svc = get_media_service(state_media_dir)
+            media_file = svc.resolve_media_file(unique_id, None)
+            if media_file and media_file.exists():
+                return media_file.read_bytes()
+    except Exception as e:
+        logger.debug("Failed resolving media bytes for %s from state/media: %s", unique_id, e)
+
+    return None

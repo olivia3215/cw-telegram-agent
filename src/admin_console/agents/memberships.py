@@ -22,14 +22,16 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 )
 
 from admin_console.helpers import get_agent_by_name
+from media.media_source import get_media_bytes_from_pipeline
 from telegram_download import download_media_bytes
+from telegram_media import get_unique_id
 from utils import normalize_peer_id
 from utils.telegram import is_group_or_channel
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_first_profile_photo_data_url(client, entity) -> str | None:
+async def _get_first_profile_photo_data_url(agent, client, entity) -> str | None:
     try:
         # Use limit=1 to keep memberships list responsive.
         photos = await client.get_profile_photos(entity, limit=1)
@@ -44,7 +46,24 @@ async def _get_first_profile_photo_data_url(client, entity) -> str | None:
         return None
 
     try:
-        photo_bytes = await download_media_bytes(client, photos[0])
+        photo = photos[0]
+        unique_id = get_unique_id(photo)
+        photo_bytes = None
+        if unique_id:
+            photo_bytes = await get_media_bytes_from_pipeline(
+                unique_id=str(unique_id),
+                agent=agent,
+                doc=photo,
+                kind="photo",
+                update_last_used=True,
+                description_budget_override=0,
+            )
+
+        if not photo_bytes:
+            photo_bytes = await download_media_bytes(client, photo)
+
+        if not photo_bytes:
+            return None
         mime_type = "image/jpeg"
         base64_data = base64.b64encode(photo_bytes).decode("utf-8")
         return f"data:{mime_type};base64,{base64_data}"
@@ -133,7 +152,9 @@ def register_membership_routes(agents_bp: Blueprint):
                         is_gagged = await agent.is_conversation_gagged(dialog_id)
                         profile_photo = None
                         if getattr(entity, "photo", None):
-                            profile_photo = await _get_first_profile_photo_data_url(client, entity)
+                            profile_photo = await _get_first_profile_photo_data_url(
+                                agent, client, entity
+                            )
 
                         memberships.append({
                             "channel_id": channel_id,
