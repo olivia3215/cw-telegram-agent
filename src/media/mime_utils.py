@@ -286,6 +286,29 @@ def classify_media_from_bytes_and_hints(
     return hint_kind or "document", final_mime
 
 
+def classify_media_kind_from_mime_and_hint(
+    mime_type: str | None,
+    kind_hint: str | None = None,
+    *,
+    has_audio_attribute: bool = False,
+    has_sticker_attribute: bool = False,
+) -> str:
+    """
+    Classify media kind when bytes are unavailable.
+
+    This keeps admin views consistent by reusing the same precedence logic as
+    classify_media_from_bytes_and_hints(), but with MIME + semantic hints only.
+    """
+    kind, _ = classify_media_from_bytes_and_hints(
+        None,
+        telegram_mime_type=mime_type,
+        telegram_kind_hint=kind_hint,
+        has_audio_attribute=has_audio_attribute,
+        has_sticker_attribute=has_sticker_attribute,
+    )
+    return kind
+
+
 def get_file_extension_from_mime_or_bytes(
     mime_type: str | None = None, media_bytes: bytes | None = None
 ) -> str | None:

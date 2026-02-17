@@ -169,6 +169,46 @@ def test_api_media_list_unnamed_video_sticker_infers_mime_from_extension_when_de
         assert match["mime_type"] == "video/webm"
 
 
+@pytest.mark.usefixtures("reset_media_sources")
+def test_api_media_list_prefers_video_mime_over_stale_photo_kind(monkeypatch, tmp_path):
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+
+    unique_id = "stale_kind_video_1"
+    _write_json(
+        media_dir / f"{unique_id}.json",
+        {
+            "unique_id": unique_id,
+            "kind": "photo",  # stale metadata
+            "mime_type": "video/mp4",
+            "description": None,
+            "status": "generated",
+        },
+    )
+    # Provide minimal MP4-like bytes so preview still works in realistic usage.
+    (media_dir / f"{unique_id}.mp4").write_bytes(b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00")
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    monkeypatch.setattr("config.STATE_DIRECTORY", str(state_dir))
+
+    app = create_admin_app()
+    app.config["TESTING"] = True
+
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session[SESSION_VERIFIED_KEY] = True
+
+        response = client.get(f"/admin/api/media?directory={media_dir}")
+        assert response.status_code == 200
+        payload = response.get_json()
+        entry = next(e for e in payload["media_files"] if e["unique_id"] == unique_id)
+
+        assert entry["mime_type"] == "video/mp4"
+        assert entry["kind"] == "video"
+        assert "Other Media - Videos" in payload["grouped_media"]
+
+
 def test_is_state_media_directory_matches_absolute_and_relative_paths(monkeypatch, tmp_path):
     """
     When the same physical directory is state/media, both absolute and relative

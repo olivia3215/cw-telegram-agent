@@ -7,6 +7,7 @@ import pytest
 
 from media.mime_utils import (
     classify_media_from_bytes_and_hints,
+    classify_media_kind_from_mime_and_hint,
     detect_mime_type_from_bytes,
     get_file_extension_for_mime_type,
     is_audio_mime_type,
@@ -123,3 +124,11 @@ def test_classify_media_disambiguates_mp4_audio_with_telegram_audio_attribute():
     )
     assert kind == "audio"
     assert mime_type == "audio/mp4"
+
+
+def test_classify_media_kind_from_mime_and_hint_prefers_mime_over_stale_kind_hint():
+    kind = classify_media_kind_from_mime_and_hint(
+        "video/mp4",
+        "photo",
+    )
+    assert kind == "video"

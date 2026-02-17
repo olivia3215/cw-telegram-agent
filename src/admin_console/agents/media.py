@@ -40,6 +40,7 @@ from db import agent_profile_photos
 from media.agent_media import get_agent_media_dir
 from media.file_resolver import find_media_file
 from media.mime_utils import (
+    classify_media_kind_from_mime_and_hint,
     detect_mime_type_from_bytes,
     get_file_extension_from_mime_or_bytes,
     get_file_extension_for_mime_type,
@@ -235,7 +236,10 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                     
                     # Determine if it's a video profile photo
                     is_video = hasattr(photo, 'video_sizes') and photo.video_sizes
-                    media_kind = "video" if is_video else "photo"
+                    media_kind = classify_media_kind_from_mime_and_hint(
+                        "video/mp4" if is_video else "image/jpeg",
+                        "video" if is_video else "photo",
+                    )
                     
                     # Check if this source media has a profile photo
                     is_profile = unique_id_str in source_media_with_profiles
@@ -268,23 +272,13 @@ async def _list_agent_media(agent, client) -> list[dict[str, Any]]:
                         for attr in attrs
                     )
 
-                    if mime_type.startswith("video/"):
-                        media_kind = "video"
-                        can_be_profile = True
-                    elif mime_type.startswith("audio/"):
-                        media_kind = "audio"
-                        can_be_profile = False
-                    elif mime_type == "application/x-tgsticker" or is_sticker_attr:
-                        media_kind = "sticker"
-                        # Telegram profile uploads support photos/videos, not sticker docs.
-                        can_be_profile = False
-                    elif mime_type.startswith("image/"):
-                        # Plain image documents should behave as photos.
-                        media_kind = "photo"
-                        can_be_profile = True
-                    else:
-                        media_kind = "document"
-                        can_be_profile = False
+                    media_kind = classify_media_kind_from_mime_and_hint(
+                        mime_type,
+                        None,
+                        has_sticker_attribute=is_sticker_attr,
+                    )
+                    # Telegram profile uploads support only photos/videos.
+                    can_be_profile = media_kind in {"photo", "video"}
                     
                     # Check if this source media has a profile photo
                     is_profile = unique_id_str in source_media_with_profiles
@@ -387,21 +381,12 @@ async def _upload_media_to_saved_messages(agent, client, file_bytes: bytes, file
             getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
             for attr in attrs
         )
-        if mime_type.startswith("video/"):
-            media_kind = "video"
-            can_be_profile = True
-        elif mime_type.startswith("audio/"):
-            media_kind = "audio"
-            can_be_profile = False
-        elif mime_type == "application/x-tgsticker" or is_sticker_attr:
-            media_kind = "sticker"
-            can_be_profile = False
-        elif mime_type.startswith("image/"):
-            media_kind = "photo"
-            can_be_profile = True
-        else:
-            media_kind = "document"
-            can_be_profile = False
+        media_kind = classify_media_kind_from_mime_and_hint(
+            mime_type,
+            None,
+            has_sticker_attribute=is_sticker_attr,
+        )
+        can_be_profile = media_kind in {"photo", "video"}
 
     unique_id_str = str(unique_id_val)
 
