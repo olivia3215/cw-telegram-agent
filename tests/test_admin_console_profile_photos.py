@@ -31,7 +31,6 @@ def test_profile_photo_helpers_return_all_photos(monkeypatch):
     async def fake_download_media_bytes(_client, photo):
         return f"bytes-{photo}".encode("utf-8")
 
-    monkeypatch.setattr(profile_module, "download_media_bytes", fake_download_media_bytes)
     monkeypatch.setattr(contacts_module, "download_media_bytes", fake_download_media_bytes)
 
     client = FakePhotoClient()
@@ -82,7 +81,7 @@ def test_partner_profile_response_includes_profile_photos(monkeypatch):
         def execute(self, coro, timeout=30.0):
             return asyncio.run(coro)
 
-    async def fake_get_profile_photo_data_urls(_client, _entity):
+    async def fake_get_profile_photo_data_urls(_client, _entity, agent=None):
         return ["photo-1", "photo-2"]
 
     monkeypatch.setattr(contacts_module, "User", FakeUser)

@@ -491,12 +491,16 @@ async function loadConversationData() {
 
 function updateConversationProfilePhotoDisplay() {
     const photoImg = document.getElementById('conversation-profile-photo');
+    const profileVideo = document.getElementById('conversation-profile-video');
     const fullImg = document.getElementById('conversation-profile-photo-fullscreen');
+    const fullVideo = document.getElementById('conversation-profile-video-fullscreen');
     const indexLabel = document.getElementById('conversation-profile-photo-index');
     const prevBtn = document.getElementById('conversation-profile-photo-prev');
     const nextBtn = document.getElementById('conversation-profile-photo-next');
     const fullPrevBtn = document.getElementById('conversation-profile-photo-fullscreen-prev');
     const fullNextBtn = document.getElementById('conversation-profile-photo-fullscreen-next');
+    const fullMetaIndex = document.getElementById('conversation-profile-photo-meta-index');
+    const fullMetaType = document.getElementById('conversation-profile-photo-meta-type');
     const photos = conversationProfilePhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
@@ -506,8 +510,24 @@ function updateConversationProfilePhotoDisplay() {
             photoImg.src = '';
             photoImg.style.display = 'none';
         }
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
         if (indexLabel) {
             indexLabel.textContent = '';
+        }
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
         }
         [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
@@ -518,15 +538,54 @@ function updateConversationProfilePhotoDisplay() {
     const safeIndex = Math.min(Math.max(conversationProfilePhotoIndex, 0), photos.length - 1);
     conversationProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
-    if (photoImg) {
-        photoImg.src = src;
-        photoImg.style.display = 'block';
-    }
-    if (fullImg) {
-        fullImg.src = src;
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        if (photoImg) {
+            photoImg.src = '';
+            photoImg.style.display = 'none';
+        }
+        if (fullImg) {
+            fullImg.src = '';
+            fullImg.style.display = 'none';
+        }
+        if (profileVideo) {
+            profileVideo.src = src;
+            profileVideo.style.display = 'block';
+            profileVideo.play().catch(() => {});
+        }
+        if (fullVideo) {
+            fullVideo.src = src;
+            fullVideo.style.display = 'block';
+            fullVideo.play().catch(() => {});
+        }
+    } else {
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
+        if (photoImg) {
+            photoImg.src = src;
+            photoImg.style.display = 'block';
+        }
+        if (fullImg) {
+            fullImg.src = src;
+            fullImg.style.display = 'block';
+        }
     }
     if (indexLabel) {
         indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
     }
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
@@ -544,8 +603,12 @@ function showConversationProfilePhotoFullscreen() {
 
 function closeConversationProfilePhotoFullscreen() {
     const modal = document.getElementById('conversation-profile-photo-modal');
+    const fullVideo = document.getElementById('conversation-profile-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 
@@ -934,6 +997,7 @@ async function loadAgentContacts(agentName) {
     if (!container) return;
 
     if (!agentName) {
+        contactAvatarLoadToken += 1;
         selectedAgentContacts = new Set();
         selectedAgentContactsAgent = null;
         currentAgentContactsUserIds = [];
@@ -954,6 +1018,7 @@ async function loadAgentContacts(agentName) {
     showLoading(container, 'Loading contacts...');
     const requestKey = agentName;
     expectedAgentContacts = requestKey;
+    const avatarLoadToken = ++contactAvatarLoadToken;
     try {
         const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts`);
         const data = await response.json();
@@ -1002,6 +1067,35 @@ async function loadAgentContacts(agentName) {
             </div>
         `;
 
+        function getAvatarFallbackInitial(displayName, fallbackId) {
+            const label = String(displayName || fallbackId || '').trim();
+            if (!label) return '?';
+            return label.charAt(0).toUpperCase();
+        }
+
+        function renderRoundAvatarButton(photoDataUrl, displayName, fallbackId, onClickJs, titleText = 'View profile photos', avatarMeta = null) {
+            const initial = escapeHtml(getAvatarFallbackInitial(displayName, fallbackId));
+            const dataAttrs = avatarMeta
+                ? ` data-contact-avatar-pending="true" data-contact-user-id="${escapeHtml(String(avatarMeta.userId))}" data-contact-agent-name="${escapeHtml(String(avatarMeta.agentName))}"`
+                : '';
+            if (photoDataUrl) {
+                const mediaHtml = String(photoDataUrl).startsWith('data:video/')
+                    ? `<video src="${escapeHtml(photoDataUrl)}" aria-label="Avatar video" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;" autoplay muted loop playsinline></video>`
+                    : `<img src="${escapeHtml(photoDataUrl)}" alt="Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;">`;
+                return `
+                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="position: relative; width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; overflow: hidden; flex: 0 0 34px;">
+                        ${mediaHtml}
+                    </button>
+                `;
+            }
+
+            return `
+                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="position: relative; width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
+                    ${initial}
+                </button>
+            `;
+        }
+
         const contactsHtml = contacts.map(contact => {
             const deletedBadge = contact.is_deleted
                 ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Deleted account</span>'
@@ -1015,34 +1109,113 @@ async function loadAgentContacts(agentName) {
             const escapedAgentName = escJsAttr(agentName);
             const escapedUserId = escJsAttr(contact.user_id);
             const escapedContactName = escapeHtml(contact.name || contact.user_id);
+            const avatarHtml = renderRoundAvatarButton(
+                contact.avatar_photo,
+                contact.name,
+                contact.user_id,
+                `openContactPhotos('${escapedAgentName}', '${escapedUserId}'); return false;`,
+                'View profile photos',
+                (contact.has_photo && (!contact.avatar_photo || contact.avatar_needs_upgrade)) ? { userId, agentName } : null
+            );
             return `
                 <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                    <div style="display: flex; justify-content: space-between; align-items: start;">
-                        <div style="display: flex; gap: 12px;">
+                    <div style="display: flex; align-items: start; gap: 12px;">
                             <label style="margin-top: 2px;">
                                 <input type="checkbox" data-contact-checkbox="true" ${isChecked} onchange="toggleAgentContactSelection('${escJsAttr(userId)}', this.checked)">
                             </label>
-                            <div>
+                            ${avatarHtml}
+                            <div style="min-width: 0;">
                             <div><strong>Name:</strong> <a href="#" onclick="openConversationFromContacts('${escapedAgentName}', '${escapedUserId}'); return false;">${escapedContactName}</a>${deletedBadge}${blockedBadge}</div>
                             <div><strong>ID:</strong> ${escapeHtml(contact.user_id)}</div>
                             ${usernameLine}
                             </div>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="openContactPhotos('${escapedAgentName}', '${escapedUserId}')" title="View profile photos" style="padding: 6px 8px; background: #f8f9fa; color: #495057; border: 1px solid #ced4da; border-radius: 999px; cursor: pointer; font-size: 14px; line-height: 1;">&#128247;</button>
-                            <button onclick="deleteAgentContact('${escapedAgentName}', '${escapedUserId}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                        </div>
                     </div>
                 </div>
             `;
         }).join('');
         container.innerHTML = bulkControlsHtml + contactsHtml;
         updateAgentContactsSelectionUI();
+        streamAgentContactAvatars(agentName, avatarLoadToken);
     } catch (error) {
         if (error && error.message === 'unauthorized') {
             return;
         }
         container.innerHTML = `<div class="error">Error loading contacts: ${escapeHtml(error)}</div>`;
+    }
+}
+
+async function streamAgentContactAvatars(agentName, token) {
+    const pending = Array.from(document.querySelectorAll('button[data-contact-avatar-pending="true"]'));
+    if (pending.length === 0) {
+        return;
+    }
+
+    const maxConcurrent = 1;
+    let index = 0;
+    let active = 0;
+
+    return new Promise((resolve) => {
+        const pump = () => {
+            if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+                resolve();
+                return;
+            }
+            while (active < maxConcurrent && index < pending.length) {
+                const button = pending[index++];
+                active += 1;
+                loadSingleContactAvatar(button, agentName, token)
+                    .catch(() => {})
+                    .finally(() => {
+                        active -= 1;
+                        pump();
+                    });
+            }
+            if (active === 0 && index >= pending.length) {
+                resolve();
+            }
+        };
+        pump();
+    });
+}
+
+async function loadSingleContactAvatar(button, agentName, token) {
+    const userId = button?.dataset?.contactUserId;
+    const buttonAgentName = button?.dataset?.contactAgentName;
+    if (!button || !userId || !buttonAgentName || buttonAgentName !== agentName) {
+        return;
+    }
+    if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+        return;
+    }
+    if (button.dataset.contactAvatarPending !== 'true') {
+        return;
+    }
+
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts/${encodeURIComponent(userId)}/avatar`);
+        const data = await response.json();
+        if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+            return;
+        }
+        if (!data || data.error || !data.avatar_photo) {
+            return;
+        }
+        button.style.position = 'relative';
+        button.style.overflow = 'hidden';
+        button.style.padding = '0';
+        if (String(data.avatar_photo).startsWith('data:video/')) {
+            button.innerHTML = `<video src="${escapeHtml(data.avatar_photo)}" aria-label="Avatar video" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;" autoplay muted loop playsinline></video>`;
+        } else {
+            button.innerHTML = `<img src="${escapeHtml(data.avatar_photo)}" alt="Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;">`;
+        }
+    } catch (error) {
+        if (error && error.message === 'unauthorized') {
+            return;
+        }
+    } finally {
+        if (button) {
+            delete button.dataset.contactAvatarPending;
+        }
     }
 }
 
@@ -1175,19 +1348,27 @@ async function openConversationFromContacts(agentName, userId) {
 }
 
 async function openContactPhotos(agentName, userId) {
+    return openEntityPhotos(agentName, userId, 'contact');
+}
+
+async function openMembershipPhotos(agentName, channelId) {
+    return openEntityPhotos(agentName, channelId, 'group/channel');
+}
+
+async function openEntityPhotos(agentName, userId, entityLabel) {
     if (!agentName || !userId) return;
     try {
         const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}`);
         const data = await response.json();
         if (data.error) {
-            alert('Error loading contact photos: ' + data.error);
+            alert(`Error loading ${entityLabel} photos: ` + data.error);
             return;
         }
         const photos = Array.isArray(data.profile_photos)
             ? data.profile_photos.filter(Boolean)
             : (data.profile_photo ? [data.profile_photo] : []);
         if (photos.length === 0) {
-            alert('No profile photos available for this contact.');
+            alert(`No profile photos available for this ${entityLabel}.`);
             return;
         }
         showContactPhotoFullscreen(photos);
@@ -1195,7 +1376,7 @@ async function openContactPhotos(agentName, userId) {
         if (error && error.message === 'unauthorized') {
             return;
         }
-        alert('Error loading contact photos: ' + error);
+        alert(`Error loading ${entityLabel} photos: ` + error);
     }
 }
 
@@ -1734,13 +1915,31 @@ function loadMemberships(agentName) {
                     const username = membership.username ? `@${membership.username}` : '';
                     const isMuted = membership.is_muted || false;
                     const isGagged = membership.is_gagged || false;
+                    const escapedAgentName = escJsAttr(agentName);
+                    const escapedChannelId = escJsAttr(channelId);
+                    const initialLabel = escapeHtml(String(name || channelId || '?').trim().charAt(0).toUpperCase() || '?');
+                    let avatarHtml = '';
+                    if (membership.profile_photo) {
+                        avatarHtml =
+                            '<button onclick="openMembershipPhotos(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" title="View profile photos" ' +
+                            'style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">' +
+                            '<img src="' + escapeHtml(membership.profile_photo) + '" alt="Avatar" style="width: 100%; height: 100%; object-fit: contain; background: #f8f9fa;">' +
+                            '</button>';
+                    } else {
+                        avatarHtml =
+                            '<button onclick="openMembershipPhotos(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" title="View profile photos" ' +
+                            'style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">' +
+                            initialLabel +
+                            '</button>';
+                    }
                     
                     html += '<div style="padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; align-items: center; gap: 12px;">';
+                    html += avatarHtml;
                     html += '<div style="flex: 1; min-width: 0;">';
                     const nameLabel = escapeHtml(name);
                     let nameHtml = nameLabel;
                     if (channelId) {
-                        nameHtml = '<a href="#" onclick="openMembershipConversationProfile(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\'); return false;" style="color: #007bff; text-decoration: underline;">' + nameLabel + '</a>';
+                        nameHtml = '<a href="#" onclick="openMembershipConversationProfile(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" style="color: #007bff; text-decoration: underline;">' + nameLabel + '</a>';
                     }
                     html += '<div style="font-weight: 500; margin-bottom: 4px;">' + nameHtml + '</div>';
                     html += '<div style="font-size: 12px; color: #666;">';
@@ -1752,14 +1951,14 @@ function loadMemberships(agentName) {
                     html += '</div>';
                     html += '<div style="display: flex; align-items: center; gap: 8px;">';
                     html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
-                    html += '<input type="checkbox" ' + (isGagged ? 'checked' : '') + ' onchange="toggleGaggedMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                    html += '<input type="checkbox" ' + (isGagged ? 'checked' : '') + ' onchange="toggleGaggedMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', this.checked)" style="cursor: pointer;">';
                     html += '<span style="font-size: 14px;">Gagged</span>';
                     html += '</label>';
                     html += '<label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">';
-                    html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', this.checked)" style="cursor: pointer;">';
+                    html += '<input type="checkbox" ' + (isMuted ? 'checked' : '') + ' onchange="toggleMuteMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', this.checked)" style="cursor: pointer;">';
                     html += '<span style="font-size: 14px;">Muted</span>';
                     html += '</label>';
-                    html += '<button onclick="deleteMembership(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(channelId) + '\', \'' + escJsAttr(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
+                    html += '<button onclick="deleteMembership(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\', \'' + escJsAttr(name) + '\')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>';
                     html += '</div>';
                     html += '</div>';
                 });
@@ -1925,16 +2124,21 @@ let selectedAgentContacts = new Set();
 let selectedAgentContactsAgent = null;
 let currentAgentContactsUserIds = [];
 let expectedAgentContacts = null; // Track current agent contacts request
+let contactAvatarLoadToken = 0;
 
 // Profile photo fullscreen functions
 function updateAgentProfilePhotoDisplay() {
     const photoImg = document.getElementById('agent-profile-photo');
+    const profileVideo = document.getElementById('agent-profile-video');
     const fullImg = document.getElementById('profile-photo-fullscreen');
+    const fullVideo = document.getElementById('profile-video-fullscreen');
     const indexLabel = document.getElementById('agent-profile-photo-index');
     const prevBtn = document.getElementById('agent-profile-photo-prev');
     const nextBtn = document.getElementById('agent-profile-photo-next');
     const fullPrevBtn = document.getElementById('profile-photo-fullscreen-prev');
     const fullNextBtn = document.getElementById('profile-photo-fullscreen-next');
+    const fullMetaIndex = document.getElementById('profile-photo-meta-index');
+    const fullMetaType = document.getElementById('profile-photo-meta-type');
     const photos = agentProfilePhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
@@ -1944,8 +2148,24 @@ function updateAgentProfilePhotoDisplay() {
             photoImg.src = '';
             photoImg.style.display = 'none';
         }
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
         if (indexLabel) {
             indexLabel.textContent = '';
+        }
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
         }
         [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
@@ -1956,15 +2176,54 @@ function updateAgentProfilePhotoDisplay() {
     const safeIndex = Math.min(Math.max(agentProfilePhotoIndex, 0), photos.length - 1);
     agentProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
-    if (photoImg) {
-        photoImg.src = src;
-        photoImg.style.display = 'block';
-    }
-    if (fullImg) {
-        fullImg.src = src;
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        if (photoImg) {
+            photoImg.src = '';
+            photoImg.style.display = 'none';
+        }
+        if (fullImg) {
+            fullImg.src = '';
+            fullImg.style.display = 'none';
+        }
+        if (profileVideo) {
+            profileVideo.src = src;
+            profileVideo.style.display = 'block';
+            profileVideo.play().catch(() => {});
+        }
+        if (fullVideo) {
+            fullVideo.src = src;
+            fullVideo.style.display = 'block';
+            fullVideo.play().catch(() => {});
+        }
+    } else {
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
+        if (photoImg) {
+            photoImg.src = src;
+            photoImg.style.display = 'block';
+        }
+        if (fullImg) {
+            fullImg.src = src;
+            fullImg.style.display = 'block';
+        }
     }
     if (indexLabel) {
         indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
     }
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
@@ -1982,8 +2241,12 @@ function showProfilePhotoFullscreen() {
 
 function closeProfilePhotoFullscreen() {
     const modal = document.getElementById('profile-photo-modal');
+    const fullVideo = document.getElementById('profile-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 
@@ -2009,18 +2272,31 @@ function showNextAgentProfilePhoto(event, includeFullscreen = false) {
 
 function updateContactFullscreenPhotoDisplay() {
     const fullImg = document.getElementById('contacts-photo-fullscreen');
+    const fullVideo = document.getElementById('contacts-video-fullscreen');
+    const fullMetaIndex = document.getElementById('contacts-photo-meta-index');
+    const fullMetaType = document.getElementById('contacts-photo-meta-type');
     const prevBtn = document.getElementById('contacts-photo-fullscreen-prev');
     const nextBtn = document.getElementById('contacts-photo-fullscreen-next');
     const photos = contactFullscreenPhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
 
-    if (!fullImg) {
+    if (!fullImg || !fullVideo) {
         return;
     }
 
     if (!hasPhotos) {
         fullImg.src = '';
+        fullImg.style.display = 'none';
+        fullVideo.pause();
+        fullVideo.src = '';
+        fullVideo.style.display = 'none';
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
+        }
         [prevBtn, nextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
         });
@@ -2029,7 +2305,27 @@ function updateContactFullscreenPhotoDisplay() {
 
     const safeIndex = Math.min(Math.max(contactFullscreenPhotoIndex, 0), photos.length - 1);
     contactFullscreenPhotoIndex = safeIndex;
-    fullImg.src = photos[safeIndex];
+    const src = photos[safeIndex];
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        fullImg.src = '';
+        fullImg.style.display = 'none';
+        fullVideo.src = src;
+        fullVideo.style.display = 'block';
+        fullVideo.play().catch(() => {});
+    } else {
+        fullVideo.pause();
+        fullVideo.src = '';
+        fullVideo.style.display = 'none';
+        fullImg.src = src;
+        fullImg.style.display = 'block';
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
+    }
     [prevBtn, nextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
     });
@@ -2038,6 +2334,11 @@ function updateContactFullscreenPhotoDisplay() {
 function showContactPhotoFullscreen(photoList) {
     const modal = document.getElementById('contacts-photo-modal');
     if (!modal) return;
+    // The modal is declared under the Contacts subtab in the template.
+    // Re-parent it to <body> so it can open from Memberships too.
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
     contactFullscreenPhotos = Array.isArray(photoList) ? photoList.filter(Boolean) : [];
     contactFullscreenPhotoIndex = 0; // Always open on first/icon photo.
     if (contactFullscreenPhotos.length === 0) {
@@ -2049,8 +2350,12 @@ function showContactPhotoFullscreen(photoList) {
 
 function closeContactPhotoFullscreen() {
     const modal = document.getElementById('contacts-photo-modal');
+    const fullVideo = document.getElementById('contacts-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 

@@ -477,6 +477,7 @@ def test_contacts_list_and_bulk_delete(monkeypatch):
     data = response.get_json()
     assert data["contacts"][0]["user_id"] == "10"
     assert data["contacts"][1]["is_deleted"] is True
+    assert "avatar_photo" in data["contacts"][0]
 
     response = client.post(
         "/admin/api/agents/test/contacts/bulk-delete",

@@ -36,7 +36,14 @@ def get_unique_id(obj: Any) -> str | None:
 
     Prefers stable string ids when available; falls back to numeric id.
     """
-    for attr in ("file_unique_id", "unique_id", "id"):
+    for attr in (
+        "file_unique_id",
+        "unique_id",
+        "id",
+        # Telethon profile-photo stubs (e.g. UserProfilePhoto / ChatPhoto)
+        "photo_id",
+        "document_id",
+    ):
         v = getattr(obj, attr, None)
         if isinstance(v, (str, int)):
             return str(v)
