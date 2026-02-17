@@ -23,10 +23,39 @@ from admin_console.helpers import (
     get_agent_by_name,
     resolve_user_id_and_handle_errors,
 )
-from media.media_source import get_media_bytes_from_pipeline
+from media.mime_utils import detect_mime_type_from_bytes
+from media.media_source import (
+    cache_media_bytes_in_pipeline,
+    get_profile_photo_bytes_from_pipeline,
+)
 from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
+
+
+def _profile_photo_bytes_to_data_url(photo_bytes: bytes | None) -> str | None:
+    if not photo_bytes:
+        return None
+    mime_type = detect_mime_type_from_bytes(photo_bytes[:1024]) if photo_bytes else "image/jpeg"
+    if mime_type == "application/octet-stream":
+        mime_type = "image/jpeg"
+    base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+    return f"data:{mime_type};base64,{base64_data}"
+
+
+def _get_embedded_profile_thumb_data_url(photo) -> str | None:
+    """
+    Best-effort icon from Telegram's embedded stripped thumbnail bytes.
+    This avoids network requests and is suitable for small avatar icons.
+    """
+    stripped_thumb = getattr(photo, "stripped_thumb", None)
+    if not stripped_thumb:
+        return None
+    try:
+        thumb_jpg_bytes = tg_utils.stripped_photo_to_jpg(stripped_thumb)
+    except Exception:
+        return None
+    return _profile_photo_bytes_to_data_url(thumb_jpg_bytes)
 
 
 async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
@@ -36,42 +65,119 @@ async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
             return []
         data_urls: list[str] = []
         for photo in photos:
-            photo_bytes = await _get_profile_photo_bytes(agent, client, photo)
-            if not photo_bytes:
+            try:
+                photo_bytes = await _get_profile_photo_bytes(
+                    agent, client, photo, entity=entity
+                )
+                if not photo_bytes:
+                    continue
+                data_url = _profile_photo_bytes_to_data_url(photo_bytes)
+                if data_url:
+                    data_urls.append(data_url)
+            except Exception as e:
+                logger.debug("Error loading individual profile photo: %s", e)
                 continue
-            mime_type = "image/jpeg"
-            base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-            data_urls.append(f"data:{mime_type};base64,{base64_data}")
         return data_urls
     except Exception as e:
         logger.debug(f"Error getting profile photo: {e}")
         return []
 
 
-async def _get_profile_photo_bytes(agent, client, photo) -> bytes | None:
+async def _get_profile_photo_bytes(
+    agent,
+    client,
+    photo,
+    entity=None,
+    *,
+    allow_profile_photos_fallback: bool = True,
+) -> bytes | None:
     """
     Resolve profile photo bytes via media pipeline with zero description budget.
     Falls back to direct Telegram download when needed.
     """
     from telegram_media import get_unique_id
 
-    unique_id = get_unique_id(photo)
-    if not unique_id:
-        return await download_media_bytes(client, photo)
-
-    media_bytes = await get_media_bytes_from_pipeline(
-        unique_id=str(unique_id),
+    unique_id = get_unique_id(photo) if photo is not None else None
+    media_bytes = await get_profile_photo_bytes_from_pipeline(
+        unique_id=str(unique_id) if unique_id else None,
         agent=agent,
-        doc=photo,
-        kind="photo",
-        update_last_used=True,
+        client=client,
+        entity=entity,
+        photo_obj=photo,
         description_budget_override=0,
+        allow_profile_photos_fallback=allow_profile_photos_fallback,
     )
     if media_bytes:
         return media_bytes
 
-    # Fall back to direct download if the pipeline did not produce a readable cache file.
-    return await download_media_bytes(client, photo)
+    # Try downloading the current profile photo directly from the entity.
+    # This avoids GetUserPhotosRequest while providing a higher-quality icon
+    # than stripped_thumb when available.
+    if entity is not None:
+        try:
+            downloaded = await client.download_profile_photo(
+                entity,
+                file=bytes,
+                download_big=False,
+            )
+            if downloaded:
+                if unique_id:
+                    await cache_media_bytes_in_pipeline(
+                        unique_id=str(unique_id),
+                        agent=agent,
+                        media_bytes=downloaded,
+                        kind="photo",
+                    )
+                return downloaded
+        except Exception as e:
+            logger.debug("Entity profile photo download failed: %s", e)
+
+    # Last fallback: direct download attempt.
+    if photo is not None:
+        try:
+            downloaded = await download_media_bytes(client, photo)
+            if downloaded and unique_id:
+                await cache_media_bytes_in_pipeline(
+                    unique_id=str(unique_id),
+                    agent=agent,
+                    media_bytes=downloaded,
+                    kind="photo",
+                )
+            return downloaded
+        except Exception as e:
+            logger.debug("Fallback profile photo direct download failed: %s", e)
+            return None
+    return None
+
+
+async def _get_profile_photo_data_url_cached_only(agent, client, photo) -> tuple[str | None, bool]:
+    """
+    Resolve profile-photo data URL from cache only (no Telegram fetch).
+    Returns (data_url, needs_upgrade), where needs_upgrade is True when the
+    returned image is an embedded stripped thumbnail.
+    """
+    from telegram_media import get_unique_id
+
+    if photo is None:
+        return None, False
+
+    unique_id = get_unique_id(photo)
+    if not unique_id:
+        thumb_data_url = _get_embedded_profile_thumb_data_url(photo)
+        return thumb_data_url, bool(thumb_data_url)
+
+    photo_bytes = await get_profile_photo_bytes_from_pipeline(
+        unique_id=str(unique_id),
+        agent=agent,
+        client=client,
+        entity=None,
+        photo_obj=None,
+        description_budget_override=0,
+    )
+    if not photo_bytes:
+        thumb_data_url = _get_embedded_profile_thumb_data_url(photo)
+        return thumb_data_url, bool(thumb_data_url)
+    return _profile_photo_bytes_to_data_url(photo_bytes), False
 
 
 def _extract_username(entity) -> str | None:
@@ -214,6 +320,12 @@ def register_contact_routes(agents_bp: Blueprint):
                     user = users_by_id.get(user_id)
                     if not user:
                         continue
+                    user_photo = getattr(user, "photo", None)
+                    avatar_photo, avatar_needs_upgrade = await _get_profile_photo_data_url_cached_only(
+                        agent,
+                        agent.client,
+                        user_photo,
+                    )
                     first = getattr(user, "first_name", None) or ""
                     last = getattr(user, "last_name", None) or ""
                     username = _extract_username(user)
@@ -223,8 +335,9 @@ def register_contact_routes(agents_bp: Blueprint):
                             "user_id": str(user_id),
                             "name": display_name,
                             "username": username,
-                            "avatar_photo": None,
-                            "has_photo": bool(getattr(user, "photo", None)),
+                            "avatar_photo": avatar_photo,
+                            "avatar_needs_upgrade": avatar_needs_upgrade,
+                            "has_photo": bool(user_photo),
                             "is_deleted": bool(getattr(user, "deleted", False)),
                             "is_blocked": user_id in blocked_ids,
                         }
@@ -255,12 +368,16 @@ def register_contact_routes(agents_bp: Blueprint):
                 photo = getattr(entity, "photo", None)
                 if not photo:
                     return None
-                photo_bytes = await _get_profile_photo_bytes(agent, agent.client, photo)
-                if not photo_bytes:
-                    return None
-                mime_type = "image/jpeg"
-                base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-                return f"data:{mime_type};base64,{base64_data}"
+                photo_bytes = await _get_profile_photo_bytes(
+                    agent,
+                    agent.client,
+                    photo,
+                    entity=entity,
+                    allow_profile_photos_fallback=False,
+                )
+                if photo_bytes:
+                    return _profile_photo_bytes_to_data_url(photo_bytes)
+                return _get_embedded_profile_thumb_data_url(photo)
 
             avatar_photo = agent.execute(_get_avatar(), timeout=8.0)
             return jsonify({"avatar_photo": avatar_photo})

@@ -31,7 +31,6 @@ def test_profile_photo_helpers_return_all_photos(monkeypatch):
     async def fake_download_media_bytes(_client, photo):
         return f"bytes-{photo}".encode("utf-8")
 
-    monkeypatch.setattr(profile_module, "download_media_bytes", fake_download_media_bytes)
     monkeypatch.setattr(contacts_module, "download_media_bytes", fake_download_media_bytes)
 
     client = FakePhotoClient()

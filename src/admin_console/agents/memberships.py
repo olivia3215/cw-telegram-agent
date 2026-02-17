@@ -21,10 +21,9 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     User,
 )
 
+from admin_console.agents.contacts import _get_profile_photo_bytes
 from admin_console.helpers import get_agent_by_name
-from media.media_source import get_media_bytes_from_pipeline
-from telegram_download import download_media_bytes
-from telegram_media import get_unique_id
+from media.mime_utils import detect_mime_type_from_bytes
 from utils import normalize_peer_id
 from utils.telegram import is_group_or_channel
 
@@ -37,24 +36,13 @@ async def _get_first_profile_photo_data_url(agent, client, entity) -> str | None
         return None
 
     try:
-        unique_id = get_unique_id(photo)
-        photo_bytes = None
-        if unique_id:
-            photo_bytes = await get_media_bytes_from_pipeline(
-                unique_id=str(unique_id),
-                agent=agent,
-                doc=photo,
-                kind="photo",
-                update_last_used=True,
-                description_budget_override=0,
-            )
-
-        if not photo_bytes:
-            photo_bytes = await download_media_bytes(client, photo)
+        photo_bytes = await _get_profile_photo_bytes(agent, client, photo, entity=entity)
 
         if not photo_bytes:
             return None
-        mime_type = "image/jpeg"
+        mime_type = detect_mime_type_from_bytes(photo_bytes[:1024]) if photo_bytes else "image/jpeg"
+        if mime_type == "application/octet-stream":
+            mime_type = "image/jpeg"
         base64_data = base64.b64encode(photo_bytes).decode("utf-8")
         return f"data:{mime_type};base64,{base64_data}"
     except Exception as e:

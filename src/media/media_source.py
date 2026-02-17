@@ -14,6 +14,7 @@ compatibility. New code should import directly from media.sources.
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- singleton helpers ----------
 _GLOBAL_DEFAULT_CHAIN: CompositeMediaSource | None = None
+_PROFILE_PHOTO_FETCH_LAST_TS = 0.0
 
 
 def get_default_media_source_chain() -> CompositeMediaSource:
@@ -201,3 +203,137 @@ async def get_media_bytes_from_pipeline(
         logger.debug("Failed resolving media bytes for %s from state/media: %s", unique_id, e)
 
     return None
+
+
+async def cache_media_bytes_in_pipeline(
+    *,
+    unique_id: str,
+    agent: Any,
+    media_bytes: bytes,
+    kind: str = "photo",
+    mime_type: str | None = None,
+) -> None:
+    """
+    Persist media bytes into the default pipeline cache.
+
+    This stores metadata plus media file bytes so later reads can resolve via
+    `get_media_bytes_from_pipeline(...)` without re-downloading from Telegram.
+    """
+    if not unique_id or not agent or not media_bytes:
+        return
+
+    from media.mime_utils import get_file_extension_from_mime_or_bytes
+
+    file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+    record: dict[str, Any] = {
+        "unique_id": str(unique_id),
+        "kind": kind,
+        "status": MediaStatus.BUDGET_EXHAUSTED.value,
+        "description": None,
+        "mime_type": mime_type,
+        "description_retry_count": 0,
+    }
+
+    try:
+        media_chain = get_default_media_source_chain()
+        await media_chain.put(
+            str(unique_id),
+            record,
+            media_bytes=media_bytes,
+            file_extension=file_extension,
+            agent=agent,
+        )
+    except Exception as e:
+        logger.debug("Failed to cache media bytes for %s: %s", unique_id, e)
+
+
+async def get_profile_photo_bytes_from_pipeline(
+    *,
+    unique_id: str | None,
+    agent: Any,
+    client: Any,
+    entity: Any | None = None,
+    photo_obj: Any | None = None,
+    description_budget_override: int | None = 0,
+    min_fetch_interval_seconds: float = 0.75,
+    allow_profile_photos_fallback: bool = True,
+) -> bytes | None:
+    """
+    Resolve profile-photo bytes with cache-first behavior and rate-limited fallback fetch.
+
+    This helper avoids repeated `GetUserPhotosRequest` calls by:
+    1) checking pipeline caches first with doc=None
+    2) only calling get_profile_photos(limit=1) on cache miss
+    3) enforcing a minimum interval between fallback get_profile_photos calls
+    """
+    from telegram_download import download_media_bytes
+    from telegram_media import get_unique_id
+
+    # 1) Cache-only lookup first (no Telegram fetch).
+    if unique_id:
+        cached = await get_media_bytes_from_pipeline(
+            unique_id=str(unique_id),
+            agent=agent,
+            doc=None,
+            kind="photo",
+            update_last_used=True,
+            description_budget_override=description_budget_override,
+        )
+        if cached:
+            return cached
+
+    # 2) Try provided photo object (if already a downloadable type).
+    if photo_obj is not None:
+        try:
+            direct = await download_media_bytes(client, photo_obj)
+            if direct:
+                return direct
+        except Exception:
+            pass
+
+    # 3) Optional rate-limited fallback fetch: get_profile_photos(limit=1).
+    if not allow_profile_photos_fallback:
+        return None
+
+    if entity is None:
+        return None
+
+    global _PROFILE_PHOTO_FETCH_LAST_TS
+    now = time.monotonic()
+    wait_s = min_fetch_interval_seconds - (now - _PROFILE_PHOTO_FETCH_LAST_TS)
+    if wait_s > 0:
+        import asyncio
+
+        await asyncio.sleep(wait_s)
+    _PROFILE_PHOTO_FETCH_LAST_TS = time.monotonic()
+
+    try:
+        photos = await client.get_profile_photos(entity, limit=1)
+    except TypeError:
+        photos = await client.get_profile_photos(entity)
+    except Exception as e:
+        logger.debug("Rate-limited profile photo fetch failed: %s", e)
+        return None
+
+    if not photos:
+        return None
+
+    resolved = photos[0]
+    resolved_uid = get_unique_id(resolved)
+    if resolved_uid:
+        via_pipeline = await get_media_bytes_from_pipeline(
+            unique_id=str(resolved_uid),
+            agent=agent,
+            doc=resolved,
+            kind="photo",
+            update_last_used=True,
+            description_budget_override=description_budget_override,
+        )
+        if via_pipeline:
+            return via_pipeline
+
+    try:
+        return await download_media_bytes(client, resolved)
+    except Exception as e:
+        logger.debug("Fallback resolved profile photo download failed: %s", e)
+        return None

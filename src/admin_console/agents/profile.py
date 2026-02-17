@@ -16,8 +16,7 @@ from telethon.tl.functions.users import GetFullUserRequest  # pyright: ignore[re
 from telethon.tl.types import Birthday, User  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
-from media.media_source import get_media_bytes_from_pipeline
-from telegram_download import download_media_bytes
+from media.mime_utils import detect_mime_type_from_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -41,26 +40,21 @@ async def _get_profile_photo_data_urls(client, agent=None) -> list[str]:
             return []
 
         data_urls: list[str] = []
-        for photo in photos:
-            photo_bytes = None
-            if agent is not None:
-                from telegram_media import get_unique_id
+        from admin_console.agents.contacts import _get_profile_photo_bytes
 
-                unique_id = get_unique_id(photo)
-                if unique_id:
-                    photo_bytes = await get_media_bytes_from_pipeline(
-                        unique_id=str(unique_id),
-                        agent=agent,
-                        doc=photo,
-                        kind="photo",
-                        update_last_used=True,
-                        description_budget_override=0,
-                    )
-            if not photo_bytes:
-                photo_bytes = await download_media_bytes(client, photo)
-            mime_type = "image/jpeg"
-            base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-            data_urls.append(f"data:{mime_type};base64,{base64_data}")
+        for photo in photos:
+            try:
+                photo_bytes = await _get_profile_photo_bytes(agent, client, photo, entity=me)
+                if not photo_bytes:
+                    continue
+                mime_type = detect_mime_type_from_bytes(photo_bytes[:1024]) if photo_bytes else "image/jpeg"
+                if mime_type == "application/octet-stream":
+                    mime_type = "image/jpeg"
+                base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+                data_urls.append(f"data:{mime_type};base64,{base64_data}")
+            except Exception as e:
+                logger.debug("Error loading individual agent profile photo: %s", e)
+                continue
         return data_urls
     except Exception as e:
         logger.debug(f"Error getting profile photo: {e}")

@@ -491,12 +491,16 @@ async function loadConversationData() {
 
 function updateConversationProfilePhotoDisplay() {
     const photoImg = document.getElementById('conversation-profile-photo');
+    const profileVideo = document.getElementById('conversation-profile-video');
     const fullImg = document.getElementById('conversation-profile-photo-fullscreen');
+    const fullVideo = document.getElementById('conversation-profile-video-fullscreen');
     const indexLabel = document.getElementById('conversation-profile-photo-index');
     const prevBtn = document.getElementById('conversation-profile-photo-prev');
     const nextBtn = document.getElementById('conversation-profile-photo-next');
     const fullPrevBtn = document.getElementById('conversation-profile-photo-fullscreen-prev');
     const fullNextBtn = document.getElementById('conversation-profile-photo-fullscreen-next');
+    const fullMetaIndex = document.getElementById('conversation-profile-photo-meta-index');
+    const fullMetaType = document.getElementById('conversation-profile-photo-meta-type');
     const photos = conversationProfilePhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
@@ -506,8 +510,24 @@ function updateConversationProfilePhotoDisplay() {
             photoImg.src = '';
             photoImg.style.display = 'none';
         }
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
         if (indexLabel) {
             indexLabel.textContent = '';
+        }
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
         }
         [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
@@ -518,15 +538,54 @@ function updateConversationProfilePhotoDisplay() {
     const safeIndex = Math.min(Math.max(conversationProfilePhotoIndex, 0), photos.length - 1);
     conversationProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
-    if (photoImg) {
-        photoImg.src = src;
-        photoImg.style.display = 'block';
-    }
-    if (fullImg) {
-        fullImg.src = src;
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        if (photoImg) {
+            photoImg.src = '';
+            photoImg.style.display = 'none';
+        }
+        if (fullImg) {
+            fullImg.src = '';
+            fullImg.style.display = 'none';
+        }
+        if (profileVideo) {
+            profileVideo.src = src;
+            profileVideo.style.display = 'block';
+            profileVideo.play().catch(() => {});
+        }
+        if (fullVideo) {
+            fullVideo.src = src;
+            fullVideo.style.display = 'block';
+            fullVideo.play().catch(() => {});
+        }
+    } else {
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
+        if (photoImg) {
+            photoImg.src = src;
+            photoImg.style.display = 'block';
+        }
+        if (fullImg) {
+            fullImg.src = src;
+            fullImg.style.display = 'block';
+        }
     }
     if (indexLabel) {
         indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
     }
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
@@ -544,8 +603,12 @@ function showConversationProfilePhotoFullscreen() {
 
 function closeConversationProfilePhotoFullscreen() {
     const modal = document.getElementById('conversation-profile-photo-modal');
+    const fullVideo = document.getElementById('conversation-profile-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 
@@ -1016,15 +1079,18 @@ async function loadAgentContacts(agentName) {
                 ? ` data-contact-avatar-pending="true" data-contact-user-id="${escapeHtml(String(avatarMeta.userId))}" data-contact-agent-name="${escapeHtml(String(avatarMeta.agentName))}"`
                 : '';
             if (photoDataUrl) {
+                const mediaHtml = String(photoDataUrl).startsWith('data:video/')
+                    ? `<video src="${escapeHtml(photoDataUrl)}" aria-label="Avatar video" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;" autoplay muted loop playsinline></video>`
+                    : `<img src="${escapeHtml(photoDataUrl)}" alt="Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;">`;
                 return `
-                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">
-                        <img src="${escapeHtml(photoDataUrl)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="position: relative; width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; overflow: hidden; flex: 0 0 34px;">
+                        ${mediaHtml}
                     </button>
                 `;
             }
 
             return `
-                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
+                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="position: relative; width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
                     ${initial}
                 </button>
             `;
@@ -1049,7 +1115,7 @@ async function loadAgentContacts(agentName) {
                 contact.user_id,
                 `openContactPhotos('${escapedAgentName}', '${escapedUserId}'); return false;`,
                 'View profile photos',
-                contact.has_photo ? { userId, agentName } : null
+                (contact.has_photo && (!contact.avatar_photo || contact.avatar_needs_upgrade)) ? { userId, agentName } : null
             );
             return `
                 <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -1084,7 +1150,7 @@ async function streamAgentContactAvatars(agentName, token) {
         return;
     }
 
-    const maxConcurrent = 2;
+    const maxConcurrent = 1;
     let index = 0;
     let active = 0;
 
@@ -1134,7 +1200,14 @@ async function loadSingleContactAvatar(button, agentName, token) {
         if (!data || data.error || !data.avatar_photo) {
             return;
         }
-        button.innerHTML = `<img src="${escapeHtml(data.avatar_photo)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`;
+        button.style.position = 'relative';
+        button.style.overflow = 'hidden';
+        button.style.padding = '0';
+        if (String(data.avatar_photo).startsWith('data:video/')) {
+            button.innerHTML = `<video src="${escapeHtml(data.avatar_photo)}" aria-label="Avatar video" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;" autoplay muted loop playsinline></video>`;
+        } else {
+            button.innerHTML = `<img src="${escapeHtml(data.avatar_photo)}" alt="Avatar" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #f8f9fa;">`;
+        }
     } catch (error) {
         if (error && error.message === 'unauthorized') {
             return;
@@ -1850,7 +1923,7 @@ function loadMemberships(agentName) {
                         avatarHtml =
                             '<button onclick="openMembershipPhotos(\'' + escapedAgentName + '\', \'' + escapedChannelId + '\'); return false;" title="View profile photos" ' +
                             'style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">' +
-                            '<img src="' + escapeHtml(membership.profile_photo) + '" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">' +
+                            '<img src="' + escapeHtml(membership.profile_photo) + '" alt="Avatar" style="width: 100%; height: 100%; object-fit: contain; background: #f8f9fa;">' +
                             '</button>';
                     } else {
                         avatarHtml =
@@ -2056,12 +2129,16 @@ let contactAvatarLoadToken = 0;
 // Profile photo fullscreen functions
 function updateAgentProfilePhotoDisplay() {
     const photoImg = document.getElementById('agent-profile-photo');
+    const profileVideo = document.getElementById('agent-profile-video');
     const fullImg = document.getElementById('profile-photo-fullscreen');
+    const fullVideo = document.getElementById('profile-video-fullscreen');
     const indexLabel = document.getElementById('agent-profile-photo-index');
     const prevBtn = document.getElementById('agent-profile-photo-prev');
     const nextBtn = document.getElementById('agent-profile-photo-next');
     const fullPrevBtn = document.getElementById('profile-photo-fullscreen-prev');
     const fullNextBtn = document.getElementById('profile-photo-fullscreen-next');
+    const fullMetaIndex = document.getElementById('profile-photo-meta-index');
+    const fullMetaType = document.getElementById('profile-photo-meta-type');
     const photos = agentProfilePhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
@@ -2071,8 +2148,24 @@ function updateAgentProfilePhotoDisplay() {
             photoImg.src = '';
             photoImg.style.display = 'none';
         }
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
         if (indexLabel) {
             indexLabel.textContent = '';
+        }
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
         }
         [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
@@ -2083,15 +2176,54 @@ function updateAgentProfilePhotoDisplay() {
     const safeIndex = Math.min(Math.max(agentProfilePhotoIndex, 0), photos.length - 1);
     agentProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
-    if (photoImg) {
-        photoImg.src = src;
-        photoImg.style.display = 'block';
-    }
-    if (fullImg) {
-        fullImg.src = src;
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        if (photoImg) {
+            photoImg.src = '';
+            photoImg.style.display = 'none';
+        }
+        if (fullImg) {
+            fullImg.src = '';
+            fullImg.style.display = 'none';
+        }
+        if (profileVideo) {
+            profileVideo.src = src;
+            profileVideo.style.display = 'block';
+            profileVideo.play().catch(() => {});
+        }
+        if (fullVideo) {
+            fullVideo.src = src;
+            fullVideo.style.display = 'block';
+            fullVideo.play().catch(() => {});
+        }
+    } else {
+        if (profileVideo) {
+            profileVideo.pause();
+            profileVideo.src = '';
+            profileVideo.style.display = 'none';
+        }
+        if (fullVideo) {
+            fullVideo.pause();
+            fullVideo.src = '';
+            fullVideo.style.display = 'none';
+        }
+        if (photoImg) {
+            photoImg.src = src;
+            photoImg.style.display = 'block';
+        }
+        if (fullImg) {
+            fullImg.src = src;
+            fullImg.style.display = 'block';
+        }
     }
     if (indexLabel) {
         indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
     }
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
@@ -2109,8 +2241,12 @@ function showProfilePhotoFullscreen() {
 
 function closeProfilePhotoFullscreen() {
     const modal = document.getElementById('profile-photo-modal');
+    const fullVideo = document.getElementById('profile-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 
@@ -2136,18 +2272,31 @@ function showNextAgentProfilePhoto(event, includeFullscreen = false) {
 
 function updateContactFullscreenPhotoDisplay() {
     const fullImg = document.getElementById('contacts-photo-fullscreen');
+    const fullVideo = document.getElementById('contacts-video-fullscreen');
+    const fullMetaIndex = document.getElementById('contacts-photo-meta-index');
+    const fullMetaType = document.getElementById('contacts-photo-meta-type');
     const prevBtn = document.getElementById('contacts-photo-fullscreen-prev');
     const nextBtn = document.getElementById('contacts-photo-fullscreen-next');
     const photos = contactFullscreenPhotos;
     const hasPhotos = photos.length > 0;
     const hasMultiple = photos.length > 1;
 
-    if (!fullImg) {
+    if (!fullImg || !fullVideo) {
         return;
     }
 
     if (!hasPhotos) {
         fullImg.src = '';
+        fullImg.style.display = 'none';
+        fullVideo.pause();
+        fullVideo.src = '';
+        fullVideo.style.display = 'none';
+        if (fullMetaIndex) {
+            fullMetaIndex.innerHTML = '<strong>Item:</strong> 0 of 0';
+        }
+        if (fullMetaType) {
+            fullMetaType.innerHTML = '<strong>Type:</strong> unknown';
+        }
         [prevBtn, nextBtn].forEach(btn => {
             if (btn) btn.style.display = 'none';
         });
@@ -2156,7 +2305,27 @@ function updateContactFullscreenPhotoDisplay() {
 
     const safeIndex = Math.min(Math.max(contactFullscreenPhotoIndex, 0), photos.length - 1);
     contactFullscreenPhotoIndex = safeIndex;
-    fullImg.src = photos[safeIndex];
+    const src = photos[safeIndex];
+    const isVideo = String(src || '').startsWith('data:video/');
+    if (isVideo) {
+        fullImg.src = '';
+        fullImg.style.display = 'none';
+        fullVideo.src = src;
+        fullVideo.style.display = 'block';
+        fullVideo.play().catch(() => {});
+    } else {
+        fullVideo.pause();
+        fullVideo.src = '';
+        fullVideo.style.display = 'none';
+        fullImg.src = src;
+        fullImg.style.display = 'block';
+    }
+    if (fullMetaIndex) {
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+    }
+    if (fullMetaType) {
+        fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
+    }
     [prevBtn, nextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
     });
@@ -2165,6 +2334,11 @@ function updateContactFullscreenPhotoDisplay() {
 function showContactPhotoFullscreen(photoList) {
     const modal = document.getElementById('contacts-photo-modal');
     if (!modal) return;
+    // The modal is declared under the Contacts subtab in the template.
+    // Re-parent it to <body> so it can open from Memberships too.
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
     contactFullscreenPhotos = Array.isArray(photoList) ? photoList.filter(Boolean) : [];
     contactFullscreenPhotoIndex = 0; // Always open on first/icon photo.
     if (contactFullscreenPhotos.length === 0) {
@@ -2176,8 +2350,12 @@ function showContactPhotoFullscreen(photoList) {
 
 function closeContactPhotoFullscreen() {
     const modal = document.getElementById('contacts-photo-modal');
+    const fullVideo = document.getElementById('contacts-video-fullscreen');
     if (modal) {
         modal.style.display = 'none';
+    }
+    if (fullVideo) {
+        fullVideo.pause();
     }
 }
 
