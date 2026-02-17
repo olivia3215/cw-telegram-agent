@@ -8,7 +8,7 @@ Template substitution utilities for prompt building.
 """
 
 
-def substitute_templates(text: str, agent_name: str, channel_name: str) -> str:
+def substitute_templates(text: str, agent_name: str | None, channel_name: str | None) -> str:
     """
     Apply template substitutions to text.
     
@@ -24,16 +24,20 @@ def substitute_templates(text: str, agent_name: str, channel_name: str) -> str:
     Returns:
         Text with templates substituted
     """
+    # Template values can occasionally be missing in admin-triggered flows.
+    safe_agent_name = agent_name or ""
+    safe_channel_name = channel_name or ""
+
     # Agent name substitutions
-    text = text.replace("{{AGENT_NAME}}", agent_name)
-    text = text.replace("{AGENT_NAME}", agent_name)
-    text = text.replace("{{character}}", agent_name)
-    text = text.replace("{character}", agent_name)
-    text = text.replace("{{char}}", agent_name)
-    text = text.replace("{char}", agent_name)
+    text = text.replace("{{AGENT_NAME}}", safe_agent_name)
+    text = text.replace("{AGENT_NAME}", safe_agent_name)
+    text = text.replace("{{character}}", safe_agent_name)
+    text = text.replace("{character}", safe_agent_name)
+    text = text.replace("{{char}}", safe_agent_name)
+    text = text.replace("{char}", safe_agent_name)
     
     # User/channel name substitutions
-    text = text.replace("{{user}}", channel_name)
-    text = text.replace("{user}", channel_name)
+    text = text.replace("{{user}}", safe_channel_name)
+    text = text.replace("{user}", safe_channel_name)
     
     return text
