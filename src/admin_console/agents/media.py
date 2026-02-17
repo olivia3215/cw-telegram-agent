@@ -1148,17 +1148,15 @@ def register_media_routes(agents_bp: Blueprint):
             if not media_file:
                 async def _download_from_telegram(client: TelegramClient):
                     from media.mime_utils import (
-                        detect_mime_type_from_bytes,
+                        classify_media_from_bytes_and_hints,
                         get_file_extension_from_mime_or_bytes,
-                        is_audio_mime_type,
-                        is_image_mime_type,
-                        is_tgs_mime_type,
-                        is_video_mime_type,
                     )
 
                     media_obj = None
                     object_kind_hint = "photo"
                     hinted_mime = "image/jpeg"
+                    has_audio_attribute = False
+                    has_sticker_attribute = False
 
                     async for message in client.iter_messages("me", limit=None):
                         photo = getattr(message, "photo", None)
@@ -1179,10 +1177,15 @@ def register_media_routes(agents_bp: Blueprint):
                                 media_obj = document
                                 hinted_mime = getattr(document, "mime_type", None) or hinted_mime
                                 attrs = getattr(document, "attributes", []) or []
+                                has_audio_attribute = any(
+                                    getattr(attr.__class__, "__name__", "") == "DocumentAttributeAudio"
+                                    for attr in attrs
+                                )
                                 is_sticker_attr = any(
                                     getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
                                     for attr in attrs
                                 )
+                                has_sticker_attribute = has_sticker_attribute or is_sticker_attr
                                 if hinted_mime.startswith("video/"):
                                     object_kind_hint = "video"
                                 elif hinted_mime.startswith("audio/"):
@@ -1214,24 +1217,16 @@ def register_media_routes(agents_bp: Blueprint):
                     if not media_bytes:
                         return None
 
-                    # Use all available signals (Telegram object + hinted MIME + detected bytes)
-                    # to pick both metadata kind and cached file extension.
-                    detected_mime = detect_mime_type_from_bytes(media_bytes[:1024])
-                    final_mime = hinted_mime
-                    if detected_mime and detected_mime != "application/octet-stream":
-                        final_mime = detected_mime
-
-                    if is_tgs_mime_type(final_mime):
-                        final_kind = "animated_sticker"
-                    elif final_mime == "audio/mp4" or is_audio_mime_type(final_mime):
-                        final_kind = "audio"
-                    elif is_video_mime_type(final_mime):
-                        final_kind = "video"
-                    elif is_image_mime_type(final_mime):
-                        # Keep sticker intent for known sticker-like documents; otherwise treat as photo.
-                        final_kind = "sticker" if object_kind_hint in {"sticker", "animated_sticker"} else "photo"
-                    else:
-                        final_kind = object_kind_hint or "photo"
+                    # Telegram MIME/kind hints are not always trustworthy. Use byte sniffing
+                    # as the primary classifier, and only use Telegram metadata as fallback or
+                    # narrow disambiguation (e.g. MP4 audio-vs-video).
+                    final_kind, final_mime = classify_media_from_bytes_and_hints(
+                        media_bytes,
+                        telegram_mime_type=hinted_mime,
+                        telegram_kind_hint=object_kind_hint,
+                        has_audio_attribute=has_audio_attribute,
+                        has_sticker_attribute=has_sticker_attribute,
+                    )
 
                     file_extension = get_file_extension_from_mime_or_bytes(final_mime, media_bytes) or ".jpg"
                     return {
