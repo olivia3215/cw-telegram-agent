@@ -934,6 +934,7 @@ async function loadAgentContacts(agentName) {
     if (!container) return;
 
     if (!agentName) {
+        contactAvatarLoadToken += 1;
         selectedAgentContacts = new Set();
         selectedAgentContactsAgent = null;
         currentAgentContactsUserIds = [];
@@ -954,6 +955,7 @@ async function loadAgentContacts(agentName) {
     showLoading(container, 'Loading contacts...');
     const requestKey = agentName;
     expectedAgentContacts = requestKey;
+    const avatarLoadToken = ++contactAvatarLoadToken;
     try {
         const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts`);
         const data = await response.json();
@@ -1008,18 +1010,21 @@ async function loadAgentContacts(agentName) {
             return label.charAt(0).toUpperCase();
         }
 
-        function renderRoundAvatarButton(photoDataUrl, displayName, fallbackId, onClickJs, titleText = 'View profile photos') {
+        function renderRoundAvatarButton(photoDataUrl, displayName, fallbackId, onClickJs, titleText = 'View profile photos', avatarMeta = null) {
             const initial = escapeHtml(getAvatarFallbackInitial(displayName, fallbackId));
+            const dataAttrs = avatarMeta
+                ? ` data-contact-avatar-pending="true" data-contact-user-id="${escapeHtml(String(avatarMeta.userId))}" data-contact-agent-name="${escapeHtml(String(avatarMeta.agentName))}"`
+                : '';
             if (photoDataUrl) {
                 return `
-                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}" style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">
+                    <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; padding: 0; cursor: pointer; background: #f8f9fa; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 34px;">
                         <img src="${escapeHtml(photoDataUrl)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">
                     </button>
                 `;
             }
 
             return `
-                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}" style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
+                <button onclick="${onClickJs}" title="${escapeHtml(titleText)}"${dataAttrs} style="width: 34px; height: 34px; border-radius: 999px; border: 1px solid #ced4da; cursor: pointer; background: #eef2f7; color: #2c3e50; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 34px; font-weight: 700; font-size: 15px; line-height: 1;">
                     ${initial}
                 </button>
             `;
@@ -1042,7 +1047,9 @@ async function loadAgentContacts(agentName) {
                 contact.avatar_photo,
                 contact.name,
                 contact.user_id,
-                `openContactPhotos('${escapedAgentName}', '${escapedUserId}'); return false;`
+                `openContactPhotos('${escapedAgentName}', '${escapedUserId}'); return false;`,
+                'View profile photos',
+                contact.has_photo ? { userId, agentName } : null
             );
             return `
                 <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -1062,11 +1069,80 @@ async function loadAgentContacts(agentName) {
         }).join('');
         container.innerHTML = bulkControlsHtml + contactsHtml;
         updateAgentContactsSelectionUI();
+        streamAgentContactAvatars(agentName, avatarLoadToken);
     } catch (error) {
         if (error && error.message === 'unauthorized') {
             return;
         }
         container.innerHTML = `<div class="error">Error loading contacts: ${escapeHtml(error)}</div>`;
+    }
+}
+
+async function streamAgentContactAvatars(agentName, token) {
+    const pending = Array.from(document.querySelectorAll('button[data-contact-avatar-pending="true"]'));
+    if (pending.length === 0) {
+        return;
+    }
+
+    const maxConcurrent = 2;
+    let index = 0;
+    let active = 0;
+
+    return new Promise((resolve) => {
+        const pump = () => {
+            if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+                resolve();
+                return;
+            }
+            while (active < maxConcurrent && index < pending.length) {
+                const button = pending[index++];
+                active += 1;
+                loadSingleContactAvatar(button, agentName, token)
+                    .catch(() => {})
+                    .finally(() => {
+                        active -= 1;
+                        pump();
+                    });
+            }
+            if (active === 0 && index >= pending.length) {
+                resolve();
+            }
+        };
+        pump();
+    });
+}
+
+async function loadSingleContactAvatar(button, agentName, token) {
+    const userId = button?.dataset?.contactUserId;
+    const buttonAgentName = button?.dataset?.contactAgentName;
+    if (!button || !userId || !buttonAgentName || buttonAgentName !== agentName) {
+        return;
+    }
+    if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+        return;
+    }
+    if (button.dataset.contactAvatarPending !== 'true') {
+        return;
+    }
+
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/contacts/${encodeURIComponent(userId)}/avatar`);
+        const data = await response.json();
+        if (token !== contactAvatarLoadToken || expectedAgentContacts !== agentName) {
+            return;
+        }
+        if (!data || data.error || !data.avatar_photo) {
+            return;
+        }
+        button.innerHTML = `<img src="${escapeHtml(data.avatar_photo)}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`;
+    } catch (error) {
+        if (error && error.message === 'unauthorized') {
+            return;
+        }
+    } finally {
+        if (button) {
+            delete button.dataset.contactAvatarPending;
+        }
     }
 }
 
@@ -1975,6 +2051,7 @@ let selectedAgentContacts = new Set();
 let selectedAgentContactsAgent = null;
 let currentAgentContactsUserIds = [];
 let expectedAgentContacts = null; // Track current agent contacts request
+let contactAvatarLoadToken = 0;
 
 // Profile photo fullscreen functions
 function updateAgentProfilePhotoDisplay() {

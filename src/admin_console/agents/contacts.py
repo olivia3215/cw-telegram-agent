@@ -218,23 +218,13 @@ def register_contact_routes(agents_bp: Blueprint):
                     last = getattr(user, "last_name", None) or ""
                     username = _extract_username(user)
                     display_name = f"{first} {last}".strip() or username or str(user_id)
-                    avatar_photo = None
-                    if getattr(user, "photo", None):
-                        photos = await agent.client.get_profile_photos(user, limit=1)
-                        if photos:
-                            photo_bytes = await _get_profile_photo_bytes(
-                                agent, agent.client, photos[0]
-                            )
-                            if photo_bytes:
-                                mime_type = "image/jpeg"
-                                base64_data = base64.b64encode(photo_bytes).decode("utf-8")
-                                avatar_photo = f"data:{mime_type};base64,{base64_data}"
                     contacts.append(
                         {
                             "user_id": str(user_id),
                             "name": display_name,
                             "username": username,
-                            "avatar_photo": avatar_photo,
+                            "avatar_photo": None,
+                            "has_photo": bool(getattr(user, "photo", None)),
                             "is_deleted": bool(getattr(user, "deleted", False)),
                             "is_blocked": user_id in blocked_ids,
                         }
@@ -245,6 +235,37 @@ def register_contact_routes(agents_bp: Blueprint):
             return jsonify({"contacts": contacts})
         except Exception as e:
             logger.error(f"Error fetching contacts for {agent_config_name}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/contacts/<user_id>/avatar", methods=["GET"])
+    def api_get_contact_avatar(agent_config_name: str, user_id: str):
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+
+            async def _get_avatar():
+                entity = await agent.client.get_entity(channel_id)
+                photo = getattr(entity, "photo", None)
+                if not photo:
+                    return None
+                photo_bytes = await _get_profile_photo_bytes(agent, agent.client, photo)
+                if not photo_bytes:
+                    return None
+                mime_type = "image/jpeg"
+                base64_data = base64.b64encode(photo_bytes).decode("utf-8")
+                return f"data:{mime_type};base64,{base64_data}"
+
+            avatar_photo = agent.execute(_get_avatar(), timeout=8.0)
+            return jsonify({"avatar_photo": avatar_photo})
+        except Exception as e:
+            logger.error(f"Error fetching contact avatar for {agent_config_name}/{user_id}: {e}")
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/contacts/<user_id>", methods=["DELETE"])

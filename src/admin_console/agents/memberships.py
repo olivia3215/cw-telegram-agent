@@ -32,21 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _get_first_profile_photo_data_url(agent, client, entity) -> str | None:
-    try:
-        # Use limit=1 to keep memberships list responsive.
-        photos = await client.get_profile_photos(entity, limit=1)
-    except TypeError:
-        # Backward compatibility with mocked clients that do not accept limit.
-        photos = await client.get_profile_photos(entity)
-    except Exception as e:
-        logger.debug(f"Error getting first membership profile photo: {e}")
-        return None
-
-    if not photos:
+    photo = getattr(entity, "photo", None)
+    if not photo:
         return None
 
     try:
-        photo = photos[0]
         unique_id = get_unique_id(photo)
         photo_bytes = None
         if unique_id:
