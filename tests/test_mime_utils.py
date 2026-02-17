@@ -126,6 +126,18 @@ def test_classify_media_disambiguates_mp4_audio_with_telegram_audio_attribute():
     assert mime_type == "audio/mp4"
 
 
+def test_classify_media_disambiguates_mp4_audio_with_m4a_extension_hint():
+    mp4_bytes = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00"
+    kind, mime_type = classify_media_from_bytes_and_hints(
+        mp4_bytes,
+        telegram_mime_type="video/mp4",
+        telegram_kind_hint="video",
+        file_name_hint="track.m4a",
+    )
+    assert kind == "audio"
+    assert mime_type == "audio/mp4"
+
+
 def test_classify_media_kind_from_mime_and_hint_prefers_mime_over_stale_kind_hint():
     kind = classify_media_kind_from_mime_and_hint(
         "video/mp4",

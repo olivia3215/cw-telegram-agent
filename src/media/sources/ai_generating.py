@@ -175,10 +175,12 @@ class AIGeneratingMediaSource(MediaSource):
             )
             has_sticker_attribute = any(hasattr(attr, "stickerset") for attr in attrs)
 
+        file_name_hint = getattr(doc, "file_name", None) or getattr(doc, "name", None)
         effective_kind, final_mime_type = classify_media_from_bytes_and_hints(
             data,
             telegram_mime_type=metadata.get("mime_type"),
             telegram_kind_hint=kind,
+            file_name_hint=file_name_hint,
             has_audio_attribute=has_audio_attribute,
             has_sticker_attribute=has_sticker_attribute,
         )

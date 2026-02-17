@@ -219,6 +219,7 @@ def classify_media_from_bytes_and_hints(
     *,
     telegram_mime_type: str | None = None,
     telegram_kind_hint: str | None = None,
+    file_name_hint: str | Path | None = None,
     has_audio_attribute: bool = False,
     has_sticker_attribute: bool = False,
 ) -> tuple[str, str]:
@@ -229,7 +230,7 @@ def classify_media_from_bytes_and_hints(
     - Telegram metadata (mime/kind hints) is useful, but not always reliable.
     - Magic-byte detection is usually more trustworthy when it yields a specific type.
     - Some containers (notably MP4) are ambiguous from bytes alone. In those cases, we
-      use strong Telegram audio hints only to disambiguate audio-vs-video.
+      use strong extension/audio hints to disambiguate audio-vs-video.
 
     Returns:
         Tuple (kind, mime_type), where kind is one of:
@@ -237,6 +238,12 @@ def classify_media_from_bytes_and_hints(
     """
     hinted_mime = normalize_mime_type(telegram_mime_type)
     hint_kind = (telegram_kind_hint or "").strip().lower() or None
+    extension_hint = None
+    if file_name_hint:
+        try:
+            extension_hint = Path(file_name_hint).suffix.lower()
+        except Exception:
+            extension_hint = None
 
     detected_mime = None
     if media_bytes:
@@ -247,6 +254,11 @@ def classify_media_from_bytes_and_hints(
         final_mime = detected_mime
     else:
         final_mime = hinted_mime or "application/octet-stream"
+
+    # File extension is a stronger disambiguation signal than Telegram hints for
+    # MP4-family containers where bytes alone cannot distinguish audio/video.
+    if final_mime == "video/mp4" and extension_hint in {".m4a", ".m4b"}:
+        final_mime = "audio/mp4"
 
     # MP4 container bytes are sometimes ambiguous; allow Telegram hints to disambiguate.
     # We intentionally constrain this to a narrow case so Telegram doesn't override

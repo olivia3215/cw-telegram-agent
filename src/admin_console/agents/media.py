@@ -1140,6 +1140,7 @@ def register_media_routes(agents_bp: Blueprint):
                     media_obj = None
                     object_kind_hint = "photo"
                     hinted_mime = "image/jpeg"
+                    file_name_hint = None
                     has_audio_attribute = False
                     has_sticker_attribute = False
 
@@ -1161,6 +1162,7 @@ def register_media_routes(agents_bp: Blueprint):
                             if uid and str(uid) == unique_id:
                                 media_obj = document
                                 hinted_mime = getattr(document, "mime_type", None) or hinted_mime
+                                file_name_hint = getattr(document, "file_name", None)
                                 attrs = getattr(document, "attributes", []) or []
                                 has_audio_attribute = any(
                                     getattr(attr.__class__, "__name__", "") == "DocumentAttributeAudio"
@@ -1209,6 +1211,7 @@ def register_media_routes(agents_bp: Blueprint):
                         media_bytes,
                         telegram_mime_type=hinted_mime,
                         telegram_kind_hint=object_kind_hint,
+                        file_name_hint=file_name_hint,
                         has_audio_attribute=has_audio_attribute,
                         has_sticker_attribute=has_sticker_attribute,
                     )
