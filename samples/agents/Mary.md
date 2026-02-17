@@ -4,11 +4,7 @@ Mary
 
 # Agent Phone
 
-+19714153741
-
-# Telegram ID
-
-6765630192
++12345678901
 
 # Reset Context On First Message
 
@@ -85,3 +81,6 @@ As you enter the church, a nun in full habit comes rushing out from a door to on
 # Typing Speed
 
 1000.0
+
+# Disabled
+
