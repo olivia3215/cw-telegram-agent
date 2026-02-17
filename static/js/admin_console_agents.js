@@ -145,6 +145,8 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                 loadAgentContacts(agentName);
             } else if (subtabName === 'parameters') {
                 loadAgentConfiguration(agentName);
+            } else if (subtabName === 'schedule') {
+                loadSchedule(agentName);
             } else if (subtabName === 'memories') {
                 loadMemories(agentName);
             } else if (subtabName === 'intentions') {
@@ -172,6 +174,15 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                 loadAgentProfile('');
             } else if (subtabName === 'contacts') {
                 loadAgentContacts('');
+            } else if (subtabName === 'schedule') {
+                const scheduleContainer = document.getElementById('schedule-container');
+                if (scheduleContainer) {
+                    if (window._scheduleClockInterval) {
+                        clearInterval(window._scheduleClockInterval);
+                        window._scheduleClockInterval = null;
+                    }
+                    scheduleContainer.innerHTML = '<div class="loading">Select an agent to manage schedule</div>';
+                }
             } else if (subtabName === 'costs') {
                 const costsContainer = document.getElementById('agent-costs-container');
                 if (costsContainer) {
@@ -3938,6 +3949,331 @@ function setupMediaUploadButton() {
     
     uploadBtn.parentElement.appendChild(fileInput);
     uploadBtn.onclick = () => fileInput.click();
+}
+
+// --- Schedule (calendar) maintenance ---
+function formatScheduleDateTime(isoStr, timeZone) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        const opts = { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+        if (timeZone) {
+            opts.timeZone = timeZone;
+        }
+        return new Intl.DateTimeFormat(undefined, opts).format(d);
+    } catch (_) {
+        return isoStr;
+    }
+}
+
+function scheduleUpdateAgentClock() {
+    const span = document.getElementById('schedule-agent-time-value');
+    const tz = window._scheduleClockTimezone;
+    if (!span || !tz) return;
+    try {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat(undefined, {
+            timeZone: tz,
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
+            timeZoneName: 'short'
+        });
+        span.textContent = fmt.format(now);
+    } catch (_) {
+        span.textContent = '--';
+    }
+}
+
+function renderScheduleContent(container, agentName, activities, timeZone) {
+    if (window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
+    window._scheduleClockTimezone = timeZone || null;
+    const clockRow = timeZone
+        ? '<div id="schedule-clock-row" style="margin-bottom: 16px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 15px;"><strong>Current time (agent\'s time zone):</strong> <span id="schedule-agent-time-value">--:--:--</span></div>'
+        : '';
+    const btnRow = '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">' +
+        '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
+        '<button type="button" id="schedule-extend-btn" onclick="scheduleExtend(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Extend schedule</button>' +
+        '</div>';
+    if (!activities || activities.length === 0) {
+        container.innerHTML = clockRow + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        if (timeZone) {
+            scheduleUpdateAgentClock();
+            window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
+        }
+        return;
+    }
+    let html = clockRow + btnRow + '<table style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;"><thead><tr style="background: #f5f5f5;">';
+    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Start</th>';
+    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">End</th>';
+    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Activity</th>';
+    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Responsiveness</th>';
+    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Actions</th></tr></thead><tbody>';
+    activities.forEach((act, idx) => {
+        const startFmt = formatScheduleDateTime(act.start_time, timeZone);
+        const endFmt = formatScheduleDateTime(act.end_time, timeZone);
+        const name = escapeHtml(act.activity_name || '');
+        const resp = act.responsiveness !== undefined ? act.responsiveness : '';
+        html += '<tr style="border-bottom: 1px solid #eee;">';
+        html += '<td style="padding: 10px 12px;">' + startFmt + '</td>';
+        html += '<td style="padding: 10px 12px;">' + endFmt + '</td>';
+        html += '<td style="padding: 10px 12px;">' + name + '</td>';
+        html += '<td style="padding: 10px 12px;">' + resp + '</td>';
+        html += '<td style="padding: 10px 12px; white-space: nowrap;">';
+        html += '<button type="button" onclick="scheduleAddAbove(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Add above</button>';
+        html += '<button type="button" onclick="scheduleAddBelow(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Add below</button>';
+        html += '<button type="button" onclick="scheduleEdit(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Edit</button>';
+        if (idx < activities.length - 1) {
+            html += '<button type="button" onclick="scheduleMergeWithNext(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Merge with next</button>';
+        }
+        html += '<button type="button" onclick="scheduleDelete(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; color: #c00;">Delete</button>';
+        html += '</td></tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    if (timeZone) {
+        scheduleUpdateAgentClock();
+        window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
+    }
+}
+
+function loadSchedule(agentName) {
+    const container = document.getElementById('schedule-container');
+    if (!container) return;
+    const agentSelect = document.getElementById('agents-agent-select');
+    const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+    if (currentAgentName !== agentName) return;
+    container.innerHTML = '<div class="loading">Loading schedule...</div>';
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`)
+        .then(response => response.json())
+        .then(data => {
+            const agentSelect2 = document.getElementById('agents-agent-select');
+            if (agentSelect2 && stripAsterisk(agentSelect2.value) !== agentName) return;
+            if (data.error) {
+                container.innerHTML = `<div class="error">${escapeHtml(data.error)}</div>`;
+                return;
+            }
+            renderScheduleContent(container, agentName, data.activities || [], data.timezone || null);
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') return;
+            const agentSelect2 = document.getElementById('agents-agent-select');
+            if (agentSelect2 && stripAsterisk(agentSelect2.value) !== agentName) return;
+            container.innerHTML = '<div class="error">Error loading schedule: ' + escapeHtml(String(error)) + '</div>';
+        });
+}
+
+function scheduleExtend(agentName) {
+    const container = document.getElementById('schedule-container');
+    const extendBtn = document.getElementById('schedule-extend-btn');
+    if (!container || !extendBtn) return;
+    const agentSelect = document.getElementById('agents-agent-select');
+    if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
+    extendBtn.disabled = true;
+    extendBtn.textContent = 'Extending…';
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule/extend`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) {
+                extendBtn.disabled = false;
+                extendBtn.textContent = 'Extend schedule';
+                return;
+            }
+            if (data.error) {
+                alert('Extend failed: ' + data.error);
+                extendBtn.disabled = false;
+                extendBtn.textContent = 'Extend schedule';
+                return;
+            }
+            renderScheduleContent(container, agentName, data.activities || [], data.timezone || null);
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') return;
+            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
+            alert('Extend failed: ' + (error && error.message ? error.message : String(error)));
+            extendBtn.disabled = false;
+            extendBtn.textContent = 'Extend schedule';
+        });
+}
+
+function scheduleGetActivities(agentName, cb) {
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) { cb(null, data.error); return; }
+            cb(data.activities || [], null);
+        })
+        .catch(e => { cb(null, e.message || String(e)); });
+}
+
+function scheduleSave(agentName, activities, timezone, lastExtended, done) {
+    const payload = { activities };
+    if (timezone !== undefined) payload.timezone = timezone;
+    if (lastExtended !== undefined) payload.last_extended = lastExtended;
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) { if (done) done(data.error); return; }
+            loadSchedule(agentName);
+            if (done) done(null);
+        })
+        .catch(e => { if (done) done(e.message || String(e)); });
+}
+
+function scheduleAddActivity(agentName, suggestedStart, suggestedEnd, insertBeforeIndex) {
+    const startIso = suggestedStart || '';
+    const endIso = suggestedEnd || '';
+    const modal = document.createElement('div');
+    modal.id = 'schedule-activity-modal';
+    modal.style.cssText = 'position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;';
+    modal.innerHTML = '<div style="background: white; padding: 24px; border-radius: 8px; max-width: 480px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">' +
+        '<h3 style="margin-top: 0;">Add activity</h3>' +
+        '<p style="margin-bottom: 12px; font-size: 13px; color: #666;">Use ISO 8601 with timezone (e.g. 2025-12-04T06:30:00-10:00)</p>' +
+        '<label style="display: block; margin-bottom: 4px;">Start time</label><input type="text" id="schedule-form-start" value="' + escapeHtml(startIso) + '" placeholder="2025-12-04T06:30:00-10:00" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+        '<label style="display: block; margin-bottom: 4px;">End time</label><input type="text" id="schedule-form-end" value="' + escapeHtml(endIso) + '" placeholder="2025-12-04T07:30:00-10:00" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+        '<label style="display: block; margin-bottom: 4px;">Activity name</label><input type="text" id="schedule-form-name" value="" placeholder="e.g. Wake / breakfast" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+        '<label style="display: block; margin-bottom: 4px;">Responsiveness (0–100)</label><input type="number" id="schedule-form-responsiveness" min="0" max="100" value="80" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+        '<label style="display: block; margin-bottom: 4px;">Description</label><textarea id="schedule-form-description" rows="3" placeholder="Optional details" style="width: 100%; padding: 8px; margin-bottom: 16px; box-sizing: border-box; resize: vertical;"></textarea>' +
+        '<div style="display: flex; gap: 8px;"><button type="button" id="schedule-form-save" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Save</button><button type="button" id="schedule-form-cancel" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button></div>' +
+        '</div>';
+    document.body.appendChild(modal);
+    const saveBtn = document.getElementById('schedule-form-save');
+    const cancelBtn = document.getElementById('schedule-form-cancel');
+    cancelBtn.onclick = () => { modal.remove(); };
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    saveBtn.onclick = () => {
+        const start = document.getElementById('schedule-form-start').value.trim();
+        const end = document.getElementById('schedule-form-end').value.trim();
+        const name = document.getElementById('schedule-form-name').value.trim();
+        const resp = parseInt(document.getElementById('schedule-form-responsiveness').value, 10);
+        const desc = document.getElementById('schedule-form-description').value.trim();
+        if (!start || !end || !name) { alert('Start time, end time, and activity name are required.'); return; }
+        if (isNaN(resp) || resp < 0 || resp > 100) { alert('Responsiveness must be 0–100.'); return; }
+        scheduleGetActivities(agentName, (activities, err) => {
+            if (err) { alert('Failed to load schedule: ' + err); return; }
+            const newId = 'act-' + Math.random().toString(16).slice(2, 10);
+            const newAct = { id: newId, start_time: start, end_time: end, activity_name: name, responsiveness: resp, description: desc };
+            if (insertBeforeIndex != null && insertBeforeIndex >= 0) {
+                activities.splice(insertBeforeIndex, 0, newAct);
+            } else {
+                activities.push(newAct);
+            }
+            scheduleSave(agentName, activities, undefined, undefined, (saveErr) => {
+                if (saveErr) alert('Failed to save: ' + saveErr);
+                modal.remove();
+            });
+        });
+    };
+}
+
+function scheduleAddAbove(agentName, index) {
+    scheduleGetActivities(agentName, (activities, err) => {
+        if (err) { alert('Failed to load schedule: ' + err); return; }
+        const prev = activities[index - 1];
+        const curr = activities[index];
+        const suggestedEnd = curr ? curr.start_time : '';
+        let suggestedStart = prev ? prev.end_time : '';
+        if (!suggestedStart && curr) {
+            try {
+                const d = new Date(curr.start_time);
+                d.setMinutes(d.getMinutes() - 60);
+                suggestedStart = d.toISOString().slice(0, 19) + (curr.start_time.includes('-') ? curr.start_time.slice(curr.start_time.indexOf('-')) : '+00:00');
+            } catch (_) {}
+        }
+        scheduleAddActivity(agentName, suggestedStart, suggestedEnd, index);
+    });
+}
+
+function scheduleAddBelow(agentName, index) {
+    scheduleGetActivities(agentName, (activities, err) => {
+        if (err) { alert('Failed to load schedule: ' + err); return; }
+        const curr = activities[index];
+        const next = activities[index + 1];
+        const suggestedStart = curr ? curr.end_time : '';
+        let suggestedEnd = next ? next.start_time : '';
+        if (!suggestedEnd && curr) {
+            try {
+                const d = new Date(curr.end_time);
+                d.setMinutes(d.getMinutes() + 60);
+                suggestedEnd = d.toISOString().slice(0, 19) + (curr.end_time.includes('-') ? curr.end_time.slice(curr.end_time.indexOf('-')) : '+00:00');
+            } catch (_) {}
+        }
+        scheduleAddActivity(agentName, suggestedStart, suggestedEnd, index + 1);
+    });
+}
+
+function scheduleEdit(agentName, index) {
+    scheduleGetActivities(agentName, (activities, err) => {
+        if (err) { alert('Failed to load schedule: ' + err); return; }
+        const act = activities[index];
+        if (!act) return;
+        const modal = document.createElement('div');
+        modal.id = 'schedule-edit-modal';
+        modal.style.cssText = 'position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;';
+        modal.innerHTML = '<div style="background: white; padding: 24px; border-radius: 8px; max-width: 480px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">' +
+            '<h3 style="margin-top: 0;">Edit activity</h3>' +
+            '<p style="margin-bottom: 12px; font-size: 13px; color: #666;">Use ISO 8601 with timezone</p>' +
+            '<label>Start time</label><input type="text" id="schedule-edit-start" value="' + escapeHtml(act.start_time || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+            '<label>End time</label><input type="text" id="schedule-edit-end" value="' + escapeHtml(act.end_time || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+            '<label>Activity name</label><input type="text" id="schedule-edit-name" value="' + escapeHtml(act.activity_name || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+            '<label>Responsiveness (0–100)</label><input type="number" id="schedule-edit-responsiveness" min="0" max="100" value="' + (act.responsiveness !== undefined ? act.responsiveness : 80) + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
+            '<label>Description</label><textarea id="schedule-edit-description" rows="3" style="width: 100%; padding: 8px; margin-bottom: 16px; box-sizing: border-box; resize: vertical;">' + escapeHtml(act.description || '') + '</textarea>' +
+            '<div style="display: flex; gap: 8px;"><button type="button" id="schedule-edit-save" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Save</button><button type="button" id="schedule-edit-cancel" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button></div>' +
+            '</div>';
+        document.body.appendChild(modal);
+        document.getElementById('schedule-edit-cancel').onclick = () => modal.remove();
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+        document.getElementById('schedule-edit-save').onclick = () => {
+            const start = document.getElementById('schedule-edit-start').value.trim();
+            const end = document.getElementById('schedule-edit-end').value.trim();
+            const name = document.getElementById('schedule-edit-name').value.trim();
+            const resp = parseInt(document.getElementById('schedule-edit-responsiveness').value, 10);
+            const desc = document.getElementById('schedule-edit-description').value.trim();
+            if (!start || !end || !name) { alert('Start time, end time, and activity name are required.'); return; }
+            if (isNaN(resp) || resp < 0 || resp > 100) { alert('Responsiveness must be 0–100.'); return; }
+            const updated = activities.slice();
+            updated[index] = { ...act, start_time: start, end_time: end, activity_name: name, responsiveness: resp, description: desc };
+            scheduleSave(agentName, updated, undefined, undefined, (saveErr) => {
+                if (saveErr) alert('Failed to save: ' + saveErr);
+                else modal.remove();
+            });
+        };
+    });
+}
+
+function scheduleMergeWithNext(agentName, index) {
+    scheduleGetActivities(agentName, (activities, err) => {
+        if (err) { alert('Failed to load schedule: ' + err); return; }
+        if (index >= activities.length - 1) return;
+        const curr = activities[index];
+        const next = activities[index + 1];
+        const merged = activities.slice(0, index).concat([{ ...curr, end_time: next.end_time }]).concat(activities.slice(index + 2));
+        scheduleSave(agentName, merged, undefined, undefined, (saveErr) => {
+            if (saveErr) alert('Failed to save: ' + saveErr);
+        });
+    });
+}
+
+function scheduleDelete(agentName, index) {
+    scheduleGetActivities(agentName, (activities, err) => {
+        if (err) { alert('Failed to load schedule: ' + err); return; }
+        const filtered = activities.filter((_, i) => i !== index);
+        scheduleSave(agentName, filtered, undefined, undefined, (saveErr) => {
+            if (saveErr) alert('Failed to save: ' + saveErr);
+        });
+    });
 }
 
 // Initialize media upload features when DOM is ready

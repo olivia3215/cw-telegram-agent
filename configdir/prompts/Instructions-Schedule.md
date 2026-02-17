@@ -17,6 +17,7 @@ Include:
 - Occasional travel or unusual activities
 - Natural variation in your routine
 - "Falling asleep" periods if appropriate (15 minutes or so before sleep)
+- When activities are in different locations, include an activity for travel between them.
 
 Make sure activities don't overlap. Activities should cover from the start time until at least midnight. If the last activity is sleep, it should continue past midnight until the normal wake time (e.g., 06:00:00 the next day).
 

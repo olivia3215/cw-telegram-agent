@@ -553,6 +553,10 @@ function switchSubtab(subtabName) {
     }
     
     const mainTabName = activeMainTab.getAttribute('data-tab-panel');
+    if (mainTabName === 'agents' && subtabName !== 'schedule' && window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
     
     // Check if the subtab is already active - if so, we still want to reload data
     const wasAlreadyActive = activeMainTab.querySelector(`.tab-button[data-subtab="${subtabName}"]`)?.classList.contains('active');
@@ -599,6 +603,8 @@ function switchSubtab(subtabName) {
                 loadAgentContacts(agentName);
             } else if (subtabName === 'parameters') {
                 loadAgentConfiguration(agentName);
+            } else if (subtabName === 'schedule') {
+                loadSchedule(agentName);
             } else if (subtabName === 'memories') {
                 // loadMemories will validate agentName matches current selection
                 loadMemories(agentName);
@@ -620,6 +626,15 @@ function switchSubtab(subtabName) {
             // No agent selected - clear profile if switching to profile subtab
             if (subtabName === 'profile') {
                 loadAgentProfile('');
+            } else if (subtabName === 'schedule') {
+                const container = document.getElementById('schedule-container');
+                if (container) {
+                    if (window._scheduleClockInterval) {
+                        clearInterval(window._scheduleClockInterval);
+                        window._scheduleClockInterval = null;
+                    }
+                    container.innerHTML = '<div class="loading">Select an agent to manage schedule</div>';
+                }
             } else if (subtabName === 'costs') {
                 const container = document.getElementById('agent-costs-container');
                 if (container) {
