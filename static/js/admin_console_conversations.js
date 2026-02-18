@@ -344,12 +344,14 @@ async function createNewAgentFromForm() {
         });
         const data = await response.json();
         if (data.success) {
+            newAgentConfigNames.add(configName);
+            await loadNewAgentDefaults(configDirectory);
+            updateNewAgentCreateState();
             const agentsTabButton = document.querySelector('.tab-button[data-tab="agents"]');
             if (agentsTabButton) {
                 agentsTabButton.click();
             }
             await loadAgents();
-            newAgentConfigNames.add(configName);
             const agentSelect = document.getElementById('agents-agent-select');
             if (agentSelect) {
                 agentSelect.value = data.config_name;
