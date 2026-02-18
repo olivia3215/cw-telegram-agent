@@ -393,6 +393,17 @@ async def inject_media_descriptions(
                         chan_name,
                     ) = await _resolve_sender_and_channel(agent, msg)
 
+                    # Use peer_id as fallback when message doesn't have chat_id/peer_id
+                    # (e.g. StoryMessageWrapper for channel stories). Ensures LLM usage
+                    # for media description is charged to the channel where content appears.
+                    if chan_id is None and peer_id is not None:
+                        chan_id = peer_id
+                        if chan_name is None:
+                            try:
+                                chan_name = await get_channel_name(agent, chan_id)
+                            except Exception:
+                                chan_name = None
+
                     # Process using the media source chain
                     # The chain handles: cache lookup, budget, AI generation, disk caching
                     record = await media_chain.get(
