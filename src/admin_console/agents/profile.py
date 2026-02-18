@@ -5,6 +5,7 @@
 #
 import base64
 import logging
+import time
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -20,18 +21,28 @@ from media.mime_utils import detect_mime_type_from_bytes
 
 logger = logging.getLogger(__name__)
 
+# Cache agent's profile photo list to avoid GetUserPhotosRequest flood. Key: agent_config_name. TTL 60s.
+_AGENT_PHOTOS_CACHE_TTL = 60.0
+_agent_profile_photos_cache: dict[str, tuple[float, list]] = {}
 
+
+async def _get_cached_agent_profile_photos(agent_config_name: str, client) -> tuple[Any, list]:
+    """Return (me, list of profile photo objects), using cache to avoid repeated GetUserPhotosRequest."""
+    me = await client.get_me()
+    now = time.monotonic()
+    if agent_config_name in _agent_profile_photos_cache:
+        expiry, photos = _agent_profile_photos_cache[agent_config_name]
+        if now < expiry:
+            return me, photos
+    photos = await client.get_profile_photos(me)
+    _agent_profile_photos_cache[agent_config_name] = (now + _AGENT_PHOTOS_CACHE_TTL, photos)
+    return me, photos
 
 
 async def _get_profile_photo_data_urls(client, agent=None) -> list[str]:
     """
     Get all of the agent's profile photos as data URLs (async version).
-    
-    Args:
-        client: Telethon client instance
-        
-    Returns:
-        list[str]: Data URLs (base64 encoded images), newest first
+    Used when full list is needed; prefer count + first + on-demand for profile GET.
     """
     try:
         me = await client.get_me()
@@ -61,6 +72,52 @@ async def _get_profile_photo_data_urls(client, agent=None) -> list[str]:
         return []
 
 
+async def _get_agent_profile_photo_count_and_first(
+    client, agent=None, *, agent_config_name: str | None = None
+) -> tuple[int, str | None]:
+    """Get agent profile photo count and data URL for the first photo only. Use agent_config_name to cache."""
+    try:
+        if agent_config_name:
+            me, photos = await _get_cached_agent_profile_photos(agent_config_name, client)
+        else:
+            me = await client.get_me()
+            photos = await client.get_profile_photos(me)
+        if not photos:
+            return 0, None
+        from admin_console.agents.contacts import _get_profile_photo_bytes, _profile_photo_bytes_to_data_url
+
+        photo_bytes = await _get_profile_photo_bytes(agent, client, photos[0], entity=me)
+        if not photo_bytes:
+            return len(photos), None
+        return len(photos), _profile_photo_bytes_to_data_url(photo_bytes)
+    except Exception as e:
+        logger.debug("Error getting agent profile photo count/first: %s", e)
+        return 0, None
+
+
+async def _get_agent_profile_photo_by_index(
+    client, index: int, agent=None, *, agent_config_name: str | None = None
+) -> str | None:
+    """Get data URL for one agent profile photo by 0-based index. Use agent_config_name to cache."""
+    try:
+        if agent_config_name:
+            me, photos = await _get_cached_agent_profile_photos(agent_config_name, client)
+        else:
+            me = await client.get_me()
+            photos = await client.get_profile_photos(me)
+        if not photos or index < 0 or index >= len(photos):
+            return None
+        from admin_console.agents.contacts import _get_profile_photo_bytes, _profile_photo_bytes_to_data_url
+
+        photo_bytes = await _get_profile_photo_bytes(agent, client, photos[index], entity=me)
+        if not photo_bytes:
+            return None
+        return _profile_photo_bytes_to_data_url(photo_bytes)
+    except Exception as e:
+        logger.debug("Error loading agent profile photo at index %s: %s", index, e)
+        return None
+
+
 def register_profile_routes(agents_bp: Blueprint):
     """Register agent profile routes."""
     
@@ -80,8 +137,10 @@ def register_profile_routes(agents_bp: Blueprint):
                 input_user = await agent.client.get_input_entity(me.id)
                 full_user_response = await agent.client(GetFullUserRequest(input_user))
                 
-                # Get profile photo
-                profile_photos = await _get_profile_photo_data_urls(agent.client, agent=agent)
+                # First photo only; rest loaded on demand via profile/photo/<index>
+                profile_photo_count, profile_photo = await _get_agent_profile_photo_count_and_first(
+                    agent.client, agent=agent, agent_config_name=agent_config_name
+                )
                 
                 # GetFullUserRequest returns a UserFull object
                 # The 'about' and 'birthday' fields are on the UserFull object directly
@@ -135,19 +194,53 @@ def register_profile_routes(agents_bp: Blueprint):
                     "telegram_id": me.id,
                     "bio": bio or "",
                     "birthday": birthday,
-                    "profile_photo": profile_photos[0] if profile_photos else None,
-                    "profile_photos": profile_photos,
+                    "profile_photo": profile_photo,
+                    "profile_photo_count": profile_photo_count,
                     "is_premium": is_premium,
                     "bio_limit": 140 if is_premium else 70
                 }
             
-            profile_data = agent.execute(_get_profile(), timeout=10.0)
+            profile_data = agent.execute(_get_profile(), timeout=25.0)
             return jsonify(profile_data)
             
         except Exception as e:
             logger.error(f"Error getting agent profile for {agent_config_name}: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
+    @agents_bp.route(
+        "/api/agents/<agent_config_name>/profile/photo/<int:photo_index>",
+        methods=["GET"],
+    )
+    def api_get_agent_profile_photo(agent_config_name: str, photo_index: int):
+        """Get one agent profile photo by 0-based index. Returns { data_url } or 404."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            async def _get_photo():
+                return await _get_agent_profile_photo_by_index(
+                    agent.client,
+                    photo_index,
+                    agent=agent,
+                    agent_config_name=agent_config_name,
+                )
+
+            data_url = agent.execute(_get_photo(), timeout=25.0)
+            if data_url is None:
+                return jsonify({"error": "Photo not found or index out of range"}), 404
+            return jsonify({"data_url": data_url})
+        except Exception as e:
+            logger.error(
+                "Error getting agent profile photo for %s index %s: %s",
+                agent_config_name,
+                photo_index,
+                e,
+            )
+            return jsonify({"error": str(e)}), 500
+
     @agents_bp.route("/api/agents/<agent_config_name>/profile", methods=["PUT"])
     def api_update_agent_profile(agent_config_name: str):
         """Update agent profile information."""
@@ -260,7 +353,9 @@ def register_profile_routes(agents_bp: Blueprint):
                 input_user = await agent.client.get_input_entity(me.id)
                 full_user_response = await agent.client(GetFullUserRequest(input_user))
                 
-                profile_photos = await _get_profile_photo_data_urls(agent.client, agent=agent)
+                profile_photo_count, profile_photo = await _get_agent_profile_photo_count_and_first(
+                    agent.client, agent=agent, agent_config_name=agent_config_name
+                )
                 
                 # GetFullUserRequest returns a UserFull object
                 # Access bio and birthday with fallback for nested structure
@@ -311,8 +406,8 @@ def register_profile_routes(agents_bp: Blueprint):
                     "telegram_id": me.id,
                     "bio": bio or "",
                     "birthday": birthday,
-                    "profile_photo": profile_photos[0] if profile_photos else None,
-                    "profile_photos": profile_photos,
+                    "profile_photo": profile_photo,
+                    "profile_photo_count": profile_photo_count,
                     "is_premium": is_premium,
                     "bio_limit": bio_limit
                 }

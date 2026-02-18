@@ -500,6 +500,37 @@ async function loadConversationData() {
     }
 }
 
+function prefetchConversationProfilePhotos(currentIndex) {
+    const count = conversationProfilePhotoCount;
+    if (count <= 0) return;
+    const indices = [
+        (currentIndex + 1) % count,
+        (currentIndex + 2) % count,
+        (currentIndex - 1 + count) % count
+    ];
+    indices.forEach((i) => ensureConversationProfilePhotoLoaded(i));
+}
+
+async function ensureConversationProfilePhotoLoaded(index) {
+    if (conversationProfilePhotoCount <= 0 || index < 0 || index >= conversationProfilePhotoCount) return;
+    if (conversationProfilePhotos[index]) return;
+    const agentName = conversationProfileAgentName;
+    const userId = conversationProfileUserId;
+    if (!agentName || !userId) return;
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}/photo/${index}`);
+        const data = await response.json();
+        if (data.data_url) {
+            conversationProfilePhotos[index] = data.data_url;
+            updateConversationProfilePhotoDisplay();
+            prefetchConversationProfilePhotos(index);
+        }
+    } catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        console.debug('Failed to load conversation profile photo at index', index, e);
+    }
+}
+
 function updateConversationProfilePhotoDisplay() {
     const photoImg = document.getElementById('conversation-profile-photo');
     const profileVideo = document.getElementById('conversation-profile-video');
@@ -512,9 +543,10 @@ function updateConversationProfilePhotoDisplay() {
     const fullNextBtn = document.getElementById('conversation-profile-photo-fullscreen-next');
     const fullMetaIndex = document.getElementById('conversation-profile-photo-meta-index');
     const fullMetaType = document.getElementById('conversation-profile-photo-meta-type');
+    const count = conversationProfilePhotoCount;
     const photos = conversationProfilePhotos;
-    const hasPhotos = photos.length > 0;
-    const hasMultiple = photos.length > 1;
+    const hasPhotos = count > 0;
+    const hasMultiple = count > 1;
 
     if (!hasPhotos) {
         if (photoImg) {
@@ -546,9 +578,19 @@ function updateConversationProfilePhotoDisplay() {
         return;
     }
 
-    const safeIndex = Math.min(Math.max(conversationProfilePhotoIndex, 0), photos.length - 1);
+    const safeIndex = Math.min(Math.max(conversationProfilePhotoIndex, 0), count - 1);
     conversationProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
+    if (!src) {
+        ensureConversationProfilePhotoLoaded(safeIndex);
+        if (indexLabel) indexLabel.textContent = `${safeIndex + 1} of ${count}`;
+        if (fullMetaIndex) fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
+        [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
+            if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
+        });
+        prefetchConversationProfilePhotos(safeIndex);
+        return;
+    }
     const isVideo = String(src || '').startsWith('data:video/');
     if (isVideo) {
         if (photoImg) {
@@ -590,10 +632,10 @@ function updateConversationProfilePhotoDisplay() {
         }
     }
     if (indexLabel) {
-        indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+        indexLabel.textContent = `${safeIndex + 1} of ${count}`;
     }
     if (fullMetaIndex) {
-        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
     }
     if (fullMetaType) {
         fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
@@ -601,11 +643,12 @@ function updateConversationProfilePhotoDisplay() {
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
     });
+    prefetchConversationProfilePhotos(safeIndex);
 }
 
 function showConversationProfilePhotoFullscreen() {
     const modal = document.getElementById('conversation-profile-photo-modal');
-    if (!modal || conversationProfilePhotos.length === 0) {
+    if (!modal || conversationProfilePhotoCount === 0) {
         return;
     }
     updateConversationProfilePhotoDisplay();
@@ -625,8 +668,8 @@ function closeConversationProfilePhotoFullscreen() {
 
 function showPreviousConversationProfilePhoto(event, includeFullscreen = false) {
     if (event) event.stopPropagation();
-    if (conversationProfilePhotos.length <= 1) return;
-    conversationProfilePhotoIndex = (conversationProfilePhotoIndex - 1 + conversationProfilePhotos.length) % conversationProfilePhotos.length;
+    if (conversationProfilePhotoCount <= 1) return;
+    conversationProfilePhotoIndex = (conversationProfilePhotoIndex - 1 + conversationProfilePhotoCount) % conversationProfilePhotoCount;
     updateConversationProfilePhotoDisplay();
     if (includeFullscreen) {
         showConversationProfilePhotoFullscreen();
@@ -635,8 +678,8 @@ function showPreviousConversationProfilePhoto(event, includeFullscreen = false) 
 
 function showNextConversationProfilePhoto(event, includeFullscreen = false) {
     if (event) event.stopPropagation();
-    if (conversationProfilePhotos.length <= 1) return;
-    conversationProfilePhotoIndex = (conversationProfilePhotoIndex + 1) % conversationProfilePhotos.length;
+    if (conversationProfilePhotoCount <= 1) return;
+    conversationProfilePhotoIndex = (conversationProfilePhotoIndex + 1) % conversationProfilePhotoCount;
     updateConversationProfilePhotoDisplay();
     if (includeFullscreen) {
         showConversationProfilePhotoFullscreen();
@@ -750,6 +793,7 @@ async function loadConversationProfile() {
         }
         expectedConversationProfile = null;
         conversationProfilePhotos = [];
+        conversationProfilePhotoCount = 0;
         conversationProfilePhotoIndex = 0;
         updateConversationProfilePhotoDisplay();
         return;
@@ -776,10 +820,11 @@ async function loadConversationProfile() {
             if (profileContainer) {
                 profileContainer.style.display = 'block';
             }
-            expectedConversationProfile = null;
-            conversationProfilePhotos = [];
-            conversationProfilePhotoIndex = 0;
-            updateConversationProfilePhotoDisplay();
+        expectedConversationProfile = null;
+        conversationProfilePhotos = [];
+        conversationProfilePhotoCount = 0;
+        conversationProfilePhotoIndex = 0;
+        updateConversationProfilePhotoDisplay();
             return;
         }
 
@@ -844,11 +889,16 @@ async function loadConversationProfile() {
         conversationBioTextarea.value = data.bio || '';
         autoGrowTextarea(conversationBioTextarea);
 
-        conversationProfilePhotos = Array.isArray(data.profile_photos)
-            ? data.profile_photos.filter(Boolean)
-            : (data.profile_photo ? [data.profile_photo] : []);
+        conversationProfilePhotoCount = Math.max(0, parseInt(data.profile_photo_count, 10) || 0);
+        conversationProfilePhotos = new Array(conversationProfilePhotoCount);
+        if (conversationProfilePhotoCount > 0 && data.profile_photo) {
+            conversationProfilePhotos[0] = data.profile_photo;
+        }
+        conversationProfileAgentName = agentName;
+        conversationProfileUserId = userId;
         conversationProfilePhotoIndex = 0;
         updateConversationProfilePhotoDisplay();
+        prefetchConversationProfilePhotos(0);
 
         // Handle birthday (only for users)
         const monthSelect = document.getElementById('conversation-profile-birthday-month');
@@ -912,6 +962,7 @@ async function loadConversationProfile() {
         }
         expectedConversationProfile = null;
         conversationProfilePhotos = [];
+        conversationProfilePhotoCount = 0;
         conversationProfilePhotoIndex = 0;
         updateConversationProfilePhotoDisplay();
     }
@@ -967,11 +1018,14 @@ async function saveConversationProfile() {
 
         originalConversationProfile = JSON.parse(JSON.stringify(data));
         currentConversationProfile = data;
-        conversationProfilePhotos = Array.isArray(data.profile_photos)
-            ? data.profile_photos.filter(Boolean)
-            : (data.profile_photo ? [data.profile_photo] : []);
+        conversationProfilePhotoCount = Math.max(0, parseInt(data.profile_photo_count, 10) || 0);
+        conversationProfilePhotos = new Array(conversationProfilePhotoCount);
+        if (conversationProfilePhotoCount > 0 && data.profile_photo) {
+            conversationProfilePhotos[0] = data.profile_photo;
+        }
         conversationProfilePhotoIndex = 0;
         updateConversationProfilePhotoDisplay();
+        prefetchConversationProfilePhotos(0);
 
         document.getElementById('conversation-profile-first-name').value = data.first_name || '';
         document.getElementById('conversation-profile-last-name').value = data.last_name || '';
@@ -1375,14 +1429,18 @@ async function openEntityPhotos(agentName, userId, entityLabel) {
             alert(`Error loading ${entityLabel} photos: ` + data.error);
             return;
         }
-        const photos = Array.isArray(data.profile_photos)
-            ? data.profile_photos.filter(Boolean)
-            : (data.profile_photo ? [data.profile_photo] : []);
-        if (photos.length === 0) {
+        const count = Math.max(0, parseInt(data.profile_photo_count, 10) || 0);
+        if (count === 0) {
             alert(`No profile photos available for this ${entityLabel}.`);
             return;
         }
-        showContactPhotoFullscreen(photos);
+        contactFullscreenPhotoCount = count;
+        contactFullscreenPhotos = new Array(count);
+        if (data.profile_photo) contactFullscreenPhotos[0] = data.profile_photo;
+        contactFullscreenAgentName = agentName;
+        contactFullscreenUserId = userId;
+        contactFullscreenPhotoIndex = 0;
+        showContactPhotoFullscreen();
     } catch (error) {
         if (error && error.message === 'unauthorized') {
             return;
@@ -2126,11 +2184,19 @@ let currentConversationProfile = null;
 let originalConversationProfile = null;
 let expectedConversationProfile = null; // Track current conversation profile request
 let agentProfilePhotos = [];
+let agentProfilePhotoCount = 0;
 let agentProfilePhotoIndex = 0;
+let agentProfilePhotoAgentName = null;
 let conversationProfilePhotos = [];
+let conversationProfilePhotoCount = 0;
 let conversationProfilePhotoIndex = 0;
+let conversationProfileAgentName = null;
+let conversationProfileUserId = null;
 let contactFullscreenPhotos = [];
+let contactFullscreenPhotoCount = 0;
 let contactFullscreenPhotoIndex = 0;
+let contactFullscreenAgentName = null;
+let contactFullscreenUserId = null;
 let selectedAgentContacts = new Set();
 let selectedAgentContactsAgent = null;
 let currentAgentContactsUserIds = [];
@@ -2138,6 +2204,36 @@ let expectedAgentContacts = null; // Track current agent contacts request
 let contactAvatarLoadToken = 0;
 
 // Profile photo fullscreen functions
+function prefetchAgentProfilePhotos(currentIndex) {
+    const count = agentProfilePhotoCount;
+    if (count <= 0) return;
+    const indices = [
+        (currentIndex + 1) % count,
+        (currentIndex + 2) % count,
+        (currentIndex - 1 + count) % count
+    ];
+    indices.forEach((i) => ensureAgentProfilePhotoLoaded(i));
+}
+
+async function ensureAgentProfilePhotoLoaded(index) {
+    if (agentProfilePhotoCount <= 0 || index < 0 || index >= agentProfilePhotoCount) return;
+    if (agentProfilePhotos[index]) return;
+    const agentName = agentProfilePhotoAgentName;
+    if (!agentName) return;
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/profile/photo/${index}`);
+        const data = await response.json();
+        if (data.data_url) {
+            agentProfilePhotos[index] = data.data_url;
+            updateAgentProfilePhotoDisplay();
+            prefetchAgentProfilePhotos(index);
+        }
+    } catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        console.debug('Failed to load agent profile photo at index', index, e);
+    }
+}
+
 function updateAgentProfilePhotoDisplay() {
     const photoImg = document.getElementById('agent-profile-photo');
     const profileVideo = document.getElementById('agent-profile-video');
@@ -2150,9 +2246,10 @@ function updateAgentProfilePhotoDisplay() {
     const fullNextBtn = document.getElementById('profile-photo-fullscreen-next');
     const fullMetaIndex = document.getElementById('profile-photo-meta-index');
     const fullMetaType = document.getElementById('profile-photo-meta-type');
+    const count = agentProfilePhotoCount;
     const photos = agentProfilePhotos;
-    const hasPhotos = photos.length > 0;
-    const hasMultiple = photos.length > 1;
+    const hasPhotos = count > 0;
+    const hasMultiple = count > 1;
 
     if (!hasPhotos) {
         if (photoImg) {
@@ -2184,9 +2281,19 @@ function updateAgentProfilePhotoDisplay() {
         return;
     }
 
-    const safeIndex = Math.min(Math.max(agentProfilePhotoIndex, 0), photos.length - 1);
+    const safeIndex = Math.min(Math.max(agentProfilePhotoIndex, 0), count - 1);
     agentProfilePhotoIndex = safeIndex;
     const src = photos[safeIndex];
+    if (!src) {
+        ensureAgentProfilePhotoLoaded(safeIndex);
+        if (indexLabel) indexLabel.textContent = `${safeIndex + 1} of ${count}`;
+        if (fullMetaIndex) fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
+        [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
+            if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
+        });
+        prefetchAgentProfilePhotos(safeIndex);
+        return;
+    }
     const isVideo = String(src || '').startsWith('data:video/');
     if (isVideo) {
         if (photoImg) {
@@ -2228,10 +2335,10 @@ function updateAgentProfilePhotoDisplay() {
         }
     }
     if (indexLabel) {
-        indexLabel.textContent = `${safeIndex + 1} of ${photos.length}`;
+        indexLabel.textContent = `${safeIndex + 1} of ${count}`;
     }
     if (fullMetaIndex) {
-        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
     }
     if (fullMetaType) {
         fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
@@ -2239,11 +2346,12 @@ function updateAgentProfilePhotoDisplay() {
     [prevBtn, nextBtn, fullPrevBtn, fullNextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
     });
+    prefetchAgentProfilePhotos(safeIndex);
 }
 
 function showProfilePhotoFullscreen() {
     const modal = document.getElementById('profile-photo-modal');
-    if (!modal || agentProfilePhotos.length === 0) {
+    if (!modal || agentProfilePhotoCount === 0) {
         return;
     }
     updateAgentProfilePhotoDisplay();
@@ -2263,8 +2371,8 @@ function closeProfilePhotoFullscreen() {
 
 function showPreviousAgentProfilePhoto(event, includeFullscreen = false) {
     if (event) event.stopPropagation();
-    if (agentProfilePhotos.length <= 1) return;
-    agentProfilePhotoIndex = (agentProfilePhotoIndex - 1 + agentProfilePhotos.length) % agentProfilePhotos.length;
+    if (agentProfilePhotoCount <= 1) return;
+    agentProfilePhotoIndex = (agentProfilePhotoIndex - 1 + agentProfilePhotoCount) % agentProfilePhotoCount;
     updateAgentProfilePhotoDisplay();
     if (includeFullscreen) {
         showProfilePhotoFullscreen();
@@ -2273,11 +2381,42 @@ function showPreviousAgentProfilePhoto(event, includeFullscreen = false) {
 
 function showNextAgentProfilePhoto(event, includeFullscreen = false) {
     if (event) event.stopPropagation();
-    if (agentProfilePhotos.length <= 1) return;
-    agentProfilePhotoIndex = (agentProfilePhotoIndex + 1) % agentProfilePhotos.length;
+    if (agentProfilePhotoCount <= 1) return;
+    agentProfilePhotoIndex = (agentProfilePhotoIndex + 1) % agentProfilePhotoCount;
     updateAgentProfilePhotoDisplay();
     if (includeFullscreen) {
         showProfilePhotoFullscreen();
+    }
+}
+
+function prefetchContactFullscreenPhotos(currentIndex) {
+    const count = contactFullscreenPhotoCount;
+    if (count <= 0) return;
+    const indices = [
+        (currentIndex + 1) % count,
+        (currentIndex + 2) % count,
+        (currentIndex - 1 + count) % count
+    ];
+    indices.forEach((i) => ensureContactFullscreenPhotoLoaded(i));
+}
+
+async function ensureContactFullscreenPhotoLoaded(index) {
+    if (contactFullscreenPhotoCount <= 0 || index < 0 || index >= contactFullscreenPhotoCount) return;
+    if (contactFullscreenPhotos[index]) return;
+    const agentName = contactFullscreenAgentName;
+    const userId = contactFullscreenUserId;
+    if (!agentName || !userId) return;
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/partner-profile/${encodeURIComponent(userId)}/photo/${index}`);
+        const data = await response.json();
+        if (data.data_url) {
+            contactFullscreenPhotos[index] = data.data_url;
+            updateContactFullscreenPhotoDisplay();
+            prefetchContactFullscreenPhotos(index);
+        }
+    } catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        console.debug('Failed to load contact fullscreen photo at index', index, e);
     }
 }
 
@@ -2288,9 +2427,10 @@ function updateContactFullscreenPhotoDisplay() {
     const fullMetaType = document.getElementById('contacts-photo-meta-type');
     const prevBtn = document.getElementById('contacts-photo-fullscreen-prev');
     const nextBtn = document.getElementById('contacts-photo-fullscreen-next');
+    const count = contactFullscreenPhotoCount;
     const photos = contactFullscreenPhotos;
-    const hasPhotos = photos.length > 0;
-    const hasMultiple = photos.length > 1;
+    const hasPhotos = count > 0;
+    const hasMultiple = count > 1;
 
     if (!fullImg || !fullVideo) {
         return;
@@ -2314,9 +2454,18 @@ function updateContactFullscreenPhotoDisplay() {
         return;
     }
 
-    const safeIndex = Math.min(Math.max(contactFullscreenPhotoIndex, 0), photos.length - 1);
+    const safeIndex = Math.min(Math.max(contactFullscreenPhotoIndex, 0), count - 1);
     contactFullscreenPhotoIndex = safeIndex;
     const src = photos[safeIndex];
+    if (!src) {
+        ensureContactFullscreenPhotoLoaded(safeIndex);
+        if (fullMetaIndex) fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
+        [prevBtn, nextBtn].forEach(btn => {
+            if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
+        });
+        prefetchContactFullscreenPhotos(safeIndex);
+        return;
+    }
     const isVideo = String(src || '').startsWith('data:video/');
     if (isVideo) {
         fullImg.src = '';
@@ -2332,7 +2481,7 @@ function updateContactFullscreenPhotoDisplay() {
         fullImg.style.display = 'block';
     }
     if (fullMetaIndex) {
-        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${photos.length}`;
+        fullMetaIndex.innerHTML = `<strong>Item:</strong> ${safeIndex + 1} of ${count}`;
     }
     if (fullMetaType) {
         fullMetaType.innerHTML = `<strong>Type:</strong> ${isVideo ? 'video' : 'image'}`;
@@ -2340,6 +2489,7 @@ function updateContactFullscreenPhotoDisplay() {
     [prevBtn, nextBtn].forEach(btn => {
         if (btn) btn.style.display = hasMultiple ? 'inline-block' : 'none';
     });
+    prefetchContactFullscreenPhotos(safeIndex);
 }
 
 function showContactPhotoFullscreen(photoList) {
@@ -2350,12 +2500,18 @@ function showContactPhotoFullscreen(photoList) {
     if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
-    contactFullscreenPhotos = Array.isArray(photoList) ? photoList.filter(Boolean) : [];
-    contactFullscreenPhotoIndex = 0; // Always open on first/icon photo.
-    if (contactFullscreenPhotos.length === 0) {
+    if (photoList !== undefined) {
+        contactFullscreenPhotos = Array.isArray(photoList) ? photoList.filter(Boolean) : [];
+        contactFullscreenPhotoCount = contactFullscreenPhotos.length;
+        contactFullscreenAgentName = null;
+        contactFullscreenUserId = null;
+    }
+    contactFullscreenPhotoIndex = 0;
+    if (contactFullscreenPhotoCount === 0) {
         return;
     }
     updateContactFullscreenPhotoDisplay();
+    prefetchContactFullscreenPhotos(0);
     modal.style.display = 'block';
 }
 
@@ -2372,15 +2528,15 @@ function closeContactPhotoFullscreen() {
 
 function showPreviousContactPhoto(event) {
     if (event) event.stopPropagation();
-    if (contactFullscreenPhotos.length <= 1) return;
-    contactFullscreenPhotoIndex = (contactFullscreenPhotoIndex - 1 + contactFullscreenPhotos.length) % contactFullscreenPhotos.length;
+    if (contactFullscreenPhotoCount <= 1) return;
+    contactFullscreenPhotoIndex = (contactFullscreenPhotoIndex - 1 + contactFullscreenPhotoCount) % contactFullscreenPhotoCount;
     updateContactFullscreenPhotoDisplay();
 }
 
 function showNextContactPhoto(event) {
     if (event) event.stopPropagation();
-    if (contactFullscreenPhotos.length <= 1) return;
-    contactFullscreenPhotoIndex = (contactFullscreenPhotoIndex + 1) % contactFullscreenPhotos.length;
+    if (contactFullscreenPhotoCount <= 1) return;
+    contactFullscreenPhotoIndex = (contactFullscreenPhotoIndex + 1) % contactFullscreenPhotoCount;
     updateContactFullscreenPhotoDisplay();
 }
 
@@ -2506,6 +2662,7 @@ async function loadAgentProfile(agentName) {
         }
         expectedProfileAgent = null;
         agentProfilePhotos = [];
+        agentProfilePhotoCount = 0;
         agentProfilePhotoIndex = 0;
         updateAgentProfilePhotoDisplay();
         return;
@@ -2542,6 +2699,7 @@ async function loadAgentProfile(agentName) {
                 }
                 expectedProfileAgent = null;
                 agentProfilePhotos = [];
+                agentProfilePhotoCount = 0;
                 agentProfilePhotoIndex = 0;
                 updateAgentProfilePhotoDisplay();
                 return;
@@ -2555,6 +2713,7 @@ async function loadAgentProfile(agentName) {
             }
             expectedProfileAgent = null;
             agentProfilePhotos = [];
+            agentProfilePhotoCount = 0;
             agentProfilePhotoIndex = 0;
             updateAgentProfilePhotoDisplay();
             return;
@@ -2589,11 +2748,15 @@ async function loadAgentProfile(agentName) {
         autoGrowTextarea(agentBioTextarea);
         
         // Set profile photo list
-        agentProfilePhotos = Array.isArray(data.profile_photos)
-            ? data.profile_photos.filter(Boolean)
-            : (data.profile_photo ? [data.profile_photo] : []);
+        agentProfilePhotoCount = Math.max(0, parseInt(data.profile_photo_count, 10) || 0);
+        agentProfilePhotos = new Array(agentProfilePhotoCount);
+        if (agentProfilePhotoCount > 0 && data.profile_photo) {
+            agentProfilePhotos[0] = data.profile_photo;
+        }
+        agentProfilePhotoAgentName = agentName;
         agentProfilePhotoIndex = 0;
         updateAgentProfilePhotoDisplay();
+        prefetchAgentProfilePhotos(0);
         
         // Set birthday
         const monthSelect = document.getElementById('agent-profile-birthday-month');
@@ -2636,6 +2799,7 @@ async function loadAgentProfile(agentName) {
             }
             expectedProfileAgent = null;
             agentProfilePhotos = [];
+            agentProfilePhotoCount = 0;
             agentProfilePhotoIndex = 0;
             updateAgentProfilePhotoDisplay();
         }
