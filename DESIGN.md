@@ -1728,6 +1728,16 @@ We considered storing the profile photo list in each media's JSON metadata file 
 3. **Querying**: Database queries are simpler than scanning JSON files
 4. **Consistency**: All profile photo state in one place
 
+### Profile and Partner Profile View (on-demand photos)
+
+The **Agents → Profile** and **Conversations → partner profile** views show one profile photo at a time with prev/next. To avoid timeouts and Telegram flood limits when there are many photos:
+
+- **GET** `.../profile` and **GET** `.../partner-profile/<user_id>` return `profile_photo` (first photo data URL) and `profile_photo_count` only; they do not return a full list of photo data URLs.
+- Additional photos are loaded on demand via **GET** `.../profile/photo/<index>` (agent) and **GET** `.../partner-profile/<user_id>/photo/<index>` (partner). Each returns `{ "data_url": "..." }`.
+- The list of profile photo objects (from `GetUserPhotosRequest`) is cached per entity for 60 seconds so that prefetching several indices does not trigger repeated Telegram API calls.
+
+**Routes:** `src/admin_console/agents/contacts.py` (partner), `src/admin_console/agents/profile.py` (agent).
+
 ### Integration Points
 
 **Admin Console Routes:** `src/admin_console/agents/media.py`

@@ -6,6 +6,7 @@
 import asyncio
 import base64
 import logging
+import time
 from typing import Any
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
@@ -32,6 +33,26 @@ from media.media_source import (
 from telegram_download import download_media_bytes
 
 logger = logging.getLogger(__name__)
+
+# Cache profile photo list (Telegram objects) per entity to avoid GetUserPhotosRequest flood.
+# Key: (agent_config_name, entity_id_str). TTL 60s.
+_PARTNER_PHOTOS_CACHE_TTL = 60.0
+_partner_profile_photos_cache: dict[tuple[str, str], tuple[float, list]] = {}
+
+
+async def _get_cached_partner_profile_photos(
+    agent_config_name: str, entity_id_str: str, client, entity
+) -> list:
+    """Return list of profile photo objects, using cache to avoid repeated GetUserPhotosRequest."""
+    key = (agent_config_name, entity_id_str)
+    now = time.monotonic()
+    if key in _partner_profile_photos_cache:
+        expiry, photos = _partner_profile_photos_cache[key]
+        if now < expiry:
+            return photos
+    photos = await client.get_profile_photos(entity)
+    _partner_profile_photos_cache[key] = (now + _PARTNER_PHOTOS_CACHE_TTL, photos)
+    return photos
 
 
 def _profile_photo_bytes_to_data_url(photo_bytes: bytes | None) -> str | None:
@@ -60,6 +81,7 @@ def _get_embedded_profile_thumb_data_url(photo) -> str | None:
 
 
 async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
+    """Load all profile photos as data URLs (used when full list is needed)."""
     try:
         photos = await client.get_profile_photos(entity)
         if not photos:
@@ -83,6 +105,58 @@ async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
     except Exception as e:
         logger.debug(f"Error getting profile photo: {e}")
         return []
+
+
+async def _get_partner_profile_photo_count_and_first(
+    client, entity, agent=None, *, cache_key: tuple[str, str] | None = None
+) -> tuple[int, str | None]:
+    """
+    Get profile photo count and data URL for the first photo only (for profile response).
+    Use cache_key=(agent_config_name, entity_id_str) to reuse GetUserPhotosRequest result.
+    """
+    try:
+        if cache_key:
+            photos = await _get_cached_partner_profile_photos(
+                cache_key[0], cache_key[1], client, entity
+            )
+        else:
+            photos = await client.get_profile_photos(entity)
+        if not photos:
+            return 0, None
+        photo_bytes = await _get_profile_photo_bytes(
+            agent, client, photos[0], entity=entity
+        )
+        if not photo_bytes:
+            return len(photos), None
+        data_url = _profile_photo_bytes_to_data_url(photo_bytes)
+        return len(photos), data_url
+    except Exception as e:
+        logger.debug("Error getting profile photo count/first: %s", e)
+        return 0, None
+
+
+async def _get_partner_profile_photo_by_index(
+    client, entity, index: int, agent=None, *, cache_key: tuple[str, str] | None = None
+) -> str | None:
+    """Get data URL for one profile photo by 0-based index. Use cache_key to avoid repeated GetUserPhotosRequest."""
+    try:
+        if cache_key:
+            photos = await _get_cached_partner_profile_photos(
+                cache_key[0], cache_key[1], client, entity
+            )
+        else:
+            photos = await client.get_profile_photos(entity)
+        if not photos or index < 0 or index >= len(photos):
+            return None
+        photo_bytes = await _get_profile_photo_bytes(
+            agent, client, photos[index], entity=entity
+        )
+        if not photo_bytes:
+            return None
+        return _profile_photo_bytes_to_data_url(photo_bytes)
+    except Exception as e:
+        logger.debug("Error loading profile photo at index %s: %s", index, e)
+        return None
 
 
 async def _get_profile_photo_bytes(
@@ -269,7 +343,17 @@ async def _build_partner_profile(agent, client, entity: Any) -> dict[str, Any]:
             except Exception as e:
                 logger.debug(f"Failed to fetch full channel info for {entity.id}: {e}")
 
-    profile_photos = await _get_profile_photo_data_urls(client, entity, agent=agent)
+    try:
+        entity_id = getattr(entity, "id", None)
+        if entity_id is None:
+            entity_id = tg_utils.get_peer_id(entity)
+        agent_config_name = getattr(agent, "config_name", None) if agent else None
+        cache_key = (agent_config_name, str(entity_id)) if agent_config_name else None
+    except Exception:
+        cache_key = None
+    profile_photo_count, profile_photo = await _get_partner_profile_photo_count_and_first(
+        client, entity, agent=agent, cache_key=cache_key
+    )
     username = _extract_username(entity) or ""
     partner_type = "user"
     if is_chat:
@@ -289,8 +373,8 @@ async def _build_partner_profile(agent, client, entity: Any) -> dict[str, Any]:
         "telegram_id": telegram_id,
         "bio": bio,
         "birthday": birthday,
-        "profile_photo": profile_photos[0] if profile_photos else None,
-        "profile_photos": profile_photos,
+        "profile_photo": profile_photo,
+        "profile_photo_count": profile_photo_count,
         "is_contact": is_contact,
         "is_deleted": is_deleted,
         "can_edit_contact": is_user,
@@ -479,11 +563,52 @@ def register_contact_routes(agents_bp: Blueprint):
                 entity = await agent.client.get_entity(channel_id)
                 return await _build_partner_profile(agent, agent.client, entity)
 
-            # Allow time for multiple profile photos (each has per-download timeout in pipeline).
+            # Profile now loads only first photo; others loaded on demand via photo/<index>.
             profile = agent.execute(_get_profile(), timeout=45.0)
             return jsonify(profile)
         except Exception as e:
             logger.error(f"Error getting partner profile for {agent_config_name}/{user_id}: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route(
+        "/api/agents/<agent_config_name>/partner-profile/<user_id>/photo/<int:photo_index>",
+        methods=["GET"],
+    )
+    def api_get_partner_profile_photo(agent_config_name: str, user_id: str, photo_index: int):
+        """Get one partner profile photo by 0-based index. Returns { data_url } or 404."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            if not agent.client:
+                return jsonify({"error": "Agent is not authenticated"}), 400
+
+            channel_id, error_response = resolve_user_id_and_handle_errors(agent, user_id, logger)
+            if error_response:
+                return error_response
+
+            async def _get_photo():
+                entity = await agent.client.get_entity(channel_id)
+                return await _get_partner_profile_photo_by_index(
+                    agent.client,
+                    entity,
+                    photo_index,
+                    agent=agent,
+                    cache_key=(agent_config_name, str(channel_id)),
+                )
+
+            data_url = agent.execute(_get_photo(), timeout=25.0)
+            if data_url is None:
+                return jsonify({"error": "Photo not found or index out of range"}), 404
+            return jsonify({"data_url": data_url})
+        except Exception as e:
+            logger.error(
+                "Error getting partner profile photo for %s/%s index %s: %s",
+                agent_config_name,
+                user_id,
+                photo_index,
+                e,
+            )
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/partner-profile/<user_id>", methods=["PUT"])
