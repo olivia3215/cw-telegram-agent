@@ -7,12 +7,15 @@
 Database operations for media metadata.
 """
 
+import inspect
 import logging
+import os
 from typing import Any
 
 from db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
+MEDIA_TRACE = "MEDIA_TRACE"
 
 
 def list_media_unique_ids(
@@ -206,7 +209,21 @@ def save_media_metadata(record: dict[str, Any]) -> None:
     unique_id = record.get("unique_id")
     if not unique_id or not str(unique_id).strip():
         raise ValueError("unique_id is required and cannot be empty")
-    
+
+    # Diagnostic: single bottleneck for all MySQL media metadata writes
+    try:
+        caller = inspect.stack()[1]
+        caller_name = f"{os.path.basename(caller.filename)}:{caller.lineno}"
+    except Exception:
+        caller_name = "?"
+    logger.info(
+        "%s METADATA_WRITE unique_id=%s media_file=%s caller=%s",
+        MEDIA_TRACE,
+        unique_id,
+        record.get("media_file"),
+        caller_name,
+    )
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:

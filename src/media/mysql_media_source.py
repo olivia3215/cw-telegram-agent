@@ -99,6 +99,7 @@ class MySQLMediaSource(MediaSource):
         # We write only the media file, not the JSON metadata (which goes to MySQL)
         # If file_extension is not provided, try to determine it from media_bytes
         media_filename = None
+        file_write_failed = False  # True when we attempted to write a file but it failed
         if media_bytes is not None and self.directory_source is not None:
             # Determine file extension if not provided
             if not file_extension:
@@ -117,13 +118,18 @@ class MySQLMediaSource(MediaSource):
                         f"MySQLMediaSource: failed to determine file extension for {unique_id}: {e}"
                     )
             
-            # Write file if we have a valid extension
+            # Write file if we have a valid extension (single bottleneck for state/media file writes)
             if file_extension:
                 try:
                     media_dir = self.directory_source.directory
                     media_dir.mkdir(parents=True, exist_ok=True)
                     media_filename = f"{unique_id}{file_extension}"
                     media_file = media_dir / media_filename
+                    logger.info(
+                        "MEDIA_TRACE FILE_WRITE state unique_id=%s path=%s",
+                        unique_id,
+                        media_file,
+                    )
                     temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
                     try:
                         temp_media_file.write_bytes(media_bytes)
@@ -136,9 +142,23 @@ class MySQLMediaSource(MediaSource):
                         raise
                 except Exception as e:
                     logger.error(f"MySQLMediaSource: failed to write media file for {unique_id} to disk: {e}")
-                    # Continue to store metadata even if file write fails
+                    file_write_failed = True
                     media_filename = None
-        
+                except BaseException:
+                    # CancelledError (timeout) and other BaseException: do not save metadata.
+                    file_write_failed = True
+                    media_filename = None
+                    raise
+
+        # Do not store metadata when file write failed: that would create orphaned
+        # MySQL rows (e.g. when profile photo load times out or disk write fails).
+        if file_write_failed:
+            logger.info(
+                "MEDIA_TRACE METADATA_SKIP unique_id=%s reason=file_write_failed (MySQLMediaSource)",
+                unique_id,
+            )
+            return
+
         # Store metadata in MySQL
         try:
             from db import media_metadata
