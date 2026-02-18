@@ -224,10 +224,6 @@ async def cache_media_bytes_in_pipeline(
     if not unique_id or not agent or not media_bytes:
         return
 
-    logger.info(
-        "MEDIA_TRACE PIPELINE_CACHE_REQUEST unique_id=%s (cache_media_bytes_in_pipeline)",
-        unique_id,
-    )
     from media.mime_utils import get_file_extension_from_mime_or_bytes
 
     file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)

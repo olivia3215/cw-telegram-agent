@@ -125,11 +125,6 @@ class MySQLMediaSource(MediaSource):
                     media_dir.mkdir(parents=True, exist_ok=True)
                     media_filename = f"{unique_id}{file_extension}"
                     media_file = media_dir / media_filename
-                    logger.info(
-                        "MEDIA_TRACE FILE_WRITE state unique_id=%s path=%s",
-                        unique_id,
-                        media_file,
-                    )
                     temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
                     try:
                         temp_media_file.write_bytes(media_bytes)
@@ -153,10 +148,6 @@ class MySQLMediaSource(MediaSource):
         # Do not store metadata when file write failed: that would create orphaned
         # MySQL rows (e.g. when profile photo load times out or disk write fails).
         if file_write_failed:
-            logger.info(
-                "MEDIA_TRACE METADATA_SKIP unique_id=%s reason=file_write_failed (MySQLMediaSource)",
-                unique_id,
-            )
             return
 
         # Store metadata in MySQL

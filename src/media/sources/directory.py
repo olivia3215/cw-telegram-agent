@@ -385,12 +385,6 @@ class DirectoryMediaSource(MediaSource):
                 media_filename = f"{unique_id}{file_extension}"
                 record_copy["media_file"] = media_filename
                 media_file = self.directory / media_filename
-                if self._is_config_directory():
-                    logger.info(
-                        "MEDIA_TRACE FILE_WRITE config unique_id=%s path=%s",
-                        unique_id,
-                        media_file,
-                    )
                 temp_media_file = media_file.with_name(f"{media_file.name}.tmp")
                 try:
                     temp_media_file.write_bytes(media_bytes)

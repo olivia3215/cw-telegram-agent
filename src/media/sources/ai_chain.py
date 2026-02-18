@@ -83,11 +83,6 @@ class AIChainMediaSource(MediaSource):
         agent: Any,
     ) -> None:
         """Store record and optional media file to cache source."""
-        logger.info(
-            "MEDIA_TRACE STORE_RECORD unique_id=%s has_media_bytes=%s (ai_chain._store_record)",
-            unique_id,
-            media_bytes is not None,
-        )
         if inspect.iscoroutinefunction(self.cache_source.put):
             await self.cache_source.put(
                 unique_id, record, media_bytes, file_extension, agent=agent
@@ -275,13 +270,6 @@ class AIChainMediaSource(MediaSource):
                     # Get file extension from MIME type or by detecting from bytes
                     mime_type = getattr(doc, "mime_type", None)
                     file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
-
-                    logger.info(
-                        "MEDIA_TRACE DOWNLOAD_OK unique_id=%s bytes=%s ext=%s",
-                        unique_id,
-                        len(media_bytes),
-                        file_extension,
-                    )
                 except asyncio.TimeoutError:
                     logger.warning(
                         "AIChainMediaSource: download timed out for %s after %.1fs",
@@ -339,10 +327,6 @@ class AIChainMediaSource(MediaSource):
             # bytes and no existing cached record (e.g. cache-only get() with doc=None
             # can still get a record from the chain; we must not store it without a file).
             if media_bytes is None and not cached_record:
-                logger.info(
-                    "MEDIA_TRACE STORE_SKIP unique_id=%s reason=no_media_bytes_no_cache (ai_chain)",
-                    unique_id,
-                )
                 should_store = False
             elif (
                 not media_file_exists
@@ -350,10 +334,6 @@ class AIChainMediaSource(MediaSource):
                 and agent is not None
                 and media_bytes is None
             ):
-                logger.info(
-                    "MEDIA_TRACE STORE_SKIP unique_id=%s reason=download_failed_no_bytes (ai_chain)",
-                    unique_id,
-                )
                 should_store = False
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
