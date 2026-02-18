@@ -77,7 +77,7 @@ The admin console provides three main tabs:
   - **Parameters** — Global system parameters (DEFAULT_AGENT_LLM, MEDIA_MODEL, TRANSLATION_MODEL, etc.)
   - **LLMs** — Manage available LLM models in the database (add, edit, delete, reorder)
 - **Agents** — Agent management with subtabs:
-  - **Profile** — View and edit agent profile information (name, username, bio, birthday, profile photo)
+  - **Profile** — View and edit agent profile information (name, username, bio, birthday, profile photos). Additional profile photos are loaded on demand when paging to avoid timeouts.
   - **Contacts** — Manage agent's Telegram contacts
   - **Parameters** — View and manage agent configuration parameters
   - **Memories** — View and manage global agent memories (visible across all conversations)
@@ -162,7 +162,7 @@ The **Media** subtab (under Agents) provides comprehensive management of an agen
 - **Profile Picture Management**: 
   - Toggle photos, videos, and stickers as profile pictures with a checkbox
   - When unchecked, media is automatically saved to Saved Messages before removal from profile
-  - Multiple profile photos supported
+  - Multiple profile photos supported (loaded on demand in Profile and partner profile views)
 - **Description Editing**: Click any description to edit inline (Ctrl+Enter or blur to save)
 - **AI Refresh**: Regenerate descriptions using AI by clearing the cache
 - **Delete Media**: Remove media from Saved Messages (requires confirmation)
