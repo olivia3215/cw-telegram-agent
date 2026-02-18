@@ -206,7 +206,7 @@ def save_media_metadata(record: dict[str, Any]) -> None:
     unique_id = record.get("unique_id")
     if not unique_id or not str(unique_id).strip():
         raise ValueError("unique_id is required and cannot be empty")
-    
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:

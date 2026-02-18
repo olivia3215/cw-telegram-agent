@@ -15,6 +15,7 @@ This source manages the flow between:
 4. AI generating source (for actual description generation)
 """
 
+import asyncio
 import glob as glob_module
 import inspect
 import logging
@@ -29,6 +30,11 @@ from .base import MediaSource, MediaStatus, get_max_description_retries
 from .directory import DirectoryMediaSource
 
 logger = logging.getLogger(__name__)
+
+# Per-media download timeout. "File lives in another DC" can take 15–20s (DC switch + transfer),
+# so use a value that allows at least one download to complete within the request timeout.
+DOWNLOAD_MEDIA_TIMEOUT_SECONDS = 20.0
+
 
 class AIChainMediaSource(MediaSource):
     """
@@ -86,6 +92,26 @@ class AIChainMediaSource(MediaSource):
                 unique_id, record, media_bytes, file_extension, agent=agent
             )
 
+    async def put(
+        self,
+        unique_id: str,
+        record: dict[str, Any],
+        media_bytes: bytes = None,
+        file_extension: str = None,
+        agent: Any = None,
+    ) -> None:
+        """
+        Store a media description and optional media file into the cache.
+
+        Used by the pipeline (e.g. cache_media_bytes_in_pipeline) so that
+        profile photos and other cached media are written to state/media + MySQL
+        instead of only to config directories.
+        """
+        if record and (media_bytes is not None or not record.get("_on_disk", False)):
+            await self._store_record(
+                unique_id, record, media_bytes, file_extension, agent
+            )
+
     async def get(
         self,
         unique_id: str,
@@ -127,18 +153,23 @@ class AIChainMediaSource(MediaSource):
                         if media_path.exists() and media_path.is_file():
                             media_file_exists = True
                     if not media_file_exists:
-                        # Fallback: glob for unique_id.* (any extension except .json)
+                        # Fallback: glob for unique_id.* (exclude .json and .tmp)
                         escaped = glob_module.escape(unique_id)
                         for path in cache_dir.glob(f"{escaped}.*"):
-                            if path.suffix.lower() != ".json":
+                            suf = path.suffix.lower()
+                            if suf != ".json" and suf != ".tmp":
                                 media_file_exists = True
                                 break
                 if not media_file_exists and doc is not None and agent is not None:
                     try:
                         logger.debug(
-                            f"AIChainMediaSource: downloading missing media file for cached {unique_id}"
+                            "AIChainMediaSource: downloading missing media file for cached %s",
+                            unique_id,
                         )
-                        media_bytes = await download_media_bytes(agent.client, doc)
+                        media_bytes = await asyncio.wait_for(
+                            download_media_bytes(agent.client, doc),
+                            timeout=DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
+                        )
                         mime_type = getattr(doc, "mime_type", None)
                         file_extension = get_file_extension_from_mime_or_bytes(
                             mime_type, media_bytes
@@ -146,9 +177,16 @@ class AIChainMediaSource(MediaSource):
                         await self._store_record(
                             unique_id, cached_record, media_bytes, file_extension, agent
                         )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "AIChainMediaSource: download timed out for cached %s",
+                            unique_id,
+                        )
                     except Exception as e:
                         logger.warning(
-                            f"AIChainMediaSource: failed to download missing media for {unique_id}: {e}"
+                            "AIChainMediaSource: failed to download missing media for %s: %s",
+                            unique_id,
+                            e,
                         )
                 return cached_record
 
@@ -207,10 +245,11 @@ class AIChainMediaSource(MediaSource):
                             media_file_exists = True
                             break
             if not media_file_exists:
-                # Fallback: glob for unique_id.* (any extension except .json)
+                # Fallback: glob for unique_id.* (exclude .json and .tmp - .tmp is partial write)
                 escaped = glob_module.escape(unique_id)
                 for path in cache_dir.glob(f"{escaped}.*"):
-                    if path.suffix.lower() != ".json":
+                    suf = path.suffix.lower()
+                    if suf != ".json" and suf != ".tmp":
                         media_file_exists = True
                         break
 
@@ -219,20 +258,29 @@ class AIChainMediaSource(MediaSource):
         if not media_file_exists and doc is not None and agent is not None:
                 try:
                     logger.debug(
-                        f"AIChainMediaSource: downloading media for {unique_id}"
+                        "AIChainMediaSource: downloading media for %s (timeout=%.1fs)",
+                        unique_id,
+                        DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
                     )
-                    media_bytes = await download_media_bytes(agent.client, doc)
+                    media_bytes = await asyncio.wait_for(
+                        download_media_bytes(agent.client, doc),
+                        timeout=DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
+                    )
 
                     # Get file extension from MIME type or by detecting from bytes
                     mime_type = getattr(doc, "mime_type", None)
                     file_extension = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
-
-                    logger.debug(
-                        f"AIChainMediaSource: downloaded {len(media_bytes)} bytes for {unique_id}, extension: {file_extension}"
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "AIChainMediaSource: download timed out for %s after %.1fs",
+                        unique_id,
+                        DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
                     )
                 except Exception as e:
                     logger.warning(
-                        f"AIChainMediaSource: failed to download media for {unique_id}: {e}"
+                        "AIChainMediaSource: failed to download media for %s: %s",
+                        unique_id,
+                        e,
                     )
                     # Continue without media file - metadata is still valuable
 
@@ -273,6 +321,20 @@ class AIChainMediaSource(MediaSource):
             media_bytes is not None or not record_to_store.get("_on_disk", False)
         ):
             should_store = True
+
+            # Do not create metadata-only records: that would create orphaned MySQL rows.
+            # Refuse when (1) we attempted download but got no bytes, or (2) we have no
+            # bytes and no existing cached record (e.g. cache-only get() with doc=None
+            # can still get a record from the chain; we must not store it without a file).
+            if media_bytes is None and not cached_record:
+                should_store = False
+            elif (
+                not media_file_exists
+                and doc is not None
+                and agent is not None
+                and media_bytes is None
+            ):
+                should_store = False
 
             # Don't store if it's another temporary failure replacing a cached temporary failure
             # UNLESS we downloaded the media file (in which case we want to preserve it)

@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from .base import MediaSource
+from .directory import DirectoryMediaSource
 
 logger = logging.getLogger(__name__)
 
@@ -87,24 +88,29 @@ class CompositeMediaSource(MediaSource):
         agent: Any = None,
     ) -> None:
         """
-        Store a media description by calling put on all sources that support it.
-        
-        Sources are called in order. If a source doesn't have a put method, it's skipped.
+        Store a media description by calling put on cache sources only.
+
+        Config-directory sources (curated media) are read-only and are skipped.
+        Only sources that represent the pipeline cache (e.g. AIChainMediaSource)
+        receive writes, so profile photos and other pipeline cache do not end
+        up in configdir/media.
         """
         for i, source in enumerate(self.sources):
             try:
-                # Check if source has a put method
-                if hasattr(source, "put"):
-                    # Call put - handle both async and sync put methods
-                    put_method = getattr(source, "put")
-                    if asyncio.iscoroutinefunction(put_method):
-                        await put_method(unique_id, record, media_bytes, file_extension, agent)
-                    else:
-                        # Sync method - call directly without await
-                        put_method(unique_id, record, media_bytes, file_extension, agent)
-                    logger.debug(
-                        f"CompositeMediaSource: source {i} ({type(source).__name__}) stored {unique_id}"
-                    )
+                # Do not write to config directories (curated media); pipeline
+                # cache belongs in state/media + MySQL only.
+                if isinstance(source, DirectoryMediaSource) and source._is_config_directory():
+                    continue
+                if not hasattr(source, "put"):
+                    continue
+                put_method = getattr(source, "put")
+                if asyncio.iscoroutinefunction(put_method):
+                    await put_method(unique_id, record, media_bytes, file_extension, agent)
+                else:
+                    put_method(unique_id, record, media_bytes, file_extension, agent)
+                logger.debug(
+                    f"CompositeMediaSource: source {i} ({type(source).__name__}) stored {unique_id}"
+                )
             except Exception as e:
                 logger.warning(
                     f"CompositeMediaSource: source {i} ({type(source).__name__}) failed to store {unique_id}: {e}"

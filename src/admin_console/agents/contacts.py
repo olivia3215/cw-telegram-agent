@@ -3,6 +3,7 @@
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
+import asyncio
 import base64
 import logging
 from typing import Any
@@ -65,6 +66,7 @@ async def _get_profile_photo_data_urls(client, entity, agent=None) -> list[str]:
             return []
         data_urls: list[str] = []
         for photo in photos:
+            await asyncio.sleep(0)  # yield so executor timeout/cancel is processed
             try:
                 photo_bytes = await _get_profile_photo_bytes(
                     agent, client, photo, entity=entity
@@ -477,7 +479,8 @@ def register_contact_routes(agents_bp: Blueprint):
                 entity = await agent.client.get_entity(channel_id)
                 return await _build_partner_profile(agent, agent.client, entity)
 
-            profile = agent.execute(_get_profile(), timeout=15.0)
+            # Allow time for multiple profile photos (each has per-download timeout in pipeline).
+            profile = agent.execute(_get_profile(), timeout=45.0)
             return jsonify(profile)
         except Exception as e:
             logger.error(f"Error getting partner profile for {agent_config_name}/{user_id}: {e}")

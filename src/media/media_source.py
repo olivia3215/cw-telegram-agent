@@ -13,6 +13,7 @@ NOTE: This module now re-exports all classes and functions from media.sources fo
 compatibility. New code should import directly from media.sources.
 """
 
+import asyncio
 import logging
 import time
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Any
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
 
 # Re-export everything from sources package for backward compatibility
+from .sources.ai_chain import DOWNLOAD_MEDIA_TIMEOUT_SECONDS
 from .sources import (
     AIChainMediaSource,
     AIGeneratingMediaSource,
@@ -282,10 +284,20 @@ async def get_profile_photo_bytes_from_pipeline(
         if cached:
             return cached
 
-    # 2) Try provided photo object (if already a downloadable type).
+    # 2) Try provided photo object (if already a downloadable type). Cache on success.
     if photo_obj is not None:
         try:
-            direct = await download_media_bytes(client, photo_obj)
+            direct = await asyncio.wait_for(
+                download_media_bytes(client, photo_obj),
+                timeout=DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
+            )
+            if direct and unique_id and agent:
+                await cache_media_bytes_in_pipeline(
+                    unique_id=str(unique_id),
+                    agent=agent,
+                    media_bytes=direct,
+                    kind="photo",
+                )
             if direct:
                 return direct
         except Exception:
@@ -302,8 +314,6 @@ async def get_profile_photo_bytes_from_pipeline(
     now = time.monotonic()
     wait_s = min_fetch_interval_seconds - (now - _PROFILE_PHOTO_FETCH_LAST_TS)
     if wait_s > 0:
-        import asyncio
-
         await asyncio.sleep(wait_s)
     _PROFILE_PHOTO_FETCH_LAST_TS = time.monotonic()
 
@@ -333,7 +343,10 @@ async def get_profile_photo_bytes_from_pipeline(
             return via_pipeline
 
     try:
-        return await download_media_bytes(client, resolved)
+        return await asyncio.wait_for(
+            download_media_bytes(client, resolved),
+            timeout=DOWNLOAD_MEDIA_TIMEOUT_SECONDS,
+        )
     except Exception as e:
         logger.debug("Fallback resolved profile photo download failed: %s", e)
         return None
