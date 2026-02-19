@@ -397,3 +397,69 @@ def test_delay_conversion_with_dependencies():
     # After 3 seconds, it should be ready
     future_time = now + timedelta(seconds=3)
     assert wait_task.is_ready(completed_ids, future_time)
+
+
+def test_pending_tasks_cancels_task_with_failed_dependency():
+    failed = TaskNode(
+        id="failed",
+        type="send",
+        params={"text": "fails"},
+        status=TaskStatus.FAILED,
+    )
+    blocked = TaskNode(
+        id="blocked",
+        type="send",
+        params={"text": "blocked"},
+        depends_on=["failed"],
+        status=TaskStatus.PENDING,
+    )
+    independent = TaskNode(
+        id="independent",
+        type="send",
+        params={"text": "still runnable"},
+        status=TaskStatus.PENDING,
+    )
+    graph = make_graph("cancel-failed-dependency", [failed, blocked, independent])
+
+    pending = graph.pending_tasks(NOW)
+
+    assert blocked.status == TaskStatus.CANCELLED
+    assert pending == [independent]
+
+
+def test_pending_tasks_cancels_transitive_failed_dependency_chain():
+    failed_root = TaskNode(
+        id="root-failed",
+        type="send",
+        params={"text": "root"},
+        status=TaskStatus.FAILED,
+    )
+    first = TaskNode(
+        id="first-dependent",
+        type="send",
+        params={"text": "first"},
+        depends_on=["root-failed"],
+        status=TaskStatus.PENDING,
+    )
+    second = TaskNode(
+        id="second-dependent",
+        type="send",
+        params={"text": "second"},
+        depends_on=["first-dependent"],
+        status=TaskStatus.PENDING,
+    )
+    third = TaskNode(
+        id="third-dependent",
+        type="send",
+        params={"text": "third"},
+        depends_on=["second-dependent"],
+        status=TaskStatus.PENDING,
+    )
+    graph = make_graph("cancel-transitive-chain", [failed_root, first, second, third])
+
+    pending = graph.pending_tasks(NOW)
+
+    assert first.status == TaskStatus.CANCELLED
+    assert second.status == TaskStatus.CANCELLED
+    assert third.status == TaskStatus.CANCELLED
+    assert pending == []

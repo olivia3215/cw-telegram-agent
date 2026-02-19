@@ -252,3 +252,34 @@ async def test_run_one_tick_lifecycle(monkeypatch):
     assert task.status == TaskStatus.DONE
     # And the graph should have been removed
     assert graph not in queue._task_graphs
+
+
+@pytest.mark.asyncio
+async def test_run_one_tick_removes_graph_completed_during_scheduling(monkeypatch):
+    """Graphs that become terminal during pending task evaluation are cleaned up."""
+    # Avoid agent lookup noise in this test
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
+
+    failed_task = TaskNode(
+        id="failed",
+        type="send",
+        params={"text": "failed"},
+        status=TaskStatus.FAILED,
+    )
+    blocked_task = TaskNode(
+        id="blocked",
+        type="send",
+        params={"text": "blocked"},
+        depends_on=["failed"],
+        status=TaskStatus.PENDING,
+    )
+
+    graph = TaskGraph(id="g-complete-on-schedule", context={"peer_id": "test"}, tasks=[failed_task, blocked_task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    await run_one_tick()
+
+    assert blocked_task.status == TaskStatus.CANCELLED
+    assert graph not in queue._task_graphs
