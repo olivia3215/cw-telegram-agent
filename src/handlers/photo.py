@@ -61,9 +61,16 @@ async def handle_photo(task: TaskNode, graph: TaskGraph, work_queue=None):
         entity = channel_id_int
 
     try:
-        await client.send_file(
-            entity, file=photo, reply_to=in_reply_to
-        )
+        from telegram_media import is_sticker_document
+
+        if is_sticker_document(photo):
+            await client.send_file(
+                entity, file=photo, file_type="sticker", reply_to=in_reply_to
+            )
+        else:
+            await client.send_file(
+                entity, file=photo, reply_to=in_reply_to
+            )
         
         # Track successful photo send (exclude xsend messages)
         is_xsend = task.params.get("xsend_intent") is not None

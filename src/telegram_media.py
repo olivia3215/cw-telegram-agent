@@ -50,6 +50,24 @@ def get_unique_id(obj: Any) -> str | None:
     return None
 
 
+def is_sticker_document(doc: Any) -> bool:
+    """
+    Return True if this document is a sticker (by attribute or mime type).
+    Used to detect sticker documents for sending with file_type='sticker'
+    or when including them in the agent's media (photo task).
+    """
+    attrs = getattr(doc, "attributes", []) or []
+    for attr in attrs:
+        if getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker":
+            return True
+        if hasattr(attr, "stickerset"):
+            return True
+    mime = (getattr(doc, "mime_type", None) or getattr(doc, "mime", None) or "").lower()
+    if mime in ("image/webp", "application/x-tgsticker", "application/gzip"):
+        return True
+    return False
+
+
 def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:
     photo = getattr(msg, "photo", None)
     if not photo:

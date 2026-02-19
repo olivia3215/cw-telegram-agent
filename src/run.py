@@ -520,6 +520,13 @@ async def ensure_sticker_cache(agent, client):
     await ensure_saved_message_sticker_cache(agent, client)
 
 
+def _is_sticker_document(doc) -> bool:
+    """Delegate to telegram_media so run and handlers share one implementation."""
+    from telegram_media import is_sticker_document
+
+    return is_sticker_document(doc)
+
+
 def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
     """
     Build a stable sticker key (set_short_name, sticker_name) from a Saved Messages document.
@@ -585,6 +592,13 @@ async def ensure_saved_message_sticker_cache(agent, client):
 
             key = _extract_saved_message_sticker_key(doc)
             if key is None:
+                # Stickers without set/name metadata are added to agent.photos in ensure_photo_cache
+                # so the agent can send them with the photo task.
+                if _is_sticker_document(doc):
+                    logger.debug(
+                        "Sticker in Saved Messages has no set/name metadata; "
+                        "included in media (send with photo task)."
+                    )
                 continue
 
             seen_keys.add(key)
@@ -617,8 +631,9 @@ async def ensure_saved_message_sticker_cache(agent, client):
 
 async def ensure_photo_cache(agent, client):
     """
-    Scan the agent's saved messages (me channel) for photos and cache them by file_unique_id.
-    This allows agents to send curated photos without storing expiring file_reference values.
+    Scan the agent's saved messages (me channel) for photos and sticker documents
+    without set/name metadata; cache them by file_unique_id so the agent can send
+    them with the photo task.
     """
     from telegram_media import get_unique_id
 
@@ -629,7 +644,7 @@ async def ensure_photo_cache(agent, client):
         )
         return
 
-    # Ensure photos dict exists
+    # Ensure photos dict exists (holds both photos and sticker docs without metadata)
     if not hasattr(agent, "photos"):
         agent.photos = {}
 
@@ -644,27 +659,37 @@ async def ensure_photo_cache(agent, client):
 
         # Iterate through messages in saved messages (chat with self)
         async for message in _iter_saved_messages(client):
+            # Photos
             photo = getattr(message, "photo", None)
-            if not photo:
-                continue
+            if photo:
+                unique_id = get_unique_id(photo)
+                if unique_id:
+                    unique_id_str = str(unique_id)
+                    seen_unique_ids.add(unique_id_str)
+                    photos_found += 1
+                    is_new = unique_id_str not in agent.photos
+                    agent.photos[unique_id_str] = photo
+                    if is_new:
+                        photos_new += 1
+                        logger.debug(
+                            f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
+                        )
 
-            unique_id = get_unique_id(photo)
-            if not unique_id:
-                continue
-
-            unique_id_str = str(unique_id)
-            seen_unique_ids.add(unique_id_str)
-            photos_found += 1
-
-            # Always update the photo object to refresh file_reference values
-            # This prevents stale file_reference values from causing send failures
-            is_new = unique_id_str not in agent.photos
-            agent.photos[unique_id_str] = photo
-            if is_new:
-                photos_new += 1
-                logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
-                )
+            # Sticker documents without set/name metadata: add to media so agent can send with photo task
+            doc = getattr(message, "document", None)
+            if doc and _extract_saved_message_sticker_key(doc) is None and _is_sticker_document(doc):
+                unique_id = get_unique_id(doc)
+                if unique_id:
+                    unique_id_str = str(unique_id)
+                    seen_unique_ids.add(unique_id_str)
+                    photos_found += 1
+                    is_new = unique_id_str not in agent.photos
+                    agent.photos[unique_id_str] = doc
+                    if is_new:
+                        photos_new += 1
+                        logger.debug(
+                            f"[{getattr(agent, 'name', 'agent')}] Cached sticker (no set/name) with unique_id: {unique_id_str}"
+                        )
 
         # Remove photos that are no longer in saved messages
         removed_count = 0
