@@ -196,7 +196,34 @@ class TaskGraph:
             task.id for task in self.tasks if task.status == TaskStatus.DONE
         }
 
+    def cancel_tasks_blocked_by_terminal_dependencies(self) -> bool:
+        """Cancel non-terminal tasks that depend on failed/cancelled dependencies."""
+        status_by_id = {task.id: task.status for task in self.tasks}
+        updated = False
+        changed = True
+
+        while changed:
+            changed = False
+            for task in self.tasks:
+                if task.status.is_completed():
+                    continue
+                for dependency_id in task.depends_on:
+                    dependency_status = status_by_id.get(dependency_id)
+                    if dependency_status in (TaskStatus.FAILED, TaskStatus.CANCELLED):
+                        task.status = TaskStatus.CANCELLED
+                        status_by_id[task.id] = TaskStatus.CANCELLED
+                        logger.info(
+                            f"Cancelled task {task.id} because dependency "
+                            f"{dependency_id} is {dependency_status}."
+                        )
+                        updated = True
+                        changed = True
+                        break
+
+        return updated
+
     def pending_tasks(self, now: datetime):
+        self.cancel_tasks_blocked_by_terminal_dependencies()
         done = self.completed_ids()
         pending: list[TaskNode] = []
         for task in self.tasks:
