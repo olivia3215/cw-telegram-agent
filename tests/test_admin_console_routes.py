@@ -424,16 +424,17 @@ def test_contacts_list_and_bulk_delete(monkeypatch):
             self.user_id = user_id
 
     class FakeUser:
-        def __init__(self, user_id, deleted=False):
+        def __init__(self, user_id, deleted=False, phone=None):
             self.id = user_id
             self.first_name = "First"
             self.last_name = "Last"
             self.username = "user"
             self.deleted = deleted
+            self.phone = phone
 
     class FakeContactsResult:
         def __init__(self):
-            self.users = [FakeUser(10), FakeUser(20, deleted=True)]
+            self.users = [FakeUser(10, phone="+15551234567"), FakeUser(20, deleted=True)]
             self.contacts = [FakeContact(10), FakeContact(20)]
 
     class FakeClient:
@@ -476,7 +477,9 @@ def test_contacts_list_and_bulk_delete(monkeypatch):
     assert response.status_code == 200
     data = response.get_json()
     assert data["contacts"][0]["user_id"] == "10"
+    assert data["contacts"][0]["phone"] == "+15551234567"
     assert data["contacts"][1]["is_deleted"] is True
+    assert data["contacts"][1]["phone"] == ""
     assert "avatar_photo" in data["contacts"][0]
 
     response = client.post(

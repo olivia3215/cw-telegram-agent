@@ -421,6 +421,7 @@ def register_contact_routes(agents_bp: Blueprint):
                             "user_id": str(user_id),
                             "name": display_name,
                             "username": username,
+                            "phone": getattr(user, "phone", None) or "",
                             "avatar_photo": avatar_photo,
                             "avatar_needs_upgrade": avatar_needs_upgrade,
                             "has_photo": bool(user_photo),

@@ -1169,6 +1169,7 @@ async function loadAgentContacts(agentName) {
                 ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Blocked</span>'
                 : '';
             const usernameLine = contact.username ? `<div><strong>Username:</strong> @${escapeHtml(contact.username)}</div>` : '';
+            const phoneLine = contact.phone ? `<div><strong>Phone:</strong> ${escapeHtml(contact.phone)}</div>` : '';
             const userId = String(contact.user_id);
             const isChecked = selectedAgentContacts.has(userId) ? 'checked' : '';
             const escapedAgentName = escJsAttr(agentName);
@@ -1193,6 +1194,7 @@ async function loadAgentContacts(agentName) {
                             <div><strong>Name:</strong> <a href="#" onclick="openConversationFromContacts('${escapedAgentName}', '${escapedUserId}'); return false;">${escapedContactName}</a>${deletedBadge}${blockedBadge}</div>
                             <div><strong>ID:</strong> ${escapeHtml(contact.user_id)}</div>
                             ${usernameLine}
+                            ${phoneLine}
                             </div>
                     </div>
                 </div>
