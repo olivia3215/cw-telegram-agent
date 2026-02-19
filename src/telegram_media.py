@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from media.media_types import MediaItem, MediaKind
-from media.mime_utils import normalize_mime_type
+from media.mime_utils import classify_media_kind_from_mime_and_hint, normalize_mime_type
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +52,22 @@ def get_unique_id(obj: Any) -> str | None:
 
 def is_sticker_document(doc: Any) -> bool:
     """
-    Return True if this document is a sticker (by attribute or mime type).
+    Return True if this document is a sticker, using the same classification
+    as the media pipeline (mime_utils.classify_media_kind_from_mime_and_hint).
     Used to detect sticker documents for sending with file_type='sticker'
     or when including them in the agent's media (photo task).
     """
     attrs = getattr(doc, "attributes", []) or []
-    for attr in attrs:
-        if getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker":
-            return True
-        if hasattr(attr, "stickerset"):
-            return True
-    mime = (getattr(doc, "mime_type", None) or getattr(doc, "mime", None) or "").lower()
-    if mime in ("image/webp", "application/x-tgsticker", "application/gzip"):
-        return True
-    return False
+    has_sticker_attribute = any(
+        getattr(attr.__class__, "__name__", "") == "DocumentAttributeSticker"
+        or hasattr(attr, "stickerset")
+        for attr in attrs
+    )
+    mime = getattr(doc, "mime_type", None) or getattr(doc, "mime", None)
+    kind = classify_media_kind_from_mime_and_hint(
+        mime, None, has_sticker_attribute=has_sticker_attribute
+    )
+    return kind == "sticker"
 
 
 def _maybe_add_photo(msg: Any, out: list[MediaItem]) -> None:

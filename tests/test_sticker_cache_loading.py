@@ -233,6 +233,16 @@ async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypat
 
     import importlib
 
+    # Avoid hitting real media pipeline (cache/MySQL); use fallback key from doc
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
+
     run = importlib.import_module("run")
     ensure_sticker_cache = run.ensure_sticker_cache
 
@@ -255,6 +265,15 @@ async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path)
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
     import importlib
+
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
 
     run = importlib.import_module("run")
     ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
@@ -323,6 +342,16 @@ async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, t
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
     import importlib
+
+    # Pipeline returns None so we use fallback (no set/name -> add to photos)
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
 
     run = importlib.import_module("run")
     ensure_photo_cache = run.ensure_photo_cache
