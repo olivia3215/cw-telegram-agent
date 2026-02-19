@@ -3034,6 +3034,7 @@ function loadAgentConfiguration(agentName) {
             const explicitStickers = data.explicit_stickers || [];
             const dailyScheduleDescription = data.daily_schedule_description;
             const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
+            const clearSummariesOnFirstMessage = data.clear_summaries_on_first_message || false;
             const startTypingDelay = data.start_typing_delay !== undefined ? data.start_typing_delay : null;
             const typingSpeed = data.typing_speed !== undefined ? data.typing_speed : null;
             const configDirectory = data.config_directory || '';
@@ -3180,6 +3181,14 @@ function loadAgentConfiguration(agentName) {
                                 <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
                                     onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
                                 Reset Context On First Message
+                            </label>
+                        </div>
+                        <div class="agent-param-section">
+                            <h3>Clear Summaries</h3>
+                            <label class="agent-param-checkbox-label" style="margin-top: 8px;">
+                                <input type="checkbox" id="clear-summaries-toggle" ${clearSummariesOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
+                                    onchange="updateAgentClearSummaries('${escJsAttr(agentName)}', this.checked)">
+                                Clear Summaries On First Message
                             </label>
                         </div>
                         <div class="agent-param-section">
@@ -3371,6 +3380,23 @@ function updateAgentResetContext(agentName, enabled) {
     })
     .catch(error => {
         if (error && error.message !== 'unauthorized') alert('Error updating reset context: ' + error);
+        loadAgentConfiguration(agentName);
+    });
+}
+
+function updateAgentClearSummaries(agentName, enabled) {
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/clear-summaries`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clear_summaries_on_first_message: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) alert('Error updating clear summaries: ' + data.error);
+        loadAgentConfiguration(agentName);
+    })
+    .catch(error => {
+        if (error && error.message !== 'unauthorized') alert('Error updating clear summaries: ' + error);
         loadAgentConfiguration(agentName);
     });
 }
