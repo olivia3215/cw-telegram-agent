@@ -4,6 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 import json
+import logging
 
 import pytest
 
@@ -73,10 +74,11 @@ async def test_parse_xsend_negative_group_id():
 
 
 @pytest.mark.asyncio
-async def test_helper_coalesce_sets_intent(monkeypatch):
+async def test_helper_coalesce_sets_intent(monkeypatch, caplog):
     # Prepare an empty work queue
     WorkQueue.reset_instance()
     work_queue = WorkQueue.get_instance()
+    caplog.set_level(logging.INFO, logger="task_graph_helpers")
 
     # Stub agent and channel name resolution
     class _StubClient:
@@ -109,6 +111,7 @@ async def test_helper_coalesce_sets_intent(monkeypatch):
         channel_id=200,
         xsend_intent="hello",
     )
+    assert "[Stub->chan-200] Inserted 'received' task" in caplog.text
 
     g = work_queue.graph_for_conversation(100, 200)
     assert g is not None
