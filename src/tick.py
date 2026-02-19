@@ -103,6 +103,17 @@ def is_graph_complete(graph) -> bool:
     return all(n.status.is_completed() for n in graph.tasks)
 
 
+def remove_completed_graphs(work_queue: WorkQueue) -> int:
+    """Remove fully terminal graphs and return how many were removed."""
+    with work_queue._lock:
+        completed_graphs = [g for g in work_queue._task_graphs if is_graph_complete(g)]
+
+    for graph in completed_graphs:
+        work_queue.remove(graph)
+
+    return len(completed_graphs)
+
+
 async def trigger_typing_indicators():
     """
     Check for pending wait tasks with typing=True or online=True and trigger typing indicators.
@@ -231,7 +242,14 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
     task = work_queue.round_robin_one_task()
 
     if not task:
-        logger.debug("No tasks ready to run.")
+        removed_count = remove_completed_graphs(work_queue)
+        if removed_count:
+            logger.info(f"Removed {removed_count} completed graph(s) with no runnable task.")
+            if state_file_path:
+                work_queue.save(state_file_path)
+                logger.debug("Work queue state saved after completed-graph cleanup")
+        else:
+            logger.debug("No tasks ready to run.")
         return
 
     graph = work_queue.graph_containing(task)
