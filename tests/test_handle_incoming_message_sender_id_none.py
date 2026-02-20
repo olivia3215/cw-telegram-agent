@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from run import handle_incoming_message
+from agent_server import handle_incoming_message
 
 
 class _DummyEvent:
@@ -35,12 +35,12 @@ async def test_handle_incoming_message_sender_id_none_does_not_crash():
 
     event = _DummyEvent()
 
-    with patch("run.mark_partner_typing") as mark_partner_typing, patch(
-        "run.can_agent_send_to_channel", new=AsyncMock(return_value=True)
+    with patch("agent_server.incoming.mark_partner_typing") as mark_partner_typing, patch(
+        "agent_server.incoming.can_agent_send_to_channel", new=AsyncMock(return_value=True)
     ), patch(
-        "run.insert_received_task_for_conversation", new=AsyncMock()
+        "agent_server.incoming.insert_received_task_for_conversation", new=AsyncMock()
     ), patch(
-        "run.format_message_content_for_logging", return_value="hi"
+        "agent_server.incoming.format_message_content_for_logging", return_value="hi"
     ):
         await handle_incoming_message(agent, event)
 

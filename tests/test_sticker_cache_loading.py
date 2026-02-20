@@ -47,13 +47,10 @@ class FakeAgent:
 
 @pytest.mark.asyncio
 async def test_ensure_sticker_cache_populates_both_caches(monkeypatch, tmp_path):
-    # Set env BEFORE importing run.py (it reads env vars at import time)
+    # Set env BEFORE importing agent_server (it reads env vars at import time)
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
-    run = importlib.import_module("run")
-    ensure_sticker_cache = run.ensure_sticker_cache
+    from agent_server import ensure_sticker_cache
 
     agent = FakeAgent()
     client = FakeClient()
@@ -97,10 +94,7 @@ async def test_ensure_sticker_cache_skips_failed_sets(monkeypatch, tmp_path):
     """Test that when one sticker set fails, others are still loaded."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
-    run = importlib.import_module("run")
-    ensure_sticker_cache = run.ensure_sticker_cache
+    from agent_server import ensure_sticker_cache
 
     # Agent with three sticker sets, one of which will fail
     agent = FakeAgent(
@@ -157,10 +151,7 @@ async def test_animatedemojies_never_full_set_but_explicit_allowed(monkeypatch, 
     """Test that AnimatedEmojies is never treated as a full set, but explicit stickers work."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
-    run = importlib.import_module("run")
-    ensure_sticker_cache = run.ensure_sticker_cache
+    from agent_server import ensure_sticker_cache
 
     # Agent with AnimatedEmojies in sticker_set_names (should be ignored as full set)
     # and explicit AnimatedEmojies stickers
@@ -231,8 +222,6 @@ class FakeSavedStickerClient(FakeClient):
 async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypatch, tmp_path):
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
     # Avoid hitting real media pipeline (cache/MySQL); use fallback key from doc
     async def mock_get(*args, **kwargs):
         return None
@@ -243,8 +232,7 @@ async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypat
         lambda: mock_chain,
     )
 
-    run = importlib.import_module("run")
-    ensure_sticker_cache = run.ensure_sticker_cache
+    from agent_server import ensure_sticker_cache
 
     agent = FakeAgent(name="MergedAgent", sticker_set_names=["WendyDancer"])
     client = FakeSavedStickerClient(
@@ -264,8 +252,6 @@ async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypat
 async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path):
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
     async def mock_get(*args, **kwargs):
         return None
 
@@ -275,8 +261,7 @@ async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path)
         lambda: mock_chain,
     )
 
-    run = importlib.import_module("run")
-    ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
+    from agent_server import ensure_saved_message_sticker_cache
 
     agent = FakeAgent(name="RemovalAgent", sticker_set_names=[])
     client_with_sticker = FakeSavedStickerClient(
@@ -322,10 +307,7 @@ async def test_saved_message_sticker_without_stickerset_skipped_with_warning(
     """Stickers in Saved Messages without set/name metadata are not added to agent.stickers."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
-    run = importlib.import_module("run")
-    ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
+    from agent_server import ensure_saved_message_sticker_cache
 
     agent = FakeAgent(name="NoSetAgent", sticker_set_names=[])
     client = FakeSavedStickerClient(
@@ -341,8 +323,6 @@ async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, t
     """Sticker documents without set/name metadata are added to agent.photos (send with photo task)."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    import importlib
-
     # Pipeline returns None so we use fallback (no set/name -> add to photos)
     async def mock_get(*args, **kwargs):
         return None
@@ -353,8 +333,7 @@ async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, t
         lambda: mock_chain,
     )
 
-    run = importlib.import_module("run")
-    ensure_photo_cache = run.ensure_photo_cache
+    from agent_server import ensure_photo_cache
 
     agent = FakeAgent(name="PhotoStickerAgent", sticker_set_names=[])
     agent.photos = {}

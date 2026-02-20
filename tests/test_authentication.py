@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Set up environment variables before importing run module
+# Set up environment variables before importing agent_server module
 os.environ["CINDY_AGENT_STATE_DIR"] = "/tmp/test_state"
 os.environ["CINDY_AGENT_CONFIG_PATH"] = "/tmp/test_config"
 os.environ["GOOGLE_GEMINI_API_KEY"] = "test_key"
@@ -17,7 +17,7 @@ os.environ["TELEGRAM_API_ID"] = "test_id"
 os.environ["TELEGRAM_API_HASH"] = "test_hash"
 
 from agent import Agent
-from run import authenticate_agent, authenticate_all_agents
+from agent_server import authenticate_agent, authenticate_all_agents
 
 
 @pytest.mark.asyncio
@@ -36,9 +36,9 @@ async def test_authenticate_agent_success():
     mock_client.is_user_authorized.return_value = True
     mock_client.get_me.return_value = MagicMock(id=12345)
 
-    with patch("run.get_telegram_client", return_value=mock_client), patch(
-        "run.ensure_sticker_cache", return_value=None
-    ), patch("run.ensure_photo_cache", return_value=None):
+    with patch("agent_server.auth.get_telegram_client", return_value=mock_client), patch(
+        "agent_server.auth.ensure_sticker_cache", return_value=None
+    ), patch("agent_server.auth.ensure_photo_cache", return_value=None):
 
         result = await authenticate_agent(agent)
 
@@ -63,7 +63,7 @@ async def test_authenticate_agent_not_authorized():
     mock_client = AsyncMock()
     mock_client.is_user_authorized.return_value = False
 
-    with patch("run.get_telegram_client", return_value=mock_client):
+    with patch("agent_server.auth.get_telegram_client", return_value=mock_client):
         result = await authenticate_agent(agent)
 
         assert result is False
@@ -86,7 +86,7 @@ async def test_authenticate_agent_exception():
     mock_client = AsyncMock()
     mock_client.is_user_authorized.side_effect = Exception("Connection failed")
 
-    with patch("run.get_telegram_client", return_value=mock_client):
+    with patch("agent_server.auth.get_telegram_client", return_value=mock_client):
         result = await authenticate_agent(agent)
 
         assert result is False
@@ -111,7 +111,7 @@ async def test_authenticate_all_agents_success():
     ]
 
     # Mock all agents to authenticate successfully
-    with patch("run.authenticate_agent", return_value=True) as mock_auth:
+    with patch("agent_server.auth.authenticate_agent", return_value=True) as mock_auth:
         result = await authenticate_all_agents(agents)
 
         assert result is True
@@ -137,7 +137,7 @@ async def test_authenticate_all_agents_partial_success():
     async def mock_auth(agent):
         return agent.name in ["Agent1", "Agent3"]  # Agent2 fails
 
-    with patch("run.authenticate_agent", side_effect=mock_auth):
+    with patch("agent_server.auth.authenticate_agent", side_effect=mock_auth):
         result = await authenticate_all_agents(agents)
 
         assert result is True  # Should still return True since some agents succeeded
@@ -155,7 +155,7 @@ async def test_authenticate_all_agents_all_fail():
         ),
     ]
 
-    with patch("run.authenticate_agent", return_value=False):
+    with patch("agent_server.auth.authenticate_agent", return_value=False):
         result = await authenticate_all_agents(agents)
 
         assert result is False
@@ -179,7 +179,7 @@ async def test_authenticate_all_agents_exception():
         else:
             raise Exception("Connection failed")
 
-    with patch("run.authenticate_agent", side_effect=mock_auth):
+    with patch("agent_server.auth.authenticate_agent", side_effect=mock_auth):
         result = await authenticate_all_agents(agents)
 
         assert result is True  # Should still return True since Agent1 succeeded
@@ -207,9 +207,9 @@ async def test_authenticate_agent_client_setup():
     mock_client.get_me.return_value = MagicMock(id=54321)
 
     with patch(
-        "run.get_telegram_client", return_value=mock_client
-    ) as mock_get_client, patch("run.ensure_sticker_cache", return_value=None), patch(
-        "run.ensure_photo_cache", return_value=None
+        "agent_server.auth.get_telegram_client", return_value=mock_client
+    ) as mock_get_client, patch("agent_server.auth.ensure_sticker_cache", return_value=None), patch(
+        "agent_server.auth.ensure_photo_cache", return_value=None
     ):
 
         result = await authenticate_agent(agent)
@@ -234,9 +234,9 @@ async def test_authenticate_agent_sticker_cache():
     mock_client.is_user_authorized.return_value = True
     mock_client.get_me.return_value = MagicMock(id=99999)
 
-    with patch("run.get_telegram_client", return_value=mock_client), patch(
-        "run.ensure_sticker_cache"
-    ) as mock_ensure_stickers, patch("run.ensure_photo_cache", return_value=None):
+    with patch("agent_server.auth.get_telegram_client", return_value=mock_client), patch(
+        "agent_server.auth.ensure_sticker_cache"
+    ) as mock_ensure_stickers, patch("agent_server.auth.ensure_photo_cache", return_value=None):
 
         result = await authenticate_agent(agent)
 

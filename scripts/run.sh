@@ -8,7 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Service-specific configuration
-MAIN_SCRIPT="$PROJECT_ROOT/src/run.py"
+# Run the agent_server package (src must be on PYTHONPATH)
+SRC_DIR="$PROJECT_ROOT/src"
 # Get state directory from environment variable, defaulting to "state"
 STATE_DIR="${CINDY_AGENT_STATE_DIR:-state}"
 # Handle both relative and absolute paths for STATE_DIR
@@ -34,7 +35,7 @@ LOG_FILE="$LOG_DIR/run.log"
 startup_command() {
     cd "$PROJECT_ROOT"
 
-    python "$MAIN_SCRIPT" \
+    PYTHONPATH="$SRC_DIR" python -m agent_server \
         < /dev/null \
         > "$LOG_FILE" 2>&1 &
 }

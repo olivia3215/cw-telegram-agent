@@ -152,10 +152,7 @@ async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
     client = FakeClientWithSets()
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
 
-    import importlib
-
-    run = importlib.import_module("run")
-    ensure_sticker_cache = run.ensure_sticker_cache
+    from agent_server import ensure_sticker_cache
 
     # Load stickers
     await ensure_sticker_cache(agent, client)

@@ -686,7 +686,7 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not is_disabled and not agent.client:
                 try:
                     from main_loop import get_main_loop
-                    from run import run_telegram_loop
+                    from agent_server import run_telegram_loop
                     
                     main_loop = get_main_loop()
                     if main_loop and main_loop.is_running():
