@@ -25,7 +25,9 @@ import os
 
 from telethon import events, utils  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.messages import GetStickerSetRequest, GetUnreadReactionsRequest  # pyright: ignore[reportMissingImports]
+from telethon.errors.rpcerrorlist import StickersetInvalidError  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
+    InputStickerSetID,
     InputStickerSetShortName,
     PeerUser,
     UpdateDialogFilter,
@@ -520,6 +522,13 @@ async def ensure_sticker_cache(agent, client):
     await ensure_saved_message_sticker_cache(agent, client)
 
 
+def _is_sticker_document(doc) -> bool:
+    """Delegate to telegram_media so run and handlers share one implementation."""
+    from telegram_media import is_sticker_document
+
+    return is_sticker_document(doc)
+
+
 def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
     """
     Build a stable sticker key (set_short_name, sticker_name) from a Saved Messages document.
@@ -535,10 +544,14 @@ def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
             or getattr(sticker_set, "name", None)
             or getattr(sticker_set, "title", None)
         )
+        set_short_value = str(set_short).strip() if set_short else ""
+        # Only include in sticker list when we have a real set name; otherwise
+        # ensure_photo_cache will add to agent.photos (send with photo task).
+        if not set_short_value:
+            continue
+
         sticker_name = getattr(attr, "alt", None)
         unique_id = getattr(doc, "id", None)
-
-        set_short_value = str(set_short).strip() if set_short else "SavedMessages"
         if sticker_name:
             sticker_name_value = str(sticker_name).strip()
         elif unique_id is not None:
@@ -552,13 +565,76 @@ def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
     return None
 
 
+async def _resolve_saved_message_sticker_key(agent, client, doc) -> tuple[str, str] | None:
+    """
+    When the document has a stickerset but no short_name (e.g. InputStickerSetID),
+    resolve it via GetStickerSetRequest so the sticker appears under its real set name.
+    """
+    key = _extract_saved_message_sticker_key(doc)
+    if key is not None:
+        return key
+
+    attrs = getattr(doc, "attributes", []) or []
+    for attr in attrs:
+        ss = getattr(attr, "stickerset", None)
+        if ss is None:
+            continue
+
+        sticker_name = getattr(attr, "alt", None)
+        unique_id = getattr(doc, "id", None)
+        if sticker_name:
+            sticker_name_value = str(sticker_name).strip()
+        elif unique_id is not None:
+            sticker_name_value = f"sticker_{unique_id}"
+        else:
+            sticker_name_value = "sticker"
+        if not sticker_name_value:
+            sticker_name_value = "sticker"
+
+        try:
+            result = await client(GetStickerSetRequest(stickerset=ss, hash=0))
+        except TypeError:
+            set_id = getattr(ss, "id", None)
+            access_hash = getattr(ss, "access_hash", None) or getattr(ss, "access", None)
+            if isinstance(set_id, int) and isinstance(access_hash, int):
+                result = await client(
+                    GetStickerSetRequest(
+                        stickerset=InputStickerSetID(id=set_id, access_hash=access_hash),
+                        hash=0,
+                    )
+                )
+            else:
+                return None
+        except StickersetInvalidError:
+            logger.debug(
+                "Sticker set invalid or inaccessible when resolving from Saved Messages (skipping)"
+            )
+            return None
+        except Exception as e:
+            logger.debug("Failed to resolve sticker set from Saved Messages doc: %s", e)
+            return None
+
+        st = getattr(result, "set", None)
+        if not st:
+            return None
+        short_name = getattr(st, "short_name", None)
+        if not short_name or not str(short_name).strip():
+            return None
+        return (str(short_name).strip(), sticker_name_value)
+
+    return None
+
+
 async def ensure_saved_message_sticker_cache(agent, client):
     """
     Merge stickers from the agent's Saved Messages into agent.stickers.
 
-    This augments config-defined curated stickers and allows gradual migration
-    away from config-file sticker declarations.
+    Puts each document through the media pipeline so it is classified and cached;
+    uses the returned record's kind and sticker_set_name/sticker_name to decide
+    whether to add to the sticker list.
     """
+    from telegram_media import get_unique_id
+
     # Agent must have agent_id to access saved messages.
     if not hasattr(agent, "agent_id") or agent.agent_id is None:
         logger.debug(
@@ -578,13 +654,52 @@ async def ensure_saved_message_sticker_cache(agent, client):
     updated = 0
 
     try:
+        from media.media_source import get_default_media_source_chain
+
+        media_chain = get_default_media_source_chain()
         async for message in _iter_saved_messages(client):
             doc = getattr(message, "document", None)
             if not doc:
                 continue
 
+            unique_id = get_unique_id(doc)
+            if not unique_id:
+                continue
+
+            # Resolve sticker key so we can pass to pipeline (and use as fallback if pipeline returns None)
             key = _extract_saved_message_sticker_key(doc)
+            if key is None and _is_sticker_document(doc):
+                key = await _resolve_saved_message_sticker_key(agent, client, doc)
+
+            # Put document through pipeline so it is classified and cached
+            record = await media_chain.get(
+                unique_id=str(unique_id),
+                agent=agent,
+                doc=doc,
+                kind=None,
+                sticker_set_name=key[0] if key else None,
+                sticker_name=key[1] if key else None,
+            )
+
+            # Use pipeline result when it's a successful classification; otherwise fall back to resolved key
+            if record and not record.get("failure_reason") and record.get("kind") == "sticker":
+                set_name = record.get("sticker_set_name") or (key[0] if key else None)
+                sticker_name = record.get("sticker_name") or (key[1] if key else None)
+                if set_name and sticker_name:
+                    key = (set_name, sticker_name)
+                else:
+                    key = None
+            elif record is not None and not record.get("failure_reason"):
+                # Pipeline succeeded but says not a sticker; don't add to sticker list
+                key = None
+            # else record is None or error (e.g. download failed): keep key from resolution if we have it
+
             if key is None:
+                if _is_sticker_document(doc):
+                    logger.debug(
+                        "Sticker in Saved Messages has no set/name metadata; "
+                        "included in media (send with photo task)."
+                    )
                 continue
 
             seen_keys.add(key)
@@ -617,8 +732,10 @@ async def ensure_saved_message_sticker_cache(agent, client):
 
 async def ensure_photo_cache(agent, client):
     """
-    Scan the agent's saved messages (me channel) for photos and cache them by file_unique_id.
-    This allows agents to send curated photos without storing expiring file_reference values.
+    Scan the agent's saved messages (me channel) for photos and sticker documents
+    without set/name metadata; cache them by file_unique_id so the agent can send
+    them with the photo task. Puts documents through the media pipeline so they
+    are classified and cached; uses the returned record to decide sticker vs photo.
     """
     from telegram_media import get_unique_id
 
@@ -629,11 +746,14 @@ async def ensure_photo_cache(agent, client):
         )
         return
 
-    # Ensure photos dict exists
+    # Ensure photos dict exists (holds both photos and sticker docs without metadata)
     if not hasattr(agent, "photos"):
         agent.photos = {}
 
     try:
+        from media.media_source import get_default_media_source_chain
+
+        media_chain = get_default_media_source_chain()
         # Use "me" for Saved Messages - Telethon resolves this to InputPeerSelf,
         # which is the correct peer for the chat with self / Saved Messages
         photos_found = 0
@@ -644,26 +764,62 @@ async def ensure_photo_cache(agent, client):
 
         # Iterate through messages in saved messages (chat with self)
         async for message in _iter_saved_messages(client):
+            # Photos
             photo = getattr(message, "photo", None)
-            if not photo:
-                continue
+            if photo:
+                unique_id = get_unique_id(photo)
+                if unique_id:
+                    unique_id_str = str(unique_id)
+                    seen_unique_ids.add(unique_id_str)
+                    photos_found += 1
+                    is_new = unique_id_str not in agent.photos
+                    agent.photos[unique_id_str] = photo
+                    if is_new:
+                        photos_new += 1
+                        logger.debug(
+                            f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
+                        )
 
-            unique_id = get_unique_id(photo)
+            # Documents: put through pipeline so they are classified and cached
+            doc = getattr(message, "document", None)
+            if not doc:
+                continue
+            unique_id = get_unique_id(doc)
             if not unique_id:
                 continue
 
+            key = _extract_saved_message_sticker_key(doc)
+            if key is None and _is_sticker_document(doc):
+                key = await _resolve_saved_message_sticker_key(agent, client, doc)
+
+            record = await media_chain.get(
+                unique_id=str(unique_id),
+                agent=agent,
+                doc=doc,
+                kind=None,
+                sticker_set_name=key[0] if key else None,
+                sticker_name=key[1] if key else None,
+            )
+
+            # Only add to photos when pipeline says sticker without set/name (or no record + sticker without key)
+            if record and record.get("kind") == "sticker" and record.get("sticker_set_name") and record.get("sticker_name"):
+                continue  # Has set name; ensure_saved_message_sticker_cache will add to stickers
+            if record and record.get("kind") != "sticker":
+                continue  # Not a sticker (e.g. video, gif); don't add to photo list
+            if not record and key:
+                continue  # No record but we resolved a sticker key; don't add to photos
+            if not record and not _is_sticker_document(doc):
+                continue  # Not a sticker; skip
+            # Sticker without set/name: add so agent can send with photo task
             unique_id_str = str(unique_id)
             seen_unique_ids.add(unique_id_str)
             photos_found += 1
-
-            # Always update the photo object to refresh file_reference values
-            # This prevents stale file_reference values from causing send failures
             is_new = unique_id_str not in agent.photos
-            agent.photos[unique_id_str] = photo
+            agent.photos[unique_id_str] = doc
             if is_new:
                 photos_new += 1
                 logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
+                    f"[{getattr(agent, 'name', 'agent')}] Cached sticker (no set/name) with unique_id: {unique_id_str}"
                 )
 
         # Remove photos that are no longer in saved messages

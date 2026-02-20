@@ -233,6 +233,16 @@ async def test_saved_message_stickers_are_merged_into_curated_stickers(monkeypat
 
     import importlib
 
+    # Avoid hitting real media pipeline (cache/MySQL); use fallback key from doc
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
+
     run = importlib.import_module("run")
     ensure_sticker_cache = run.ensure_sticker_cache
 
@@ -256,6 +266,15 @@ async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path)
 
     import importlib
 
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
+
     run = importlib.import_module("run")
     ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
 
@@ -269,3 +288,80 @@ async def test_saved_message_sticker_removed_when_missing(monkeypatch, tmp_path)
     client_without_sticker = FakeSavedStickerClient([])
     await ensure_saved_message_sticker_cache(agent, client_without_sticker)
     assert ("SavedSet", "😉") not in agent.stickers
+
+
+class DocumentAttributeStickerNoSet:
+    """Fake DocumentAttributeSticker with no stickerset (e.g. some forwarded stickers)."""
+
+    def __init__(self, alt: str = "?"):
+        self.alt = alt
+
+
+# So _is_sticker_document() treats this as a sticker document
+DocumentAttributeStickerNoSet.__name__ = "DocumentAttributeSticker"
+
+
+class FakeSavedStickerDocNoSet:
+    """Document that is a sticker but has no stickerset metadata."""
+
+    def __init__(self, file_unique_id: str):
+        self.file_unique_id = file_unique_id
+        self.attributes = [DocumentAttributeStickerNoSet()]
+
+
+class FakeSavedStickerMessageNoSet:
+    def __init__(self, file_unique_id: str):
+        self.document = FakeSavedStickerDocNoSet(file_unique_id)
+        self.photo = None
+
+
+@pytest.mark.asyncio
+async def test_saved_message_sticker_without_stickerset_skipped_with_warning(
+    monkeypatch, tmp_path
+):
+    """Stickers in Saved Messages without set/name metadata are not added to agent.stickers."""
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
+
+    import importlib
+
+    run = importlib.import_module("run")
+    ensure_saved_message_sticker_cache = run.ensure_saved_message_sticker_cache
+
+    agent = FakeAgent(name="NoSetAgent", sticker_set_names=[])
+    client = FakeSavedStickerClient(
+        [FakeSavedStickerMessageNoSet("sticker_abc123")]
+    )
+    await ensure_saved_message_sticker_cache(agent, client)
+
+    assert ("SavedMessages", "sticker_abc123") not in agent.stickers
+
+
+@pytest.mark.asyncio
+async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, tmp_path):
+    """Sticker documents without set/name metadata are added to agent.photos (send with photo task)."""
+    monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
+
+    import importlib
+
+    # Pipeline returns None so we use fallback (no set/name -> add to photos)
+    async def mock_get(*args, **kwargs):
+        return None
+
+    mock_chain = type("MockChain", (), {"get": mock_get})()
+    monkeypatch.setattr(
+        "media.media_source.get_default_media_source_chain",
+        lambda: mock_chain,
+    )
+
+    run = importlib.import_module("run")
+    ensure_photo_cache = run.ensure_photo_cache
+
+    agent = FakeAgent(name="PhotoStickerAgent", sticker_set_names=[])
+    agent.photos = {}
+    client = FakeSavedStickerClient(
+        [FakeSavedStickerMessageNoSet("sticker_xyz789")]
+    )
+    await ensure_photo_cache(agent, client)
+
+    assert "sticker_xyz789" in agent.photos
+    assert agent.photos["sticker_xyz789"] is client._messages[0].document
