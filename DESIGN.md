@@ -274,7 +274,7 @@ The `format_action_details()` function (`src/db/task_log.py`) serializes task pa
 **Retention Policy:** 14 days
 
 **Cleanup Mechanism:**
-- Integrated into `periodic_scan()` in `src/run.py`
+- Integrated into `periodic_scan()` in `src/agent_server/loop.py`
 - Runs daily (24-hour intervals)
 - Deletes logs where `timestamp < (now - 14 days)`
 - Logs deletion count for monitoring
@@ -1040,7 +1040,7 @@ cw-telegram-agent/
 ├── run.sh                    # Agent server wrapper
 ├── telegram_login.sh         # Telegram login wrapper
 ├── src/                      # Python source code
-│   ├── run.py               # Main agent server
+│   ├── agent_server/        # Main agent server (run via python -m agent_server)
 │   ├── admin_console/       # Admin console web interface (includes media editor)
 │   ├── telegram_login.py    # Telegram login utility
 │   └── [other modules]

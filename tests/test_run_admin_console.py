@@ -3,9 +3,9 @@
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
-import pytest
-
 import importlib
+
+import pytest
 
 
 class DummyPuppetMasterManager:
@@ -27,21 +27,21 @@ async def test_admin_only_mode_exits_when_server_unavailable(monkeypatch, caplog
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
     monkeypatch.delenv("CINDY_PUPPET_MASTER_PHONE", raising=False)
 
-    run_module = importlib.import_module("run")
+    main_module = importlib.import_module("agent_server.main")
 
-    monkeypatch.setattr(run_module, "register_all_agents", lambda: None)
-    monkeypatch.setattr(run_module, "load_work_queue", lambda: object())
-    monkeypatch.setattr(run_module, "all_agents", lambda: iter(()))
+    monkeypatch.setattr(main_module, "register_all_agents", lambda: None)
+    monkeypatch.setattr(main_module, "load_work_queue", lambda: object())
+    monkeypatch.setattr(main_module, "all_agents", lambda: iter([]))
 
     dummy_manager = DummyPuppetMasterManager()
-    monkeypatch.setattr(run_module, "get_puppet_master_manager", lambda: dummy_manager)
+    monkeypatch.setattr(main_module, "get_puppet_master_manager", lambda: dummy_manager)
     monkeypatch.setattr(
-        run_module,
+        main_module,
         "start_admin_console",
         lambda *args, **kwargs: pytest.fail("start_admin_console should not be called"),
     )
 
-    await run_module.main()
+    await main_module.main()
 
     assert dummy_manager.shutdown_called
     assert any(

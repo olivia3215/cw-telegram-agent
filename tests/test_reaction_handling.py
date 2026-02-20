@@ -68,10 +68,10 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
     # Set required environment variable before importing
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
-    from run import scan_unread_messages
+    from agent_server import scan_unread_messages
     
-    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
-    monkeypatch.setattr("run.clock", fake_clock)
+    # Ensure agent_server.scan.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("agent_server.scan.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -83,10 +83,10 @@ async def test_reaction_detection_uses_get_unread_reactions(mock_agent, mock_dia
     mock_agent.client.return_value = mock_unread_reactions_result
     
     # Mock get_channel_name
-    with patch('run.get_channel_name', return_value="TestChannel"):
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation'), patch(
-            'run.ensure_photo_cache', return_value=None
+        with patch('agent_server.scan.insert_received_task_for_conversation'), patch(
+            'agent_server.scan.ensure_photo_cache', return_value=None
         ):
             await scan_unread_messages(mock_agent)
     
@@ -102,10 +102,10 @@ async def test_reaction_detection_triggers_for_any_agent_message(mock_agent, moc
     """Test that reactions on any agent message (not just the last one) trigger responses."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
-    from run import scan_unread_messages
+    from agent_server import scan_unread_messages
     
-    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
-    monkeypatch.setattr("run.clock", fake_clock)
+    # Ensure agent_server.scan.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("agent_server.scan.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -124,10 +124,10 @@ async def test_reaction_detection_triggers_for_any_agent_message(mock_agent, moc
     mock_agent.client.return_value = mock_result
     
     # Mock get_channel_name
-    with patch('run.get_channel_name', return_value="TestChannel"):
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
-            'run.ensure_photo_cache', return_value=None
+        with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
+            'agent_server.scan.ensure_photo_cache', return_value=None
         ):
             await scan_unread_messages(mock_agent)
     
@@ -140,10 +140,10 @@ async def test_reaction_detection_triggers_for_agent_message(mock_agent, mock_di
     """Test that reactions on an agent message trigger responses."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
-    from run import scan_unread_messages
+    from agent_server import scan_unread_messages
     
-    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
-    monkeypatch.setattr("run.clock", fake_clock)
+    # Ensure agent_server.scan.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("agent_server.scan.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -157,10 +157,10 @@ async def test_reaction_detection_triggers_for_agent_message(mock_agent, mock_di
     mock_agent.client.return_value = mock_result
     
     # Mock get_channel_name
-    with patch('run.get_channel_name', return_value="TestChannel"):
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
-            'run.ensure_photo_cache', return_value=None
+        with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
+            'agent_server.scan.ensure_photo_cache', return_value=None
         ):
             await scan_unread_messages(mock_agent)
     
@@ -173,10 +173,10 @@ async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock
     """Test that API errors in GetUnreadReactions are handled gracefully."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
-    from run import scan_unread_messages
+    from agent_server import scan_unread_messages
     
-    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
-    monkeypatch.setattr("run.clock", fake_clock)
+    # Ensure agent_server.scan.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("agent_server.scan.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -188,10 +188,10 @@ async def test_reaction_detection_handles_api_errors_gracefully(mock_agent, mock
     mock_agent.client.side_effect = Exception("API Error")
     
     # Mock get_channel_name
-    with patch('run.get_channel_name', return_value="TestChannel"):
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
-            'run.ensure_photo_cache', return_value=None
+        with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
+            'agent_server.scan.ensure_photo_cache', return_value=None
         ):
             # Should not raise exception
             await scan_unread_messages(mock_agent)
@@ -205,10 +205,10 @@ async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dial
     """Test behavior when there are no unread reactions."""
     import os
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", "/tmp")
-    from run import scan_unread_messages
+    from agent_server import scan_unread_messages
     
-    # Ensure run.clock uses fake_clock (in case run was imported after fixture setup)
-    monkeypatch.setattr("run.clock", fake_clock)
+    # Ensure agent_server.scan.clock uses fake_clock (in case run was imported after fixture setup)
+    monkeypatch.setattr("agent_server.scan.clock", fake_clock)
     
     # Mock the iter_dialogs method to return our mock dialog
     async def mock_iter_dialogs():
@@ -220,10 +220,10 @@ async def test_reaction_detection_with_no_unread_reactions(mock_agent, mock_dial
     mock_dialog.dialog.unread_reactions_count = 0
     
     # Mock get_channel_name
-    with patch('run.get_channel_name', return_value="TestChannel"):
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
         # Mock insert_received_task_for_conversation
-        with patch('run.insert_received_task_for_conversation') as mock_insert, patch(
-            'run.ensure_photo_cache', return_value=None
+        with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
+            'agent_server.scan.ensure_photo_cache', return_value=None
         ):
             await scan_unread_messages(mock_agent)
     
