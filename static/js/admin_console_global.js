@@ -1485,7 +1485,7 @@ async function loadGlobalParameters() {
                         if (llmModelParams.includes(param.name)) {
                             return `
                                 <div class="agent-param-section">
-                                    <h3>${escapeHtml(param.name)}</h3>
+                                    <h3>${escapeHtml(param.name)}${tooltipIconHtml(param.comment)}</h3>
                                     <input 
                                         id="global-param-${escapeHtml(param.name)}" 
                                         type="text" 
@@ -1504,7 +1504,7 @@ async function loadGlobalParameters() {
                         // Regular input for other parameters
                         return `
                             <div class="agent-param-section">
-                                <h3>${escapeHtml(param.name)}</h3>
+                                <h3>${escapeHtml(param.name)}${tooltipIconHtml(param.comment)}</h3>
                                 <input 
                                     id="global-param-${escapeHtml(param.name)}" 
                                     type="${inputType}" 
@@ -1600,12 +1600,12 @@ async function loadGlobalLLMs() {
         container.innerHTML = `
             <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="margin: 0;">Available LLMs</h3>
+                    <h3 style="margin: 0;" title="Configure LLM models and pricing used by agents.">Available LLMs</h3>
                     <div>
-                        <select id="add-llm-select" style="padding: 6px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; margin-right: 8px;">
+                        <select id="add-llm-select" title="Choose a model to add to the list." style="padding: 6px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; margin-right: 8px;">
                             <option value="">Add LLM...</option>
                         </select>
-                        <button onclick="addLLMFromSelect()" style="padding: 6px 12px; font-size: 14px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        <button onclick="addLLMFromSelect()" title="Add the selected model to the LLM list." style="padding: 6px 12px; font-size: 14px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
                             Add
                         </button>
                     </div>
@@ -1637,7 +1637,7 @@ function renderLLMItem(llm) {
             <div style="flex: 1;">
                 <!-- First line: Model ID and Prices -->
                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                    <label style="font-size: 12px; color: #666; white-space: nowrap; margin-right: 8px;">Model ID:</label>
+                    <label style="font-size: 12px; color: #666; white-space: nowrap; margin-right: 8px;" title="API model identifier (e.g. openai/gpt-4o).">Model ID:</label>
                         <div style="flex: 1;">
                             <input 
                                 type="text" 
@@ -1649,7 +1649,7 @@ function renderLLMItem(llm) {
                                 onblur="updateLLMField(${llm.id}, 'model_id', this.value)">
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px;">
-                            <label style="font-size: 12px; color: #666; white-space: nowrap; margin-left: 8px;">Prices:</label>
+                            <label style="font-size: 12px; color: #666; white-space: nowrap; margin-left: 8px;" title="Prompt price and completion price per 1M tokens (USD).">Prices:</label>
                             <input 
                                 type="number" 
                                 step="0.01"
@@ -1673,14 +1673,14 @@ function renderLLMItem(llm) {
                                 onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
                         </div>
                         <div>
-                            <button onclick="deleteLLM(${llm.id})" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                            <button onclick="deleteLLM(${llm.id})" title="Remove this LLM from the list." style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
                                 Delete
                             </button>
                         </div>
                     </div>
                 <!-- Second line: Name -->
                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                    <label style="font-size: 12px; color: #666; white-space: nowrap;">Name:</label>
+                    <label style="font-size: 12px; color: #666; white-space: nowrap;" title="Display name for this LLM in the UI.">Name:</label>
                     <input 
                         type="text" 
                         class="llm-field" 
@@ -1692,7 +1692,7 @@ function renderLLMItem(llm) {
                 </div>
                 <!-- Third line: Description -->
                 <div>
-                    <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Description:</label>
+                    <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;" title="Optional notes about this model (e.g. provider, capabilities).">Description:</label>
                     <textarea 
                         class="llm-field" 
                         data-field="description"
@@ -2061,8 +2061,8 @@ async function loadGlobalCosts() {
 
         let html = `
             <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h3 style="margin-top: 0;">Global Costs (Last ${days} Days)</h3>
-                <div style="font-size: 20px; font-weight: 600; margin-bottom: 12px;">Total: $${totalCost.toFixed(4)}</div>
+                <h3 style="margin-top: 0;" title="LLM usage costs across all agents for the selected period.">Global Costs (Last ${days} Days)</h3>
+                <div style="font-size: 20px; font-weight: 600; margin-bottom: 12px;" title="Sum of all logged costs in the period.">Total: $${totalCost.toFixed(4)}</div>
         `;
 
         if (logs.length === 0) {
@@ -2070,14 +2070,14 @@ async function loadGlobalCosts() {
         } else {
             html += '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
             html += '<thead><tr style="border-bottom: 1px solid #ddd; text-align: left;">';
-            html += '<th style="padding: 8px;">Timestamp</th>';
-            html += '<th style="padding: 8px;">Agent</th>';
-            html += '<th style="padding: 8px;">Channel</th>';
-            html += '<th style="padding: 8px;">Operation</th>';
-            html += '<th style="padding: 8px;">Model</th>';
-            html += '<th style="padding: 8px;">Input</th>';
-            html += '<th style="padding: 8px;">Output</th>';
-            html += '<th style="padding: 8px;">Cost</th>';
+            html += '<th style="padding: 8px;" title="When the cost was logged.">Timestamp</th>';
+            html += '<th style="padding: 8px;" title="Agent Telegram ID.">Agent</th>';
+            html += '<th style="padding: 8px;" title="Channel or chat Telegram ID.">Channel</th>';
+            html += '<th style="padding: 8px;" title="Type of operation (e.g. chat, translation).">Operation</th>';
+            html += '<th style="padding: 8px;" title="LLM model used.">Model</th>';
+            html += '<th style="padding: 8px;" title="Input token count.">Input</th>';
+            html += '<th style="padding: 8px;" title="Output token count.">Output</th>';
+            html += '<th style="padding: 8px;" title="Cost in USD.">Cost</th>';
             html += '</tr></thead><tbody>';
             html += logs.map(log => `
                 <tr style="border-bottom: 1px solid #f0f0f0;">
