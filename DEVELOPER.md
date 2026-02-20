@@ -18,7 +18,7 @@ source .env
 
 # Or run directly for development
 source .env
-PYTHONPATH=src python src/run.py
+PYTHONPATH=src python -m agent_server
 
 # Test
 PYTHONPATH=src pytest -vv

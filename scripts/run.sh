@@ -10,6 +10,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Service-specific configuration
 # Run the agent_server package (src must be on PYTHONPATH)
 SRC_DIR="$PROJECT_ROOT/src"
+# Entry point for check_script (lib.sh verifies this file exists)
+MAIN_SCRIPT="$SRC_DIR/agent_server/__main__.py"
 # Get state directory from environment variable, defaulting to "state"
 STATE_DIR="${CINDY_AGENT_STATE_DIR:-state}"
 # Handle both relative and absolute paths for STATE_DIR
