@@ -1169,7 +1169,8 @@ async function loadAgentContacts(agentName) {
                 ? '<span style="color: #dc3545; font-weight: 500; margin-left: 8px;">Blocked</span>'
                 : '';
             const usernameLine = contact.username ? `<div><strong>Username:</strong> @${escapeHtml(contact.username)}</div>` : '';
-            const phoneLine = contact.phone ? `<div><strong>Phone:</strong> ${escapeHtml(contact.phone)}</div>` : '';
+            const displayPhone = contact.phone ? (String(contact.phone).startsWith('+') ? contact.phone : '+' + contact.phone) : '';
+            const phoneLine = displayPhone ? `<div><strong>Phone:</strong> ${escapeHtml(displayPhone)}</div>` : '';
             const userId = String(contact.user_id);
             const isChecked = selectedAgentContacts.has(userId) ? 'checked' : '';
             const escapedAgentName = escJsAttr(agentName);
