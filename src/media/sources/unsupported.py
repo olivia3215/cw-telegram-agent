@@ -20,6 +20,8 @@ from llm.media_helper import get_media_llm
 from ..mime_utils import normalize_mime_type
 import logging
 
+import config
+
 from .base import MediaSource, MediaStatus, _needs_video_analysis, fallback_sticker_description
 from .helpers import make_error_record
 
@@ -98,16 +100,17 @@ class UnsupportedFormatMediaSource(MediaSource):
 
         # Check video duration for media that needs video analysis
         # This includes videos, animations, and TGS animated stickers
+        max_duration = config.MEDIA_VIDEO_MAX_DURATION_SECONDS
         if _needs_video_analysis(kind, metadata.get("mime_type")):
             duration = metadata.get("duration")
-            if duration is not None and duration > 10:
+            if duration is not None and duration > max_duration:
                 logger.info(
-                    f"Video {unique_id} is too long to analyze: {duration}s (max 10s)"
+                    f"Video {unique_id} is too long to analyze: {duration}s (max {max_duration}s)"
                 )
                 return make_error_record(
                     unique_id,
                     MediaStatus.UNSUPPORTED,
-                    f"too long to analyze (duration: {duration}s, max: 10s)",
+                    f"too long to analyze (duration: {duration}s, max: {max_duration}s)",
                     kind=kind,
                     sticker_set_name=sticker_set_name,
                     sticker_name=sticker_name,

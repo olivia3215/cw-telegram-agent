@@ -58,6 +58,11 @@ PARAMETER_METADATA = {
         "comment": "The max number of media descriptions produced per tick",
         "default": "8",
     },
+    "MEDIA_VIDEO_MAX_DURATION_SECONDS": {
+        "type": "int",
+        "comment": "Max video duration (seconds) for AI description; longer videos are marked unsupported",
+        "default": "10",
+    },
 }
 
 
@@ -129,6 +134,11 @@ def update_runtime_config(parameter_name: str, value: str) -> None:
             config.MEDIA_DESC_BUDGET_PER_TICK = int(value)
         except ValueError:
             config.MEDIA_DESC_BUDGET_PER_TICK = 8
+    elif parameter_name == "MEDIA_VIDEO_MAX_DURATION_SECONDS":
+        try:
+            config.MEDIA_VIDEO_MAX_DURATION_SECONDS = int(value)
+        except ValueError:
+            config.MEDIA_VIDEO_MAX_DURATION_SECONDS = 10
 
 
 def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str | None]:
@@ -177,6 +187,10 @@ def validate_parameter_value(parameter_name: str, value: str) -> tuple[bool, str
         if parameter_name == "MEDIA_DESC_BUDGET_PER_TICK":
             if int_value <= 0:
                 return False, f"{parameter_name} must be positive (got {int_value})"
+        # Validate MEDIA_VIDEO_MAX_DURATION_SECONDS must be positive
+        if parameter_name == "MEDIA_VIDEO_MAX_DURATION_SECONDS":
+            if int_value <= 0:
+                return False, f"{parameter_name} must be positive (got {int_value})"
     
     # Special validation for DEFAULT_AGENT_LLM
     if parameter_name == "DEFAULT_AGENT_LLM":
@@ -197,6 +211,7 @@ def get_current_parameter_values() -> dict[str, str | float | int]:
         "SELECT_STICKER_DELAY": config.SELECT_STICKER_DELAY,
         "DEFAULT_AGENT_LLM": config.DEFAULT_AGENT_LLM,
         "MEDIA_DESC_BUDGET_PER_TICK": config.MEDIA_DESC_BUDGET_PER_TICK,
+        "MEDIA_VIDEO_MAX_DURATION_SECONDS": config.MEDIA_VIDEO_MAX_DURATION_SECONDS,
     }
 
 

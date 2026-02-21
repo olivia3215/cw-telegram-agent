@@ -22,7 +22,8 @@ from google.genai.types import (  # pyright: ignore[reportMissingImports]
     HarmCategory,
 )
 
-from config import GOOGLE_GEMINI_API_KEY, GEMINI_MODEL, MEDIA_MODEL
+import config
+from config import GOOGLE_GEMINI_API_KEY, GEMINI_MODEL
 from media.mime_utils import (
     detect_mime_type_from_bytes,
     is_tgs_mime_type,
@@ -436,7 +437,7 @@ class GeminiLLM(LLM):
             Description string
 
         Raises:
-            ValueError: If video is too long (>10 seconds) or MIME type unsupported
+            ValueError: If video is too long (exceeds MEDIA_VIDEO_MAX_DURATION_SECONDS) or MIME type unsupported
             RuntimeError: For API failures
         """
         if not self.api_key:
@@ -444,10 +445,10 @@ class GeminiLLM(LLM):
             error.is_retryable = False
             raise error
 
-        # Check video duration - reject videos longer than 10 seconds
-        if duration is not None and duration > 10:
+        max_duration = config.MEDIA_VIDEO_MAX_DURATION_SECONDS
+        if duration is not None and duration > max_duration:
             error = ValueError(
-                f"Video is too long to analyze (duration: {duration}s, max: 10s)"
+                f"Video is too long to analyze (duration: {duration}s, max: {max_duration}s)"
             )
             error.is_retryable = False
             raise error
