@@ -143,30 +143,16 @@ async def iter_saved_messages(client):
 
 
 async def ensure_sticker_cache(agent, client):
-    # Determine which sets to load fully vs which to load selectively
+    # Load full sticker sets from config; Saved Messages stickers are merged in ensure_saved_message_sticker_cache.
     full_sets = set(getattr(agent, "sticker_set_names", []) or [])
-    # Never treat AnimatedEmojies as a full set - only allow specific stickers via explicit_stickers
+    # Never treat AnimatedEmojies as a full set (too large; use Saved Messages for specific stickers if needed).
     full_sets.discard("AnimatedEmojies")
-    explicit = getattr(agent, "explicit_stickers", []) or []
 
-    # Group explicit stickers by set
-    explicit_by_set = {}
-    for sticker_set_name, sticker_name in explicit:
-        if sticker_set_name:
-            if sticker_set_name not in explicit_by_set:
-                explicit_by_set[sticker_set_name] = set()
-            explicit_by_set[sticker_set_name].add(sticker_name)
-
-    # All sets we need to fetch from Telegram
-    required_sets = full_sets | set(explicit_by_set.keys())
-
-    # Ensure the tracking set exists
     loaded = getattr(agent, "loaded_sticker_sets", None)
     if loaded is None:
         agent.loaded_sticker_sets = set()
     loaded = agent.loaded_sticker_sets
 
-    # Ensure stickers dict exists
     if not hasattr(agent, "stickers"):
         agent.stickers = {}
     if not hasattr(agent, "_config_sticker_keys"):
@@ -174,12 +160,10 @@ async def ensure_sticker_cache(agent, client):
     if not hasattr(agent, "_saved_message_sticker_keys"):
         agent._saved_message_sticker_keys = set()
 
-    # Load config-defined sticker sets once, then always merge Saved Messages stickers.
-    if not required_sets or not required_sets.issubset(loaded):
-        for set_short in sorted(required_sets):
+    if full_sets and not full_sets.issubset(loaded):
+        for set_short in sorted(full_sets):
             if set_short in loaded:
-                continue  # already fetched
-
+                continue
             try:
                 result = await client(
                     GetStickerSetRequest(
@@ -187,29 +171,18 @@ async def ensure_sticker_cache(agent, client):
                         hash=0,
                     )
                 )
-
-                is_full_set = set_short in full_sets
-                explicit_names = explicit_by_set.get(set_short, set())
-
                 for doc in result.documents:
                     name = next(
                         (a.alt for a in doc.attributes if hasattr(a, "alt")),
                         f"sticker_{len(agent.stickers) + 1}",
                     )
-
-                    # Only store if:
-                    # 1. This is a full set, OR
-                    # 2. This specific sticker is in explicit_stickers
-                    if is_full_set or name in explicit_names:
-                        key = (set_short, name)
-                        agent.stickers[key] = doc
-                        agent._config_sticker_keys.add(key)
-                        logger.debug(
-                            f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
-                        )
-
+                    key = (set_short, name)
+                    agent.stickers[key] = doc
+                    agent._config_sticker_keys.add(key)
+                    logger.debug(
+                        f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                    )
                 loaded.add(set_short)
-
             except Exception as e:
                 logger.exception(
                     f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"

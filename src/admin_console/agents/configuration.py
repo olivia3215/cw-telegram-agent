@@ -103,9 +103,6 @@ def register_configuration_routes(agents_bp: Blueprint):
             # Get available role prompts
             available_role_prompts = get_available_system_prompts()
 
-            # For explicit stickers, we want a list of "SET :: STICKER" strings
-            formatted_explicit_stickers = [f"{s} :: {n}" for s, n in agent.explicit_stickers]
-
             # Get typing behavior overrides (raw values, can be None)
             start_typing_delay = agent._start_typing_delay if hasattr(agent, '_start_typing_delay') else None
             typing_speed = agent._typing_speed if hasattr(agent, '_typing_speed') else None
@@ -126,7 +123,6 @@ def register_configuration_routes(agents_bp: Blueprint):
                 "role_prompt_names": agent.role_prompt_names,
                 "available_role_prompts": available_role_prompts,
                 "sticker_set_names": agent.sticker_set_names,
-                "explicit_stickers": formatted_explicit_stickers,
                 "daily_schedule_description": agent.daily_schedule_description if hasattr(agent, 'daily_schedule_description') else None,
                 "reset_context_on_first_message": agent.reset_context_on_first_message,
                 "clear_summaries_on_first_message": agent.clear_summaries_on_first_message,
@@ -364,7 +360,7 @@ def register_configuration_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/stickers", methods=["PUT"])
     def api_update_agent_stickers(agent_config_name: str):
-        """Update agent sticker sets and explicit stickers (only allowed if disabled)."""
+        """Update agent sticker sets (only allowed if disabled)."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -375,27 +371,20 @@ def register_configuration_routes(agents_bp: Blueprint):
 
             data = request.json
             sticker_set_names = data.get("sticker_set_names", [])
-            explicit_stickers_raw = data.get("explicit_stickers", [])
 
-            from register_agents import extract_fields_from_markdown, _parse_explicit_stickers
+            from register_agents import extract_fields_from_markdown
             agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
             content = agent_file.read_text(encoding="utf-8")
             fields = extract_fields_from_markdown(content)
-            
+
             if sticker_set_names:
                 fields["Agent Sticker Sets"] = "\n".join(sticker_set_names)
             elif "Agent Sticker Sets" in fields:
                 del fields["Agent Sticker Sets"]
 
-            if explicit_stickers_raw:
-                fields["Agent Stickers"] = "\n".join(explicit_stickers_raw)
-            elif "Agent Stickers" in fields:
-                del fields["Agent Stickers"]
-
             _write_agent_markdown(agent, fields)
 
             agent.sticker_set_names = sticker_set_names
-            agent.explicit_stickers = _parse_explicit_stickers(explicit_stickers_raw)
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating stickers for {agent_config_name}: {e}")
@@ -1136,7 +1125,6 @@ def register_new_agent_routes(agents_bp: Blueprint):
                     "instructions": "You are a helpful assistant.",
                     "role_prompt_names": ["Person"],
                     "sticker_set_names": [],
-                    "explicit_stickers": [],
                     "timezone": None,
                     "llm_name": None,
                     "start_typing_delay": None,
@@ -1162,10 +1150,6 @@ def register_new_agent_routes(agents_bp: Blueprint):
                     "instructions": parsed.get("instructions") or "",
                     "role_prompt_names": parsed.get("role_prompt_names") or [],
                     "sticker_set_names": parsed.get("sticker_set_names") or [],
-                    "explicit_stickers": [
-                        " :: ".join(sticker) if isinstance(sticker, (list, tuple)) else str(sticker)
-                        for sticker in (parsed.get("explicit_stickers") or [])
-                    ],
                     "llm": parsed.get("llm_name") or "",
                     "timezone": parsed.get("timezone") or "",
                     "daily_schedule_description": parsed.get("daily_schedule_description") or "",
@@ -1264,12 +1248,6 @@ def register_new_agent_routes(agents_bp: Blueprint):
                 fields["Agent Sticker Sets"] = "\n".join(sticker_sets)
             elif "Agent Sticker Sets" in fields:
                 del fields["Agent Sticker Sets"]
-
-            explicit_stickers = _lines(data.get("explicit_stickers"))
-            if explicit_stickers:
-                fields["Agent Stickers"] = "\n".join(explicit_stickers)
-            elif "Agent Stickers" in fields:
-                del fields["Agent Stickers"]
 
             daily_schedule = (data.get("daily_schedule_description") or "").strip()
             if daily_schedule:

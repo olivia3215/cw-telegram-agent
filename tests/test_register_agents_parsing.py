@@ -38,10 +38,10 @@ WendyRole
     assert parsed["role_prompt_names"] == ["WendyRole"]
     # Multi-set fields should be present with safe defaults
     assert parsed["sticker_set_names"] == ["WendyDancer"]
-    assert parsed["explicit_stickers"] == []
 
 
-def test_parse_agent_markdown_with_sets_and_explicit_stickers(tmp_path: Path):
+def test_parse_agent_markdown_with_sticker_sets(tmp_path: Path):
+    """Agent Stickers section in markdown is ignored (no longer parsed)."""
     md = """# Agent Name
 Cindy
 
@@ -69,14 +69,8 @@ Malformed line that should be ignored
     assert parsed["phone"] == "+15557654321"
     assert parsed["role_prompt_names"] == ["CindyRole"]
 
-    # Order should be preserved; whitespace trimmed
+    # Order should be preserved; whitespace trimmed. Agent Stickers section is ignored.
     assert parsed["sticker_set_names"] == ["WendyDancer", "CINDYAI"]
-
-    # Only well-formed "SET :: NAME" lines are kept
-    assert parsed["explicit_stickers"] == [
-        ("WendyDancer", "Wink"),
-        ("CINDYAI", "HeartEyes"),
-    ]
 
 
 def test_parse_agent_markdown_trims_and_skips_blanks(tmp_path: Path):
@@ -106,7 +100,6 @@ OliviaRole
     parsed = parse_agent_markdown(path)
     assert parsed is not None
     assert parsed["sticker_set_names"] == ["OLIVIAAI"]
-    assert parsed["explicit_stickers"] == [("OLIVIAAI", "Smile")]
 
 
 def test_parse_agent_markdown_preserves_subheadings(tmp_path: Path):

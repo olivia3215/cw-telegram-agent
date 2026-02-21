@@ -51,7 +51,6 @@ class Agent(
         llm_name=None,
         # Multi-set config
         sticker_set_names=None,
-        explicit_stickers=None,
         # Config directory tracking
         config_directory=None,
         config_name=None,
@@ -94,9 +93,6 @@ class Agent(
         self.sticker_set_names = list(
             sticker_set_names or []
         )  # e.g. ["WendyDancer", "CINDYAI"]
-        self.explicit_stickers = list(
-            explicit_stickers or []
-        )  # e.g. [("WendyDancer","Wink")]
 
         # (set_short_name, sticker_name) -> InputDocument
         self.stickers = {}

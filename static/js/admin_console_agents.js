@@ -3034,7 +3034,6 @@ function loadAgentConfiguration(agentName) {
             const rolePromptNames = data.role_prompt_names || [];
             const availableRolePrompts = data.available_role_prompts || [];
             const stickerSetNames = data.sticker_set_names || [];
-            const explicitStickers = data.explicit_stickers || [];
             const dailyScheduleDescription = data.daily_schedule_description;
             const resetContextOnFirstMessage = data.reset_context_on_first_message || false;
             const clearSummariesOnFirstMessage = data.clear_summaries_on_first_message || false;
@@ -3133,23 +3132,13 @@ function loadAgentConfiguration(agentName) {
                         </select>
                     </div>
 
-                    <div class="agent-param-grid">
-                        <div class="agent-param-section">
-                            <h3>Sticker Sets${tooltipIconHtml('One set name per line (e.g. WendyDancer)')}</h3>
-                            <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
-                                onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
-                                class="agent-param-textarea" style="min-height: 80px;"
-                                placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
-                            >${escapeHtml(stickerSetNames.join('\n'))}</textarea>
-                        </div>
-                        <div class="agent-param-section">
-                            <h3>Explicit Stickers</h3>
-                            <textarea id="agent-explicit-stickers-textarea" ${!isDisabled ? 'disabled' : ''} 
-                                onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
-                                class="agent-param-textarea" style="min-height: 80px;"
-                                placeholder="SET :: STICKER per line, e.g.\nWendyDancer :: Wink\nCindyAI :: Hello"
-                            >${escapeHtml(explicitStickers.join('\n'))}</textarea>
-                        </div>
+                    <div class="agent-param-section">
+                        <h3>Sticker Sets${tooltipIconHtml('One set name per line (e.g. WendyDancer). Stickers in Saved Messages are also available.')}</h3>
+                        <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
+                            onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
+                            class="agent-param-textarea" style="min-height: 80px;"
+                            placeholder="One set name per line, e.g.\nWendyDancer\nCindyAI"
+                        >${escapeHtml(stickerSetNames.join('\n'))}</textarea>
                     </div>
 
                     <div class="agent-param-section">
@@ -3332,12 +3321,11 @@ function saveRolePrompts(agentName, prompts) {
 
 function updateAgentStickers(agentName) {
     const sets = document.getElementById('agent-sticker-sets-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
-    const explicit = document.getElementById('agent-explicit-stickers-textarea').value.split('\n').map(s => s.trim()).filter(s => s);
-    
+
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/stickers`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sticker_set_names: sets, explicit_stickers: explicit })
+        body: JSON.stringify({ sticker_set_names: sets })
     })
     .then(response => response.json())
     .then(data => {

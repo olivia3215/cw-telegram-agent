@@ -358,11 +358,8 @@ Write how you want the agent to behave and respond.
 # Agent Sticker Sets
 WendyDancer   # optional; list of sticker sets (one per line)
 CindyPainter
-
-# Agent Stickers
-WendyDancer :: 😉   # optional; explicit curated stickers (one per line)
-CindyPainter :: 😀
 ```
+Stickers in the agent's Saved Messages are also available; add stickers there to curate which ones the agent can use.
 
 ### Role Prompts
 
@@ -399,7 +396,7 @@ In addition the following prompts give agents additional capabilities
 Notes:
 
 * **Required fields:** `Agent Name`, `Agent Phone`, `Agent Instructions`.
-* **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Agent Stickers`, `Start Typing Delay`, `Typing Speed`, `Daily Schedule`, `Telegram ID`, `Disabled`, `Gagged`, `Reset Context On First Message`.
+* **Optional fields:** `Agent Timezone`, `LLM`, `Agent Sticker Sets`, `Start Typing Delay`, `Typing Speed`, `Daily Schedule`, `Telegram ID`, `Disabled`, `Gagged`, `Reset Context On First Message`.
   You may omit these entirely.
   
   The `LLM` field specifies which LLM to use:
