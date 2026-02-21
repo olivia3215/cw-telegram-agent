@@ -11,6 +11,7 @@ telethon
 pytest-asyncio
 mistune
 google-genai
+elevenlabs
 pillow
 lottie
 cairosvg
