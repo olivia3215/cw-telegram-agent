@@ -649,7 +649,7 @@ function loadConversationParameters() {
                     <h3>Conversation Parameters</h3>
                     
                     <div style="margin-bottom: 24px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">LLM Model:</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">LLM Model: ${tooltipIconHtml('LLM model for this conversation; overrides agent default')}</label>
                         <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">Current: ${escapeHtml(conversationLLM || agentDefaultLLM + ' (agent default)')}</p>
                         <input 
                             id="conversation-llm-select" 
@@ -660,7 +660,7 @@ function loadConversationParameters() {
                     </div>
                     
                     <div style="margin-bottom: 24px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Muted:</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Muted: ${tooltipIconHtml('Mute notifications for this conversation')}</label>
                         <label style="display: flex; align-items: center; cursor: pointer;">
                             <input type="checkbox" id="conversation-muted-toggle" ${isMuted ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
                             <span>Mute notifications for this conversation</span>
@@ -668,7 +668,7 @@ function loadConversationParameters() {
                     </div>
                     
                     <div style="margin-bottom: 24px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Gagged:</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Gagged: ${tooltipIconHtml('Read messages but do not create received tasks for this conversation')}</label>
                         <label style="display: flex; align-items: center; cursor: pointer;">
                             <input type="checkbox" id="conversation-gagged-toggle" ${isGagged ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
                             <span>Gag this conversation (read messages but don't create received tasks)</span>
@@ -676,7 +676,7 @@ function loadConversationParameters() {
                     </div>
                     ${isDmConversation ? `
                     <div style="margin-bottom: 24px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Blocked:</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Blocked: ${tooltipIconHtml('Block or unblock this conversation partner')}</label>
                         <label style="display: flex; align-items: center; cursor: pointer;">
                             <input type="checkbox" id="conversation-blocked-toggle" ${isBlocked ? 'checked' : ''} onchange="updateConversationParameters('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px; width: 18px; height: 18px;">
                             <span>Block or unblock this conversation partner</span>
@@ -685,7 +685,7 @@ function loadConversationParameters() {
                     </div>
                     ` : `
                     <div style="margin-bottom: 24px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Can Send Messages:</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: bold;">Can Send Messages: ${tooltipIconHtml('Whether the agent can send messages in this chat')}</label>
                         <div style="color: #666; font-size: 14px;">${canSend ? 'Yes' : 'No'}</div>
                     </div>
                     `}
@@ -1192,7 +1192,7 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
     
     // Display summaries at the top (editable, styled like memories)
     if (summaries.length > 0) {
-        html += '<div style="margin-bottom: 24px;"><h3 style="margin-bottom: 12px; font-size: 18px; font-weight: bold;">Conversation Summaries</h3>';
+        html += '<div style="margin-bottom: 24px;"><h3 style="margin-bottom: 12px; font-size: 18px; font-weight: bold;">Conversation Summaries ' + tooltipIconHtml('Editable summaries that cover ranges of messages') + '</h3>';
         html += summaries.map(summary => `
             <div class="memory-item" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
@@ -1247,14 +1247,14 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
         } else {
             // Has unsummarized messages - show header with all controls
             html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
-            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages</h3>';
+            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages ' + tooltipIconHtml('Messages not yet covered by a summary; use Summarize to create one') + '</h3>';
             html += '<div style="display: flex; align-items: center; gap: 16px;">';
             html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
             html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
-            html += 'Display Translation</label>';
+            html += 'Display Translation ' + tooltipIconHtml('Show English translation alongside messages') + '</label>';
             html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
             html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
-            html += 'Show Task Log</label>';
+            html += 'Show Task Log ' + tooltipIconHtml('Interleave task log entries with messages by time') + '</label>';
             html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
             html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
             html += '</div>';
