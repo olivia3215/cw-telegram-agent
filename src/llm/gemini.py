@@ -36,6 +36,12 @@ from .task_schema import get_task_response_schema_dict
 
 logger = logging.getLogger(__name__)
 
+# SDK logs a WARNING every time it builds concatenated text from a response that
+# contains non-text parts (e.g. thought_signature). We touch the response several
+# times (extract text, usage_metadata, optional pprint), so we get repeated noise.
+# Suppress WARNING for that logger so we only see ERROR+ from the SDK.
+logging.getLogger("google_genai.types").setLevel(logging.ERROR)
+
 # Debug logging flag
 GEMINI_DEBUG_LOGGING: bool = os.environ.get("GEMINI_DEBUG_LOGGING", "").lower() in (
     "true",
