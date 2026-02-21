@@ -73,6 +73,19 @@ def _parse_media_budget() -> int:
 MEDIA_DESC_BUDGET_PER_TICK: int = _parse_media_budget()
 
 
+# Max video duration (seconds) for AI description; videos longer than this are marked unsupported
+def _parse_media_video_max_duration() -> int:
+    """Parse MEDIA_VIDEO_MAX_DURATION_SECONDS with error handling."""
+    try:
+        value = int(os.environ.get("MEDIA_VIDEO_MAX_DURATION_SECONDS", "10"))
+        return value if value > 0 else 10
+    except ValueError:
+        return 10
+
+
+MEDIA_VIDEO_MAX_DURATION_SECONDS: int = _parse_media_video_max_duration()
+
+
 # Typing behavior configuration
 def _parse_start_typing_delay() -> float:
     """Parse START_TYPING_DELAY with error handling."""

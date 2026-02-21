@@ -174,6 +174,7 @@ Required for Telegram authentication. To obtain:
 ```bash
 # Number of new AI description attempts per tick (cache hits are free)
 export MEDIA_DESC_BUDGET_PER_TICK=8
+export MEDIA_VIDEO_MAX_DURATION_SECONDS=10   # Max video length (seconds) for AI description; increase to allow longer videos
 
 # Enable comprehensive LLM prompt/response logging for debugging
 export GEMINI_DEBUG_LOGGING=true

@@ -309,8 +309,13 @@ The AI integration follows this pipeline:
 - **AnimatedEmojies**: Uses emoji names instead of AI descriptions
 - **Video stickers (.webm)**: Receive video-level AI analysis and display with a video player
 - **TGS files**: Marked as "unsupported_format" without AI processing
+- **Video duration limit**: Videos longer than the configured maximum (default 10 seconds) are marked unsupported and are not sent for AI description. Set `MEDIA_VIDEO_MAX_DURATION_SECONDS` in your environment (or `.env`) to allow longer videos; see [Configuration](#configuration) below.
 - **Cached results**: Stored in `state/media` for performance
 - **Status tracking**: Distinguishes between AI-generated and curated content
+
+### Configuration
+
+- **`MEDIA_VIDEO_MAX_DURATION_SECONDS`** (default: `10`): Maximum video duration in seconds for AI description. Videos longer than this are marked "unsupported" and are not analyzed. Increase this to allow longer videos (e.g. `20` or `30`); the value is read from the environment when the process starts.
 
 ## Directory Management
 
