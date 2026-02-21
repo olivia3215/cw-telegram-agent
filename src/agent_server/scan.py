@@ -8,6 +8,7 @@ import logging
 
 from agent import Agent
 from clock import clock
+from schedule import get_agent_responsiveness
 from task_graph_helpers import insert_received_task_for_conversation
 from utils.formatting import format_log_prefix
 from utils.telegram import can_agent_send_to_channel, get_channel_name
@@ -28,6 +29,14 @@ logger = logging.getLogger(__name__)
 
 async def scan_unread_messages(agent: Agent):
     if agent.is_disabled:
+        return
+
+    # When responsiveness is zero (e.g. character asleep), we don't mark anything as read.
+    # Skip the unread scan to avoid log noise and repeated work.
+    if get_agent_responsiveness(agent) <= 0:
+        logger.debug(
+            f"{format_log_prefix(agent.name)} Skipping unread scan - responsiveness is zero"
+        )
         return
 
     # Try to reconnect if client is disconnected
