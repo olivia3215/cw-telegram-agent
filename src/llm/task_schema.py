@@ -179,7 +179,7 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
-                        "enum": ["photo"],
+                        "enum": ["send_media"],
                     },
                     "id": {
                         "type": "string",
@@ -188,7 +188,7 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                     "unique_id": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "Telegram file_unique_id string for the photo from saved messages.",
+                        "description": "Telegram file_unique_id string for the media (photo, audio, video, sticker, etc.) from saved messages.",
                     },
                     "reply_to": {
                         "anyOf": [
@@ -200,8 +200,8 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 },
                 "required": ["kind", "unique_id"],
                 "additionalProperties": False,
-                "title": "Photo Task",
-                "description": "Send a curated photo from saved messages by file_unique_id.",
+                "title": "Send Media Task",
+                "description": "Send curated media (photo, audio, video, sticker without set name, etc.) from saved messages by file_unique_id.",
             },
             {
                 "type": "object",

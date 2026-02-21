@@ -382,7 +382,7 @@ def test_interleave_messages_and_logs_excludes_failed_tasks():
 
 
 def test_interleave_messages_and_logs_excludes_visible_action_kinds():
-    """Visible action kinds (send, sticker, react, photo) should be excluded."""
+    """Visible action kinds (send, sticker, react, photo, send_media) should be excluded."""
     first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
     
     messages = [
@@ -402,8 +402,9 @@ def test_interleave_messages_and_logs_excludes_visible_action_kinds():
         {"timestamp": first_msg_time.isoformat(), "action_kind": "sticker", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "react", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "photo", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "send_media", "action_details": '{}'},
     ]
-    
+
     result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
     
     # Should have 1 message + 1 log (only the "think" log)

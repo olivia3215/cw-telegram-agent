@@ -55,7 +55,7 @@ def is_sticker_document(doc: Any) -> bool:
     Return True if this document is a sticker, using the same classification
     as the media pipeline (mime_utils.classify_media_kind_from_mime_and_hint).
     Used to detect sticker documents for sending with file_type='sticker'
-    or when including them in the agent's media (photo task).
+    or when including them in the agent's media (send_media task).
     """
     attrs = getattr(doc, "attributes", []) or []
     has_sticker_attribute = any(

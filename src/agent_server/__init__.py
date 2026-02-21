@@ -22,7 +22,7 @@ from .loop import run_telegram_loop, periodic_scan
 from .caches import (
     ensure_sticker_cache,
     ensure_saved_message_sticker_cache,
-    ensure_photo_cache,
+    ensure_media_cache,
 )
 from .message_helpers import (
     is_contact_signup_message,
@@ -42,7 +42,7 @@ __all__ = [
     "periodic_scan",
     "ensure_sticker_cache",
     "ensure_saved_message_sticker_cache",
-    "ensure_photo_cache",
+    "ensure_media_cache",
     "is_contact_signup_message",
     "has_only_one_message",
     "get_agent_message_with_reactions",
