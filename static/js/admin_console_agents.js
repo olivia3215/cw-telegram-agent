@@ -3090,13 +3090,13 @@ function loadAgentConfiguration(agentName) {
 
                     <div class="agent-param-grid">
                         <div class="agent-param-section">
-                            <h3>Agent Name (display)</h3>
+                            <h3>Agent Name (display)${tooltipIconHtml('Display name used in the console')}</h3>
                             <input id="agent-name-input" type="text" class="agent-param-input" value="${escapeHtml(data.name || '')}" ${!isDisabled ? 'disabled' : ''} 
                                 onchange="updateAgentName('${escJsAttr(agentName)}', this.value)">
                             <div style="font-size: 12px; color: #666; margin-top: 4px;">Display name used in the console</div>
                         </div>
                         <div class="agent-param-section">
-                            <h3>Agent Phone</h3>
+                            <h3>Agent Phone${tooltipIconHtml("E.164 format, e.g., +1234567890")}</h3>
                             <input id="agent-phone-input" type="text" class="agent-param-input" value="${escapeHtml(phone)}" ${!isDisabled ? 'disabled' : ''} 
                                 onchange="updateAgentPhone('${escJsAttr(agentName)}', this.value)">
                             <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
@@ -3105,9 +3105,9 @@ function loadAgentConfiguration(agentName) {
                     
                     <div class="agent-param-grid">
                         <div class="agent-param-section">
-                            <h3>Agent LLM</h3>
-                            <input 
-                                id="agent-llm-select" 
+<h3>Agent LLM${tooltipIconHtml('LLM model for this agent; leave empty to use global default')}</h3>
+                            <input
+                                id="agent-llm-select"
                                 type="text" 
                                 class="agent-param-input" 
                                 value="${escapeHtml(currentLLM || '')}"
@@ -3116,7 +3116,7 @@ function loadAgentConfiguration(agentName) {
                     </div>
 
                     <div class="agent-param-section">
-                        <h3>Role Prompts</h3>
+                        <h3>Role Prompts${tooltipIconHtml("Global role prompts to include in the agent system prompt")}</h3>
                         <div id="role-prompts-list" class="role-prompts-container">
                             ${rolePromptNames.length > 0 ? rolePromptNames.map(name => `
                                 <div class="role-prompt-tag">
@@ -3135,7 +3135,7 @@ function loadAgentConfiguration(agentName) {
 
                     <div class="agent-param-grid">
                         <div class="agent-param-section">
-                            <h3>Sticker Sets</h3>
+                            <h3>Sticker Sets${tooltipIconHtml('One set name per line (e.g. WendyDancer)')}</h3>
                             <textarea id="agent-sticker-sets-textarea" ${!isDisabled ? 'disabled' : ''} 
                                 onchange="updateAgentStickers('${escJsAttr(agentName)}')" 
                                 class="agent-param-textarea" style="min-height: 80px;"
@@ -3154,7 +3154,7 @@ function loadAgentConfiguration(agentName) {
 
                     <div class="agent-param-section">
                         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                            <h3 style="margin: 0;">Daily Schedule</h3>
+                            <h3 style="margin: 0;">Daily Schedule${tooltipIconHtml('Freeform English description of when the agent is active')}</h3>
                             <label class="agent-param-checkbox-label">
                                 <input type="checkbox" id="daily-schedule-enabled" ${dailyScheduleDescription !== null ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
                                     onchange="updateAgentDailySchedule('${escJsAttr(agentName)}')">
@@ -3170,7 +3170,7 @@ function loadAgentConfiguration(agentName) {
 
                     <div class="agent-param-grid">
                         <div class="agent-param-section">
-                            <h3>Agent Timezone</h3>
+                            <h3>Agent Timezone${tooltipIconHtml('IANA timezone for schedule and time-based behavior')}</h3>
                             <select id="agent-timezone-select" class="agent-param-input" onchange="updateAgentTimezone('${escJsAttr(agentName)}', this.value)">
                                 <option value="">Server Default</option>
                                 ${availableTimezones.map(tz => {
@@ -3179,7 +3179,7 @@ function loadAgentConfiguration(agentName) {
                             </select>
                         </div>
                         <div class="agent-param-section">
-                            <h3>Context Reset</h3>
+                            <h3>Context Reset${tooltipIconHtml('Clear conversation context when user sends first message in a new session')}</h3>
                             <label class="agent-param-checkbox-label" style="margin-top: 8px;">
                                 <input type="checkbox" id="reset-context-toggle" ${resetContextOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
                                     onchange="updateAgentResetContext('${escJsAttr(agentName)}', this.checked)">
@@ -3187,7 +3187,7 @@ function loadAgentConfiguration(agentName) {
                             </label>
                         </div>
                         <div class="agent-param-section">
-                            <h3>Clear Summaries</h3>
+                            <h3>Clear Summaries${tooltipIconHtml('Clear stored summaries when user sends first message in a new session')}</h3>
                             <label class="agent-param-checkbox-label" style="margin-top: 8px;">
                                 <input type="checkbox" id="clear-summaries-toggle" ${clearSummariesOnFirstMessage ? 'checked' : ''} ${!isDisabled ? 'disabled' : ''} 
                                     onchange="updateAgentClearSummaries('${escJsAttr(agentName)}', this.checked)">
@@ -3195,7 +3195,7 @@ function loadAgentConfiguration(agentName) {
                             </label>
                         </div>
                         <div class="agent-param-section">
-                            <h3>Global Gagged</h3>
+                            <h3>Global Gagged${tooltipIconHtml('When gagged, messages are read but no received tasks are created; can be overridden per conversation')}</h3>
                             <label class="agent-param-checkbox-label" style="margin-top: 8px;">
                                 <input type="checkbox" id="gagged-toggle" ${isGagged ? 'checked' : ''} 
                                     onchange="updateAgentGagged('${escJsAttr(agentName)}', this.checked)">
@@ -3207,7 +3207,7 @@ function loadAgentConfiguration(agentName) {
 
                     <div class="agent-param-grid">
                         <div class="agent-param-section">
-                            <h3>Start Typing Delay Override</h3>
+                            <h3>Start Typing Delay Override${tooltipIconHtml('Seconds before typing indicator (leave empty for global default, range 1-3600)')}</h3>
                             <input id="start-typing-delay-input" type="number" step="0.1" min="1" max="3600" class="agent-param-input" 
                                 value="${startTypingDelay !== null ? escapeHtml(String(startTypingDelay)) : ''}" 
                                 placeholder="Use global default"
@@ -3215,7 +3215,7 @@ function loadAgentConfiguration(agentName) {
                             <div style="font-size: 12px; color: #666; margin-top: 4px;">Seconds (leave empty for global default, range: 1-3600)</div>
                         </div>
                         <div class="agent-param-section">
-                            <h3>Typing Speed Override</h3>
+                            <h3>Typing Speed Override${tooltipIconHtml('Characters per second (leave empty for global default, range 1–1000)')}</h3>
                             <input id="typing-speed-input" type="number" step="0.1" min="1" max="1000" class="agent-param-input" 
                                 value="${typingSpeed !== null ? escapeHtml(String(typingSpeed)) : ''}" 
                                 placeholder="Use global default"
@@ -3225,7 +3225,7 @@ function loadAgentConfiguration(agentName) {
                     </div>
                     
                     <div class="agent-param-section">
-                        <h3>Agent Instructions</h3>
+                        <h3>Agent Instructions${tooltipIconHtml('System prompt or instructions for the agent behavior')}</h3>
                         <textarea 
                             id="agent-prompt-textarea" 
                             class="agent-param-textarea" style="min-height: 300px;"

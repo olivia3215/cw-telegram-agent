@@ -1806,6 +1806,13 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/** Return HTML for an info icon with hover + tap tooltip. Use in dynamic content (e.g. parameters). */
+function tooltipIconHtml(tooltipText) {
+    if (!tooltipText) return '';
+    const safe = escapeHtml(tooltipText);
+    return ' <span class="info-icon" data-tooltip="' + safe + '" title="' + safe + '">i</span>';
+}
+
 function escJsAttr(str) {
     if (!str) return '';
     return str.replace(/\\/g, '\\\\')
@@ -1901,6 +1908,24 @@ const autoGrowObserver = new MutationObserver((mutations) => {
 });
 
 autoGrowObserver.observe(document.body, { childList: true, subtree: true });
+
+// Tooltip icons: tap-to-show on mobile (toggle .tooltip-visible), hover on desktop via CSS
+document.addEventListener('click', function(e) {
+    const icon = e.target.closest('.info-icon[data-tooltip]');
+    if (icon) {
+        e.preventDefault();
+        const visible = document.querySelector('.info-icon.tooltip-visible');
+        if (visible && visible !== icon) {
+            visible.classList.remove('tooltip-visible');
+        }
+        icon.classList.toggle('tooltip-visible');
+        return;
+    }
+    const open = document.querySelector('.info-icon.tooltip-visible');
+    if (open) {
+        open.classList.remove('tooltip-visible');
+    }
+});
 
 // Ensure subtab bars are visible for active tab panels on page load
 document.addEventListener('DOMContentLoaded', function() {

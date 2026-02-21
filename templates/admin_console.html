@@ -32,48 +32,48 @@
     </div>
 
     <nav class="tab-bar">
-        <button class="tab-button active" data-tab="global">Global</button>
-        <button class="tab-button" data-tab="agents">Agents</button>
-        <button class="tab-button" data-tab="conversations">Conversations</button>
+        <button class="tab-button active" data-tab="global" title="Global config: media, documents, prompts, parameters, LLMs, costs, new agent.">Global</button>
+        <button class="tab-button" data-tab="agents" title="Per-agent config: profile, contacts, parameters, schedule, documents, media, costs.">Agents</button>
+        <button class="tab-button" data-tab="conversations" title="View and manage conversations, notes, parameters, XSend, work queue.">Conversations</button>
     </nav>
 
     <div id="tab-panels">
         <!-- Global Tab -->
         <section class="tab-panel active" data-tab-panel="global">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="media">Media Editor</button>
-                <button class="tab-button" data-subtab="documents-global">Documents</button>
-                <button class="tab-button" data-subtab="role-prompts">Role Prompts</button>
-                <button class="tab-button" data-subtab="parameters-global">Parameters</button>
-                <button class="tab-button" data-subtab="llms-global">LLMs</button>
-                <button class="tab-button" data-subtab="costs-global">Costs</button>
-                <button class="tab-button" data-subtab="new-agent">New Agent</button>
+                <button class="tab-button active" data-subtab="media" title="Browse and edit media.">Media Editor</button>
+                <button class="tab-button" data-subtab="documents-global" title="Global documents shared across agents.">Documents</button>
+                <button class="tab-button" data-subtab="role-prompts" title="Global role prompts.">Role Prompts</button>
+                <button class="tab-button" data-subtab="parameters-global" title="Global parameters.">Parameters</button>
+                <button class="tab-button" data-subtab="llms-global" title="Configure LLM models and pricing.">LLMs</button>
+                <button class="tab-button" data-subtab="costs-global" title="Global LLM costs.">Costs</button>
+                <button class="tab-button" data-subtab="new-agent" title="Create new agent.">New Agent</button>
             </nav>
             <div id="global-container" class="main-container">
                 <!-- Media Editor Subtab -->
                 <div class="subtab-panel active" data-subtab-panel="media">
                     <div class="controls">
                         <div class="directory-selector">
-                            <label for="directory-select">Select Media Directory:</label><br>
+                            <label for="directory-select">Select Media Directory: <span class="info-icon" data-tooltip="Choose which media directory to browse (e.g. state/media for agent-specific media).">i</span></label><br>
                             <select id="directory-select">
                                 <option value="">Choose a directory...</option>
                             </select>
                         </div>
 
                         <div class="directory-selector" id="media-limit-container" style="display: none; margin-top: 12px;">
-                            <label for="media-limit">Limit to most recent media (leave empty for all):</label><br>
+                            <label for="media-limit">Limit to most recent media (leave empty for all): <span class="info-icon" data-tooltip="Only for state/media. Show at most this many most recent items; leave empty for all.">i</span></label><br>
                             <input type="number" id="media-limit" min="1" placeholder="e.g., 100" style="width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                         </div>
 
                         <div class="directory-selector" id="media-search-container" style="display: none; margin-top: 12px;">
-                            <label for="media-search">Search media:</label><br>
+                            <label for="media-search">Search media: <span class="info-icon" data-tooltip="Search by media ID, sticker set name, sticker name, or description.">i</span></label><br>
                             <input type="text" id="media-search" placeholder="Search by ID, sticker set, sticker name, or description" style="width: 400px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                             <button onclick="clearMediaSearch()" id="clear-search-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none; margin-left: 8px;">Clear</button>
                             <div id="search-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
                         </div>
 
                         <div class="directory-selector" id="media-type-container" style="display: none; margin-top: 12px;">
-                            <label for="media-type-select">Filter by type:</label><br>
+                            <label for="media-type-select">Filter by type: <span class="info-icon" data-tooltip="Filter the list by media type.">i</span></label><br>
                             <select id="media-type-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 200px;">
                                 <option value="all">All Media</option>
                                 <option value="stickers">Stickers</option>
@@ -86,7 +86,7 @@
                         </div>
 
                         <div class="directory-selector" id="state-media-cleanup-container" style="display: none; margin-top: 12px;">
-                            <label for="cleanup-cutoff-days">Cleanup unused state media:</label><br>
+                            <label for="cleanup-cutoff-days">Cleanup unused state media: <span class="info-icon" data-tooltip="Remove state media files not used in the last N days. Only for state/media.">i</span></label><br>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px;">
                                 <input type="number" id="cleanup-cutoff-days" min="1" value="7" style="width: 100px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                 <span style="font-size: 13px; color: #666;">days since last used</span>
@@ -96,7 +96,7 @@
                         </div>
 
                         <div class="import-section">
-                            <h3>Import Sticker Set</h3>
+                            <h3>Import Sticker Set <span class="info-icon" data-tooltip="Import a Telegram sticker set by its short name (e.g. WendyDancer).">i</span></h3>
                             <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
                             <button onclick="importStickerSet()">Import Set</button>
                             <div id="import-status"></div>
@@ -106,11 +106,11 @@
                     <div class="main-container">
                         <div id="pagination-top" style="display: none; margin-bottom: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
-                                <button onclick="previousPage()" id="prev-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                                <select id="page-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                                <button onclick="previousPage()" id="prev-btn" title="Go to previous page." style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                                <select id="page-select" title="Jump to a specific page." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
                                     <option value="">Go to page…</option>
                                 </select>
-                                <button onclick="nextPage()" id="next-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                                <button onclick="nextPage()" id="next-btn" title="Go to next page." style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
                             </div>
                             <div id="pagination-info" style="font-size: 14px; color: #666;"></div>
                         </div>
@@ -121,11 +121,11 @@
 
                         <div id="pagination-bottom" style="display: none; margin-top: 16px; padding: 12px; background: white; border-radius: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
-                                <button onclick="previousPage()" id="prev-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
-                                <select id="page-select-bottom" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
+                                <button onclick="previousPage()" id="prev-btn-bottom" title="Go to previous page." style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Previous</button>
+                                <select id="page-select-bottom" title="Jump to a specific page." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-width: 140px;">
                                     <option value="">Go to page…</option>
                                 </select>
-                                <button onclick="nextPage()" id="next-btn-bottom" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
+                                <button onclick="nextPage()" id="next-btn-bottom" title="Go to next page." style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Next →</button>
                             </div>
                         </div>
                     </div>
@@ -135,20 +135,20 @@
                 <div class="subtab-panel" data-subtab-panel="documents-global">
                     <div class="controls">
                         <div class="directory-selector">
-                            <label for="global-docs-config-select">Select Config Directory:</label><br>
+                            <label for="global-docs-config-select">Select Config Directory: <span class="info-icon" data-tooltip="Config directory that holds global documents (shared across agents).">i</span></label><br>
                             <select id="global-docs-config-select">
                                 <option value="">Choose a config directory...</option>
                             </select>
                         </div>
                         <div class="directory-selector" style="margin-top: 12px;">
-                            <label for="global-docs-select">Select Document:</label><br>
-                            <select id="global-docs-select">
+                            <label for="global-docs-select">Select Document: <span class="info-icon" data-tooltip="Pick a document to view or edit.">i</span></label><br>
+                            <select id="global-docs-select" title="Choose document.">
                                 <option value="">Choose a document...</option>
                             </select>
                         </div>
                         <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button onclick="createGlobalDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button>
-                            <button onclick="deleteGlobalDoc()" id="delete-global-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button>
+                            <button onclick="createGlobalDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button> <span class="info-icon" data-tooltip="Create a new global document in the selected config directory.">i</span>
+                            <button onclick="deleteGlobalDoc()" id="delete-global-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button> <span class="info-icon" data-tooltip="Permanently delete the currently selected document.">i</span>
                         </div>
                     </div>
                     <div class="main-container" style="margin-top: 16px;">
@@ -162,20 +162,20 @@
                 <div class="subtab-panel" data-subtab-panel="role-prompts">
                     <div class="controls">
                         <div class="directory-selector">
-                            <label for="global-prompts-config-select">Select Config Directory:</label><br>
+                            <label for="global-prompts-config-select">Select Config Directory: <span class="info-icon" data-tooltip="Config directory for global role prompts.">i</span></label><br>
                             <select id="global-prompts-config-select">
                                 <option value="">Choose a config directory...</option>
                             </select>
                         </div>
                         <div class="directory-selector" style="margin-top: 12px;">
-                            <label for="global-prompts-select">Select Role Prompt:</label><br>
+                            <label for="global-prompts-select">Select Role Prompt: <span class="info-icon" data-tooltip="Pick a role prompt to view or edit.">i</span></label><br>
                             <select id="global-prompts-select">
                                 <option value="">Choose a role prompt...</option>
                             </select>
                         </div>
                         <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button onclick="createGlobalPrompt()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Role Prompt</button>
-                            <button onclick="deleteGlobalPrompt()" id="delete-global-prompt-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Role Prompt</button>
+                            <button onclick="createGlobalPrompt()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Role Prompt</button> <span class="info-icon" data-tooltip="Create a new global role prompt in the selected config directory.">i</span>
+                            <button onclick="deleteGlobalPrompt()" id="delete-global-prompt-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Role Prompt</button> <span class="info-icon" data-tooltip="Permanently delete the currently selected role prompt.">i</span>
                         </div>
                     </div>
                     <div class="main-container" style="margin-top: 16px;">
@@ -217,19 +217,19 @@
                     <div class="main-container" style="margin-top: 16px;">
                         <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                                <button id="new-agent-create-btn" onclick="createNewAgentFromForm()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>Create</button>
+                                <button id="new-agent-create-btn" onclick="createNewAgentFromForm()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>Create</button> <span class="info-icon" data-tooltip="Create the agent with the current form values. Enable when config directory and name are valid.">i</span>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Config Directory</h3>
+                                    <h3>Config Directory <span class="info-icon" data-tooltip="Config directory where this agent's files will be stored.">i</span></h3>
                                     <select id="new-agent-config-directory" class="agent-param-input" style="min-width: 220px;">
                                         <option value="">Choose a config directory...</option>
                                     </select>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Must be selected</div>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Config Name (filename)</h3>
+                                    <h3>Config Name (filename) <span class="info-icon" data-tooltip="Filename for the agent config (without .md); used in config directory.">i</span></h3>
                                     <input id="new-agent-config-name" type="text" class="agent-param-input" value="Untitled">
                                     <div id="new-agent-config-name-status" style="font-size: 12px; color: #666; margin-top: 4px;"></div>
                                 </div>
@@ -237,53 +237,53 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Agent Name (display)</h3>
+                                    <h3>Agent Name (display) <span class="info-icon" data-tooltip="Display name shown in the admin console and elsewhere.">i</span></h3>
                                     <input id="new-agent-display-name" type="text" class="agent-param-input" value="Untitled Agent">
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Must not be empty</div>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Agent Phone</h3>
+                                    <h3>Agent Phone <span class="info-icon" data-tooltip="Phone number for the Telegram account (E.164 format).">i</span></h3>
                                     <input id="new-agent-phone" type="text" class="agent-param-input" value="+1234567890">
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">E.164 format, e.g., +1234567890</div>
                                 </div>
                             </div>
 
                             <div class="agent-param-section">
-                                <h3>Agent Instructions</h3>
+                                <h3>Agent Instructions <span class="info-icon" data-tooltip="System prompt or instructions for the agent's behavior.">i</span></h3>
                                 <textarea id="new-agent-prompt" class="agent-param-input" rows="6" style="resize: vertical;">You are a helpful assistant.</textarea>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Agent LLM (optional)</h3>
+                                    <h3>Agent LLM (optional) <span class="info-icon" data-tooltip="LLM model for this agent; leave blank to use the global default.">i</span></h3>
                                     <input id="new-agent-llm" type="text" class="agent-param-input" list="new-agent-llm-options" placeholder="Type or select an LLM model...">
                                     <datalist id="new-agent-llm-options"></datalist>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Agent Timezone (optional)</h3>
+                                    <h3>Agent Timezone (optional) <span class="info-icon" data-tooltip="IANA timezone for schedule and time-based behavior.">i</span></h3>
                                     <select id="new-agent-timezone" class="agent-param-input"></select>
                                 </div>
                             </div>
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Role Prompts</h3>
+                                    <h3>Role Prompts <span class="info-icon" data-tooltip="Global role prompts to include in the agent's system prompt.">i</span></h3>
                                     <select id="new-agent-role-prompts" class="agent-param-input" multiple size="6" style="min-width: 200px;"></select>
                                     <div style="font-size: 12px; color: #666; margin-top: 4px;">Select one or more (Ctrl/Cmd+click)</div>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Sticker Sets (optional) (one per line)</h3>
+                                    <h3>Sticker Sets (optional) (one per line) <span class="info-icon" data-tooltip="Sticker set short names, one per line (e.g. WendyDancer).">i</span></h3>
                                     <textarea id="new-agent-sticker-sets" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
                                 </div>
                             </div>
 
                             <div class="agent-param-section">
-                                <h3>Explicit Stickers (optional) (one per line, SET :: STICKER)</h3>
+                                <h3>Explicit Stickers (optional) (one per line, SET :: STICKER) <span class="info-icon" data-tooltip="Override specific stickers: STICKER_SET_NAME :: sticker_emoji or file_id, one per line.">i</span></h3>
                                 <textarea id="new-agent-explicit-stickers" class="agent-param-input" rows="4" style="resize: vertical;"></textarea>
                             </div>
 
                             <div class="agent-param-section">
-                                <h3>Daily Schedule (optional)</h3>
+                                <h3>Daily Schedule (optional) <span class="info-icon" data-tooltip="Time-based schedule entries (e.g. when the agent is active).">i</span></h3>
                                 <label style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                     <input id="new-agent-daily-schedule-enabled" type="checkbox">
                                     Enabled
@@ -293,14 +293,14 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Reset Context On First Message (optional)</h3>
+                                    <h3>Reset Context On First Message (optional) <span class="info-icon" data-tooltip="If enabled, clear conversation context when the user sends the first message in a new session.">i</span></h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-reset-context" type="checkbox">
                                         Enabled
                                     </label>
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Clear Summaries On First Message (optional)</h3>
+                                    <h3>Clear Summaries On First Message (optional) <span class="info-icon" data-tooltip="If enabled, clear stored summaries when the user sends the first message in a new session.">i</span></h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-clear-summaries" type="checkbox">
                                         Enabled
@@ -310,7 +310,7 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Gagged (optional)</h3>
+                                    <h3>Gagged (optional) <span class="info-icon" data-tooltip="If enabled, the agent will not send messages (useful for testing or read-only mode).">i</span></h3>
                                     <label style="display: inline-flex; align-items: center; gap: 8px;">
                                         <input id="new-agent-gagged" type="checkbox">
                                         Enabled
@@ -320,11 +320,11 @@
 
                             <div class="agent-param-grid">
                                 <div class="agent-param-section">
-                                    <h3>Start Typing Delay (optional) (seconds)</h3>
+                                    <h3>Start Typing Delay (optional) (seconds) <span class="info-icon" data-tooltip="Seconds before the agent shows typing indicator after receiving a message.">i</span></h3>
                                     <input id="new-agent-start-typing-delay" type="number" class="agent-param-input" min="1" max="3600" step="0.1">
                                 </div>
                                 <div class="agent-param-section">
-                                    <h3>Typing Speed (optional) (chars/sec)</h3>
+                                    <h3>Typing Speed (optional) (chars/sec) <span class="info-icon" data-tooltip="Characters per second when simulating typing.">i</span></h3>
                                     <input id="new-agent-typing-speed" type="number" class="agent-param-input" min="1" max="1000" step="0.1">
                                 </div>
                             </div>
@@ -337,23 +337,23 @@
         <!-- Agents Tab -->
         <section class="tab-panel" data-tab-panel="agents">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="profile">Profile</button>
-                <button class="tab-button" data-subtab="contacts">Contacts</button>
-                <button class="tab-button" data-subtab="parameters">Parameters</button>
-                <button class="tab-button" data-subtab="schedule">Schedule</button>
-                <button class="tab-button" data-subtab="memories">Memories</button>
-                <button class="tab-button" data-subtab="intentions">Intentions</button>
-                <button class="tab-button" data-subtab="documents-agent">Documents</button>
-                <button class="tab-button" data-subtab="memberships">Memberships</button>
-                <button class="tab-button" data-subtab="media">Media</button>
-                <button class="tab-button" data-subtab="costs">Costs</button>
+                <button class="tab-button active" data-subtab="profile" title="Profile photo, name, username, bio, birthday.">Profile</button>
+                <button class="tab-button" data-subtab="contacts" title="Contact list and partners.">Contacts</button>
+                <button class="tab-button" data-subtab="parameters" title="Agent-specific parameters (LLM, typing, etc.).">Parameters</button>
+                <button class="tab-button" data-subtab="schedule" title="Daily schedule and activities.">Schedule</button>
+                <button class="tab-button" data-subtab="memories" title="Stored memories and summaries.">Memories</button>
+                <button class="tab-button" data-subtab="intentions" title="Intent detection and handling.">Intentions</button>
+                <button class="tab-button" data-subtab="documents-agent" title="Agent-specific documents.">Documents</button>
+                <button class="tab-button" data-subtab="memberships" title="Channel and group memberships.">Memberships</button>
+                <button class="tab-button" data-subtab="media" title="Agent media and stickers.">Media</button>
+                <button class="tab-button" data-subtab="costs" title="LLM costs for this agent.">Costs</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector">
                     <label for="agents-agent-select">Select Agent:</label><br>
                     <select id="agents-agent-select">
                         <option value="">Choose an agent...</option>
-                    </select>
+                    </select> <span class="info-icon" data-tooltip="Choose which agent to view or edit.">i</span>
                 </div>
             </div>
             <div id="agents-container" class="main-container">
@@ -391,29 +391,29 @@
                             <div style="display: grid; gap: 16px;">
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                                     <div>
-                                        <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
+                                        <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name: <span class="info-icon" data-tooltip="Telegram profile first name.">i</span></label>
                                         <input type="text" id="agent-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                     </div>
                                     <div>
-                                        <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
+                                        <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name: <span class="info-icon" data-tooltip="Telegram profile last name.">i</span></label>
                                         <input type="text" id="agent-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                     </div>
                                 </div>
                                 <div>
-                                    <label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
-                                    <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+<label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username: <span class="info-icon" data-tooltip="Telegram @username (without @).">i</span></label>
+                                        <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                 </div>
                                 <div>
-                                    <label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
-                                    <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+<label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID: <span class="info-icon" data-tooltip="Numeric Telegram user ID (read-only).">i</span></label>
+                                        <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
                                 </div>
                                 <div>
-                                    <label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
-                                    <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
+<label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio: <span class="info-icon" data-tooltip="Telegram profile bio (max 70 chars).">i</span></label>
+                                        <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
                                     <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
                                 </div>
                                 <div>
-                                    <label for="agent-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
+                                    <label for="agent-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday: <span class="info-icon" data-tooltip="Profile birthday (month, day, optional year).">i</span></label>
                                     <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
                                         <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                             <option value="">Month</option>
@@ -437,8 +437,8 @@
                                     </div>
                                 </div>
                                 <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                    <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button>
-                                    <button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
+                                    <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button> <span class="info-icon" data-tooltip="Save profile changes to Telegram.">i</span>
+                                    <button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button> <span class="info-icon" data-tooltip="Discard unsaved profile changes.">i</span>
                                     <div id="agent-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
                                 </div>
                             </div>
@@ -488,14 +488,14 @@
                 <div class="subtab-panel" data-subtab-panel="documents-agent">
                     <div class="controls">
                         <div class="directory-selector">
-                            <label for="agent-docs-select">Select Document:</label><br>
+                            <label for="agent-docs-select">Select Document: <span class="info-icon" data-tooltip="Pick an agent-specific document to view or edit.">i</span></label><br>
                             <select id="agent-docs-select">
                                 <option value="">Choose a document...</option>
                             </select>
                         </div>
                         <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button onclick="createAgentDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button>
-                            <button onclick="deleteAgentDoc()" id="delete-agent-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button>
+                            <button onclick="createAgentDoc()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create New Document</button> <span class="info-icon" data-tooltip="Create a new document for this agent.">i</span>
+                            <button onclick="deleteAgentDoc()" id="delete-agent-doc-btn" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">Delete Document</button> <span class="info-icon" data-tooltip="Permanently delete the selected document.">i</span>
                         </div>
                     </div>
                     <div class="main-container" style="margin-top: 16px;">
@@ -514,17 +514,17 @@
                 <div class="subtab-panel" data-subtab-panel="media">
                     <div id="agents-media-container">
                         <div class="media-upload-section" style="margin-bottom: 24px;">
-                            <h3>Add Media</h3>
+                            <h3>Add Media <span class="info-icon" data-tooltip="Upload files or drag-and-drop to add media for this agent.">i</span></h3>
                             <div class="media-upload-buttons" style="display: flex; gap: 12px; margin-bottom: 16px;">
-                                <button id="agents-media-upload-file" class="button">Upload File</button>
+                                <button id="agents-media-upload-file" class="button">Upload File</button> <span class="info-icon" data-tooltip="Select files to upload.">i</span>
                             </div>
                             <div id="agents-media-drop-zone" class="drop-zone">
-                                Drag and drop media files here
+                                Drag and drop media files here <span class="info-icon" data-tooltip="Drop files here to upload.">i</span>
                             </div>
                         </div>
                         
                         <div class="media-list-section">
-                            <h3>Media Library</h3>
+                            <h3>Media Library <span class="info-icon" data-tooltip="Media files (stickers, photos, etc.) available to this agent.">i</span></h3>
                             <div id="agents-media-list" class="media-list">
                                 <div class="loading">Select an agent to view media</div>
                             </div>
@@ -543,18 +543,18 @@
         <!-- Conversations Tab -->
         <section class="tab-panel" data-tab-panel="conversations">
             <nav class="tab-bar" style="margin-bottom: 16px;">
-                <button class="tab-button active" data-subtab="profile-conv">Profile</button>
-                <button class="tab-button" data-subtab="notes-conv">Notes</button>
-                <button class="tab-button" data-subtab="conversation-parameters">Parameters</button>
-                <button class="tab-button" data-subtab="plans">Plans</button>
-                <button class="tab-button" data-subtab="conversation">Conversation</button>
-                <button class="tab-button" data-subtab="costs-conv">Costs</button>
-                <button class="tab-button" data-subtab="xsend">XSend</button>
-                <button class="tab-button" data-subtab="work-queue">Work Queue</button>
+                <button class="tab-button active" data-subtab="profile-conv" title="Conversation partner profile and info.">Profile</button>
+                <button class="tab-button" data-subtab="notes-conv" title="Notes for this conversation.">Notes</button>
+                <button class="tab-button" data-subtab="conversation-parameters" title="Parameters for this conversation.">Parameters</button>
+                <button class="tab-button" data-subtab="plans" title="Plans and follow-ups.">Plans</button>
+                <button class="tab-button" data-subtab="conversation" title="Message thread and actions.">Conversation</button>
+                <button class="tab-button" data-subtab="costs-conv" title="LLM costs for this conversation.">Costs</button>
+                <button class="tab-button" data-subtab="xsend" title="Send an intent message as the agent.">XSend</button>
+                <button class="tab-button" data-subtab="work-queue" title="Work queue for this conversation.">Work Queue</button>
             </nav>
             <div class="controls">
                 <div class="directory-selector" style="margin-bottom: 16px;">
-                    <label for="recent-conversations-select">Recent Conversations:</label><br>
+                    <label for="recent-conversations-select">Recent Conversations: <span class="info-icon" data-tooltip="Pick a recent conversation to view or manage.">i</span></label><br>
                     <select id="recent-conversations-select">
                         <option value="">Select a recent conversation...</option>
                     </select>
@@ -563,15 +563,16 @@
                     <label for="conversations-agent-select">Select Agent:</label><br>
                     <select id="conversations-agent-select">
                         <option value="">Choose an agent...</option>
-                    </select>
+                    </select> <span class="info-icon" data-tooltip="Agent whose conversation to view.">i</span>
                 </div>
                 <div class="directory-selector" style="margin-top: 16px;">
-                    <label for="conversations-partner-select">Select Conversation:</label><br>
+                    <label for="conversations-partner-select">Select Conversation: <span class="info-icon" data-tooltip="Conversation partner (user or chat).">i</span></label><br>
                     <select id="conversations-partner-select">
                         <option value="">Select Conversation</option>
                     </select>
-                    <input type="text" id="conversations-user-id" placeholder="Or type user ID, username, or phone number (e.g., 123456789, @lambda_n, +1234567890)" style="margin-top: 8px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;">
-                    <button onclick="loadConversationData()" style="margin-top: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Load</button>
+                    <span style="margin-top: 8px; display: inline-block;">Or type user ID, @username, or phone: <span class="info-icon" data-tooltip="User ID, @username, or phone number to load a conversation (e.g. 123456789, @lambda_n, +1234567890).">i</span></span>
+                    <input type="text" id="conversations-user-id" placeholder="e.g., 123456789, @lambda_n, +1234567890" style="margin-top: 4px; display: block; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 300px;">
+                    <button onclick="loadConversationData()" style="margin-top: 8px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Load</button> <span class="info-icon" data-tooltip="Load the selected or entered conversation.">i</span>
                 </div>
             </div>
             <div id="conversations-container" class="main-container">
@@ -700,11 +701,11 @@
                         <div class="loading">Select an agent and conversation partner</div>
                         <div style="margin-top: 16px; display: none;" id="xsend-content">
                             <div class="directory-selector">
-                                <label for="xsend-intent-textarea">Intent:</label><br>
+                                <label for="xsend-intent-textarea">Intent: <span class="info-icon" data-tooltip="Message or intent to send as the agent to the conversation partner.">i</span></label><br>
                                 <textarea id="xsend-intent-textarea" placeholder="Enter the intent message..." style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea>
                             </div>
                             <div style="margin-top: 16px;">
-                                <button onclick="sendXSend()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">XSend</button>
+                                <button onclick="sendXSend()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">XSend</button> <span class="info-icon" data-tooltip="Send the intent message as the agent.">i</span>
                                 <div id="xsend-status" style="margin-top: 8px; font-size: 14px;"></div>
                             </div>
                         </div>
