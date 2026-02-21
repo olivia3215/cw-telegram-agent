@@ -613,11 +613,11 @@ The `samples/agents/Heidi.md` configuration uses:
 
 ## Stickers
 
-Agents can be configured to use Telegram stickers in their responses. You can specify sticker sets for the agent to choose from, or explicitly curate specific stickers.
+Agents can be configured to use Telegram stickers in their responses. You specify sticker sets (full sets are loaded), and stickers in the agent's Saved Messages are also available.
 
 ### Configuration
 
-Add the `Agent Sticker Sets` and/or `Agent Stickers` fields to your agent's markdown file:
+Add the `Agent Sticker Sets` field to your agent's markdown file:
 
 ```markdown
 # Agent Name
@@ -630,16 +630,14 @@ Heidi
 UtyaDuck
 HappyPenguin
 
-# Agent Stickers
-UtyaDuck :: 😊
-HappyPenguin :: 👋
-
 # Role Prompt
 Chatbot
 
 # Agent Instructions
 You are Heidi...
 ```
+
+To curate specific stickers (e.g. from a large set), add those stickers to the agent's Saved Messages in Telegram; they are merged into the agent's sticker cache automatically.
 
 ### Agent Sticker Sets
 
@@ -659,28 +657,6 @@ WendyDancer
 2. Tap the sticker to view the sticker pack
 3. The sticker set name is usually visible in the pack details
 
-### Agent Stickers
-
-The `Agent Stickers` field specifies explicitly curated stickers (one per line) using the format `STICKER_SET_NAME :: STICKER_EMOJI_OR_NAME`.
-
-**Format:** `SET_NAME :: STICKER_IDENTIFIER` (one per line)
-
-```markdown
-# Agent Stickers
-WendyDancer :: 😉
-CindyPainter :: 😀
-UtyaDuck :: 👍
-```
-
-The identifier after `::` can be:
-- An emoji that represents the sticker
-- A descriptive name for the sticker
-
-**Whitespace:** Spaces around `::` are automatically trimmed, so these are equivalent:
-- `UtyaDuck :: 😊`
-- `UtyaDuck::😊`
-- `UtyaDuck ::😊`
-
 ### How Stickers Work
 
 When an agent is configured with stickers:
@@ -689,26 +665,13 @@ When an agent is configured with stickers:
 2. **Context**: The agent sees available stickers in its system prompt and can reference them
 3. **Usage**: Stickers appear as tasks in the agent's response (type: `sticker`)
 
-### Combining Both Fields
-
-You can use both `Agent Sticker Sets` (for broad access to sticker packs) and `Agent Stickers` (for curated favorites):
-
-```markdown
-# Agent Sticker Sets
-UtyaDuck
-HappyPenguin
-
-# Agent Stickers
-UtyaDuck :: 😊
-UtyaDuck :: 😢
-HappyPenguin :: 👋
-```
-
-This gives the agent access to all stickers in the listed sets, with explicitly curated favorites highlighted.
+Stickers come from:
+- **Agent Sticker Sets**: Full sets listed in the config are loaded.
+- **Saved Messages**: Any stickers in the agent's Saved Messages are also available (useful for curating a subset from large sets).
 
 ### Default Behavior
 
-If neither field is specified, the agent will not have access to stickers and cannot send them.
+If no sticker sets are specified and there are no stickers in Saved Messages, the agent will not have access to stickers and cannot send them.
 
 ### Example Agent
 

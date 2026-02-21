@@ -190,7 +190,6 @@ async function loadNewAgentDefaults(configDirectory) {
             });
         }
         document.getElementById('new-agent-sticker-sets').value = (defaults.sticker_set_names || []).join('\n');
-        document.getElementById('new-agent-explicit-stickers').value = (defaults.explicit_stickers || []).join('\n');
         const dailyDesc = defaults.daily_schedule_description || '';
         const dailyEnabled = document.getElementById('new-agent-daily-schedule-enabled');
         const dailyTextarea = document.getElementById('new-agent-daily-schedule');
@@ -328,7 +327,6 @@ async function createNewAgentFromForm() {
             llm: document.getElementById('new-agent-llm')?.value.trim(),
             timezone: document.getElementById('new-agent-timezone')?.value.trim(),
             sticker_set_names: document.getElementById('new-agent-sticker-sets')?.value,
-            explicit_stickers: document.getElementById('new-agent-explicit-stickers')?.value,
             daily_schedule_description: dailyScheduleEnabled && dailyScheduleTextarea ? dailyScheduleTextarea.value : '',
             reset_context_on_first_message: document.getElementById('new-agent-reset-context')?.checked,
             clear_summaries_on_first_message: document.getElementById('new-agent-clear-summaries')?.checked,

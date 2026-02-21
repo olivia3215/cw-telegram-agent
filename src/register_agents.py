@@ -36,23 +36,6 @@ def _ensure_list(value) -> list[str]:
     return [ln for ln in lines if ln]
 
 
-def _parse_explicit_stickers(lines: list[str]) -> list[tuple[str, str]]:
-    """
-    Lines formatted as: SET_NAME :: STICKER_NAME
-    Whitespace around tokens is stripped.
-    """
-    out: list[tuple[str, str]] = []
-    for ln in lines:
-        if "::" not in ln:
-            continue
-        left, right = ln.split("::", 1)
-        sticker_set_name = left.strip()
-        sticker_name = right.strip()
-        if sticker_set_name and sticker_name:
-            out.append((sticker_set_name, sticker_name))
-    return out
-
-
 def extract_fields_from_markdown(md_text):
     """
     Extract fields from markdown by splitting on level 1 headings.
@@ -137,8 +120,6 @@ def parse_agent_markdown(path):
 
         # Optional multi-set fields (safe defaults)
         sticker_set_names = _ensure_list(fields.get("Agent Sticker Sets"))
-        explicit_lines = _ensure_list(fields.get("Agent Stickers"))
-        explicit_stickers = _parse_explicit_stickers(explicit_lines)
 
         # Parse role prompts - split by newlines and filter out empty lines
         role_prompt_text = str(fields.get("Role Prompt", "")).strip()
@@ -232,7 +213,6 @@ def parse_agent_markdown(path):
             "role_prompt_names": role_prompt_names,
             # multi-set config:
             "sticker_set_names": sticker_set_names,  # list[str]
-            "explicit_stickers": explicit_stickers,  # list[tuple[str, str]]
             # timezone config:
             "timezone": timezone,  # str | None
             # llm config:
@@ -269,7 +249,6 @@ def build_register_kwargs(
         "instructions": parsed["instructions"],
         "role_prompt_names": parsed["role_prompt_names"],
         "sticker_set_names": parsed.get("sticker_set_names") or [],
-        "explicit_stickers": parsed.get("explicit_stickers") or [],
         "config_directory": config_directory,
         "config_name": config_name,
         "timezone": parsed.get("timezone"),

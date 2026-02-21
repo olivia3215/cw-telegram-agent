@@ -147,41 +147,32 @@ class FakeClientWithAnimatedEmojies:
 
 
 @pytest.mark.asyncio
-async def test_animatedemojies_never_full_set_but_explicit_allowed(monkeypatch, tmp_path):
-    """Test that AnimatedEmojies is never treated as a full set, but explicit stickers work."""
+async def test_animatedemojies_never_loaded_as_full_set(monkeypatch, tmp_path):
+    """Test that AnimatedEmojies is never loaded as a full set (discarded from config)."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
     from agent_server import ensure_sticker_cache
 
-    # Agent with AnimatedEmojies in sticker_set_names (should be ignored as full set)
-    # and explicit AnimatedEmojies stickers
+    # Agent with AnimatedEmojies in sticker_set_names is discarded; only OtherSet is loaded
     agent = FakeAgent(
         name="TestAgent",
         sticker_set_names=["AnimatedEmojies", "OtherSet"]
     )
-    agent.explicit_stickers = [
-        ("AnimatedEmojies", "😀"),
-        ("AnimatedEmojies", "😉"),
-    ]
     client = FakeClientWithAnimatedEmojies()
 
     await ensure_sticker_cache(agent, client)
 
-    # Should have attempted both sets (AnimatedEmojies for explicit stickers, OtherSet as full)
-    assert client.calls == 2
-    assert set(client.attempted_sets) == {"AnimatedEmojies", "OtherSet"}
+    # Only OtherSet should be fetched (AnimatedEmojies is discarded, not loaded)
+    assert client.calls == 1
+    assert set(client.attempted_sets) == {"OtherSet"}
 
-    # Should NOT have loaded all AnimatedEmojies stickers (not a full set)
-    assert ("AnimatedEmojies", "😀") in agent.stickers  # Explicit
-    assert ("AnimatedEmojies", "😉") in agent.stickers  # Explicit
-    assert ("AnimatedEmojies", "👍") not in agent.stickers  # Not explicit, should be excluded
+    # No AnimatedEmojies stickers (we never load that set)
+    assert ("AnimatedEmojies", "😀") not in agent.stickers
+    assert ("AnimatedEmojies", "👍") not in agent.stickers
 
-    # Should have loaded all OtherSet stickers (full set)
+    # OtherSet stickers loaded as full set
     assert ("OtherSet", "Wink") in agent.stickers
     assert ("OtherSet", "Smile") in agent.stickers
-
-    # Both sets should be marked as loaded
-    assert "AnimatedEmojies" in agent.loaded_sticker_sets
     assert "OtherSet" in agent.loaded_sticker_sets
 
 

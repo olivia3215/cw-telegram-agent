@@ -682,8 +682,8 @@ The sticker system supports multiple sticker sets per agent.
 ### Multi-Set Configuration
 
 Agents can be configured with:
-- **Sticker sets**: `Agent Sticker Sets` (list of set names)
-- **Explicit stickers**: `Agent Stickers` (specific set::sticker combinations)
+- **Sticker sets**: `Agent Sticker Sets` (list of set names; full sets are loaded)
+- **Saved Messages**: Stickers in the agent's Saved Messages are merged into the sticker cache
 
 ### Resolution Strategy
 
@@ -692,9 +692,8 @@ Agents can be configured with:
 3. **Telegram fetch**: Fetch from Telegram if not cached
 
 **Current system:**
-- `stickers`: Agent's configured stickers `(sticker_set_name, sticker_name) -> document`
+- `stickers`: Agent's stickers `(sticker_set_name, sticker_name) -> document` (from config sets + Saved Messages)
 - `sticker_set_names`: List of full sets to include
-- `explicit_stickers`: Specific set::sticker mappings to include
 
 **Requirements:**
 - Both set name and sticker name are required in sticker triggers

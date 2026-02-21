@@ -40,7 +40,6 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
         name="Wendy",
         sticker_set_name="WendyDancer",
         sticker_set_names=["WendyDancer"],
-        explicit_stickers=[],
         stickers={
             ("WendyDancer", "😉"): FakeDoc("😉"),
             ("WendyDancer", "😀"): FakeDoc("😀"),
@@ -113,10 +112,8 @@ class FakeResult:
 
 
 @pytest.mark.asyncio
-async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
-    """Test that agent.stickers only contains explicit stickers and full sets."""
-    # Simulate what ensure_sticker_cache does
-
+async def test_cache_loads_full_sticker_sets(monkeypatch):
+    """Test that agent.stickers contains all stickers from each configured full set."""
     class FakeClientWithSets:
         def __init__(self):
             self.calls = 0
@@ -124,27 +121,19 @@ async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
         async def __call__(self, request):
             self.calls += 1
             set_name = request.stickerset.short_name
-
-            # Simulate different sets with multiple stickers each
             if set_name == "OliviaAI":
                 return FakeResult([FakeDoc("👋"), FakeDoc("👍")])
             elif set_name == "Lamplover":
                 return FakeResult([FakeDoc("😂"), FakeDoc("😘"), FakeDoc("🤷‍♀️")])
-            elif set_name == "CloudiaSheep":
-                return FakeResult([FakeDoc("😳"), FakeDoc("😭")])
-            elif set_name == "MrCat":
-                return FakeResult([FakeDoc("😠"), FakeDoc("😡")])
             return FakeResult([])
 
-    # Arrange an agent with one full set and some explicit stickers from other sets
+        async def iter_messages(self, *args, **kwargs):
+            if False:
+                yield None
+
     agent = SimpleNamespace(
         name="Olivia",
-        sticker_set_names=["OliviaAI"],  # Full set
-        explicit_stickers=[
-            ("Lamplover", "😂"),
-            ("CloudiaSheep", "😳"),
-            ("MrCat", "😠"),
-        ],
+        sticker_set_names=["OliviaAI", "Lamplover"],
         stickers={},
         loaded_sticker_sets=set(),
     )
@@ -154,23 +143,11 @@ async def test_cache_filters_stickers_by_explicit_list(monkeypatch):
 
     from agent_server import ensure_sticker_cache
 
-    # Load stickers
     await ensure_sticker_cache(agent, client)
 
-    # Should have loaded 4 sets (1 full + 3 with explicit stickers)
-    assert client.calls == 4
-
-    # Should include all stickers from OliviaAI (full set)
+    assert client.calls == 2
     assert ("OliviaAI", "👋") in agent.stickers
     assert ("OliviaAI", "👍") in agent.stickers
-
-    # Should include only explicit stickers from other sets
     assert ("Lamplover", "😂") in agent.stickers
-    assert ("CloudiaSheep", "😳") in agent.stickers
-    assert ("MrCat", "😠") in agent.stickers
-
-    # Should NOT include non-explicit stickers from partial sets
-    assert ("Lamplover", "😘") not in agent.stickers
-    assert ("Lamplover", "🤷‍♀️") not in agent.stickers
-    assert ("CloudiaSheep", "😭") not in agent.stickers
-    assert ("MrCat", "😡") not in agent.stickers
+    assert ("Lamplover", "😘") in agent.stickers
+    assert ("Lamplover", "🤷‍♀️") in agent.stickers
