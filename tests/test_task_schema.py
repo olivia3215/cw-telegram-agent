@@ -77,7 +77,7 @@ def test_get_task_response_schema_dict_no_filtering():
     
     # Should include all task types
     expected_tasks = {
-        "think", "send", "react", "sticker", "photo", "wait",
+        "think", "send", "react", "sticker", "send_media", "wait",
         "block", "unblock", "remember", "intend", "plan", "note",
         "summarize", "retrieve", "xsend", "schedule"
     }

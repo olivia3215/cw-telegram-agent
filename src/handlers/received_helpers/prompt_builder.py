@@ -296,11 +296,11 @@ async def build_complete_system_prompt(
         system_prompt += "You may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
         system_prompt += "Send stickers using the `sticker` task only, never using the `send` task."
 
-    # Build photo list
-    photo_list = await _build_photo_list(agent, media_chain)
-    if photo_list:
-        system_prompt += f"\n\n# Photos you may send using a `photo` task\n\n{photo_list}\n\n"
-        system_prompt += "Send photos using the `photo` task only, never using the `send` task."
+    # Build media list (photos, audio, video, stickers without set, etc.)
+    media_list = await _build_media_list(agent, media_chain)
+    if media_list:
+        system_prompt += f"\n\n# Media you may send using a `send_media` task\n\n{media_list}\n\n"
+        system_prompt += "Send these items using the `send_media` task only, never using the `send` task."
 
     # Add memory content
     memory_content = agent._load_memory_content(channel_id)
@@ -458,55 +458,54 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-async def _build_photo_list(agent, media_chain) -> str | None:
+async def _build_media_list(agent, media_chain) -> str | None:
     """
-    Build a formatted list of available photos with descriptions.
-    
+    Build a formatted list of available media (photos, audio, video, stickers, etc.)
+    with descriptions and kind. Uses agent.media with fallback to agent.photos.
+
     Args:
-        agent: Agent instance with cached photos
-        media_chain: Media source chain for description lookups
-    
+        agent: Agent instance with cached media
+        media_chain: Media source chain for description/kind lookups
+
     Returns:
-        Formatted photo list string or None if no photos available
+        Formatted media list string or None if no media available
     """
-    photos = getattr(agent, "photos", {})
-    if not photos:
+    media_cache = getattr(agent, "media", None) or getattr(agent, "photos", {})
+    if not media_cache:
         return None
 
     lines: list[str] = []
 
     try:
-        for unique_id_str in sorted(photos.keys()):
+        for unique_id_str in sorted(media_cache.keys()):
             try:
-                photo = photos[unique_id_str]
-                
-                # Get unique_id from photo object (should match unique_id_str)
+                media_obj = media_cache[unique_id_str]
                 from telegram_media import get_unique_id
-                _uid = get_unique_id(photo)
+                _uid = get_unique_id(media_obj)
 
-                # Use agent's media source chain to get description
                 cache_record = await media_chain.get(
                     unique_id=_uid,
                     agent=agent,
-                    doc=photo,
-                    kind="photo",
+                    doc=media_obj,
+                    kind=None,
                     update_last_used=True,
                 )
                 desc = cache_record.get("description") if cache_record else None
+                kind = cache_record.get("kind", "document") if cache_record else "document"
             except Exception as e:
-                logger.exception(f"Failed to process photo {unique_id_str}: {e}")
+                logger.exception(f"Failed to process media {unique_id_str}: {e}")
                 desc = None
-            
+                kind = "document"
+
             if desc:
-                lines.append(f"- {unique_id_str} - {desc}")
+                lines.append(f"- {unique_id_str} ({kind}) - {desc}")
             else:
-                lines.append(f"- {unique_id_str}")
+                lines.append(f"- {unique_id_str} ({kind})")
 
     except Exception as e:
-        # If anything unexpected occurs, fall back to unique_ids-only list
         logger.warning(
-            f"Failed to build photo descriptions, falling back to unique_ids-only: {e}"
+            f"Failed to build media descriptions, falling back to unique_ids-only: {e}"
         )
-        lines = [f"- {uid}" for uid in sorted(photos.keys())]
+        lines = [f"- {uid}" for uid in sorted(media_cache.keys())]
 
     return "\n".join(lines) if lines else None

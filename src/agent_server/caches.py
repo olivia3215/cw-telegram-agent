@@ -41,7 +41,7 @@ def _extract_saved_message_sticker_key(doc) -> tuple[str, str] | None:
         )
         set_short_value = str(set_short).strip() if set_short else ""
         # Only include in sticker list when we have a real set name; otherwise
-        # ensure_photo_cache will add to agent.photos (send with photo task).
+        # ensure_media_cache will add to agent.media (send with send_media task).
         if not set_short_value:
             continue
 
@@ -291,7 +291,7 @@ async def ensure_saved_message_sticker_cache(agent, client):
                 if _is_sticker_document(doc):
                     logger.debug(
                         "Sticker in Saved Messages has no set/name metadata; "
-                        "included in media (send with photo task)."
+                        "included in media (send with send_media task)."
                     )
                 continue
 
@@ -323,39 +323,34 @@ async def ensure_saved_message_sticker_cache(agent, client):
         )
 
 
-async def ensure_photo_cache(agent, client):
+async def ensure_media_cache(agent, client):
     """
-    Scan the agent's saved messages (me channel) for photos and sticker documents
-    without set/name metadata; cache them by file_unique_id so the agent can send
-    them with the photo task. Puts documents through the media pipeline so they
-    are classified and cached; uses the returned record to decide sticker vs photo.
+    Scan the agent's saved messages (me channel) for all sendable media: photos,
+    audio, video, stickers without set/name, and other documents. Cache by
+    file_unique_id so the agent can send them with the send_media task. Excludes
+    only stickers that have set/name (those are sent via the sticker task).
     """
     from telegram_media import get_unique_id
 
     # Agent must have agent_id to access saved messages
     if not hasattr(agent, "agent_id") or agent.agent_id is None:
         logger.debug(
-            f"[{getattr(agent, 'name', 'agent')}] Cannot cache photos: agent_id not set"
+            f"[{getattr(agent, 'name', 'agent')}] Cannot cache media: agent_id not set"
         )
         return
 
-    # Ensure photos dict exists (holds both photos and sticker docs without metadata)
-    if not hasattr(agent, "photos"):
-        agent.photos = {}
+    # Ensure media dict exists
+    if not hasattr(agent, "media"):
+        agent.media = {}
 
     try:
         from media.media_source import get_default_media_source_chain
 
         media_chain = get_default_media_source_chain()
-        # Use "me" for Saved Messages - Telethon resolves this to InputPeerSelf,
-        # which is the correct peer for the chat with self / Saved Messages
-        photos_found = 0
-        photos_new = 0
-
-        # Track which unique_ids we see in this scan
+        media_found = 0
+        media_new = 0
         seen_unique_ids = set()
 
-        # Iterate through messages in saved messages (chat with self)
         async for message in iter_saved_messages(client):
             # Photos
             photo = getattr(message, "photo", None)
@@ -364,16 +359,16 @@ async def ensure_photo_cache(agent, client):
                 if unique_id:
                     unique_id_str = str(unique_id)
                     seen_unique_ids.add(unique_id_str)
-                    photos_found += 1
-                    is_new = unique_id_str not in agent.photos
-                    agent.photos[unique_id_str] = photo
+                    media_found += 1
+                    is_new = unique_id_str not in agent.media
+                    agent.media[unique_id_str] = photo
                     if is_new:
-                        photos_new += 1
+                        media_new += 1
                         logger.debug(
                             f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
                         )
 
-            # Documents: put through pipeline so they are classified and cached
+            # Documents: put through pipeline; add all except stickers with set/name
             doc = getattr(message, "document", None)
             if not doc:
                 continue
@@ -394,44 +389,41 @@ async def ensure_photo_cache(agent, client):
                 sticker_name=key[1] if key else None,
             )
 
-            # Only add to photos when pipeline says sticker without set/name (or no record + sticker without key)
+            # Exclude only stickers that have set/name (sent via sticker task)
             if record and record.get("kind") == "sticker" and record.get("sticker_set_name") and record.get("sticker_name"):
                 continue  # Has set name; ensure_saved_message_sticker_cache will add to stickers
-            if record and record.get("kind") != "sticker":
-                continue  # Not a sticker (e.g. video, gif); don't add to photo list
             if not record and key:
-                continue  # No record but we resolved a sticker key; don't add to photos
-            if not record and not _is_sticker_document(doc):
-                continue  # Not a sticker; skip
-            # Sticker without set/name: add so agent can send with photo task
+                continue  # No record but we resolved a sticker key; it's a sticker-with-set, skip
+            # Everything else: add to media (sticker without set/name, audio, video, animation, gif, document, etc.)
             unique_id_str = str(unique_id)
             seen_unique_ids.add(unique_id_str)
-            photos_found += 1
-            is_new = unique_id_str not in agent.photos
-            agent.photos[unique_id_str] = doc
+            media_found += 1
+            is_new = unique_id_str not in agent.media
+            agent.media[unique_id_str] = doc
             if is_new:
-                photos_new += 1
+                media_new += 1
+                kind_hint = record.get("kind", "document") if record else "document"
                 logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Cached sticker (no set/name) with unique_id: {unique_id_str}"
+                    f"[{getattr(agent, 'name', 'agent')}] Cached media ({kind_hint}) with unique_id: {unique_id_str}"
                 )
 
-        # Remove photos that are no longer in saved messages
+        # Remove media that are no longer in saved messages
         removed_count = 0
-        for unique_id_str in list(agent.photos.keys()):
+        for unique_id_str in list(agent.media.keys()):
             if unique_id_str not in seen_unique_ids:
-                del agent.photos[unique_id_str]
+                del agent.media[unique_id_str]
                 removed_count += 1
                 logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Removed photo from cache: {unique_id_str}"
+                    f"[{getattr(agent, 'name', 'agent')}] Removed media from cache: {unique_id_str}"
                 )
 
-        if photos_found > 0:
+        if media_found > 0:
             logger.debug(
-                f"[{getattr(agent, 'name', 'agent')}] Photo cache: {len(agent.photos)} photos "
-                f"({photos_new} new, {removed_count} removed)"
+                f"[{getattr(agent, 'name', 'agent')}] Media cache: {len(agent.media)} items "
+                f"({media_new} new, {removed_count} removed)"
             )
 
     except Exception as e:
         logger.exception(
-            f"[{getattr(agent, 'name', 'agent')}] Failed to cache photos from saved messages: {e}"
+            f"[{getattr(agent, 'name', 'agent')}] Failed to cache media from saved messages: {e}"
         )

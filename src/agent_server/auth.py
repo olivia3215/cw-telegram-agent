@@ -11,7 +11,7 @@ from agent import Agent
 from telegram.client_factory import get_telegram_client
 from utils.formatting import format_log_prefix
 
-from .caches import ensure_sticker_cache, ensure_photo_cache
+from .caches import ensure_sticker_cache, ensure_media_cache
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ async def authenticate_agent(agent: Agent):
         agent_id = me.id
         agent.agent_id = agent_id
         # Cache photos from saved messages after agent_id is set
-        await ensure_photo_cache(agent, client)
+        await ensure_media_cache(agent, client)
 
         # Save Telegram ID to config file if it differs from what's stored or is absent
         if agent.config_directory and agent.config_name:

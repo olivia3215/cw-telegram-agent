@@ -539,7 +539,7 @@ async def _schedule_tasks(
         if is_callout:
             task.params["callout"] = True
 
-        if task.type == "send" or task.type == "sticker" or task.type == "photo":
+        if task.type == "send" or task.type == "sticker" or task.type == "send_media" or task.type == "photo":
             if "reply_to" not in task.params and fallback_reply_to:
                 task.params["reply_to"] = fallback_reply_to
                 fallback_reply_to = None
@@ -560,7 +560,7 @@ async def _schedule_tasks(
                 delay_seconds = start_delay_portion + typing_portion
             elif task.type == "sticker":
                 delay_seconds = SELECT_STICKER_DELAY
-            else:  # photo - double the sticker delay
+            else:  # send_media or photo - double the sticker delay
                 delay_seconds = SELECT_STICKER_DELAY * 2
 
             # Only create wait task if delay > 0.5 seconds

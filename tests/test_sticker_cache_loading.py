@@ -320,10 +320,10 @@ async def test_saved_message_sticker_without_stickerset_skipped_with_warning(
 
 @pytest.mark.asyncio
 async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, tmp_path):
-    """Sticker documents without set/name metadata are added to agent.photos (send with photo task)."""
+    """Sticker documents without set/name metadata are added to agent.media (send with send_media task)."""
     monkeypatch.setenv("CINDY_AGENT_STATE_DIR", str(tmp_path))
 
-    # Pipeline returns None so we use fallback (no set/name -> add to photos)
+    # Pipeline returns None so we use fallback (no set/name -> add to media)
     async def mock_get(*args, **kwargs):
         return None
 
@@ -333,14 +333,14 @@ async def test_photo_cache_includes_sticker_docs_without_metadata(monkeypatch, t
         lambda: mock_chain,
     )
 
-    from agent_server import ensure_photo_cache
+    from agent_server import ensure_media_cache
 
     agent = FakeAgent(name="PhotoStickerAgent", sticker_set_names=[])
-    agent.photos = {}
+    agent.media = {}
     client = FakeSavedStickerClient(
         [FakeSavedStickerMessageNoSet("sticker_xyz789")]
     )
-    await ensure_photo_cache(agent, client)
+    await ensure_media_cache(agent, client)
 
-    assert "sticker_xyz789" in agent.photos
-    assert agent.photos["sticker_xyz789"] is client._messages[0].document
+    assert "sticker_xyz789" in agent.media
+    assert agent.media["sticker_xyz789"] is client._messages[0].document

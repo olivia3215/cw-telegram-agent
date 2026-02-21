@@ -9,7 +9,7 @@ from . import (
     intend,  # noqa: F401
     note,  # noqa: F401
     plan,  # noqa: F401
-    photo,  # noqa: F401
+    send_media,  # noqa: F401
     remember,  # noqa: F401
     received,  # noqa: F401
     react,  # noqa: F401

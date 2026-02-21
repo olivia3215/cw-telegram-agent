@@ -704,7 +704,7 @@ def filter_task_logs_for_conversation(messages: list, task_logs: list) -> list:
             pass
     
     # Filter task logs
-    excluded_action_kinds = ['send', 'sticker', 'react', 'photo']
+    excluded_action_kinds = ['send', 'sticker', 'react', 'photo', 'send_media']
     logs_to_show = []
     
     for log in task_logs:
@@ -767,7 +767,7 @@ def filter_task_logs_for_download(messages: list, task_logs: list) -> list:
             pass
     
     # Filter task logs - exclude "received" and "summarize" for downloads
-    excluded_action_kinds = ['send', 'sticker', 'react', 'photo', 'received', 'summarize']
+    excluded_action_kinds = ['send', 'sticker', 'react', 'photo', 'send_media', 'received', 'summarize']
     logs_to_show = []
     
     for log in task_logs:

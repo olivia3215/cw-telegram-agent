@@ -19,7 +19,7 @@ from .message_helpers import (
     get_agent_message_with_reactions,
 )
 from .caches import (
-    ensure_photo_cache,
+    ensure_media_cache,
     ensure_saved_message_sticker_cache,
 )
 
@@ -168,7 +168,7 @@ async def scan_unread_messages(agent: Agent):
     # Refresh photo cache from saved messages to pick up new photos and remove deleted ones
     if agent_id:
         try:
-            await ensure_photo_cache(agent, client)
+            await ensure_media_cache(agent, client)
         except Exception as e:
             logger.debug(f"{format_log_prefix(agent.name)} Error refreshing photo cache during scan: {e}")
         try:
