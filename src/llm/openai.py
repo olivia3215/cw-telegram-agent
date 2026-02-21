@@ -8,6 +8,7 @@ import copy
 import json
 import logging
 import os
+import pprint
 from collections.abc import Iterable
 from typing import Any
 
@@ -36,6 +37,37 @@ OPENAI_DEBUG_LOGGING: bool = os.environ.get("OPENAI_DEBUG_LOGGING", "").lower() 
 )
 
 _TASK_RESPONSE_SCHEMA_DICT = get_task_response_schema_dict()
+
+
+def _format_openai_response_object_for_logging(response: Any) -> str:
+    """
+    Return a non-truncated, human-readable representation of an OpenAI SDK response.
+    Prefer JSON (model_dump) over repr(), since repr() commonly truncates long strings.
+    """
+    try:
+        model_dump = getattr(response, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump()
+            return json.dumps(dumped, indent=2, ensure_ascii=False, default=str)
+    except Exception:
+        # Fall back below
+        pass
+
+    try:
+        return pprint.pformat(response, width=120, compact=False)
+    except Exception:
+        return str(response)
+
+
+def _format_text_as_pretty_json_if_possible(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    try:
+        parsed = json.loads(t)
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    except Exception:
+        return text
 
 
 def _normalize_schema_for_openai_strict(schema: dict[str, Any]) -> dict[str, Any]:
@@ -502,7 +534,9 @@ class OpenAILLM(LLM):
             # Optional comprehensive logging for debugging
             if OPENAI_DEBUG_LOGGING:
                 logger.info("=== OPENAI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
-                logger.info(f"Response: {response}")
+                logger.info(
+                    "Response object:\n%s", _format_openai_response_object_for_logging(response)
+                )
                 logger.info("=== END OPENAI_DEBUG_LOGGING: RESPONSE ===")
 
             # Extract text from response
@@ -510,6 +544,11 @@ class OpenAILLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenAI returned no content: {response}")
+
+            if OPENAI_DEBUG_LOGGING:
+                logger.info("=== OPENAI_DEBUG_LOGGING: EXTRACTED TEXT ===")
+                logger.info("%s", _format_text_as_pretty_json_if_possible(text))
+                logger.info("=== END OPENAI_DEBUG_LOGGING: EXTRACTED TEXT ===")
             
             # Log usage
             self._log_usage_from_openai_response(
@@ -567,10 +606,20 @@ class OpenAILLM(LLM):
             timeout=timeout_s or 60.0,
         )
 
+        if OPENAI_DEBUG_LOGGING:
+            logger.info("=== OPENAI_DEBUG_LOGGING: COMPLETE RESPONSE ===")
+            logger.info("Response object:\n%s", _format_openai_response_object_for_logging(response))
+            logger.info("=== END OPENAI_DEBUG_LOGGING: RESPONSE ===")
+
         if response.choices and response.choices[0].message.content:
             text = response.choices[0].message.content.strip()
         else:
             raise RuntimeError(f"OpenAI returned no content: {response}")
+
+        if OPENAI_DEBUG_LOGGING:
+            logger.info("=== OPENAI_DEBUG_LOGGING: EXTRACTED TEXT ===")
+            logger.info("%s", _format_text_as_pretty_json_if_possible(text))
+            logger.info("=== END OPENAI_DEBUG_LOGGING: EXTRACTED TEXT ===")
 
         self._log_usage_from_openai_response(
             response,
@@ -658,7 +707,9 @@ class OpenAILLM(LLM):
             # Optional comprehensive logging for debugging
             if OPENAI_DEBUG_LOGGING:
                 logger.info("=== OPENAI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
-                logger.info(f"Response: {response}")
+                logger.info(
+                    "Response object:\n%s", _format_openai_response_object_for_logging(response)
+                )
                 logger.info("=== END OPENAI_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
 
             # Extract text from response
@@ -666,6 +717,11 @@ class OpenAILLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"OpenAI returned no content: {response}")
+
+            if OPENAI_DEBUG_LOGGING:
+                logger.info("=== OPENAI_DEBUG_LOGGING: JSON SCHEMA EXTRACTED TEXT ===")
+                logger.info("%s", _format_text_as_pretty_json_if_possible(text))
+                logger.info("=== END OPENAI_DEBUG_LOGGING: JSON SCHEMA EXTRACTED TEXT ===")
             
             # Log usage
             self._log_usage_from_openai_response(

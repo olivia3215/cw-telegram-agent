@@ -85,6 +85,7 @@ between, or after other tasks.
 - Stickers are visually richer and make a more prominent statement in the conversation than a reaction. Use them when they convey tone effectively. 
 - If you need a sticker for an emoji not available as a sticker, send the emoji via a `send` task.
 - To temporarily block someone, use a sequence: `send` (if needed) + `block` + `wait` + `unblock`.
+- Use `reply_to` sparingly. Don't use the same `reply_to` more than once in a multi-paragraph response.
 
 # Media in Chat
 
