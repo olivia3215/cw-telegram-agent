@@ -158,6 +158,29 @@ def get_responsiveness(
     return current_activity.responsiveness
 
 
+def get_agent_responsiveness(
+    agent: "Agent | None", now: datetime | None = None
+) -> int:
+    """
+    Get the current responsiveness for an agent from its schedule.
+
+    Args:
+        agent: Agent instance, or None
+        now: Current time (defaults to clock.now(UTC))
+
+    Returns:
+        Responsiveness value (0-100). Returns 100 if agent is None, has no
+        schedule, or schedule cannot be loaded.
+    """
+    if agent is None or not getattr(agent, "daily_schedule_description", None):
+        return 100
+    try:
+        schedule = agent._load_schedule()
+        return get_responsiveness(schedule, now)
+    except Exception:
+        return 100
+
+
 def get_wake_time(
     schedule: dict | None, now: datetime | None = None
 ) -> datetime | None:
