@@ -3,6 +3,8 @@
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
+import json
+import pprint
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, TypedDict
@@ -98,6 +100,37 @@ def extract_gemini_response_text(response: Any) -> str:
                     return str(first_part["text"] or "")
     
     return ""
+
+
+def format_openai_response_object_for_logging(response: Any) -> str:
+    """
+    Return a non-truncated, human-readable representation of an OpenAI-compatible response.
+    Prefer JSON (model_dump) over repr(), since repr() commonly truncates long strings.
+    Used by OpenAI and Grok debug logging.
+    """
+    try:
+        model_dump = getattr(response, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump()
+            return json.dumps(dumped, indent=2, ensure_ascii=False, default=str)
+    except Exception:
+        pass
+    try:
+        return pprint.pformat(response, width=120, compact=False)
+    except Exception:
+        return str(response)
+
+
+def format_text_as_pretty_json_if_possible(text: str) -> str:
+    """If text is valid JSON, return it pretty-printed; otherwise return as-is."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    try:
+        parsed = json.loads(t)
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    except Exception:
+        return text
 
 
 # --- Base LLM class ---

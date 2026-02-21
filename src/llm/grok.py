@@ -21,7 +21,13 @@ from media.mime_utils import (
     normalize_mime_type,
 )
 
-from .base import LLM, ChatMsg, MsgPart
+from .base import (
+    LLM,
+    ChatMsg,
+    MsgPart,
+    format_openai_response_object_for_logging,
+    format_text_as_pretty_json_if_possible,
+)
 from .task_schema import get_task_response_schema_dict
 from .utils import format_string_for_logging as _format_string_for_logging
 
@@ -418,7 +424,9 @@ class GrokLLM(LLM):
             # Optional comprehensive logging for debugging
             if GROK_DEBUG_LOGGING:
                 logger.info("=== GROK_DEBUG_LOGGING: COMPLETE RESPONSE ===")
-                logger.info(f"Response: {response}")
+                logger.info(
+                    "Response object:\n%s", format_openai_response_object_for_logging(response)
+                )
                 logger.info("=== END GROK_DEBUG_LOGGING: RESPONSE ===")
 
             # Extract text from response
@@ -426,7 +434,12 @@ class GrokLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"Grok returned no content: {response}")
-            
+
+            if GROK_DEBUG_LOGGING:
+                logger.info("=== GROK_DEBUG_LOGGING: EXTRACTED TEXT ===")
+                logger.info("%s", format_text_as_pretty_json_if_possible(text))
+                logger.info("=== END GROK_DEBUG_LOGGING: EXTRACTED TEXT ===")
+
             # Log usage
             self._log_usage_from_openai_response(
                 response,
@@ -471,10 +484,20 @@ class GrokLLM(LLM):
             timeout=timeout_s or 60.0,
         )
 
+        if GROK_DEBUG_LOGGING:
+            logger.info("=== GROK_DEBUG_LOGGING: COMPLETE RESPONSE ===")
+            logger.info("Response object:\n%s", format_openai_response_object_for_logging(response))
+            logger.info("=== END GROK_DEBUG_LOGGING: RESPONSE ===")
+
         if response.choices and response.choices[0].message.content:
             text = response.choices[0].message.content.strip()
         else:
             raise RuntimeError(f"Grok returned no content: {response}")
+
+        if GROK_DEBUG_LOGGING:
+            logger.info("=== GROK_DEBUG_LOGGING: EXTRACTED TEXT ===")
+            logger.info("%s", format_text_as_pretty_json_if_possible(text))
+            logger.info("=== END GROK_DEBUG_LOGGING: EXTRACTED TEXT ===")
 
         self._log_usage_from_openai_response(
             response,
@@ -541,7 +564,9 @@ class GrokLLM(LLM):
             # Optional comprehensive logging for debugging
             if GROK_DEBUG_LOGGING:
                 logger.info("=== GROK_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
-                logger.info(f"Response: {response}")
+                logger.info(
+                    "Response object:\n%s", format_openai_response_object_for_logging(response)
+                )
                 logger.info("=== END GROK_DEBUG_LOGGING: JSON SCHEMA RESPONSE ===")
 
             # Extract text from response
@@ -549,7 +574,12 @@ class GrokLLM(LLM):
                 text = response.choices[0].message.content.strip()
             else:
                 raise RuntimeError(f"Grok returned no content: {response}")
-            
+
+            if GROK_DEBUG_LOGGING:
+                logger.info("=== GROK_DEBUG_LOGGING: JSON SCHEMA EXTRACTED TEXT ===")
+                logger.info("%s", format_text_as_pretty_json_if_possible(text))
+                logger.info("=== END GROK_DEBUG_LOGGING: JSON SCHEMA EXTRACTED TEXT ===")
+
             # Log usage
             self._log_usage_from_openai_response(
                 response,
