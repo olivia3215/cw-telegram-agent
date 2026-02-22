@@ -10,6 +10,7 @@ Flask application factory for the admin console.
 import logging
 import secrets
 import threading
+from datetime import timedelta
 from pathlib import Path
 
 from flask import Flask, jsonify, send_file  # pyright: ignore[reportMissingImports]
@@ -55,7 +56,10 @@ def create_admin_app(use_https: bool = False) -> Flask:
     # Always set these for better cookie persistence and security
     app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
-    
+    # Persistent cookie lifetime when session.permanent is True (e.g. after OTP verification).
+    # Safe to use a longer lifetime over HTTPS; default would be session-only (close browser = logout).
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
     # Only send cookies over HTTPS when SSL is enabled
     if use_https:
         app.config['SESSION_COOKIE_SECURE'] = True  # Only send over HTTPS
