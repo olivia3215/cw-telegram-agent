@@ -286,5 +286,6 @@ def api_auth_verify():
         return jsonify({"error": str(exc)}), 429
 
     session[SESSION_VERIFIED_KEY] = True
+    session.permanent = True  # Use PERMANENT_SESSION_LIFETIME so cookie survives browser restarts
     session.modified = True
     return jsonify({"success": True})
