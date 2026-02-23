@@ -19,7 +19,7 @@ from telethon.tl.functions.contacts import GetContactsRequest  # pyright: ignore
 
 from clock import clock
 from utils import normalize_peer_id
-from utils.formatting import format_log_prefix, format_log_prefix_resolved
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,9 @@ class TelegramEntityCache:
         if not self.client:
             return None
 
+        # Use resolved prefix only (no agent resolution) to avoid recursion:
+        # format_log_prefix(agent=) -> get_channel_name -> get_cached_entity -> get() again
+        log_prefix = format_log_prefix_resolved(self.name, str(entity_id))
         try:
             if self.agent:
                 await self.agent.ensure_client_connected()
@@ -85,7 +88,7 @@ class TelegramEntityCache:
             not_found_ttl = timedelta(hours=1)
             not_found_expiration = now + not_found_ttl
             self._cache[entity_id] = (None, not_found_expiration)
-            logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Cached failed lookup for ID {entity_id}: {e}")
+            logger.debug(f"{log_prefix} Cached failed lookup for ID {entity_id}: {e}")
             return None
         except ValueError as e:
             # Telethon can raise ValueError with "Could not find the input entity" message
@@ -98,7 +101,7 @@ class TelegramEntityCache:
                     if entity:
                         # Found in contacts - cache it with normal TTL
                         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
-                        logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Resolved entity {entity_id} from contacts")
+                        logger.debug(f"{log_prefix} Resolved entity {entity_id} from contacts")
                         return entity
                 
                 # Not found in contacts or not a user ID - cache as "not found"
@@ -107,15 +110,15 @@ class TelegramEntityCache:
                 not_found_ttl = timedelta(minutes=5)
                 not_found_expiration = now + not_found_ttl
                 self._cache[entity_id] = (None, not_found_expiration)
-                logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Cached failed lookup for ID {entity_id}: {e}")
+                logger.debug(f"{log_prefix} Cached failed lookup for ID {entity_id}: {e}")
                 return None
             # Other ValueError instances are treated as transient errors
-            logger.warning(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Transient error fetching entity {entity_id}: {e}")
+            logger.warning(f"{log_prefix} Transient error fetching entity {entity_id}: {e}")
             raise
         except Exception as e:
             # Transient errors (network timeouts, rate limits, connection issues, etc.)
             # should not be cached as "not found" - let them propagate so callers can retry
-            logger.warning(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Transient error fetching entity {entity_id}: {e}")
+            logger.warning(f"{log_prefix} Transient error fetching entity {entity_id}: {e}")
             raise
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))

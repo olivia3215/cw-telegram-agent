@@ -43,8 +43,9 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
     if not channel_id:
         raise ValueError(f"Missing required 'channel_id' field in task {task.id}")
     channel_name = await get_channel_name(agent, channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
     logger.info(
-        f"{await format_log_prefix(agent.name, channel_name)} SEND: to=[{channel_name}] message={message!r}"
+        f"{log_prefix} SEND: to=[{channel_name}] message={message!r}"
     )
 
     if not client:
@@ -73,7 +74,7 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
                         break
             except Exception as e:
                 logger.debug(
-                    f"{await format_log_prefix(agent.name, channel_name)} Could not get dialog info for [{channel_name}]: {e}"
+                    f"{log_prefix} Could not get dialog info for [{channel_name}]: {e}"
                 )
             
             # Step 2: Only proceed if auto-delete is enabled (ttl_period > 0)
@@ -81,7 +82,7 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
                 # Step 3: Disable auto-delete by setting TTL period to 0
                 await client(SetHistoryTTLRequest(peer=entity, period=0))
                 logger.debug(
-                    f"{await format_log_prefix(agent.name, channel_name)} Disabled auto-delete for DM conversation [{channel_name}] (was {dialog_ttl_period}s)"
+                    f"{log_prefix} Disabled auto-delete for DM conversation [{channel_name}] (was {dialog_ttl_period}s)"
                 )
                 
                 # Step 4: Read recent messages and find the auto-delete disabled message
@@ -99,24 +100,24 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
                                     # Delete the system message
                                     await client.delete_messages(entity, [msg.id])
                                     logger.debug(
-                                        f"{await format_log_prefix(agent.name, channel_name)} Deleted auto-delete disabled message from [{channel_name}]"
+                                        f"{log_prefix} Deleted auto-delete disabled message from [{channel_name}]"
                                     )
                                     break
                 except Exception as e:
                     # Log but don't fail if we can't find/delete the message
                     logger.debug(
-                        f"{await format_log_prefix(agent.name, channel_name)} Could not find/delete auto-delete message for [{channel_name}]: {e}"
+                        f"{log_prefix} Could not find/delete auto-delete message for [{channel_name}]: {e}"
                     )
             else:
                 # Auto-delete is already disabled, nothing to do
                 logger.debug(
-                    f"{await format_log_prefix(agent.name, channel_name)} Auto-delete already disabled for DM conversation [{channel_name}]"
+                    f"{log_prefix} Auto-delete already disabled for DM conversation [{channel_name}]"
                 )
         except Exception as e:
             # Log but don't fail the send if we can't disable auto-delete
             # (e.g., if permissions don't allow it)
             logger.debug(
-                f"{await format_log_prefix(agent.name, channel_name)} Could not disable auto-delete for [{channel_name}]: {e}"
+                f"{log_prefix} Could not disable auto-delete for [{channel_name}]: {e}"
             )
 
     reply_to_raw = task.params.get("reply_to")
@@ -141,5 +142,5 @@ async def handle_send(task: TaskNode, graph, work_queue=None):
                 logger.debug(f"Failed to update agent activity: {e}")
     except Exception as e:
         logger.exception(
-            f"{await format_log_prefix(agent.name, channel_name)} Failed to send reply to message {reply_to_int}: {e}"
+            f"{log_prefix} Failed to send reply to message {reply_to_int}: {e}"
         )

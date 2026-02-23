@@ -38,10 +38,11 @@ async def handle_send_media(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     # Get channel name for logging
     channel_name = await get_channel_name(agent, channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     if not unique_id:
         raise ValueError(
-            f"{await format_log_prefix(agent.name, channel_name)} Send_media task missing 'unique_id' parameter."
+            f"{log_prefix} Send_media task missing 'unique_id' parameter."
         )
 
     # Look up media in cache (agent.media); fall back to agent.photos for backward compat
@@ -50,7 +51,7 @@ async def handle_send_media(task: TaskNode, graph: TaskGraph, work_queue=None):
 
     if not media:
         raise ValueError(
-            f"{await format_log_prefix(agent.name, channel_name)} Media with unique_id {unique_id!r} not found in cache. "
+            f"{log_prefix} Media with unique_id {unique_id!r} not found in cache. "
             "Media may have been deleted from saved messages or cache needs refresh."
         )
 
@@ -84,5 +85,5 @@ async def handle_send_media(task: TaskNode, graph: TaskGraph, work_queue=None):
                 logger.debug(f"Failed to update agent activity: {e}")
     except Exception as e:
         logger.exception(
-            f"{await format_log_prefix(agent.name, channel_name)} Failed to send media: {e}"
+            f"{log_prefix} Failed to send media: {e}"
         )

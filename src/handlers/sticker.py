@@ -59,11 +59,12 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     # Require sticker set to be specified in task (no fallback)
     set_short = task.params.get("sticker_set")
 
+    log_prefix = await format_log_prefix(agent.name, channel_id, agent=agent)
     if not sticker_name:
-        raise ValueError(f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Sticker task missing 'name' parameter.")
+        raise ValueError(f"{log_prefix} Sticker task missing 'name' parameter.")
     if not set_short:
         raise ValueError(
-            f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Sticker task missing 'sticker_set' parameter."
+            f"{log_prefix} Sticker task missing 'sticker_set' parameter."
         )
 
     # 1) Try by-set cache
@@ -73,7 +74,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
     # 2) If miss, try a transient resolve within the requested set (no cache mutation)
     if file is None:
         logger.debug(
-            f"{await format_log_prefix(agent.name, channel_id, agent=agent)} sticker miss: set={set_short!r} name={sticker_name!r}; attempting transient resolve"
+            f"{log_prefix} sticker miss: set={set_short!r} name={sticker_name!r}; attempting transient resolve"
         )
         file = await _resolve_sticker_doc_in_set(client, set_short, sticker_name, agent=agent, channel_id=channel_id)
 
@@ -109,7 +110,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
         # Premium stickers require a premium account to send
         # Send the sticker name as text instead (which shows as animated emoji)
         logger.info(
-            f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Premium account required for sticker {sticker_name!r}, sending as text"
+            f"{log_prefix} Premium account required for sticker {sticker_name!r}, sending as text"
         )
         try:
             await client.send_message(entity, sticker_name, reply_to=in_reply_to)
@@ -125,7 +126,7 @@ async def handle_sticker(task: TaskNode, graph: TaskGraph, work_queue=None):
                     logger.debug(f"Failed to update agent activity: {e}")
         except Exception as e:
             logger.exception(
-                f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Failed to send fallback text message: {e}"
+                f"{log_prefix} Failed to send fallback text message: {e}"
             )
     except Exception as e:
-        logger.exception(f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Failed to send sticker: {e}")
+        logger.exception(f"{log_prefix} Failed to send sticker: {e}")

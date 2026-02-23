@@ -162,7 +162,7 @@ async def process_property_entry_task(
                 channel_metadata["agent_name"] = agent.name
                 channel_metadata["channel_id"] = channel_id
             except Exception as e:
-                logger.debug(f"{await format_log_prefix(agent.name, channel_id, agent=agent)} Failed to fetch channel metadata: {e}")
+                logger.debug(f"{log_prefix} Failed to fetch channel metadata: {e}")
                 # Continue without metadata - it's optional
 
         def mutator(

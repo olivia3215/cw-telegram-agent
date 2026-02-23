@@ -308,10 +308,10 @@ async def build_complete_system_prompt(
     if memory_content:
         system_prompt += f"\n\n{memory_content}\n"
         logger.info(
-            f"{await format_log_prefix(agent.name, channel_name)} Added memory content to system prompt for channel {channel_id}"
+            f"{log_prefix} Added memory content to system prompt for channel {channel_id}"
         )
     else:
-        logger.info(f"{await format_log_prefix(agent.name, channel_name)} No memory content found for channel {channel_id}")
+        logger.info(f"{log_prefix} No memory content found for channel {channel_id}")
 
     # Add current time
     now = agent.get_current_time()
@@ -341,7 +341,7 @@ async def build_complete_system_prompt(
     if summary_content:
         system_prompt += f"\n\n# Summary of earlier conversation\n\n{summary_content}\n"
         logger.info(
-            f"{await format_log_prefix(agent.name, channel_name)} Added conversation summary to system prompt for channel {channel_id} "
+            f"{log_prefix} Added conversation summary to system prompt for channel {channel_id} "
             f"(with metadata: {has_task_summarize})"
         )
 

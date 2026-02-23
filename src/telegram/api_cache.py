@@ -16,7 +16,7 @@ from telethon.tl.functions.contacts import GetBlockedRequest  # pyright: ignore[
 
 from clock import clock
 
-from utils.formatting import format_log_prefix, format_log_prefix_resolved
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,9 @@ class TelegramAPICache:
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
 
+        # Use resolved prefix only (no agent resolution) to avoid recursion:
+        # format_log_prefix(agent=) -> get_channel_name -> get_cached_entity -> get() again
+        log_prefix = format_log_prefix_resolved(self.name, str(peer_id))
         try:
             # Attempt to ensure client is connected (will reconnect if needed)
             if self.agent:
@@ -87,7 +90,7 @@ class TelegramAPICache:
         except ChannelPrivateError as e:
             # ChannelPrivateError occurs when a channel is deleted or the agent is removed from it
             # This is an expected error, so log at DEBUG level instead of ERROR
-            logger.debug(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} Channel {peer_id} is private or deleted, treating as not muted: {e}")
+            logger.debug(f"{log_prefix} Channel {peer_id} is private or deleted, treating as not muted: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
         except ValueError as e:
@@ -95,13 +98,13 @@ class TelegramAPICache:
             # This commonly happens for users seen in group chats that aren't in contacts and lack an access hash.
             msg = str(e)
             if "Could not find the input entity" in msg:
-                logger.debug(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} Could not resolve input entity for {peer_id}; treating as not muted: {e}")
+                logger.debug(f"{log_prefix} Could not resolve input entity for {peer_id}; treating as not muted: {e}")
                 self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
-            logger.exception(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} is_muted failed for peer {peer_id}: {e}")
+            logger.exception(f"{log_prefix} is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
         except Exception as e:
-            logger.exception(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} is_muted failed for peer {peer_id}: {e}")
+            logger.exception(f"{log_prefix} is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
 
