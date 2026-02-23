@@ -118,6 +118,25 @@ def test_log_llm_usage():
             assert "cost=$0.0020" in log_message
 
 
+def test_log_llm_usage_includes_channel_name_in_prefix_when_provided():
+    """Test that log prefix shows [Agent->Channel] when channel_name is provided."""
+    with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
+        with patch("llm.usage_logging.logger") as mock_logger:
+            log_llm_usage(
+                agent=SimpleNamespace(name="Jordan Peterson"),
+                model_name="gemini-3-flash-preview",
+                input_tokens=1000,
+                output_tokens=500,
+                operation="query_structured",
+                channel_name="Alice",
+            )
+            assert mock_logger.info.call_count == 1
+            log_message = mock_logger.info.call_args[0][0]
+            # Should be attributed to both agent and conversation
+            assert "[Jordan Peterson->Alice]" in log_message
+            assert "LLM_USAGE" in log_message
+
+
 def test_log_llm_usage_without_operation():
     """Test that log_llm_usage works without operation parameter."""
     with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):

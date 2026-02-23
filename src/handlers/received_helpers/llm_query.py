@@ -201,8 +201,8 @@ async def run_llm_with_retrieval(
     try:
         model_name = getattr(llm, "model_name", None) or type(llm).__name__
         logger.info(
-            "[%s] LLM request using model: %s",
-            agent.name,
+            "%s LLM request using model: %s",
+            format_log_prefix(agent.name, channel_name),
             model_name,
         )
         reply = await llm.query_structured(
