@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from telegram.api_cache import TelegramAPICache
 from telegram.entity_cache import TelegramEntityCache
+from utils.formatting import format_log_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,8 @@ class AgentTelegramMixin:
                 # No override, use global default
                 return self.is_gagged
         except Exception as e:
-            logger.warning(f"[{self.name}] Error checking gagged status for channel {channel_id}: {e}")
+            log_prefix = await format_log_prefix(self.name, channel_id, agent=self)
+            logger.warning(f"{log_prefix} Error checking gagged status for channel {channel_id}: {e}")
             # On error, use global default
             return self.is_gagged
 

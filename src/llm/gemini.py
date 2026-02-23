@@ -130,6 +130,7 @@ class GeminiLLM(LLM):
             agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "describe_video")
+            channel_telegram_id: Optional channel Telegram ID for task log persistence
         """
         try:
             # Extract usage metadata from REST API response
@@ -170,6 +171,7 @@ class GeminiLLM(LLM):
             agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Optional operation type (e.g., "query_structured")
+            channel_telegram_id: Optional channel Telegram ID for task log persistence
         """
         if response is None:
             return

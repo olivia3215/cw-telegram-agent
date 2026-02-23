@@ -13,6 +13,7 @@ from pathlib import Path
 
 from clock import clock
 from db import agent_activity
+from utils.formatting import format_log_prefix_resolved
 from db import intentions
 from db import memories
 from db import plans
@@ -66,7 +67,7 @@ class AgentStorageMySQL:
             if intentions_list:
                 return json.dumps(intentions_list, indent=2, ensure_ascii=False)
         except Exception as exc:
-            logger.warning(f"[{self.agent_config_name}] Failed to load intention content: {exc}")
+            logger.warning(f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load intention content: {exc}")
         return ""
 
     def load_memory_content(self, channel_id: int) -> str:
@@ -99,7 +100,7 @@ class AgentStorageMySQL:
 
         except Exception as e:
             logger.exception(
-                f"[{self.agent_config_name}] Failed to load memory content for channel {channel_id}: {e}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load memory content for channel {channel_id}: {e}"
             )
             return ""
 
@@ -117,7 +118,7 @@ class AgentStorageMySQL:
                 return json.dumps(notes_list, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load notes from MySQL for channel {user_id}: {e}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load notes from MySQL for channel {user_id}: {e}"
             )
         return ""
 
@@ -134,7 +135,7 @@ class AgentStorageMySQL:
                 return json.dumps(memories_list, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load state memory from MySQL: {e}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load state memory from MySQL: {e}"
             )
 
         return ""
@@ -147,7 +148,7 @@ class AgentStorageMySQL:
                 return json.dumps(plans_list, indent=2, ensure_ascii=False)
         except Exception as exc:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load plan content from MySQL: {exc}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load plan content from MySQL: {exc}"
             )
         return ""
 
@@ -247,7 +248,7 @@ class AgentStorageMySQL:
                         return "\n\n".join(summary_texts) if summary_texts else ""
         except Exception as exc:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load summary content from MySQL: {exc}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load summary content from MySQL: {exc}"
             )
         return ""
 
@@ -266,7 +267,7 @@ class AgentStorageMySQL:
             return conversation_llm.get_conversation_llm(self.agent_telegram_id, channel_id)
         except Exception as exc:
             logger.debug(
-                f"[{self.agent_config_name}] Failed to load llm_model from MySQL for channel {channel_id}: {exc}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load llm_model from MySQL for channel {channel_id}: {exc}"
             )
             return None
 
@@ -286,7 +287,7 @@ class AgentStorageMySQL:
                 return schedule
         except Exception as e:
             logger.warning(
-                f"[{self.agent_config_name}] Failed to load schedule from MySQL: {e}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load schedule from MySQL: {e}"
             )
         return None
 
@@ -305,10 +306,10 @@ class AgentStorageMySQL:
             
             schedules.save_schedule(self.agent_telegram_id, schedule)
             
-            logger.debug(f"[{self.agent_config_name}] Saved schedule to MySQL")
+            logger.debug(f"{format_log_prefix_resolved(self.agent_config_name, None)} Saved schedule to MySQL")
         except Exception as e:
             logger.error(
-                f"[{self.agent_config_name}] Failed to save schedule to MySQL: {e}"
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to save schedule to MySQL: {e}"
             )
             raise
     
@@ -351,13 +352,13 @@ class AgentStorageMySQL:
             except Exception as e:
                 # If we can't parse the activity, keep it (better safe than sorry)
                 logger.warning(
-                    f"[{self.agent_config_name}] Failed to parse activity during cleanup, keeping it: {e}"
+                    f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to parse activity during cleanup, keeping it: {e}"
                 )
                 kept_activities.append(act_data)
         
         if removed_count > 0:
             logger.info(
-                f"[{self.agent_config_name}] Cleaned up {removed_count} old activity(ies) "
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Cleaned up {removed_count} old activity(ies) "
                 f"(removed activities ending before {cutoff_time.isoformat()})"
             )
         

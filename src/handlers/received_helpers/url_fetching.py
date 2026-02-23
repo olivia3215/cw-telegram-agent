@@ -5,6 +5,8 @@
 #
 import logging
 
+from utils.formatting import format_log_prefix_resolved
+
 # Optional import for Playwright (only used if challenge detected)
 try:
     from playwright.async_api import async_playwright
@@ -87,7 +89,12 @@ def is_captcha_page(content: str, url: str) -> bool:
     return False
 
 
-async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
+async def fetch_url_with_playwright(
+    url: str,
+    *,
+    agent_name: str | None = None,
+    channel_name: str | None = None,
+) -> tuple[str, str]:
     """
     Fetch a URL using Playwright to handle JavaScript challenges.
     
@@ -96,10 +103,14 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
     
     Args:
         url: The URL to fetch
+        agent_name: Optional agent name for log prefix
+        channel_name: Optional channel/conversation name for log prefix
         
     Returns:
         Tuple of (final_url, content)
     """
+    log_prefix = format_log_prefix_resolved(agent_name or "fetch_url", channel_name)
+
     if not PLAYWRIGHT_AVAILABLE:
         return (
             url,
@@ -158,19 +169,19 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             # Check if we got a challenge page
             try:
                 initial_title = await page.title()
-                logger.debug(f"[fetch_url] Initial page title: {initial_title}")
+                logger.debug(f"{log_prefix} Initial page title: {initial_title}")
             except Exception:
                 initial_title = None
             
             if initial_title == "Client Challenge":
-                logger.info(f"[fetch_url] Challenge page detected for {url}, waiting for completion...")
+                logger.info(f"{log_prefix} Challenge page detected for {url}, waiting for completion...")
                 # Wait for navigation event (challenge completion causes page reload/navigation)
                 # The challenge can take 5-25 seconds to complete
                 try:
                     await page.wait_for_load_state("domcontentloaded", timeout=35000)
-                    logger.debug(f"[fetch_url] Navigation detected - challenge likely passed")
+                    logger.debug(f"{log_prefix} Navigation detected - challenge likely passed")
                 except Exception as e:
-                    logger.debug(f"[fetch_url] Navigation timeout: {e}")
+                    logger.debug(f"{log_prefix} Navigation timeout: {e}")
                 
                 # Wait a bit for the page to settle after navigation
                 await page.wait_for_timeout(2000)
@@ -205,7 +216,7 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
             
             # Check if we got a CAPTCHA page despite using Playwright
             if is_captcha_page(content, final_url):
-                logger.warning(f"[fetch_url] CAPTCHA page detected for {url} even with Playwright")
+                logger.warning(f"{log_prefix} CAPTCHA page detected for {url} even with Playwright")
                 # Return original url for deduplication, not final_url
                 return (
                     url,
@@ -237,7 +248,7 @@ async def fetch_url_with_playwright(url: str) -> tuple[str, str]:
                 
     except Exception as e:
         error_type = type(e).__name__
-        logger.exception(f"Error fetching {url} with Playwright: {e}")
+        logger.exception(f"{log_prefix} Error fetching {url} with Playwright: {e}")
         # Try to close resources before returning error
         if context:
             try:

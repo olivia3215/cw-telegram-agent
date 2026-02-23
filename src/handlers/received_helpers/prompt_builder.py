@@ -7,7 +7,7 @@ import logging
 
 from handlers.received_helpers.channel_details import build_channel_details_section
 from utils import get_dialog_name
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from schedule import get_current_activity
 from telegram_media import get_unique_id
 
@@ -72,7 +72,7 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
         activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
         return activity_text
     except Exception as e:
-        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to add current activity to prompt: {e}")
+        logger.debug(f"{format_log_prefix_resolved(agent.name, channel_name)} Failed to add current activity to prompt: {e}")
         return ""
 
 
@@ -262,6 +262,7 @@ async def build_complete_system_prompt(
         highest_summarized_id=highest_summarized_id,
     )
     system_prompt = agent.get_system_prompt(channel_name, specific_instructions, channel_id=channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     # Check if schedule.json is in context (as valid content, not an error)
     # If so, add Task-Schedule.md to the prompt after role prompts
@@ -281,12 +282,12 @@ async def build_complete_system_prompt(
                     task_schedule_prompt = load_system_prompt("Task-Schedule")
                     system_prompt += f"\n\n{task_schedule_prompt}"
                     logger.info(
-                        f"[{agent.name}] Added Task-Schedule.md to prompt (schedule.json found in context)"
+                        f"{log_prefix} Added Task-Schedule.md to prompt (schedule.json found in context)"
                     )
             except (json.JSONDecodeError, ValueError, TypeError):
                 # Not valid JSON - likely an error message, don't add Task-Schedule
                 logger.debug(
-                    f"[{agent.name}] schedule.json in context but not valid JSON, skipping Task-Schedule.md"
+                    f"{log_prefix} schedule.json in context but not valid JSON, skipping Task-Schedule.md"
                 )
 
     # Build sticker list
@@ -307,10 +308,10 @@ async def build_complete_system_prompt(
     if memory_content:
         system_prompt += f"\n\n{memory_content}\n"
         logger.info(
-            f"{format_log_prefix(agent.name, channel_name)} Added memory content to system prompt for channel {channel_id}"
+            f"{log_prefix} Added memory content to system prompt for channel {channel_id}"
         )
     else:
-        logger.info(f"{format_log_prefix(agent.name, channel_name)} No memory content found for channel {channel_id}")
+        logger.info(f"{log_prefix} No memory content found for channel {channel_id}")
 
     # Add current time
     now = agent.get_current_time()
@@ -340,7 +341,7 @@ async def build_complete_system_prompt(
     if summary_content:
         system_prompt += f"\n\n# Summary of earlier conversation\n\n{summary_content}\n"
         logger.info(
-            f"{format_log_prefix(agent.name, channel_name)} Added conversation summary to system prompt for channel {channel_id} "
+            f"{log_prefix} Added conversation summary to system prompt for channel {channel_id} "
             f"(with metadata: {has_task_summarize})"
         )
 

@@ -7,7 +7,8 @@
 import inspect
 import logging
 
-from telethon.tl.functions.messages import GetStickerSetRequest  # pyright: ignore[reportMissingImports]
+from telethon.tl.functions.messages import GetStickerSetRequest
+from utils.formatting import format_log_prefix_resolved  # pyright: ignore[reportMissingImports]
 from telethon.errors.rpcerrorlist import StickersetInvalidError  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
     InputStickerSetID,
@@ -180,12 +181,12 @@ async def ensure_sticker_cache(agent, client):
                     agent.stickers[key] = doc
                     agent._config_sticker_keys.add(key)
                     logger.debug(
-                        f"[{getattr(agent, 'name', 'agent')}] Registered sticker in {set_short}: {repr(name)}"
+                        f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Registered sticker in {set_short}: {repr(name)}"
                     )
                 loaded.add(set_short)
             except Exception as e:
                 logger.exception(
-                    f"[{getattr(agent, 'name', 'agent')}] Failed to load sticker set '{set_short}': {e}"
+                    f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Failed to load sticker set '{set_short}': {e}"
                 )
 
     await ensure_saved_message_sticker_cache(agent, client)
@@ -204,7 +205,7 @@ async def ensure_saved_message_sticker_cache(agent, client):
     # Agent must have agent_id to access saved messages.
     if not hasattr(agent, "agent_id") or agent.agent_id is None:
         logger.debug(
-            f"[{getattr(agent, 'name', 'agent')}] Cannot cache saved-message stickers: agent_id not set"
+            f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Cannot cache saved-message stickers: agent_id not set"
         )
         return
 
@@ -287,12 +288,12 @@ async def ensure_saved_message_sticker_cache(agent, client):
 
         if seen_keys:
             logger.debug(
-                f"[{getattr(agent, 'name', 'agent')}] Saved-message sticker cache: "
+                f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Saved-message sticker cache: "
                 f"{len(seen_keys)} stickers ({added} added, {updated} refreshed, {removed} removed)"
             )
     except Exception as e:
         logger.exception(
-            f"[{getattr(agent, 'name', 'agent')}] Failed to cache stickers from saved messages: {e}"
+            f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Failed to cache stickers from saved messages: {e}"
         )
 
 
@@ -308,7 +309,7 @@ async def ensure_media_cache(agent, client):
     # Agent must have agent_id to access saved messages
     if not hasattr(agent, "agent_id") or agent.agent_id is None:
         logger.debug(
-            f"[{getattr(agent, 'name', 'agent')}] Cannot cache media: agent_id not set"
+            f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Cannot cache media: agent_id not set"
         )
         return
 
@@ -338,7 +339,7 @@ async def ensure_media_cache(agent, client):
                     if is_new:
                         media_new += 1
                         logger.debug(
-                            f"[{getattr(agent, 'name', 'agent')}] Cached photo with unique_id: {unique_id_str}"
+                            f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Cached photo with unique_id: {unique_id_str}"
                         )
 
             # Documents: put through pipeline; add all except stickers with set/name
@@ -377,7 +378,7 @@ async def ensure_media_cache(agent, client):
                 media_new += 1
                 kind_hint = record.get("kind", "document") if record else "document"
                 logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Cached media ({kind_hint}) with unique_id: {unique_id_str}"
+                    f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Cached media ({kind_hint}) with unique_id: {unique_id_str}"
                 )
 
         # Remove media that are no longer in saved messages
@@ -387,16 +388,16 @@ async def ensure_media_cache(agent, client):
                 del agent.media[unique_id_str]
                 removed_count += 1
                 logger.debug(
-                    f"[{getattr(agent, 'name', 'agent')}] Removed media from cache: {unique_id_str}"
+                    f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Removed media from cache: {unique_id_str}"
                 )
 
         if media_found > 0:
             logger.debug(
-                f"[{getattr(agent, 'name', 'agent')}] Media cache: {len(agent.media)} items "
+                f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Media cache: {len(agent.media)} items "
                 f"({media_new} new, {removed_count} removed)"
             )
 
     except Exception as e:
         logger.exception(
-            f"[{getattr(agent, 'name', 'agent')}] Failed to cache media from saved messages: {e}"
+            f"{format_log_prefix_resolved(getattr(agent, 'name', 'agent'), None)} Failed to cache media from saved messages: {e}"
         )

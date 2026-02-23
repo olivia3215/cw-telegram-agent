@@ -7,6 +7,7 @@ import logging
 from zoneinfo import ZoneInfo
 
 from clock import clock
+from utils.formatting import format_log_prefix_resolved
 
 # Import mixins from the agent package (agent/ directory)
 # Use importlib to explicitly import from the package, avoiding conflicts with this module
@@ -296,16 +297,16 @@ class Agent(
         
         # Try to reconnect
         try:
-            logger.info(f"[{self.name}] Client disconnected, attempting to reconnect...")
+            logger.info(f"{format_log_prefix_resolved(self.name, None)} Client disconnected, attempting to reconnect...")
             await client.connect()
             if client.is_connected():
-                logger.info(f"[{self.name}] Successfully reconnected")
+                logger.info(f"{format_log_prefix_resolved(self.name, None)} Successfully reconnected")
                 return True
             else:
-                logger.warning(f"[{self.name}] Reconnection attempt failed - client still disconnected")
+                logger.warning(f"{format_log_prefix_resolved(self.name, None)} Reconnection attempt failed - client still disconnected")
                 return False
         except Exception as e:
-            logger.warning(f"[{self.name}] Failed to reconnect: {e}")
+            logger.warning(f"{format_log_prefix_resolved(self.name, None)} Failed to reconnect: {e}")
             return False
 
     async def get_client(self):

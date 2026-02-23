@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from handlers.registry import register_immediate_task_handler
 from schedule import ScheduleActivity
 from task_graph import TaskNode
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def _activities_overlap(start1: datetime, end1: datetime, start2: datetime, end2
         return start1 < end2 and start2 < end1
     except TypeError as e:
         # Safety net: if normalization didn't work, log and return False (no overlap)
-        logger.warning(f"[schedule] TypeError comparing datetimes for overlap: {e}")
+        logger.warning(f"{format_log_prefix_resolved('schedule', None)} TypeError comparing datetimes for overlap: {e}")
         return False
 
 
@@ -93,7 +93,7 @@ def _split_activity_for_overlap(
         existing_start = datetime.fromisoformat(existing_activity["start_time"])
         existing_end = datetime.fromisoformat(existing_activity["end_time"])
     except (KeyError, ValueError) as e:
-        logger.warning(f"[schedule] Failed to parse activity times for splitting: {e}")
+        logger.warning(f"{format_log_prefix_resolved('schedule', None)} Failed to parse activity times for splitting: {e}")
         return []
     
     # Normalize datetimes to handle mixed timezone-naive/aware comparisons
@@ -122,7 +122,7 @@ def _split_activity_for_overlap(
             segments.append(after_segment)
     except TypeError as e:
         # Safety net: if comparison fails, log and return empty (no split)
-        logger.warning(f"[schedule] TypeError comparing datetimes for splitting: {e}")
+        logger.warning(f"{format_log_prefix_resolved('schedule', None)} TypeError comparing datetimes for splitting: {e}")
         return []
     
     return segments
@@ -157,7 +157,7 @@ def _handle_activity_overlaps(
             act_start = datetime.fromisoformat(act["start_time"])
             act_end = datetime.fromisoformat(act["end_time"])
         except (KeyError, ValueError) as e:
-            logger.warning(f"[schedule] Failed to parse activity times: {e}, skipping")
+            logger.warning(f"{format_log_prefix_resolved('schedule', None)} Failed to parse activity times: {e}, skipping")
             result.append(act)  # Keep invalid activities as-is
             continue
         
@@ -178,7 +178,7 @@ def _handle_activity_overlaps(
                 result.append(act)
         except TypeError as e:
             # Safety net: if overlap check fails, keep the activity as-is
-            logger.warning(f"[schedule] TypeError checking overlap: {e}, keeping activity as-is")
+            logger.warning(f"{format_log_prefix_resolved('schedule', None)} TypeError checking overlap: {e}, keeping activity as-is")
             result.append(act)
     
     return result
@@ -207,14 +207,14 @@ def _sort_activities(activities: list[dict]) -> list[dict]:
             return (0, dt)  # Valid: sort normally
         except (ValueError, KeyError, TypeError) as e:
             # Catch TypeError in case normalization or comparison fails
-            logger.debug(f"[schedule] Error in sort_key for activity: {e}")
+            logger.debug(f"{format_log_prefix_resolved('schedule', None)} Error in sort_key for activity: {e}")
             return (1, datetime.min.replace(tzinfo=UTC))  # Invalid: sort to end (use UTC-aware)
     
     try:
         return sorted(activities, key=sort_key)
     except TypeError as e:
         # Safety net: if sorting fails due to mixed timezone awareness, log and return unsorted
-        logger.warning(f"[schedule] TypeError sorting activities: {e}, returning unsorted")
+        logger.warning(f"{format_log_prefix_resolved('schedule', None)} TypeError sorting activities: {e}, returning unsorted")
         return activities
 
 
@@ -237,11 +237,11 @@ async def handle_immediate_schedule(task: TaskNode, *, agent, channel_id: int) -
         True if the task was handled successfully
     """
     if agent is None:
-        logger.warning("[schedule] Missing agent context; deferring schedule task")
+        logger.warning(f"{format_log_prefix_resolved('schedule', None)} Missing agent context; deferring schedule task")
         return False
     
     if not agent.daily_schedule_description:
-        logger.warning(f"[schedule] Agent {agent.name} does not have a daily schedule configured")
+        logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Agent does not have a daily schedule configured")
         return False
     
     params = task.params or {}
@@ -279,7 +279,7 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
         description = params.get("description")
         
         if not all([start_time_str, end_time_str, activity_name, responsiveness is not None, description]):
-            logger.warning(f"[schedule] Missing required fields for create: {params}")
+            logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Missing required fields for create: {params}")
             return False
         
         # Parse datetimes
@@ -287,20 +287,20 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
             start_time = datetime.fromisoformat(start_time_str)
             end_time = datetime.fromisoformat(end_time_str)
         except ValueError as e:
-            logger.warning(f"[schedule] Invalid datetime format: {e}")
+            logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Invalid datetime format: {e}")
             return False
         
         # Validate that datetimes are timezone-aware
         # Comparing timezone-naive with timezone-aware datetimes raises TypeError
         if start_time.tzinfo is None:
             logger.warning(
-                f"[schedule] start_time must be timezone-aware (got: {start_time_str}). "
+                f"{format_log_prefix_resolved(agent.name, None)} start_time must be timezone-aware (got: {start_time_str}). "
                 f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
             )
             return False
         if end_time.tzinfo is None:
             logger.warning(
-                f"[schedule] end_time must be timezone-aware (got: {end_time_str}). "
+                f"{format_log_prefix_resolved(agent.name, None)} end_time must be timezone-aware (got: {end_time_str}). "
                 f"ISO 8601 datetime strings must include timezone offset (e.g., '2025-12-02T06:00:00-10:00')."
             )
             return False
@@ -344,13 +344,13 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
         agent._save_schedule(schedule)
         
         logger.info(
-            f"{format_log_prefix(agent.name)} Created schedule entry: {activity_name} "
+            f"{format_log_prefix_resolved(agent.name)} Created schedule entry: {activity_name} "
             f"({start_time.isoformat()} - {end_time.isoformat()})"
         )
         return True
         
     except Exception as e:
-        logger.error(f"[schedule] Error creating schedule entry: {e}")
+        logger.error(f"{format_log_prefix_resolved(agent.name, None)} Error creating schedule entry: {e}")
         return False
 
 
@@ -361,13 +361,13 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
         activity_id = params.get("id")
         
         if not activity_id:
-            logger.warning("[schedule] Missing id for update")
+            logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Missing id for update")
             return False
         
         # Load existing schedule
         schedule = agent._load_schedule()
         if not schedule:
-            logger.warning(f"{format_log_prefix(agent.name)} No schedule found for update")
+            logger.warning(f"{format_log_prefix_resolved(agent.name)} No schedule found for update")
             return False
         
         # Find the activity to update and get its current times
@@ -387,12 +387,12 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                     current_start = _normalize_datetime(current_start)
                     current_end = _normalize_datetime(current_end)
                 except (ValueError, KeyError, TypeError) as e:
-                    logger.warning(f"[schedule] Activity {activity_id} has invalid times: {e}")
+                    logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Activity {activity_id} has invalid times: {e}")
                 found = True
                 break
         
         if not found:
-            logger.warning(f"{format_log_prefix(agent.name)} Schedule entry {activity_id} not found for update")
+            logger.warning(f"{format_log_prefix_resolved(agent.name)} Schedule entry {activity_id} not found for update")
             return False
         
         # Parse and validate new times if provided
@@ -405,13 +405,13 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                 new_start = datetime.fromisoformat(params["start_time"])
                 if new_start.tzinfo is None:
                     logger.warning(
-                        f"[schedule] start_time must be timezone-aware (got: {params['start_time']}). "
+                        f"{format_log_prefix_resolved(agent.name, None)} start_time must be timezone-aware (got: {params['start_time']}). "
                         f"ISO 8601 datetime strings must include timezone offset."
                     )
                     return False
                 times_being_updated = True
             except ValueError as e:
-                logger.warning(f"[schedule] Invalid start_time format: {e}")
+                logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Invalid start_time format: {e}")
                 return False
         else:
             new_start = current_start
@@ -421,13 +421,13 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                 new_end = datetime.fromisoformat(params["end_time"])
                 if new_end.tzinfo is None:
                     logger.warning(
-                        f"[schedule] end_time must be timezone-aware (got: {params['end_time']}). "
+                        f"{format_log_prefix_resolved(agent.name, None)} end_time must be timezone-aware (got: {params['end_time']}). "
                         f"ISO 8601 datetime strings must include timezone offset."
                     )
                     return False
                 times_being_updated = True
             except ValueError as e:
-                logger.warning(f"[schedule] Invalid end_time format: {e}")
+                logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Invalid end_time format: {e}")
                 return False
         else:
             new_end = current_end
@@ -446,7 +446,7 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                     activity_index = i
                     break
             if activity_index is None:
-                logger.error(f"[schedule] Activity {activity_id} lost during overlap handling")
+                logger.error(f"{format_log_prefix_resolved(agent.name, None)} Activity {activity_id} lost during overlap handling")
                 return False
         
         # Update fields
@@ -470,11 +470,11 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
         # Save schedule
         agent._save_schedule(schedule)
         
-        logger.info(f"{format_log_prefix(agent.name)} Updated schedule entry: {activity_id}")
+        logger.info(f"{format_log_prefix_resolved(agent.name)} Updated schedule entry: {activity_id}")
         return True
         
     except Exception as e:
-        logger.error(f"[schedule] Error updating schedule entry: {e}")
+        logger.error(f"{format_log_prefix_resolved(agent.name, None)} Error updating schedule entry: {e}")
         return False
 
 
@@ -485,13 +485,13 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         activity_id = params.get("id")
         
         if not activity_id:
-            logger.warning("[schedule] Missing id for delete")
+            logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Missing id for delete")
             return False
         
         # Load existing schedule
         schedule = agent._load_schedule()
         if not schedule:
-            logger.warning(f"{format_log_prefix(agent.name)} No schedule found for delete")
+            logger.warning(f"{format_log_prefix_resolved(agent.name)} No schedule found for delete")
             return False
         
         # Remove the activity
@@ -500,7 +500,7 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         schedule["activities"] = [act for act in activities if act.get("id") != activity_id]
         
         if len(schedule["activities"]) == original_count:
-            logger.warning(f"{format_log_prefix(agent.name)} Schedule entry {activity_id} not found for delete")
+            logger.warning(f"{format_log_prefix_resolved(agent.name)} Schedule entry {activity_id} not found for delete")
             return False
         
         # Sort activities by start_time (order shouldn't change, but ensures consistency)
@@ -509,9 +509,9 @@ async def _handle_delete_schedule(agent, task: TaskNode) -> bool:
         # Save schedule
         agent._save_schedule(schedule)
         
-        logger.info(f"{format_log_prefix(agent.name)} Deleted schedule entry: {activity_id}")
+        logger.info(f"{format_log_prefix_resolved(agent.name)} Deleted schedule entry: {activity_id}")
         return True
         
     except Exception as e:
-        logger.error(f"[schedule] Error deleting schedule entry: {e}")
+        logger.error(f"{format_log_prefix_resolved(agent.name, None)} Error deleting schedule entry: {e}")
         return False

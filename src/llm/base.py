@@ -159,6 +159,7 @@ class LLM(ABC):
             agent: Optional agent object for logging context
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "query_structured")
+            channel_telegram_id: Optional channel Telegram ID for task log persistence
         """
         if hasattr(response, 'usage') and response.usage:
             try:

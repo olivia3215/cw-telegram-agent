@@ -10,7 +10,7 @@ from handlers.received_helpers.task_parsing import TransientLLMResponseError
 from llm.base import MsgTextPart
 from llm.exceptions import RetryableLLMError
 from task_graph import TaskGraph, TaskNode
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +96,11 @@ def get_channel_llm(agent, channel_id: int, channel_name: str | None = None):
         from llm.factory import create_llm_from_name
         try:
             llm = create_llm_from_name(channel_llm_model)
-            logger.debug(f"{format_log_prefix(agent.name, channel_name)} Using channel-specific LLM model: {channel_llm_model}")
+            logger.debug(f"{format_log_prefix_resolved(agent.name, channel_name)} Using channel-specific LLM model: {channel_llm_model}")
             return llm
         except Exception as e:
             logger.warning(
-                f"{format_log_prefix(agent.name, channel_name)} Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
+                f"{format_log_prefix_resolved(agent.name, channel_name)} Failed to create channel-specific LLM '{channel_llm_model}', falling back to default: {e}"
             )
             return agent.llm
     else:
@@ -144,6 +144,7 @@ async def run_llm_with_retrieval(
         List of TaskNode objects parsed from the LLM response.
     """
     # Get appropriate LLM instance (channel-specific if configured)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
     llm = get_channel_llm(agent, channel_id, channel_name)
 
     # Get existing fetched resources from graph context
@@ -201,8 +202,8 @@ async def run_llm_with_retrieval(
     try:
         model_name = getattr(llm, "model_name", None) or type(llm).__name__
         logger.info(
-            "[%s] LLM request using model: %s",
-            agent.name,
+            "%s LLM request using model: %s",
+            log_prefix,
             model_name,
         )
         reply = await llm.query_structured(
@@ -220,22 +221,22 @@ async def run_llm_with_retrieval(
         # Use module-level function if not provided
         check_retryable = is_retryable_llm_error_fn if is_retryable_llm_error_fn is not None else is_retryable_llm_error
         if check_retryable(e):
-            logger.warning(f"{format_log_prefix(agent.name, channel_name)} LLM temporary failure, will retry: {e}")
+            logger.warning(f"{log_prefix} LLM temporary failure, will retry: {e}")
             several = 15
             wait_task = task.insert_delay(graph, several)
             logger.info(
-                f"{format_log_prefix(agent.name, channel_name)} Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
+                f"{log_prefix} Scheduled delayed retry: wait task {wait_task.id}, received task {task.id}"
             )
             raise
         else:
-            logger.error(f"{format_log_prefix(agent.name, channel_name)} LLM permanent failure: {e}")
+            logger.error(f"{log_prefix} LLM permanent failure: {e}")
             return []
 
     if reply == "":
-        logger.info(f"{format_log_prefix(agent.name, channel_name)} LLM decided not to reply")
+        logger.info(f"{log_prefix} LLM decided not to reply")
         return []
 
-    logger.debug(f"{format_log_prefix(agent.name, channel_name)} LLM reply: {reply}")
+    logger.debug(f"{log_prefix} LLM reply: {reply}")
 
     # Parse the tasks
     try:
@@ -244,17 +245,17 @@ async def run_llm_with_retrieval(
         )
     except TransientLLMResponseError as e:
         logger.warning(
-            f"{format_log_prefix(agent.name, channel_name)} LLM produced malformed task response; scheduling retry: {e}"
+            f"{log_prefix} LLM produced malformed task response; scheduling retry: {e}"
         )
         retry_delay = 10
         wait_task = task.insert_delay(graph, retry_delay)
         logger.info(
-            f"{format_log_prefix(agent.name, channel_name)} Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
+            f"{log_prefix} Scheduled delayed retry after malformed response: wait task {wait_task.id}, received task {task.id}"
         )
         raise Exception("Temporary error: malformed LLM response - will retry") from e
     except ValueError as e:
         logger.exception(
-            f"[{agent.name}] Failed to parse LLM response '{reply}': {e}"
+            f"{log_prefix} Failed to parse LLM response '{reply}': {e}"
         )
         return []
 

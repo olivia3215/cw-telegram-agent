@@ -11,6 +11,7 @@ from telethon.tl.types import ReactionEmoji
 from agent import get_agent_for_id
 from handlers.registry import register_task_handler
 from task_graph import TaskNode
+from utils.formatting import format_log_prefix
 from utils.telegram import get_channel_name
 from utils import coerce_to_int
 from utils.ids import ensure_int_id
@@ -49,6 +50,7 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
         raise ValueError(f"Task {task.id} missing or invalid 'message_id' parameter")
 
     channel_name = await get_channel_name(agent, channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     # Convert channel_id to integer and resolve entity
     channel_id_int = ensure_int_id(channel_id)
@@ -60,7 +62,7 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
         entity = channel_id_int
 
     logger.info(
-        f"[{agent.name}] REACT: to=[{channel_name}] message_id={message_id} emoji={emoji}"
+        f"{log_prefix} REACT: to=[{channel_name}] message_id={message_id} emoji={emoji}"
     )
 
     request = SendReactionRequest(
@@ -84,5 +86,5 @@ async def handle_react(task: TaskNode, graph, work_queue=None):
                 logger.debug(f"Failed to update agent activity: {e}")
     except Exception as exc:
         logger.exception(
-            f"[{agent.name}] Failed to send reaction to message {message_id}: {exc}"
+            f"{log_prefix} Failed to send reaction to message {message_id}: {exc}"
         )

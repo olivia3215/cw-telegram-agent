@@ -16,7 +16,7 @@ from telethon.tl.types import (  # pyright: ignore[reportMissingImports]
 from agent import Agent, all_agents
 from clock import clock
 from datetime import UTC
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 from typing_state import mark_partner_typing
 from .incoming import handle_incoming_message
 from .scan import scan_unread_messages
@@ -29,7 +29,7 @@ async def run_telegram_loop(agent: Agent):
     while True:
         # Check if agent has been disabled - if so, disconnect and exit
         if agent.is_disabled:
-            logger.info(f"{format_log_prefix(agent.name)} Agent is disabled, disconnecting client and exiting telegram loop")
+            logger.info(f"{format_log_prefix_resolved(agent.name, None)} Agent is disabled, disconnecting client and exiting telegram loop")
             if agent._client:
                 try:
                     await agent._client.disconnect()
@@ -54,7 +54,7 @@ async def run_telegram_loop(agent: Agent):
                 # Authentication failed - this is expected if the agent hasn't been authenticated yet
                 # Wait a bit and retry - the user might authenticate through the admin console
                 logger.debug(
-                    f"{format_log_prefix(agent.name)} Authentication failed (agent may not be authenticated yet). "
+                    f"{format_log_prefix_resolved(agent.name, None)} Authentication failed (agent may not be authenticated yet). "
                     "Will retry in 30 seconds. Use the admin console login flow to authenticate this agent."
                 )
                 await clock.sleep(30)
@@ -67,7 +67,7 @@ async def run_telegram_loop(agent: Agent):
 
         client = agent.client
         if not client:
-            logger.error(f"{format_log_prefix(agent.name)} No client available after authentication.")
+            logger.error(f"{format_log_prefix_resolved(agent.name, None)} No client available after authentication.")
             break
 
         @client.on(events.NewMessage(incoming=True))
@@ -109,7 +109,7 @@ async def run_telegram_loop(agent: Agent):
             to re-scan the dialogs.
             """
             logger.info(
-                f"{format_log_prefix(agent.name)} Detected a dialog filter update. Triggering a scan."
+                f"{format_log_prefix_resolved(agent.name, None)} Detected a dialog filter update. Triggering a scan."
             )
             # We don't need to inspect the event further; its existence is the trigger.
             # We call the existing scan function to check for the unread mark.
@@ -119,7 +119,7 @@ async def run_telegram_loop(agent: Agent):
             async with client:
                 # Check if agent was disabled while we were setting up
                 if agent.is_disabled:
-                    logger.info(f"{format_log_prefix(agent.name)} Agent was disabled, exiting telegram loop")
+                    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Agent was disabled, exiting telegram loop")
                     break
 
                 # Stagger initial scan to avoid GetContactsRequest flood when multiple agents start
@@ -127,12 +127,12 @@ async def run_telegram_loop(agent: Agent):
                 agent_hash = int(hashlib.md5(agent.config_name.encode()).hexdigest()[:8], 16)
                 initial_delay = (agent_hash % 5000) / 1000.0  # 0-5 seconds
                 if initial_delay > 0:
-                    logger.debug(f"{format_log_prefix(agent.name)} Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
+                    logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Staggering initial scan by {initial_delay:.2f}s to avoid flood waits")
                     await clock.sleep(initial_delay)
 
                 # Check again after delay
                 if agent.is_disabled:
-                    logger.info(f"{format_log_prefix(agent.name)} Agent was disabled, exiting telegram loop")
+                    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Agent was disabled, exiting telegram loop")
                     break
 
                 await scan_unread_messages(agent)
@@ -143,7 +143,7 @@ async def run_telegram_loop(agent: Agent):
 
         except Exception as e:
             logger.exception(
-                f"{format_log_prefix(agent.name)} Telegram client error: {e}. Reconnecting in 10 seconds..."
+                f"{format_log_prefix_resolved(agent.name, None)} Telegram client error: {e}. Reconnecting in 10 seconds..."
             )
             await clock.sleep(10)
 
@@ -196,6 +196,6 @@ async def periodic_scan(agents, interval_sec):
                     await scan_unread_messages(agent)
                 except Exception as e:
                     logger.exception(
-                        f"{format_log_prefix(agent.name)} Error during periodic scan: {e}"
+                        f"{format_log_prefix_resolved(agent.name, None)} Error during periodic scan: {e}"
                     )
         await clock.sleep(interval_sec)

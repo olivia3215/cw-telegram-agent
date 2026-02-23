@@ -23,6 +23,7 @@ from handlers.received_helpers.summarization import consolidate_oldest_summaries
 from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
+from utils.formatting import format_log_prefix_resolved
 from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
 from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
@@ -331,10 +332,7 @@ async def _replace_custom_emoji_in_reactions(
                 continue
 
             # Get user name
-            try:
-                user_name = await get_channel_name(agent, user_id)
-            except Exception:
-                user_name = str(user_id)
+            user_name = await get_channel_name(agent, user_id)
 
             logger.debug(f"Reaction {idx} on message {message_id} (admin) from {user_name}({user_id})")
 
@@ -559,6 +557,9 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                 if not entity:
                     return []
 
+                channel_name = await get_channel_name(agent, channel_id)
+                log_prefix = format_log_prefix_resolved(agent_config_name, channel_name)
+
                 # Check if this is a DM conversation (needed for read status checking)
                 is_dm_conversation = is_dm(entity)
 
@@ -594,7 +595,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     if highest_summarized_id is not None and msg_id <= highest_summarized_id:
                         # This shouldn't happen if min_id is working correctly, but log if it does
                         logger.warning(
-                            f"[{agent_config_name}] Unexpected: message {msg_id} <= highest_summarized_id {highest_summarized_id} "
+                            f"{log_prefix} Unexpected: message {msg_id} <= highest_summarized_id {highest_summarized_id} "
                             f"despite min_id filter"
                         )
                         continue
@@ -650,13 +651,9 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     # If we didn't get sender_name from sender_entity, try get_channel_name
                     # This handles DMs and cases where sender_entity wasn't available
                     if not sender_name and sender_id and isinstance(sender_id, int):
-                        try:
-                            sender_name = await get_channel_name(agent, sender_id)
-                            # get_channel_name should never return None or empty, but be defensive
-                            if not sender_name or not sender_name.strip():
-                                sender_name = "User"
-                        except Exception as e:
-                            logger.warning(f"Failed to get sender name for {sender_id}: {e}")
+                        sender_name = await get_channel_name(agent, sender_id)
+                        # get_channel_name should never return None or empty, but be defensive
+                        if not sender_name or not sender_name.strip():
                             sender_name = "User"
                     elif not sender_name:
                         # No sender_id or sender_id isn't an int - use generic name
@@ -714,12 +711,9 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             # Get the peer (user/channel) that posted the story
                             story_peer = getattr(media_attr, "peer", None)
                             if story_peer:
-                                try:
-                                    peer_id = getattr(story_peer, "user_id", None) or getattr(story_peer, "channel_id", None)
-                                    if peer_id:
-                                        story_from_name = await get_channel_name(agent, peer_id)
-                                except Exception:
-                                    pass
+                                peer_id = getattr(story_peer, "user_id", None) or getattr(story_peer, "channel_id", None)
+                                if peer_id:
+                                    story_from_name = await get_channel_name(agent, peer_id)
 
                             # If story_item is None, try to fetch it from Telegram
                             if not story_item and story_id is not None and story_peer:
@@ -753,12 +747,9 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             if from_name:
                                 story_from_name = from_name
                             elif from_peer:
-                                try:
-                                    from_id = getattr(from_peer, "user_id", None) or getattr(from_peer, "channel_id", None)
-                                    if from_id:
-                                        story_from_name = await get_channel_name(agent, from_id)
-                                except Exception:
-                                    pass
+                                from_id = getattr(from_peer, "user_id", None) or getattr(from_peer, "channel_id", None)
+                                if from_id:
+                                    story_from_name = await get_channel_name(agent, from_id)
 
                     # Extract custom emoji documents from message entities and cache them
                     # This allows us to download emojis later
@@ -1067,7 +1058,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         "is_read_by_partner": is_read_by_partner,  # True if read, False if unread, None if unknown/not applicable
                     })
                 logger.debug(
-                    f"[{agent_config_name}] Fetched {total_fetched} unsummarized messages for channel {channel_id} "
+                    f"{log_prefix} Fetched {total_fetched} unsummarized messages for channel {channel_id} "
                     f"(highest_summarized_id={highest_summarized_id}, using min_id filter)"
                 )
                 return list(reversed(messages))  # Return in chronological order

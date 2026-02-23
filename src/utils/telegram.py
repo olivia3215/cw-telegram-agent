@@ -11,6 +11,7 @@ from telethon.tl.types import User, UserProfilePhotoEmpty  # pyright: ignore[rep
 if TYPE_CHECKING:
     from agent import Agent
 
+from utils.formatting import format_log_prefix_resolved
 from utils.ids import normalize_peer_id
 
 logger = logging.getLogger(__name__)
@@ -38,10 +39,14 @@ async def get_channel_name(agent: "Agent", channel_id: int | None):
     """
     Fetches the display name for any channel (user, group, or channel).
     Accepts Agent-like objects (e.g., test doubles) too.
+    Never raises: invalid channel_id and transient errors return a fallback string.
     """
     if channel_id is None:
         return "Unknown (None)"
-    channel_id = normalize_peer_id(channel_id)
+    try:
+        channel_id = normalize_peer_id(channel_id)
+    except (ValueError, TypeError):
+        return f"Unknown ({channel_id!r})"
     try:
         # get_entity can fetch users, chats, or channels
         entity = await agent.get_cached_entity(channel_id)
@@ -233,6 +238,6 @@ async def can_agent_send_to_channel(agent: "Agent", channel_id: int) -> bool:
         # If we can't determine permissions, assume we can send
         # (better to err on the side of processing messages)
         logger.debug(
-            f"[{agent.name}] Error checking send permissions for channel {channel_id}: {e}"
+            f"{format_log_prefix_resolved(agent.name, None)} Error checking send permissions for channel {channel_id}: {e}"
         )
         return True  # Default to allowing, to avoid blocking legitimate messages

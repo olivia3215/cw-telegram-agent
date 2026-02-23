@@ -5,33 +5,63 @@
 #
 
 
-def format_log_prefix(agent_name: str, channel_name: str | None = None) -> str:
+def format_log_prefix_resolved(agent_name: str, channel_name: str | None = None) -> str:
     """
-    Format a log prefix as [agent_name->channel_name] or [agent_name].
-    
-    Args:
-        agent_name: The name of the agent
-        channel_name: Optional channel name. If None, only agent name is used.
-        
-    Returns:
-        Formatted log prefix string
-        
-    Examples:
-        >>> format_log_prefix("Alice")
-        "[Alice]"
-        >>> format_log_prefix("Alice", "Bob")
-        "[Alice->Bob]"
-        >>> format_log_prefix("Alice", "Very Long Channel Name Here")
-        "[Alice->Very Long Channel Name H…]"
+    Format a log prefix when names are already resolved.
+    Use async format_log_prefix() when you have channel_id (int) to resolve.
     """
     if channel_name is None:
         return f"[{agent_name}]"
-    
-    # Truncate channel name to 25 characters with ellipsis if needed
     if len(channel_name) > 25:
         channel_name = channel_name[:25] + "…"
-    
     return f"[{agent_name}->{channel_name}]"
+
+
+async def format_log_prefix(
+    agent_name: str | int,
+    channel_name: str | int | None = None,
+    *,
+    agent=None,
+) -> str:
+    """
+    Format a log prefix as [agent_name->channel_name] or [agent_name].
+    Accepts int for either argument; when channel_name is int, pass agent= to resolve via get_channel_name.
+
+    Args:
+        agent_name: The name of the agent, or agent_id (int) to resolve via get_agent_for_id.
+        channel_name: Optional channel name, or channel_id (int) to resolve via get_channel_name (requires agent=).
+        agent: Agent instance; required when channel_name is int to resolve the channel name.
+
+    Returns:
+        Formatted log prefix string.
+
+    Examples:
+        >>> await format_log_prefix("Alice")
+        "[Alice]"
+        >>> await format_log_prefix("Alice", "Bob")
+        "[Alice->Bob]"
+        >>> await format_log_prefix("Alice", channel_id, agent=agent)
+        "[Alice->Bob]"  # when channel_id resolves to "Bob"
+    """
+    # Resolve agent_name if int
+    if isinstance(agent_name, int):
+        from agent import get_agent_for_id
+        a = get_agent_for_id(agent_name)
+        agent_name = a.name if a else str(agent_name)
+    else:
+        agent_name = str(agent_name)
+
+    # Resolve channel_name if int
+    if channel_name is not None and isinstance(channel_name, int):
+        if agent is None:
+            channel_name = str(channel_name)
+        else:
+            from utils.telegram import get_channel_name
+            channel_name = await get_channel_name(agent, channel_name)
+    elif channel_name is not None:
+        channel_name = str(channel_name)
+
+    return format_log_prefix_resolved(agent_name, channel_name)
 
 
 def format_message_content_for_logging(message) -> str:

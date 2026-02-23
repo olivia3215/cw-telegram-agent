@@ -14,7 +14,7 @@ from typing import Any
 # MemoryStorageError no longer used - code migrated to MySQL backend
 # from memory_storage import MemoryStorageError, load_property_entries, mutate_property_entries
 from task_graph import TaskNode
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.telegram import get_channel_name
 from utils import coerce_to_str, format_username, normalize_created_string
 
@@ -50,6 +50,7 @@ async def process_property_entry_task(
         post_process: Optional function to process the entries list after mutation.
                       Receives (entries, agent) and returns the processed entries list.
     """
+    log_prefix = await format_log_prefix(agent.name, channel_id, agent=agent)
     try:
         task_params: dict[str, Any] = dict(task.params or {})
         task_params.pop("kind", None)
@@ -67,7 +68,7 @@ async def process_property_entry_task(
         # Verify agent has agent_id (required for MySQL storage)
         if not agent.is_authenticated:
             raise ValueError(
-                f"[{agent.name}] Cannot process {entry_type_name} task: agent_id is None. "
+                f"{log_prefix} Cannot process {entry_type_name} task: agent_id is None. "
                 "Agent must be authenticated before storage operations."
             )
 
@@ -161,9 +162,7 @@ async def process_property_entry_task(
                 channel_metadata["agent_name"] = agent.name
                 channel_metadata["channel_id"] = channel_id
             except Exception as e:
-                # Get channel name for logging (channel_name might not be set if exception occurred before)
-                log_channel_name = channel_name if 'channel_name' in locals() else await get_channel_name(agent, channel_id)
-                logger.debug(f"{format_log_prefix(agent.name, log_channel_name)} Failed to fetch channel metadata: {e}")
+                logger.debug(f"{log_prefix} Failed to fetch channel metadata: {e}")
                 # Continue without metadata - it's optional
 
         def mutator(
@@ -224,7 +223,7 @@ async def process_property_entry_task(
             if modified_entry is None:
                 # Fallback to new_entry if post_process removed it (shouldn't happen, but be safe)
                 logger.warning(
-                    f"[{agent.name}] Entry {entry_id} not found in post-processed entries, using original entry"
+                    f"{log_prefix} Entry {entry_id} not found in post-processed entries, using original entry"
                 )
                 modified_entry = new_entry
             
@@ -239,22 +238,16 @@ async def process_property_entry_task(
             )
 
         if content_value is not None:
-            # Get channel name for logging
-            log_channel_name = await get_channel_name(agent, channel_id)
             logger.info(
-                f"{format_log_prefix(agent.name, log_channel_name)} Added {entry_type_name} {entry_id} for conversation {channel_id}: {content_value[:50]}..."
+                f"{log_prefix} Added {entry_type_name} {entry_id} for conversation {channel_id}: {content_value[:50]}..."
             )
         else:
-            # Get channel name for logging
-            log_channel_name = await get_channel_name(agent, channel_id)
             logger.info(
-                f"{format_log_prefix(agent.name, log_channel_name)} Removed {entry_type_name} {entry_id} for conversation {channel_id}"
+                f"{log_prefix} Removed {entry_type_name} {entry_id} for conversation {channel_id}"
             )
 
     except Exception as exc:
-        # Get channel name for logging
-        log_channel_name = await get_channel_name(agent, channel_id)
-        logger.exception(f"{format_log_prefix(agent.name, log_channel_name)} Failed to process {entry_type_name} task: {exc}")
+        logger.exception(f"{log_prefix} Failed to process {entry_type_name} task: {exc}")
         raise
 
 
@@ -269,7 +262,7 @@ def clear_plans_and_summaries(agent, channel_id: int):
     # Verify agent has agent_id (required for MySQL storage)
     if not agent.is_authenticated:
         raise ValueError(
-            f"[{agent.name}] Cannot clear plans and summaries: agent_id is None. "
+            f"{format_log_prefix_resolved(agent.name, None)} Cannot clear plans and summaries: agent_id is None. "
             "Agent must be authenticated before storage operations."
         )
     
@@ -287,7 +280,7 @@ def clear_plans_and_summaries(agent, channel_id: int):
             summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
         
         logger.info(
-            f"[{agent.name}] Cleared summaries and plans for channel [{channel_id}]"
+            f"{format_log_prefix_resolved(agent.name, None)} Cleared summaries and plans for channel [{channel_id}]"
         )
     except Exception as e:
         logger.error(f"Failed to clear plans and summaries from MySQL: {e}")
@@ -305,7 +298,7 @@ def clear_summaries_only(agent, channel_id: int):
     # Verify agent has agent_id (required for MySQL storage)
     if not agent.is_authenticated:
         raise ValueError(
-            f"[{agent.name}] Cannot clear summaries: agent_id is None. "
+            f"{format_log_prefix_resolved(agent.name, None)} Cannot clear summaries: agent_id is None. "
             "Agent must be authenticated before storage operations."
         )
     
@@ -319,7 +312,7 @@ def clear_summaries_only(agent, channel_id: int):
             summaries.delete_summary(agent.agent_id, channel_id, summary.get("id"))
         
         logger.info(
-            f"[{agent.name}] Cleared summaries for channel [{channel_id}]"
+            f"{format_log_prefix_resolved(agent.name, None)} Cleared summaries for channel [{channel_id}]"
         )
     except Exception as e:
         logger.error(f"Failed to clear summaries from MySQL: {e}")

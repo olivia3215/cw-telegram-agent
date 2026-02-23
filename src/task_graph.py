@@ -15,6 +15,7 @@ from enum import Enum
 from agent import get_agent_for_id
 from clock import clock
 from typing_state import is_partner_typing
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
@@ -317,8 +318,10 @@ class WorkQueue:
                                     break
                             if not has_bypass_task:
                                 # Agent is asleep and no bypass tasks, skip this graph
+                                channel_id = graph.context.get("channel_id")
                                 logger.debug(
-                                    f"[{agent_id}] Skipping graph {graph.id} - agent responsiveness is {responsiveness}"
+                                    f"{format_log_prefix_resolved(agent.name, None)} "
+                                    f"Skipping graph {graph.id} (channel {channel_id}) - agent responsiveness is {responsiveness}"
                                 )
                                 continue
                     except Exception:
