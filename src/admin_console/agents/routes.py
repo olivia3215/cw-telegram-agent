@@ -316,11 +316,7 @@ def register_main_routes(agents_bp: Blueprint):
                     channel_name = None
                     if agent.client:
                         async def _get_channel_name():
-                            try:
-                                return await get_channel_name(agent, channel_telegram_id)
-                            except Exception as e:
-                                logger.debug(f"Error getting channel name for {channel_telegram_id}: {e}")
-                                return None
+                            return await get_channel_name(agent, channel_telegram_id)
                         channel_name = agent.execute(_get_channel_name(), timeout=5.0)
 
                     display_name = channel_name or str(channel_telegram_id)

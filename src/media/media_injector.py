@@ -155,11 +155,8 @@ async def _format_service_message(msg: Any, *, agent) -> str | None:
             # Get names for all users
             user_names = []
             for user_id in user_ids:
-                try:
-                    name = await get_channel_name(agent, user_id)
-                    user_names.append(name)
-                except Exception:
-                    user_names.append(f"User({user_id})")
+                name = await get_channel_name(agent, user_id)
+                user_names.append(name)
             
             if len(user_names) == 1:
                 return f"⟦special⟧ {user_names[0]} joined the group"
@@ -171,11 +168,8 @@ async def _format_service_message(msg: Any, *, agent) -> str | None:
         elif action_type == "MessageActionChatDeleteUser":
             user_id = getattr(action, "user_id", None)
             if user_id:
-                try:
-                    name = await get_channel_name(agent, user_id)
-                    return f"⟦special⟧ {name} left the group"
-                except Exception:
-                    return f"⟦special⟧ User({user_id}) left the group"
+                name = await get_channel_name(agent, user_id)
+                return f"⟦special⟧ {name} left the group"
             return "⟦special⟧ User left the group"
         
         # MessageActionChatJoinedByLink - user joined via invite link
@@ -183,11 +177,8 @@ async def _format_service_message(msg: Any, *, agent) -> str | None:
             # Get the user who joined from the message sender
             sender_id = getattr(getattr(msg, "sender", None), "id", None)
             if sender_id:
-                try:
-                    name = await get_channel_name(agent, sender_id)
-                    return f"⟦special⟧ {name} joined the group via invite link"
-                except Exception:
-                    return f"⟦special⟧ User({sender_id}) joined the group via invite link"
+                name = await get_channel_name(agent, sender_id)
+                return f"⟦special⟧ {name} joined the group via invite link"
             return "⟦special⟧ User joined the group via invite link"
         
         # MessageActionChatCreate - group was created
@@ -399,10 +390,7 @@ async def inject_media_descriptions(
                     if chan_id is None and peer_id is not None:
                         chan_id = peer_id
                         if chan_name is None:
-                            try:
-                                chan_name = await get_channel_name(agent, chan_id)
-                            except Exception:
-                                chan_name = None
+                            chan_name = await get_channel_name(agent, chan_id)
 
                     # Process using the media source chain
                     # The chain handles: cache lookup, budget, AI generation, disk caching

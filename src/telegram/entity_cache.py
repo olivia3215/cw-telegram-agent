@@ -19,6 +19,7 @@ from telethon.tl.functions.contacts import GetContactsRequest  # pyright: ignore
 
 from clock import clock
 from utils import normalize_peer_id
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class TelegramEntityCache:
             not_found_ttl = timedelta(hours=1)
             not_found_expiration = now + not_found_ttl
             self._cache[entity_id] = (None, not_found_expiration)
-            logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
+            logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Cached failed lookup for ID {entity_id}: {e}")
             return None
         except ValueError as e:
             # Telethon can raise ValueError with "Could not find the input entity" message
@@ -97,7 +98,7 @@ class TelegramEntityCache:
                     if entity:
                         # Found in contacts - cache it with normal TTL
                         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
-                        logger.debug(f"[{self.name}] Resolved entity {entity_id} from contacts")
+                        logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Resolved entity {entity_id} from contacts")
                         return entity
                 
                 # Not found in contacts or not a user ID - cache as "not found"
@@ -106,15 +107,15 @@ class TelegramEntityCache:
                 not_found_ttl = timedelta(minutes=5)
                 not_found_expiration = now + not_found_ttl
                 self._cache[entity_id] = (None, not_found_expiration)
-                logger.debug(f"[{self.name}] Cached failed lookup for ID {entity_id}: {e}")
+                logger.debug(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Cached failed lookup for ID {entity_id}: {e}")
                 return None
             # Other ValueError instances are treated as transient errors
-            logger.warning(f"[{self.name}] Transient error fetching entity {entity_id}: {e}")
+            logger.warning(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Transient error fetching entity {entity_id}: {e}")
             raise
         except Exception as e:
             # Transient errors (network timeouts, rate limits, connection issues, etc.)
             # should not be cached as "not found" - let them propagate so callers can retry
-            logger.warning(f"[{self.name}] Transient error fetching entity {entity_id}: {e}")
+            logger.warning(f"{await format_log_prefix(self.name, entity_id, agent=self.agent)} Transient error fetching entity {entity_id}: {e}")
             raise
 
         self._cache[entity_id] = (entity, now + timedelta(seconds=self.ttl_seconds))
@@ -139,7 +140,7 @@ class TelegramEntityCache:
         except RuntimeError:
             # No running loop - this shouldn't happen in async context, but handle gracefully
             # Create a lock anyway (will be bound to the default loop if one exists)
-            logger.warning(f"[{self.name}] No running event loop when getting contacts fetch lock")
+            logger.warning(f"{format_log_prefix_resolved(self.name, None)} No running event loop when getting contacts fetch lock")
             if None not in self._contacts_fetch_locks:
                 self._contacts_fetch_locks[None] = asyncio.Lock()
             return self._contacts_fetch_locks[None]
@@ -197,9 +198,9 @@ class TelegramEntityCache:
                                     self._contacts_cache[user_id_val] = user
                         # Cache for 5 minutes
                         self._contacts_cache_expiration = now + timedelta(minutes=5)
-                        logger.debug(f"[{self.name}] Loaded {len(self._contacts_cache)} contacts")
+                        logger.debug(f"{format_log_prefix_resolved(self.name, None)} Loaded {len(self._contacts_cache)} contacts")
                     except Exception as e:
-                        logger.debug(f"[{self.name}] Failed to fetch contacts: {e}")
+                        logger.debug(f"{format_log_prefix_resolved(self.name, None)} Failed to fetch contacts: {e}")
                         # Cache empty result for 1 minute to avoid repeated failures
                         self._contacts_cache = {}
                         self._contacts_cache_expiration = now + timedelta(minutes=1)
@@ -210,7 +211,7 @@ class TelegramEntityCache:
 
     def clear(self):
         """Clear all cached entities and contacts cache."""
-        logger.info(f"[{self.name}] Clearing entity cache.")
+        logger.info(f"{format_log_prefix_resolved(self.name, None)} Clearing entity cache.")
         self._cache.clear()
         self._contacts_cache = None
         self._contacts_cache_expiration = None

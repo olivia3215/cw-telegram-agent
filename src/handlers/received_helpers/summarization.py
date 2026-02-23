@@ -16,7 +16,7 @@ from handlers.received_helpers.message_processing import process_message_history
 from handlers.registry import dispatch_immediate_task
 from prompt_loader import load_system_prompt
 from utils import get_dialog_name, is_group_or_channel
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.time import parse_datetime_with_optional_tz
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ async def consolidate_oldest_summaries_if_needed(
     if not summary_texts:
         logger.warning(
             "%s Skipping summary consolidation for channel %s: no summary text",
-            format_log_prefix(agent.name, channel_name),
+            await format_log_prefix(agent.name, channel_name),
             channel_id,
         )
         return False
@@ -164,7 +164,7 @@ async def consolidate_oldest_summaries_if_needed(
     except Exception as exc:
         logger.warning(
             "%s Failed to consolidate summaries for channel %s: %s",
-            format_log_prefix(agent.name, channel_name),
+            await format_log_prefix(agent.name, channel_name),
             channel_id,
             exc,
         )
@@ -179,7 +179,7 @@ async def consolidate_oldest_summaries_if_needed(
     if not consolidated_content:
         logger.warning(
             "%s Skipping summary consolidation for channel %s: empty LLM response",
-            format_log_prefix(agent.name, channel_name),
+            await format_log_prefix(agent.name, channel_name),
             channel_id,
         )
         return False
@@ -206,7 +206,7 @@ async def consolidate_oldest_summaries_if_needed(
 
     logger.info(
         "%s Consolidated %d summary entries into %s for channel %s",
-        format_log_prefix(agent.name, channel_name),
+        await format_log_prefix(agent.name, channel_name),
         len(summaries_to_merge),
         replacement_summary_id,
         channel_id,
@@ -250,7 +250,7 @@ def get_highest_summarized_message_id(agent, channel_id: int, channel_name: str 
                     pass
         return highest_max_id
     except Exception as e:
-        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to get highest summarized message ID: {e}")
+        logger.debug(f"{format_log_prefix_resolved(agent.name, channel_name)} Failed to get highest summarized message ID: {e}")
         return None
 
 
@@ -340,7 +340,9 @@ async def perform_summarization(
         summarize_all: If True, summarize ALL unsummarized messages (including the most recent ones)
     """
     from clock import clock
-    
+
+    log_prefix = await format_log_prefix(agent.name, channel_name)
+
     # Filter to unsummarized messages
     unsummarized_messages = []
     for msg in messages:
@@ -361,11 +363,11 @@ async def perform_summarization(
         messages_to_summarize = unsummarized_messages[20:] if len(unsummarized_messages) > 20 else []
     
     if not messages_to_summarize:
-        logger.info(f"{format_log_prefix(agent.name, channel_name)} No messages to summarize for channel {channel_id}")
+        logger.info(f"{log_prefix} No messages to summarize for channel {channel_id}")
         return
     
     logger.info(
-        f"{format_log_prefix(agent.name, channel_name)} Summarizing {len(messages_to_summarize)} messages for channel {channel_id}"
+        f"{log_prefix} Summarizing {len(messages_to_summarize)} messages for channel {channel_id}"
     )
     
     # Get conversation context
@@ -441,13 +443,13 @@ async def perform_summarization(
         )
     except Exception as e:
         logger.exception(
-            f"[{agent.name}] Failed to perform summarization for channel {channel_id}: {e}"
+            f"{log_prefix} Failed to perform summarization for channel {channel_id}: {e}"
         )
         return
     
     if not reply:
         logger.info(
-            f"[{agent.name}] LLM decided not to create summary for channel {channel_id}"
+            f"{log_prefix} LLM decided not to create summary for channel {channel_id}"
         )
         await consolidate_oldest_summaries_if_needed(
             agent=agent,
@@ -500,7 +502,7 @@ async def perform_summarization(
             
             await dispatch_immediate_task(summarize_task, agent=agent, channel_id=channel_id)
             logger.info(
-                f"[{agent.name}] Created/updated summary {summarize_task.id} for channel {channel_id}"
+                f"{log_prefix} Created/updated summary {summarize_task.id} for channel {channel_id}"
             )
 
         await consolidate_oldest_summaries_if_needed(
@@ -511,12 +513,12 @@ async def perform_summarization(
         )
     except Exception as e:
         logger.exception(
-            f"[{agent.name}] Failed to process summarization response for channel {channel_id}: {e}"
+            f"{log_prefix} Failed to process summarization response for channel {channel_id}: {e}"
         )
         return
     
     logger.info(
-        f"[{agent.name}] Completed summarization of {len(messages_to_summarize)} messages "
+        f"{log_prefix} Completed summarization of {len(messages_to_summarize)} messages "
         f"for channel {channel_id}"
     )
 

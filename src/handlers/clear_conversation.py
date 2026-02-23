@@ -12,6 +12,7 @@ from agent import Agent, get_agent_for_id
 from config import STATE_DIRECTORY
 from memory_storage import mutate_property_entries
 from task_graph import TaskGraph, TaskNode
+from utils.formatting import format_log_prefix
 from utils.telegram import get_channel_name, is_dm
 from handlers.registry import register_task_handler
 
@@ -27,19 +28,20 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
 
     channel = await agent.get_cached_entity(channel_id)
     channel_name = await get_channel_name(agent, channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     logger.debug(
-        f"[{agent.name}] Resolved channel for ID [{channel_name}]: {channel} (type: {type(channel)})"
+        f"{log_prefix} Resolved channel for ID [{channel_name}]: {channel} (type: {type(channel)})"
     )
 
     if not is_dm(channel):
         logger.info(
-            f"[{agent.name}] Skipping clear-conversation: channel [{channel_name}] is not a DM."
+            f"{log_prefix} Skipping clear-conversation: channel [{channel_name}] is not a DM."
         )
         return
 
     logger.info(
-        f"[{agent.name}] Clearing conversation history with channel [{channel_name}]."
+        f"{log_prefix} Clearing conversation history with channel [{channel_name}]."
     )
 
     try:
@@ -51,7 +53,7 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
             )
         )
         logger.info(
-            f"[{agent.name}] Successfully cleared conversation with [{channel_name}]"
+            f"{log_prefix} Successfully cleared conversation with [{channel_name}]"
         )
         
         # Clear summaries and plans if agent has reset_context_on_first_message enabled
@@ -60,5 +62,5 @@ async def handle_clear_conversation(task: TaskNode, graph: TaskGraph, work_queue
             clear_plans_and_summaries(agent, channel_id)
     except Exception as e:
         logger.exception(
-            f"[{agent.name}] Failed to clear conversation with [{channel_name}]: {e}"
+            f"{log_prefix} Failed to clear conversation with [{channel_name}]: {e}"
         )

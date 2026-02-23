@@ -42,7 +42,7 @@ from media.media_sources import get_resolved_state_media_path, iter_directory_me
 from media.state_path import is_state_media_directory as _is_state_media_directory
 from media.media_source import get_default_media_source_chain
 from register_agents import register_all_agents
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -410,15 +410,15 @@ async def _populate_user_cache_from_groups(agent: Agent) -> None:
     last_run = _cache_population_last_run.get(agent_name)
     if last_run and (now - last_run) < _cache_population_interval:
         logger.debug(
-            f"{format_log_prefix(agent.name)} Skipping cache population - last run was {(now - last_run).total_seconds():.0f} seconds ago"
+            f"{format_log_prefix_resolved(agent.name, None)} Skipping cache population - last run was {(now - last_run).total_seconds():.0f} seconds ago"
         )
         return
 
-    logger.info(f"{format_log_prefix(agent.name)} Populating user cache from groups...")
+    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Populating user cache from groups...")
 
     client = agent.client
     if not client:
-        logger.warning(f"{format_log_prefix(agent.name)} Cannot populate cache - no client available")
+        logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Cannot populate cache - no client available")
         return
 
     try:
@@ -453,15 +453,15 @@ async def _populate_user_cache_from_groups(agent: Agent) -> None:
                 users_added += senders_added
 
             except Exception as e:
-                logger.debug(f"{format_log_prefix(agent.name)} Error processing dialog {dialog.id}: {e}")
+                logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error processing dialog {dialog.id}: {e}")
                 continue
 
         logger.info(
-            f"[{agent.name}] Cache population complete: added {users_added} users from {groups_processed} groups"
+            f"{format_log_prefix_resolved(agent.name, None)} Cache population complete: added {users_added} users from {groups_processed} groups"
         )
 
     except Exception as e:
-        logger.warning(f"{format_log_prefix(agent.name)} Error during cache population: {e}")
+        logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Error during cache population: {e}")
 
 
 async def _add_group_participants_to_cache(agent: Agent, group_id: int, entity) -> int:
@@ -503,7 +503,7 @@ async def _add_group_participants_to_cache(agent: Agent, group_id: int, entity) 
                             await agent.get_cached_entity(user.id)
                             users_added += 1
                         except Exception as e:
-                            logger.debug(f"{format_log_prefix(agent.name)} Error caching user {user.id}: {e}")
+                            logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error caching user {user.id}: {e}")
 
         elif isinstance(entity, Chat):
             # For groups, try GetFullChatRequest to get participants
@@ -523,14 +523,14 @@ async def _add_group_participants_to_cache(agent: Agent, group_id: int, entity) 
                                             continue
                                         users_added += 1
                                 except Exception as e:
-                                    logger.debug(f"{format_log_prefix(agent.name)} Error caching user {user_id}: {e}")
+                                    logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error caching user {user_id}: {e}")
             except Exception as e:
-                logger.debug(f"{format_log_prefix(agent.name)} Error getting full chat for group {group_id}: {e}")
+                logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error getting full chat for group {group_id}: {e}")
                 # If GetFullChatRequest fails, we'll fall back to message senders
                 return 0
 
     except Exception as e:
-        logger.debug(f"{format_log_prefix(agent.name)} Error getting participants for group {group_id}: {e}")
+        logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error getting participants for group {group_id}: {e}")
 
     return users_added
 
@@ -579,10 +579,10 @@ async def _add_message_senders_to_cache(agent: Agent, group_id: int) -> int:
                         continue
                     users_added += 1
             except Exception as e:
-                logger.debug(f"{format_log_prefix(agent.name)} Error caching sender {user_id}: {e}")
+                logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error caching sender {user_id}: {e}")
 
     except Exception as e:
-        logger.debug(f"{format_log_prefix(agent.name)} Error getting messages for group {group_id}: {e}")
+        logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error getting messages for group {group_id}: {e}")
 
     return users_added
 
@@ -653,7 +653,7 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
             entity = await agent.client.get_entity(user_id)
         except Exception as e:
             # If initial resolution fails, try populating cache from groups and retry
-            logger.info(f"{format_log_prefix(agent.name)} Phone number resolution failed for '{user_id}', attempting cache population...")
+            logger.info(f"{format_log_prefix_resolved(agent.name, None)} Phone number resolution failed for '{user_id}', attempting cache population...")
             try:
                 await _populate_user_cache_from_groups(agent)
                 # Retry after populating cache

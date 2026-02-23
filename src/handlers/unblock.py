@@ -36,17 +36,17 @@ async def handle_unblock(task: TaskNode, graph: TaskGraph, work_queue=None):
         try:
             entity = await client.get_entity(channel_id)
         except Exception as e:
-            logger.debug(f"{format_log_prefix(agent.name, channel_name)} Could not fetch entity for {channel_id}: {e}")
+            logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Could not fetch entity for {channel_id}: {e}")
             entity = None
     
     # Perform safety check now that we have the entity (or confirmed it's None)
     if entity and is_group_or_channel(entity):
         logger.warning(
-            f"{format_log_prefix(agent.name, channel_name)} Agent attempted to unblock a group/channel ({channel_id}). Aborting."
+            f"{await format_log_prefix(agent.name, channel_name)} Agent attempted to unblock a group/channel ({channel_id}). Aborting."
         )
         return
 
-    logger.info(f"{format_log_prefix(agent.name, channel_name)} Unblocking user {channel_id}.")
+    logger.info(f"{await format_log_prefix(agent.name, channel_name)} Unblocking user {channel_id}.")
     
     # Use get_input_entity with the cached entity to avoid GetContactsRequest flood
     # If entity is None, get_input_entity will try to resolve it (may trigger GetContactsRequest)
@@ -57,7 +57,7 @@ async def handle_unblock(task: TaskNode, graph: TaskGraph, work_queue=None):
     except ValueError as e:
         # Entity not found - user may have deleted account or we don't have access
         logger.warning(
-            f"{format_log_prefix(agent.name, channel_name)} Cannot unblock user {channel_id}: {e}. "
+            f"{await format_log_prefix(agent.name, channel_name)} Cannot unblock user {channel_id}: {e}. "
             "User may have deleted account or we don't have access."
         )
         # Don't retry - this is a permanent failure

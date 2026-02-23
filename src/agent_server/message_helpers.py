@@ -91,11 +91,11 @@ async def get_agent_message_with_reactions(agent: Agent, dialog, channel_name: s
             for message in unread_reactions_result.messages:
                 # Check if this message is from the agent
                 if bool(getattr(message, "out", False)):
-                    logger.info(f"{format_log_prefix(agent.name, channel_name)} Found unread reactions on agent message {message.id} in dialog {dialog.id}")
+                    logger.info(f"{await format_log_prefix(agent.name, channel_name)} Found unread reactions on agent message {message.id} in dialog {dialog.id}")
                     return message.id
 
         return None
 
     except Exception as e:
-        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Error checking unread reactions on agent messages in dialog {dialog.id}: {e}")
+        logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Error checking unread reactions on agent messages in dialog {dialog.id}: {e}")
         return None

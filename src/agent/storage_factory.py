@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from utils.formatting import format_log_prefix_resolved
+
 if TYPE_CHECKING:
     from agent.storage_mysql import AgentStorageMySQL
 
@@ -41,7 +43,7 @@ def create_storage(
     """
     if agent_telegram_id is None:
         raise ValueError(
-            f"[{agent_config_name}] Cannot create MySQL storage: agent_telegram_id is None. "
+            f"{format_log_prefix_resolved(agent_config_name, None)} Cannot create MySQL storage: agent_telegram_id is None. "
             "Agent must be authenticated before storage can be created."
         )
     
@@ -57,6 +59,6 @@ def create_storage(
         )
     except ImportError as e:
         raise RuntimeError(
-            f"[{agent_config_name}] Failed to import MySQL storage: {e}"
+            f"{format_log_prefix_resolved(agent_config_name, None)} Failed to import MySQL storage: {e}"
         ) from e
 

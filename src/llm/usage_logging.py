@@ -12,7 +12,7 @@ import logging
 import json
 from typing import Any, Optional
 
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ def log_llm_usage(
     
     log_message = f"LLM_USAGE {' '.join(parts)}"
     
-    logger.info(f"{format_log_prefix(agent_name, channel_name)} {log_message}")
+    logger.info(f"{format_log_prefix_resolved(agent_name, channel_name)} {log_message}")
 
     # Persist to task execution logs when attribution context is available.
     if agent_telegram_id is not None:

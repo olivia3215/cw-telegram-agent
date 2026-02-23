@@ -9,7 +9,7 @@ import logging
 from agent import Agent
 from task_graph_helpers import insert_received_task_for_conversation
 from utils import format_message_content_for_logging
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 from utils.telegram import can_agent_send_to_channel, get_channel_name
 from typing_state import mark_partner_typing
 from config import TELEGRAM_SYSTEM_USER_ID
@@ -25,7 +25,7 @@ async def handle_incoming_message(agent: Agent, event):
     if str(event.chat_id) == str(TELEGRAM_SYSTEM_USER_ID):
         # For system messages, we don't have a meaningful channel name
         logger.debug(
-            f"{format_log_prefix(agent.name)} Ignoring message from Telegram system channel ({TELEGRAM_SYSTEM_USER_ID})"
+            f"{format_log_prefix_resolved(agent.name, None)} Ignoring message from Telegram system channel ({TELEGRAM_SYSTEM_USER_ID})"
         )
         return
 
@@ -57,7 +57,7 @@ async def handle_incoming_message(agent: Agent, event):
     # If gagged, skip creating received tasks (async notifications should not trigger received tasks when gagged)
     if gagged:
         logger.debug(
-            f"{format_log_prefix(agent.name, dialog_name)} Skipping received task for async message from [{sender_name}] in [{dialog_name}] - conversation is gagged"
+            f"{format_log_prefix_resolved(agent.name, dialog_name)} Skipping received task for async message from [{sender_name}] in [{dialog_name}] - conversation is gagged"
         )
         return
 
@@ -67,17 +67,17 @@ async def handle_incoming_message(agent: Agent, event):
     if not muted or is_callout:
         if sender_name == dialog_name:
             logger.info(
-                f"{format_log_prefix(agent.name, dialog_name)} Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
+                f"{format_log_prefix_resolved(agent.name, dialog_name)} Message from [{sender_name}]: {message_content!r} (callout: {is_callout})"
             )
         else:
             logger.info(
-                f"{format_log_prefix(agent.name, dialog_name)} Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
+                f"{format_log_prefix_resolved(agent.name, dialog_name)} Message from [{sender_name}] in [{dialog_name}]: {message_content!r} (callout: {is_callout})"
             )
 
         # Check if agent can send messages to this channel before creating received task
         if not await can_agent_send_to_channel(agent, event.chat_id):
             logger.debug(
-                f"{format_log_prefix(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - agent cannot send messages in this chat"
+                f"{format_log_prefix_resolved(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - agent cannot send messages in this chat"
             )
             return
 

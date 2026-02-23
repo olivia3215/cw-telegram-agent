@@ -10,7 +10,7 @@ from agent import Agent
 from clock import clock
 from schedule import get_agent_responsiveness
 from task_graph_helpers import insert_received_task_for_conversation
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 from utils.telegram import can_agent_send_to_channel, get_channel_name
 from config import TELEGRAM_SYSTEM_USER_ID
 
@@ -35,18 +35,18 @@ async def scan_unread_messages(agent: Agent):
     # Skip the unread scan to avoid log noise and repeated work.
     if get_agent_responsiveness(agent) <= 0:
         logger.debug(
-            f"{format_log_prefix(agent.name)} Skipping unread scan - responsiveness is zero"
+            f"{format_log_prefix_resolved(agent.name, None)} Skipping unread scan - responsiveness is zero"
         )
         return
 
     # Try to reconnect if client is disconnected
     if agent.client is None or not agent.client.is_connected():
         logger.debug(
-            f"{format_log_prefix(agent.name)} Client not connected, attempting to reconnect before scanning..."
+            f"{format_log_prefix_resolved(agent.name, None)} Client not connected, attempting to reconnect before scanning..."
         )
         if not await agent.ensure_client_connected():
             logger.debug(
-                f"{format_log_prefix(agent.name)} Client not connected and reconnection failed, skipping scan"
+                f"{format_log_prefix_resolved(agent.name, None)} Client not connected and reconnection failed, skipping scan"
             )
             return
 
@@ -54,7 +54,7 @@ async def scan_unread_messages(agent: Agent):
     client = agent.client
     if not client:
         # Safety check - should not happen if ensure_client_connected succeeded
-        logger.warning(f"{format_log_prefix(agent.name)} Client is None after successful reconnection, skipping scan")
+        logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Client is None after successful reconnection, skipping scan")
         return
     agent_id = agent.agent_id
 
@@ -65,7 +65,7 @@ async def scan_unread_messages(agent: Agent):
         # Ignore Telegram system channel (777000)
         if str(dialog.id) == str(TELEGRAM_SYSTEM_USER_ID):
             logger.debug(
-                f"{format_log_prefix(agent.name)} Skipping Telegram system channel ({TELEGRAM_SYSTEM_USER_ID}) in scan"
+                f"{format_log_prefix_resolved(agent.name, None)} Skipping Telegram system channel ({TELEGRAM_SYSTEM_USER_ID}) in scan"
             )
             continue
 
@@ -78,7 +78,7 @@ async def scan_unread_messages(agent: Agent):
         if gagged:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.debug(
-                f"{format_log_prefix(agent.name, dialog_name)} Skipping received task creation for [{dialog_name}] - conversation is gagged"
+                f"{format_log_prefix_resolved(agent.name, dialog_name)} Skipping received task creation for [{dialog_name}] - conversation is gagged"
             )
             continue
 
@@ -110,7 +110,7 @@ async def scan_unread_messages(agent: Agent):
             reaction_message_id = await get_agent_message_with_reactions(agent, dialog, dialog_name)
             if reaction_message_id:
                 logger.debug(
-                    f"{format_log_prefix(agent.name, dialog_name)} [REACTION-SCAN] Unread reaction found on agent message {reaction_message_id} "
+                    f"{format_log_prefix_resolved(agent.name, dialog_name)} [REACTION-SCAN] Unread reaction found on agent message {reaction_message_id} "
                     f"in [{dialog_name}] (chat_id={dialog.id}, unread_reactions_count={unread_reactions_count})"
                 )
 
@@ -135,31 +135,31 @@ async def scan_unread_messages(agent: Agent):
                             is_contact_signup_only = True
                             dialog_name = await get_channel_name(agent, dialog.id)
                             logger.info(
-                                f"{format_log_prefix(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - Contact Sign Up message in single-message conversation"
+                                f"{format_log_prefix_resolved(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - Contact Sign Up message in single-message conversation"
                             )
                             # Mark the message as read but don't create a received task
                             entity = await agent.get_cached_entity(dialog.id)
                             if entity:
                                 await client.send_read_acknowledge(entity, clear_mentions=has_mentions, clear_reactions=has_reactions_on_agent_message)
                                 logger.debug(
-                                    f"{format_log_prefix(agent.name, dialog_name)} Marked Contact Sign Up message as read in [{dialog_name}]"
+                                    f"{format_log_prefix_resolved(agent.name, dialog_name)} Marked Contact Sign Up message as read in [{dialog_name}]"
                                 )
             except Exception as e:
                 logger.debug(
-                    f"{format_log_prefix(agent.name)} Error checking for Contact Sign Up message in dialog {dialog.id}: {e}"
+                    f"{format_log_prefix_resolved(agent.name, None)} Error checking for Contact Sign Up message in dialog {dialog.id}: {e}"
                 )
 
         if (is_callout or has_unread or is_marked_unread or has_reactions_on_agent_message) and not is_contact_signup_only:
             dialog_name = await get_channel_name(agent, dialog.id)
             logger.info(
-                f"{format_log_prefix(agent.name, dialog_name)} Found unread content in [{dialog_name}] "
+                f"{format_log_prefix_resolved(agent.name, dialog_name)} Found unread content in [{dialog_name}] "
                 f"(unread: {dialog.unread_count}, mentions: {dialog.unread_mentions_count}, marked: {is_marked_unread}, reactions_on_agent_msg: {has_reactions_on_agent_message})"
             )
 
             # Check if agent can send messages to this channel before creating received task
             if not await can_agent_send_to_channel(agent, dialog.id):
                 logger.debug(
-                    f"{format_log_prefix(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - agent cannot send messages in this chat"
+                    f"{format_log_prefix_resolved(agent.name, dialog_name)} Skipping received task for [{dialog_name}] - agent cannot send messages in this chat"
                 )
                 continue
 
@@ -179,19 +179,19 @@ async def scan_unread_messages(agent: Agent):
         try:
             await ensure_media_cache(agent, client)
         except Exception as e:
-            logger.debug(f"{format_log_prefix(agent.name)} Error refreshing photo cache during scan: {e}")
+            logger.debug(f"{format_log_prefix_resolved(agent.name, None)} Error refreshing photo cache during scan: {e}")
         try:
             await ensure_saved_message_sticker_cache(agent, client)
         except Exception as e:
             logger.debug(
-                f"{format_log_prefix(agent.name)} Error refreshing saved-message sticker cache during scan: {e}"
+                f"{format_log_prefix_resolved(agent.name, None)} Error refreshing saved-message sticker cache during scan: {e}"
             )
 
     # Refresh username cache to pick up username changes
     try:
         me = await client.get_me()
         if me is None:
-            logger.debug(f"{format_log_prefix(agent.name)} get_me() returned None, skipping username refresh")
+            logger.debug(f"{format_log_prefix_resolved(agent.name, None)} get_me() returned None, skipping username refresh")
         else:
             username = None
             if hasattr(me, "username") and me.username:
@@ -208,12 +208,12 @@ async def scan_unread_messages(agent: Agent):
             old_username = getattr(agent, "telegram_username", None)
             if username != old_username:
                 if old_username is None:
-                    logger.info(f"{format_log_prefix(agent.name)} Username set to: {username}")
+                    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Username set to: {username}")
                 elif username is None:
-                    logger.info(f"{format_log_prefix(agent.name)} Username removed (was: {old_username})")
+                    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Username removed (was: {old_username})")
                 else:
-                    logger.info(f"{format_log_prefix(agent.name)} Username updated from {old_username} to {username}")
+                    logger.info(f"{format_log_prefix_resolved(agent.name, None)} Username updated from {old_username} to {username}")
 
             agent.telegram_username = username
     except Exception as e:
-        logger.warning(f"{format_log_prefix(agent.name)} Error refreshing username cache during scan: {e}")
+        logger.warning(f"{format_log_prefix_resolved(agent.name, None)} Error refreshing username cache during scan: {e}")

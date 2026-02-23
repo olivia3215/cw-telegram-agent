@@ -16,6 +16,8 @@ from telethon.tl.functions.contacts import GetBlockedRequest  # pyright: ignore[
 
 from clock import clock
 
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +87,7 @@ class TelegramAPICache:
         except ChannelPrivateError as e:
             # ChannelPrivateError occurs when a channel is deleted or the agent is removed from it
             # This is an expected error, so log at DEBUG level instead of ERROR
-            logger.debug(f"[{self.name}] Channel {peer_id} is private or deleted, treating as not muted: {e}")
+            logger.debug(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} Channel {peer_id} is private or deleted, treating as not muted: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
         except ValueError as e:
@@ -93,14 +95,13 @@ class TelegramAPICache:
             # This commonly happens for users seen in group chats that aren't in contacts and lack an access hash.
             msg = str(e)
             if "Could not find the input entity" in msg:
-                logger.debug(f"[{self.name}] Could not resolve input entity for {peer_id}; treating as not muted: {e}")
+                logger.debug(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} Could not resolve input entity for {peer_id}; treating as not muted: {e}")
                 self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
-                return False
-            logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
+            logger.exception(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
         except Exception as e:
-            logger.exception(f"[{self.name}] is_muted failed for peer {peer_id}: {e}")
+            logger.exception(f"{await format_log_prefix(self.name, peer_id, agent=self.agent)} is_muted failed for peer {peer_id}: {e}")
             self._mute_cache[peer_id] = (False, now + timedelta(seconds=15))
             return False
 
@@ -161,9 +162,9 @@ class TelegramAPICache:
 
             self._blocklist_cache = blocked_ids
             self._blocklist_last_updated = now
-            logger.debug(f"[{self.name}] Updated blocklist cache.")
+            logger.debug(f"{format_log_prefix_resolved(self.name, None)} Updated blocklist cache.")
         except Exception as e:
-            logger.exception(f"[{self.name}] Failed to update blocklist: {e}")
+            logger.exception(f"{format_log_prefix_resolved(self.name, None)} Failed to update blocklist: {e}")
             if self._blocklist_cache is None:
                 self._blocklist_cache = set()
 

@@ -9,7 +9,7 @@ import logging
 
 from agent import Agent
 from telegram.client_factory import get_telegram_client
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix_resolved
 
 from .caches import ensure_sticker_cache, ensure_media_cache
 
@@ -34,7 +34,7 @@ async def authenticate_agent(agent: Agent):
             # EOFError occurs when client.start() tries to prompt for input in a non-interactive environment
             # This is expected when the agent hasn't been authenticated yet - user should use admin console login
             logger.debug(
-                f"{format_log_prefix(agent.name)} Agent is not authenticated (no session file). "
+                f"{format_log_prefix_resolved(agent.name, None)} Agent is not authenticated (no session file). "
                 "Use the admin console login flow to authenticate this agent."
             )
             try:
@@ -47,7 +47,7 @@ async def authenticate_agent(agent: Agent):
             error_msg = str(start_error).lower()
             if "database is locked" in error_msg or ("locked" in error_msg and "sqlite" in error_msg):
                 logger.warning(
-                    f"{format_log_prefix(agent.name)} Session file is locked when starting client. "
+                    f"{format_log_prefix_resolved(agent.name, None)} Session file is locked when starting client. "
                     "This usually means the agent is already authenticated or another process is using the session. "
                     "Attempting to check if already authenticated..."
                 )
@@ -70,12 +70,12 @@ async def authenticate_agent(agent: Agent):
         # Check if the client is authenticated before proceeding
         if not await client.is_user_authorized():
             logger.error(
-                f"{format_log_prefix(agent.name)} Agent '{agent.name}' is not authenticated to Telegram."
+                f"{format_log_prefix_resolved(agent.name, None)} Agent '{agent.name}' is not authenticated to Telegram."
             )
             logger.error(
-                f"{format_log_prefix(agent.name)} Please run './telegram_login.sh' to authenticate this agent."
+                f"{format_log_prefix_resolved(agent.name, None)} Please run './telegram_login.sh' to authenticate this agent."
             )
-            logger.error(f"{format_log_prefix(agent.name)} Authentication failed.")
+            logger.error(f"{format_log_prefix_resolved(agent.name, None)} Authentication failed.")
             await client.disconnect()
             return False
 
@@ -112,12 +112,12 @@ async def authenticate_agent(agent: Agent):
         agent.filter_premium_stickers = not is_premium  # Filter if NOT premium
 
         logger.info(
-            f"{format_log_prefix(agent.name)} Agent authenticated ({agent_id}) - Premium: {is_premium}"
+            f"{format_log_prefix_resolved(agent.name, None)} Agent authenticated ({agent_id}) - Premium: {is_premium}"
         )
         return True
 
     except Exception as e:
-        logger.exception(f"{format_log_prefix(agent.name)} Authentication error: {e}")
+        logger.exception(f"{format_log_prefix_resolved(agent.name, None)} Authentication error: {e}")
         try:
             await client.disconnect()
         except Exception:

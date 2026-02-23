@@ -49,7 +49,8 @@ async def test_handle_sticker_uses_explicit_set(monkeypatch):
     monkeypatch.setattr(handle_sticker, "get_agent_for_id", lambda _id: agent)
 
     # Stub the transient resolver to return a document ONLY for the requested set+name
-    async def fake_resolve(client, set_short, sticker_name):
+    # Handler passes agent= and channel_id= for logging; stub accepts **kwargs to match.
+    async def fake_resolve(client, set_short, sticker_name, **kwargs):
         if set_short == "CINDYAI" and sticker_name == "😉":
             return fake_doc
         return None

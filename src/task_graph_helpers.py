@@ -10,7 +10,7 @@ from typing import Dict
 
 from agent import get_agent_for_id
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.telegram import get_channel_name, is_group_or_channel
 from utils.ids import ensure_int_id
 
@@ -134,7 +134,7 @@ async def insert_received_task_for_conversation(
     
     if agent.is_disabled:
         logger.info(
-            f"{format_log_prefix(agent.name)} Skipping received task creation for disabled agent"
+            f"{format_log_prefix_resolved(agent.name, None)} Skipping received task creation for disabled agent"
         )
         return
     
@@ -151,17 +151,17 @@ async def insert_received_task_for_conversation(
             gagged = await agent.is_conversation_gagged(channel_id_int)
             if gagged:
                 logger.debug(
-                    f"{format_log_prefix(agent.name, channel_name)} Skipping received task creation for channel {channel_id} - conversation is gagged"
+                    f"{await format_log_prefix(agent.name, channel_name)} Skipping received task creation for channel {channel_id} - conversation is gagged"
                 )
                 return
         except Exception as e:
-            logger.warning(f"{format_log_prefix(agent.name, channel_name)} Error checking gagged status: {e}")
+            logger.warning(f"{await format_log_prefix(agent.name, channel_name)} Error checking gagged status: {e}")
             # On error, continue (don't block received task creation)
     
     # Try to reconnect if client is disconnected
     if agent.client is None or not agent.client.is_connected():
         logger.debug(
-            f"{format_log_prefix(agent.name, channel_name)} Client not connected, attempting to reconnect before creating received task..."
+            f"{await format_log_prefix(agent.name, channel_name)} Client not connected, attempting to reconnect before creating received task..."
         )
         if not await agent.ensure_client_connected():
             raise RuntimeError(
@@ -187,7 +187,7 @@ async def insert_received_task_for_conversation(
                         if reaction_message_id in existing_reaction_ids:
                             # This exact reaction is already being handled - skip duplicate
                             logger.info(
-                                f"{format_log_prefix(agent.name, channel_name)} Preventing duplicate received task - reaction on message "
+                                f"{await format_log_prefix(agent.name, channel_name)} Preventing duplicate received task - reaction on message "
                                 f"{reaction_message_id} already in tracked list {existing_reaction_ids} "
                                 f"for active task {task.id} (status: {task.status})"
                             )
@@ -204,12 +204,12 @@ async def insert_received_task_for_conversation(
                                 updated = True
                             if updated:
                                 work_queue.save()
-                                logger.debug(f"{format_log_prefix(agent.name, channel_name)} Updated flags on existing task {task.id}")
+                                logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Updated flags on existing task {task.id}")
                             return
                         else:
                             # New reaction - will be added to the list below
                             logger.info(
-                                f"{format_log_prefix(agent.name, channel_name)} Adding reaction on message {reaction_message_id} "
+                                f"{await format_log_prefix(agent.name, channel_name)} Adding reaction on message {reaction_message_id} "
                                 f"to existing tracked reactions {existing_reaction_ids} in task {task.id}"
                             )
                     
@@ -230,15 +230,15 @@ async def insert_received_task_for_conversation(
                     if clear_reactions:
                         task.params["clear_reactions"] = True
                     logger.debug(
-                        f"{format_log_prefix(agent.name, channel_name)} Skipping received task creation - active received task "
+                        f"{await format_log_prefix(agent.name, channel_name)} Skipping received task creation - active received task "
                         f"{task.id} (status: {task.status}) already exists for conversation {channel_id}"
                     )
                     # Save the work queue state after updating existing task params                    
                     try:
                         work_queue.save()
-                        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Saved work queue state after updating task {task.id}")
+                        logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Saved work queue state after updating task {task.id}")
                     except Exception as e:
-                        logger.error(f"{format_log_prefix(agent.name, channel_name)} Failed to save work queue state: {e}")
+                        logger.error(f"{await format_log_prefix(agent.name, channel_name)} Failed to save work queue state: {e}")
                     return
             
             # Also check recently completed received tasks for duplicate reactions
@@ -252,7 +252,7 @@ async def insert_received_task_for_conversation(
                             # This reaction was recently handled - skip creating a new task
                             # Telegram's API likely hasn't reflected the read status yet
                             logger.info(
-                                f"{format_log_prefix(agent.name, channel_name)} Preventing duplicate received task - reaction on message "
+                                f"{await format_log_prefix(agent.name, channel_name)} Preventing duplicate received task - reaction on message "
                                 f"{reaction_message_id} was recently handled by completed task {task.id} "
                                 f"(status: {task.status}). Telegram API may have delayed read status update."
                             )
@@ -261,7 +261,7 @@ async def insert_received_task_for_conversation(
             received_tasks = [t for t in old_graph.tasks if t.type == "received"]
             if received_tasks:
                 logger.debug(
-                    f"{format_log_prefix(agent.name, channel_name)} Found graph for conversation {channel_id} with {len(received_tasks)} "
+                    f"{await format_log_prefix(agent.name, channel_name)} Found graph for conversation {channel_id} with {len(received_tasks)} "
                     f"received task(s), but all are completed. Statuses: {[t.status for t in received_tasks]}"
                 )
 
@@ -304,14 +304,14 @@ async def insert_received_task_for_conversation(
                     # Don't mark it as CANCELLED - keep it PENDING
                     preserved_online_wait_task = old_task
                     logger.debug(
-                        f"{format_log_prefix(agent.name, channel_name)} Preserving online wait task {old_task.id} from old graph"
+                        f"{await format_log_prefix(agent.name, channel_name)} Preserving online wait task {old_task.id} from old graph"
                     )
                 elif is_responsiveness_delay:
                     # Preserve responsiveness delay task so new received task can use it
                     # Don't mark it as CANCELLED - keep it PENDING
                     preserved_responsiveness_delay_task = old_task
                     logger.debug(
-                        f"{format_log_prefix(agent.name, channel_name)} Preserving responsiveness delay task {old_task.id} from old graph"
+                        f"{await format_log_prefix(agent.name, channel_name)} Preserving responsiveness delay task {old_task.id} from old graph"
                     )
                 else:
                     # Only cancel tasks that aren't already completed (DONE, FAILED, CANCELLED)
@@ -338,7 +338,7 @@ async def insert_received_task_for_conversation(
         # Check if agent was disabled while waiting for lock
         if agent.is_disabled:
             logger.info(
-                f"{format_log_prefix(agent.name, channel_name)} Skipping received task creation for disabled agent "
+                f"{await format_log_prefix(agent.name, channel_name)} Skipping received task creation for disabled agent "
                 f"(disabled after lock acquisition)"
             )
             return
@@ -346,7 +346,7 @@ async def insert_received_task_for_conversation(
         # Try to reconnect if client is disconnected (could have disconnected during lock wait)
         if agent.client is None or not agent.client.is_connected():
             logger.debug(
-                f"{format_log_prefix(agent.name, channel_name)} Client not connected after lock acquisition, "
+                f"{await format_log_prefix(agent.name, channel_name)} Client not connected after lock acquisition, "
                 f"attempting to reconnect..."
             )
             if not await agent.ensure_client_connected():
@@ -399,7 +399,7 @@ async def insert_received_task_for_conversation(
         if old_graph and "fetched_resources" in old_graph.context:
             new_context["fetched_resources"] = old_graph.context["fetched_resources"]
             logger.info(
-                f"{format_log_prefix(recipient_name, channel_name)} Copied "
+                f"{await format_log_prefix(recipient_name, channel_name)} Copied "
                 f"{len(new_context['fetched_resources'])} fetched resource(s) from old graph"
             )
 
@@ -417,7 +417,7 @@ async def insert_received_task_for_conversation(
             if preserved_online_wait_task not in new_graph.tasks:
                 new_graph.add_task(preserved_online_wait_task)
             logger.debug(
-                f"{format_log_prefix(recipient_name, channel_name)} Preserved online wait task "
+                f"{await format_log_prefix(recipient_name, channel_name)} Preserved online wait task "
                 f"{preserved_online_wait_task.id} in new graph"
             )
 
@@ -431,7 +431,7 @@ async def insert_received_task_for_conversation(
             # Store the delay task ID in the received task params so handle_received can use it
             task_params["responsiveness_delay_task_id"] = preserved_responsiveness_delay_task.id
             logger.debug(
-                f"{format_log_prefix(recipient_name, channel_name)} Preserved responsiveness delay task "
+                f"{await format_log_prefix(recipient_name, channel_name)} Preserved responsiveness delay task "
                 f"{preserved_responsiveness_delay_task.id} in new graph"
             )
 
@@ -452,12 +452,12 @@ async def insert_received_task_for_conversation(
         try:
             work_queue.save()
             logger.debug(
-                f"{format_log_prefix(recipient_name, channel_name)} Saved work queue state after inserting task {task_id}"
+                f"{await format_log_prefix(recipient_name, channel_name)} Saved work queue state after inserting task {task_id}"
             )
         except Exception as e:
-            logger.error(f"{format_log_prefix(recipient_name, channel_name)} Failed to save work queue state: {e}")
+            logger.error(f"{await format_log_prefix(recipient_name, channel_name)} Failed to save work queue state: {e}")
 
         logger.info(
-            f"{format_log_prefix(recipient_name, channel_name)} Inserted 'received' task {task_id} "
+            f"{await format_log_prefix(recipient_name, channel_name)} Inserted 'received' task {task_id} "
             f"in conversation {channel_name} in graph {graph_id}"
         )

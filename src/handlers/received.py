@@ -42,7 +42,7 @@ from utils import (
     get_dialog_name,
     is_group_or_channel,
 )
-from utils.formatting import format_log_prefix
+from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.telegram import get_channel_name
 from utils.ids import ensure_int_id
 from handlers.received_helpers.message_processing import (
@@ -243,14 +243,20 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         
         # Check if this is a JavaScript challenge page (can be automated with Playwright)
         if is_challenge_page(content):
-            logger.info(f"[fetch_url] Challenge page detected for {final_url}, falling back to Playwright...")
+            log_prefix = (await format_log_prefix(agent.name, None)) if agent else format_log_prefix_resolved("fetch_url", None)
+            logger.info(f"{log_prefix} Challenge page detected for {final_url}, falling back to Playwright...")
             # Fall back to Playwright to handle the JavaScript challenge
             # Use the original URL since Playwright will follow redirects
-            return await fetch_url_with_playwright(url)
+            return await fetch_url_with_playwright(
+                url,
+                agent_name=agent.name if agent else None,
+                channel_name=None,  # fetch_url has no channel context
+            )
 
         # Check if this is a CAPTCHA page (cannot be automated)
         if is_captcha_page(content, final_url):
-            logger.warning(f"[fetch_url] CAPTCHA page detected for {final_url}")
+            log_prefix = (await format_log_prefix(agent.name, None)) if agent else format_log_prefix_resolved("fetch_url", None)
+            logger.warning(f"{log_prefix} CAPTCHA page detected for {final_url}")
             # Return original url for deduplication, not final_url
             return (
                 url,
@@ -328,7 +334,7 @@ def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
         delay_seconds = max(0, int((wake_time - now).total_seconds()))
         if delay_seconds > 0:
             logger.info(
-                f"[{agent.name}] Agent is asleep, delaying received task by {delay_seconds}s until wake time"
+                f"{format_log_prefix_resolved(agent.name, None)} Agent is asleep, delaying received task by {delay_seconds}s until wake time"
             )
         return delay_seconds
     
@@ -338,7 +344,7 @@ def _calculate_responsiveness_delay(agent, schedule: dict) -> int:
     delay_seconds = max(4, int(4 + (100 - responsiveness) * 116 / 99))
     
     logger.debug(
-        f"[{agent.name}] Agent responsiveness {responsiveness}, delaying {delay_seconds}s"
+        f"{format_log_prefix_resolved(agent.name, None)} Agent responsiveness {responsiveness}, delaying {delay_seconds}s"
     )
     return delay_seconds
 
@@ -372,6 +378,7 @@ async def _apply_responsiveness_delay(
     # Check if we're waiting for a responsiveness delay task to complete
     # This must be checked FIRST before any processing, so the task isn't marked as DONE
     # Use completed_ids to match the selection logic used by is_unblocked
+    log_prefix = await format_log_prefix(agent.name, channel_name)
     responsiveness_delay_task_id = task.params.get("responsiveness_delay_task_id")
     has_responsiveness_delay = False
     
@@ -385,7 +392,7 @@ async def _apply_responsiveness_delay(
             # marking messages as read until after the delay completes
             task.status = TaskStatus.PENDING
             logger.warning(
-                f"[{agent.name}] Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
+                f"{log_prefix} Received task {task.id} was selected but delay task {responsiveness_delay_task_id} "
                 f"is not complete (completed_ids: {completed_ids}, depends_on: {task.depends_on}). "
                 f"Resetting to PENDING. This suggests is_unblocked is not working correctly."
             )
@@ -421,7 +428,7 @@ async def _apply_responsiveness_delay(
                         # Store the delay task ID so we can check it on next handler call
                         task.params["responsiveness_delay_task_id"] = responsiveness_delay_task.id
                         logger.debug(
-                            f"{format_log_prefix(agent.name, channel_name)} Created responsiveness delay wait task {responsiveness_delay_task.id} ({delay_seconds}s)"
+                            f"{await format_log_prefix(agent.name, channel_name)} Created responsiveness delay wait task {responsiveness_delay_task.id} ({delay_seconds}s)"
                         )
                         # Reset status to PENDING and return early - task won't be marked as DONE
                         # It will remain PENDING and be re-selected when the delay task completes
@@ -430,7 +437,7 @@ async def _apply_responsiveness_delay(
                         task.status = TaskStatus.PENDING
                         return (True, True)  # should_return_early=True, has_responsiveness_delay=True
             except Exception as e:
-                logger.warning(f"{format_log_prefix(agent.name, channel_name)} Failed to apply schedule delay: {e}")
+                logger.warning(f"{await format_log_prefix(agent.name, channel_name)} Failed to apply schedule delay: {e}")
     
     return (False, has_responsiveness_delay)  # should_return_early=False, has_responsiveness_delay
 
@@ -517,6 +524,7 @@ async def _schedule_tasks(
     is_callout: bool,
     is_group: bool,
     agent,
+    channel_name: str | None = None,
 ):
     """
     Add tasks to graph with proper dependencies and typing delays.
@@ -528,6 +536,7 @@ async def _schedule_tasks(
         is_callout: Whether this was a callout message
         is_group: Whether this is a group chat
         agent: Agent instance
+        channel_name: Optional channel/conversation name for log prefix
     """
     fallback_reply_to = received_task.params.get("message_id") if is_group else None
     last_id = received_task.id
@@ -572,11 +581,11 @@ async def _schedule_tasks(
                 last_id = wait_task.id
 
                 logger.info(
-                    f"[{agent.name}] Added {delay_seconds:.1f}s typing delay before {task.type} task"
+                    f"{await format_log_prefix(agent.name, channel_name)} Added {delay_seconds:.1f}s typing delay before {task.type} task"
                 )
             else:
                 logger.info(
-                    f"[{agent.name}] Skipped typing delay ({delay_seconds:.1f}s <= 0.5s) before {task.type} task"
+                    f"{await format_log_prefix(agent.name, channel_name)} Skipped typing delay ({delay_seconds:.1f}s <= 0.5s) before {task.type} task"
                 )
                 task.depends_on.append(last_id)
         else:
@@ -648,7 +657,7 @@ async def _ensure_user_in_contacts(agent, client, user_entity: User, channel_nam
             phone=phone,
         ))
         
-        logger.info(f"{format_log_prefix(agent.name, channel_name)} Added user {user_id} to contacts (name: {first_name} {last_name}, phone: {phone or 'N/A'})")
+        logger.info(f"{await format_log_prefix(agent.name, channel_name)} Added user {user_id} to contacts (name: {first_name} {last_name}, phone: {phone or 'N/A'})")
         
         # Clear contacts cache in entity cache so it will refresh on next lookup
         if agent.entity_cache:
@@ -656,7 +665,7 @@ async def _ensure_user_in_contacts(agent, client, user_entity: User, channel_nam
             agent.entity_cache._contacts_cache_expiration = None
     except Exception as e:
         # Log but don't fail - contact addition is best-effort
-        logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to add user {user_id} to contacts: {e}")
+        logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Failed to add user {user_id} to contacts: {e}")
 
 
 @register_task_handler("received")
@@ -683,13 +692,13 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     channel_name = await get_channel_name(agent, channel_id)
 
     if agent.is_disabled:
-        logger.info(f"{format_log_prefix(agent.name, channel_name)} Ignoring received task for disabled agent")
+        logger.info(f"{await format_log_prefix(agent.name, channel_name)} Ignoring received task for disabled agent")
         return
 
     # Skip processing if the agent is looking at its own scratchpad channel.
     if str(channel_id) == str(getattr(agent, "agent_id", None)):
         logger.info(
-            f"{format_log_prefix(agent.name, channel_name)} Ignoring received task for own channel {channel_id}"
+            f"{await format_log_prefix(agent.name, channel_name)} Ignoring received task for own channel {channel_id}"
         )
         return
 
@@ -736,7 +745,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             if "delay" not in online_wait_task.params:
                 online_wait_task.params["delay"] = 300  # 5 minutes
             logger.debug(
-                f"{format_log_prefix(agent.name, channel_name)} Extended online wait task {online_wait_task.id}"
+                f"{await format_log_prefix(agent.name, channel_name)} Extended online wait task {online_wait_task.id}"
             )
         else:
             # Create a new online wait task (no responsiveness delay, so no dependency needed)
@@ -746,7 +755,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             )
             graph.add_task(online_wait_task)
             logger.debug(
-                f"{format_log_prefix(agent.name, channel_name)} Created online wait task {online_wait_task.id}"
+                f"{await format_log_prefix(agent.name, channel_name)} Created online wait task {online_wait_task.id}"
             )
     # If responsiveness_delay_task_id exists, we'll create the online wait task after read acknowledge
     
@@ -758,14 +767,14 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             
             if days_rem < 2:
                 logger.info(
-                    f"{format_log_prefix(agent.name, channel_name)} Schedule has {days_rem:.1f} days remaining, extending by 1 day..."
+                    f"{await format_log_prefix(agent.name, channel_name)} Schedule has {days_rem:.1f} days remaining, extending by 1 day..."
                 )
                 try:
                     await extend_schedule(agent)
                 except Exception as e:
-                    logger.error(f"{format_log_prefix(agent.name, channel_name)} Failed to extend schedule: {e}")
+                    logger.error(f"{await format_log_prefix(agent.name, channel_name)} Failed to extend schedule: {e}")
         except Exception as e:
-            logger.debug(f"{format_log_prefix(agent.name, channel_name)} Failed to check/extend schedule: {e}")
+            logger.debug(f"{await format_log_prefix(agent.name, channel_name)} Failed to check/extend schedule: {e}")
 
     # Convert channel_id to integer if it's a string
     channel_id_int = ensure_int_id(channel_id)
@@ -821,7 +830,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     # If 70 or more unsummarized messages, perform summarization first
     if unsummarized_count >= 70:
         logger.info(
-            f"{format_log_prefix(agent.name, channel_name)} {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
+            f"{await format_log_prefix(agent.name, channel_name)} {unsummarized_count} unsummarized messages detected, performing summarization for channel {channel_id_int}"
         )
         await perform_summarization(
             agent=agent,
@@ -840,6 +849,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     dialog = await agent.get_cached_entity(channel_id)
     is_group = is_group_or_channel(dialog)
     channel_name = await get_dialog_name(agent, channel_id)
+    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     # Find target message if specified
     message_id_param = task.params.get("message_id", None)
@@ -915,7 +925,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     )
 
     # Schedule output tasks
-    await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent)
+    await _schedule_tasks(tasks, task, graph, is_callout, is_group, agent, channel_name)
 
     # Add a wait task to keep the graph alive if we have fetched resources
     # Check the graph context, which persists fetched resources across retries
@@ -933,7 +943,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
             )
             graph.add_task(wait_task)
             logger.info(
-                f"[{agent.name}] Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
+                f"{log_prefix} Added preserve wait task ({FETCHED_RESOURCE_LIFETIME_SECONDS}s) to keep {len(fetched_resources)} fetched resource(s) alive"
             )
 
     # Mark conversation as read (moved from scan_unread_messages)
@@ -946,7 +956,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         if final_responsiveness_delay_task_id not in final_completed_ids:
             # Responsiveness delay not complete - should not have reached here
             logger.error(
-                f"[{agent.name}] Received task {task.id} reached read acknowledge but responsiveness delay "
+                f"{log_prefix} Received task {task.id} reached read acknowledge but responsiveness delay "
                 f"{final_responsiveness_delay_task_id} is not complete. This should not happen."
             )
             # Don't mark as read yet - reset to PENDING and return
@@ -959,7 +969,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     reaction_message_ids = task.params.get("reaction_message_ids", [])
     if clear_reactions and reaction_message_ids:
         logger.debug(
-            f"[{agent.name}] [REACTION-READ] Marking reactions as read for message(s) {reaction_message_ids} "
+            f"{log_prefix} [REACTION-READ] Marking reactions as read for message(s) {reaction_message_ids} "
             f"in conversation {channel_name} (task_id={task.id})"
         )
     await client.send_read_acknowledge(entity, clear_mentions=clear_mentions, clear_reactions=clear_reactions)
@@ -985,7 +995,7 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         if "delay" in online_wait_task.params:
             del online_wait_task.params["delay"]
         logger.info(
-            f"[{agent.name}] Extended online wait task {online_wait_task.id} to 5 minutes after read acknowledge"
+            f"{await format_log_prefix(agent.name, channel_name)} Extended online wait task {online_wait_task.id} to 5 minutes after read acknowledge"
         )
     else:
         # Create online wait task now (after responsiveness delay completed and read acknowledge)
@@ -996,5 +1006,5 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
         )
         graph.add_task(online_wait_task)
         logger.info(
-            f"[{agent.name}] Created online wait task {online_wait_task.id} after read acknowledge"
+            f"{await format_log_prefix(agent.name, channel_name)} Created online wait task {online_wait_task.id} after read acknowledge"
         )
