@@ -82,8 +82,11 @@ def register_schedule_routes(agents_bp: Blueprint):
             activities = schedule.get("activities", [])
             if activities:
                 schedule = {**schedule, "activities": _sort_activities(activities)}
-            # Ensure timezone is set for client (agent's IANA identifier)
-            if not schedule.get("timezone") and hasattr(agent, "get_timezone_identifier"):
+            # Always use the agent's current timezone from Parameters for display.
+            # The schedule blob may contain a stale timezone (e.g. from server default
+            # before the agent had a timezone set); the UI should show the agent's
+            # configured timezone so it matches the Parameters tab.
+            if hasattr(agent, "get_timezone_identifier"):
                 schedule["timezone"] = agent.get_timezone_identifier()
             return jsonify({"success": True, **schedule})
         except Exception as e:
@@ -146,7 +149,8 @@ def register_schedule_routes(agents_bp: Blueprint):
             activities = updated_schedule.get("activities", [])
             if activities:
                 updated_schedule = {**updated_schedule, "activities": _sort_activities(activities)}
-            if not updated_schedule.get("timezone") and hasattr(agent, "get_timezone_identifier"):
+            # Use agent's current timezone for display (same as GET schedule).
+            if hasattr(agent, "get_timezone_identifier"):
                 updated_schedule["timezone"] = agent.get_timezone_identifier()
             return jsonify({"success": True, **updated_schedule})
         except Exception as e:

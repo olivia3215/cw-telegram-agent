@@ -4183,6 +4183,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
     const btnRow = '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">' +
         '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
         '<button type="button" id="schedule-extend-btn" onclick="scheduleExtend(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Extend schedule</button>' +
+        '<button type="button" id="schedule-delete-all-btn" onclick="scheduleDeleteAll(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete all</button>' +
         '</div>';
     if (!activities || activities.length === 0) {
         container.innerHTML = clockRow + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
@@ -4282,6 +4283,42 @@ function scheduleExtend(agentName) {
             alert('Extend failed: ' + (error && error.message ? error.message : String(error)));
             extendBtn.disabled = false;
             extendBtn.textContent = 'Extend schedule';
+        });
+}
+
+function scheduleDeleteAll(agentName) {
+    const container = document.getElementById('schedule-container');
+    const deleteBtn = document.getElementById('schedule-delete-all-btn');
+    const agentSelect = document.getElementById('agents-agent-select');
+    if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
+    if (!confirm('Delete all schedule entries for this agent? This cannot be undone.')) return;
+    if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Deleting…';
+    }
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activities: [] })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) {
+                if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
+                return;
+            }
+            if (data.error) {
+                alert('Delete all failed: ' + data.error);
+                if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
+                return;
+            }
+            loadSchedule(agentName);
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') return;
+            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
+            alert('Delete all failed: ' + (error && error.message ? error.message : String(error)));
+            if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
         });
 }
 
