@@ -703,6 +703,42 @@ function switchSubtab(subtabName) {
             } else if (subtabName === 'work-queue') {
                 WorkQueueUI.load();
             }
+        } else {
+            // No conversation selected: clear conversation-specific subtab content so we don't show stale data
+            const noConvMsg = 'Select an agent and conversation partner';
+            if (subtabName === 'notes-conv') {
+                const container = document.getElementById('notes-conv-container');
+                if (container) showLoading(container, noConvMsg);
+            } else if (subtabName === 'conversation-parameters') {
+                const container = document.getElementById('conversation-parameters-container');
+                if (container) showLoading(container, noConvMsg);
+            } else if (subtabName === 'plans') {
+                const container = document.getElementById('plans-container');
+                if (container) container.innerHTML = '';
+            } else if (subtabName === 'conversation') {
+                const container = document.getElementById('conversation-container');
+                if (container) container.innerHTML = '<div class="loading">' + escapeHtml(noConvMsg) + '</div>';
+            } else if (subtabName === 'costs-conv') {
+                const container = document.getElementById('conversation-costs-container');
+                if (container) showLoading(container, noConvMsg);
+            } else if (subtabName === 'xsend') {
+                const xsendContainer = document.getElementById('xsend-container');
+                if (xsendContainer) {
+                    const loadingDiv = xsendContainer.querySelector('.loading');
+                    if (loadingDiv) {
+                        loadingDiv.style.display = 'block';
+                        loadingDiv.textContent = noConvMsg;
+                    }
+                    const xsendContent = document.getElementById('xsend-content');
+                    if (xsendContent) xsendContent.style.display = 'none';
+                    const intentTextarea = document.getElementById('xsend-intent-textarea');
+                    if (intentTextarea) intentTextarea.value = '';
+                    const statusDiv = document.getElementById('xsend-status');
+                    if (statusDiv) statusDiv.innerHTML = '';
+                }
+            } else if (subtabName === 'work-queue') {
+                WorkQueueUI.load(); // Shows "Select an agent and conversation partner" when no selection
+            }
         }
     }
 
