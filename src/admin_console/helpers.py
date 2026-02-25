@@ -263,7 +263,7 @@ def resolve_user_id_and_handle_errors(agent: Agent, user_id: str, logger_instanc
 
     Args:
         agent: The agent instance
-        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@lambda_n" or "lambda_n")
+        user_id: Can be either a numeric user ID (as string) or a username (e.g., "@username" or "username")
         logger_instance: Optional logger instance for logging errors
 
     Returns:
@@ -308,7 +308,7 @@ def resolve_user_id_to_channel_id_sync(agent: Agent, user_id: str) -> int:
         agent: The agent instance
         user_id: Can be:
             - A numeric user ID (as string, e.g., "123456789")
-            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A username (e.g., "@username" or "username")
             - A phone number (e.g., "+1234567890" - must start with + and be all digits)
 
     Returns:
@@ -597,7 +597,7 @@ async def resolve_user_id_to_channel_id(agent: Agent, user_id: str) -> int:
         agent: The agent instance
         user_id: Can be:
             - A numeric user ID (as string, e.g., "123456789")
-            - A username (e.g., "@lambda_n" or "lambda_n")
+            - A username (e.g., "@username" or "username")
             - A phone number (e.g., "+1234567890" - must start with + and be all digits)
 
     Returns:
