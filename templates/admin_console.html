@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Console</title>
-    <link rel="icon" href="/static/favicon.ico" sizes="32x32" />
-    <link rel="icon" href="/static/icon-192x192.png" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-    <link rel="stylesheet" href="/static/css/admin_console.css" />
+    <link rel="icon" href="/admin/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/admin/static/icon-192x192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/admin/static/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/admin/css/admin_console.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 </head>
@@ -408,7 +408,7 @@
                                     <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
                                 </div>
                                 <div>
-                                    <label for="agent-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday: <span class="info-icon" data-tooltip="Profile birthday (month, day, optional year).">i</span></label>
+                                    <label for="agent-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday: <span class="info-icon" data-tooltip="Profile birthday (month, day, optional year).">i</span></label>
                                     <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
                                         <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                             <option value="">Month</option>
@@ -632,7 +632,7 @@
                                     <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
                                 </div>
                                 <div id="conversation-profile-birthday-container">
-                                    <label for="conversation-profile-birthday" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
+                                    <label for="conversation-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
                                     <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
                                         <select id="conversation-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
                                             <option value="">Month</option>
@@ -716,11 +716,11 @@
 
 
     </div>
-    <script src="/static/js/admin_console_core.js"></script>
-    <script src="/static/js/admin_console_global.js"></script>
-    <script src="/static/js/media_preview_shared.js"></script>
-    <script src="/static/js/admin_console_media.js"></script>
-    <script src="/static/js/admin_console_agents.js"></script>
-    <script src="/static/js/admin_console_conversations.js"></script>
+    <script src="/admin/static/js/admin_console_core.js"></script>
+    <script src="/admin/static/js/admin_console_global.js"></script>
+    <script src="/admin/static/js/media_preview_shared.js"></script>
+    <script src="/admin/static/js/admin_console_media.js"></script>
+    <script src="/admin/static/js/admin_console_agents.js"></script>
+    <script src="/admin/static/js/admin_console_conversations.js"></script>
 </body>
 </html>

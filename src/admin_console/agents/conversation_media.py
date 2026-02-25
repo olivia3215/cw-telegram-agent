@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from datetime import UTC
 
-from flask import Blueprint, Response, jsonify  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, Response, jsonify, request  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import get_agent_by_name
 from config import CONFIG_DIRECTORIES, STATE_DIRECTORY
@@ -23,6 +23,63 @@ from telethon.tl.functions.messages import GetCustomEmojiDocumentsRequest, GetSt
 from telethon.tl.types import InputStickerSetID  # pyright: ignore[reportMissingImports]
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_range_header(range_header: str | None, total_size: int) -> tuple[int, int] | None:
+    """
+    Parse a Range header (bytes=start-end) and return (start, end) inclusive, or None.
+    Supports bytes=0-499 and bytes=500- (suffix-byte-range not supported).
+    """
+    if not range_header or not range_header.strip().lower().startswith("bytes="):
+        return None
+    if total_size == 0:
+        return None
+    part = range_header.strip()[6:].strip()  # after "bytes="
+    if "-" not in part:
+        return None
+    start_s, _, end_s = part.partition("-")
+    start_s = start_s.strip()
+    end_s = end_s.strip()
+    try:
+        start = int(start_s) if start_s else 0
+        end = int(end_s) if end_s else total_size - 1
+    except ValueError:
+        return None
+    if start < 0 or end < start or start >= total_size:
+        return None
+    end = min(end, total_size - 1)
+    return (start, end)
+
+
+def _media_response(
+    media_bytes: bytes,
+    mimetype: str,
+    content_disposition: str,
+) -> Response:
+    """Build a Response for media, honoring Range header to avoid duplicate fetches on refresh."""
+    total = len(media_bytes)
+    range_spec = _parse_range_header(request.headers.get("Range"), total)
+    headers = {
+        "Content-Disposition": content_disposition,
+        "Cache-Control": "no-store",
+        "Accept-Ranges": "bytes",
+    }
+    if range_spec is not None:
+        start, end = range_spec
+        body = media_bytes[start : end + 1]
+        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+        headers["Content-Length"] = str(len(body))
+        return Response(
+            body,
+            status=206,
+            mimetype=mimetype,
+            headers=headers,
+        )
+    return Response(
+        media_bytes,
+        mimetype=mimetype,
+        headers=headers,
+    )
 
 
 def _escape_quoted_string_value(value: str) -> str:
@@ -407,33 +464,18 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                         f"Serving cached media {unique_id} from {cached_file} for {agent_config_name}/{user_id}/{message_id}"
                     )
 
-                    # Try to get filename from metadata JSON if it exists
-                    file_name = None
-                    metadata_file = cached_file.with_suffix(".json")
-                    if metadata_file.exists():
-                        try:
-                            import json
-                            with open(metadata_file, "r") as f:
-                                metadata = json.load(f)
-                                # Extract filename from metadata if stored
-                                file_name = metadata.get("file_name")
-                        except Exception:
-                            pass
-
-                    # Use unique_id as fallback if filename not found in metadata
+                    # Use unique_id + extension for Save-as filename (stable, identifiable)
                     import urllib.parse
-                    if file_name:
-                        # Escape filename for RFC 6266 quoted-string (escape backslashes and double quotes)
-                        escaped_filename = _escape_quoted_string_value(file_name)
-                        encoded_filename = urllib.parse.quote(file_name, safe='')
-                        content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
-                    else:
-                        content_disposition = f"inline; filename={unique_id}"
+                    ext = get_file_extension_from_mime_or_bytes(mime_type, media_bytes) or cached_file.suffix
+                    if ext and not ext.startswith("."):
+                        ext = f".{ext}"
+                    download_name = f"{unique_id}{ext}" if ext else unique_id
+                    content_disposition = f"inline; filename=\"{_escape_quoted_string_value(download_name)}\""
 
-                    return Response(
+                    return _media_response(
                         media_bytes,
-                        mimetype=mime_type or "application/octet-stream",
-                        headers={"Content-Disposition": content_disposition}
+                        mime_type or "application/octet-stream",
+                        content_disposition,
                     )
                 except Exception as e:
                     logger.warning(f"Error reading cached media file {cached_file}: {e}, falling back to Telegram download")
@@ -619,23 +661,18 @@ def register_conversation_media_routes(agents_bp: Blueprint):
                     # Don't fail the request if caching fails
                     logger.warning(f"Error caching media file for {unique_id}: {e}")
 
-                # Use filename if available, otherwise fall back to unique_id
-                # Properly escape filename for Content-Disposition header
+                # Use unique_id + extension for Save-as filename (stable, identifiable)
                 import urllib.parse
-                if file_name:
-                    # Escape filename for RFC 6266 quoted-string (escape backslashes and double quotes)
-                    escaped_filename = _escape_quoted_string_value(file_name)
-                    # URL-encode the filename for the Content-Disposition header
-                    # Use RFC 5987 format for better compatibility
-                    encoded_filename = urllib.parse.quote(file_name, safe='')
-                    content_disposition = f"inline; filename=\"{escaped_filename}\"; filename*=UTF-8''{encoded_filename}"
-                else:
-                    content_disposition = f"inline; filename={unique_id}"
+                ext = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+                if ext and not ext.startswith("."):
+                    ext = f".{ext}"
+                download_name = f"{unique_id}{ext}" if ext else unique_id
+                content_disposition = f"inline; filename=\"{_escape_quoted_string_value(download_name)}\""
 
-                return Response(
+                return _media_response(
                     media_bytes,
-                    mimetype=mime_type or "application/octet-stream",
-                    headers={"Content-Disposition": content_disposition}
+                    mime_type or "application/octet-stream",
+                    content_disposition,
                 )
             except RuntimeError as e:
                 error_msg = str(e).lower()

@@ -38,6 +38,8 @@ SESSION_VERIFIED_KEY = "admin_console_verified"
 UNPROTECTED_ENDPOINTS = {
     "routes.index",
     "routes.favicon",
+    "routes.serve_admin_css",  # /admin/css/admin_console.css
+    "favicon",  # Root-level /favicon.ico (when opening media in new tab)
     "routes.api_directories",  # Allow directory listing without auth
     "static",
     "auth.api_auth_request_code",

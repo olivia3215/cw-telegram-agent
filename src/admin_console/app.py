@@ -13,9 +13,10 @@ import threading
 from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, send_file  # pyright: ignore[reportMissingImports]
+from flask import Flask, Response, jsonify, send_file  # pyright: ignore[reportMissingImports]
 from werkzeug.serving import make_server
 
+from admin_console.request_handler import NoDrainWSGIRequestHandler
 from config import ADMIN_CONSOLE_SECRET_KEY
 from admin_console.auth import OTPChallengeManager, auth_bp, require_admin_verification
 from admin_console.media import media_bp
@@ -42,7 +43,7 @@ def create_admin_app(use_https: bool = False) -> Flask:
         __name__,
         template_folder=str(Path(__file__).parent.parent.parent / "templates"),
         static_folder=str(Path(__file__).parent.parent.parent / "static"),
-        static_url_path="/static",
+        static_url_path="/admin/static",
     )
     if ADMIN_CONSOLE_SECRET_KEY:
         app.secret_key = ADMIN_CONSOLE_SECRET_KEY
@@ -67,6 +68,15 @@ def create_admin_app(use_https: bool = False) -> Flask:
     # Ensure each app instance has its own OTP challenge manager.
     if "otp_challenge_manager" not in app.extensions:
         app.extensions["otp_challenge_manager"] = OTPChallengeManager()
+
+    # Root-level favicon (no /admin prefix) so media opened in new tab doesn't 404
+    _favicon_path = Path(__file__).parent.parent.parent / "favicon.ico"
+
+    @app.route("/favicon.ico")
+    def favicon():
+        if _favicon_path.exists():
+            return send_file(_favicon_path, mimetype="image/x-icon")
+        return Response(status=204)
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix="/admin")
@@ -148,7 +158,14 @@ def start_admin_console(host: str, port: int, ssl_cert: str | None = None, ssl_k
     
     # Create app with HTTPS flag for session cookie security
     app = create_admin_app(use_https=(ssl_context is not None))
-    server = make_server(host, port, app, threaded=True, ssl_context=ssl_context)
+    server = make_server(
+        host,
+        port,
+        app,
+        threaded=True,
+        request_handler=NoDrainWSGIRequestHandler,
+        ssl_context=ssl_context,
+    )
 
     thread = threading.Thread(
         target=server.serve_forever,

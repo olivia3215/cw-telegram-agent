@@ -1445,10 +1445,15 @@ def register_media_routes(agents_bp: Blueprint):
             if mime_type == "application/gzip":
                 # Telegram animated stickers (TGS) are gzip-compressed Lottie data.
                 mime_type = "application/x-tgsticker"
+            ext = get_file_extension_from_mime_or_bytes(mime_type, media_bytes)
+            if ext and not ext.startswith("."):
+                ext = f".{ext}"
+            download_name = f"{unique_id}{ext}" if ext else unique_id
             return send_file(
                 BytesIO(media_bytes),
                 mimetype=mime_type,
-                as_attachment=False
+                as_attachment=False,
+                download_name=download_name,
             )
             
         except Exception as e:
