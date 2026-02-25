@@ -635,17 +635,22 @@ def api_media_file(unique_id: str):
             except Exception as e:
                 logger.debug(f"Could not patch media_file for {unique_id}: {e}")
         if media_file:
+            # Use unique_id + extension for Save-as filename (stable, identifiable)
+            ext = media_file.suffix if media_file.suffix else ""
+            download_name = f"{unique_id}{ext}"
             # Use MIME sniffing to detect the correct MIME type
             try:
                 with open(media_file, "rb") as f:
                     file_bytes = f.read(1024)  # Read first 1KB for MIME detection
                 detected_mime_type = detect_mime_type_from_bytes(file_bytes)
-                return send_file(media_file, mimetype=detected_mime_type)
+                return send_file(
+                    media_file, mimetype=detected_mime_type, download_name=download_name
+                )
             except Exception as e:
                 logger.warning(
                     f"Failed to detect MIME type for {media_file}, falling back to default: {e}"
                 )
-                return send_file(media_file)
+                return send_file(media_file, download_name=download_name)
 
         return jsonify({"error": "Media file not found"}), 404
 

@@ -10,7 +10,7 @@ Main routes for the admin console (index, favicon, directories).
 import logging
 from pathlib import Path
 
-from flask import Blueprint, jsonify, render_template, send_file  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, Response, jsonify, render_template, send_file  # pyright: ignore[reportMissingImports]
 
 from admin_console.helpers import scan_media_directories
 
@@ -23,18 +23,31 @@ routes_bp = Blueprint("routes", __name__)
 _available_directories: list[dict[str, str]] = []
 
 
+# Project root (for resolving static files)
+_ROOT = Path(__file__).parent.parent.parent
+
+
 @routes_bp.route("/")
 def index():
     """Main page with directory selection and media browser."""
     return render_template("admin_console.html", directories=_available_directories)
 
 
+@routes_bp.route("/css/admin_console.css")
+def serve_admin_css():
+    """Serve admin console stylesheet."""
+    path = _ROOT / "static" / "css" / "admin_console.css"
+    if not path.exists():
+        return Response(status=204)
+    return send_file(path, mimetype="text/css")
+
+
 @routes_bp.route("/favicon.ico")
 def favicon():
-    """Serve the favicon."""
-    favicon_path = Path(__file__).parent.parent.parent / "favicon.ico"
+    """Serve the favicon (at /admin/favicon.ico)."""
+    favicon_path = _ROOT / "favicon.ico"
     if not favicon_path.exists():
-        return jsonify({"error": "Favicon not found"}), 404
+        return Response(status=204)
     return send_file(favicon_path, mimetype="image/x-icon")
 
 
