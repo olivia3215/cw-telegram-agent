@@ -4288,6 +4288,20 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         '</div>';
     if (!activities || activities.length === 0) {
         container.innerHTML = clockRow + saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        const saveAllBtn = document.getElementById('schedule-save-all-btn');
+        if (saveAllBtn) {
+            saveAllBtn.onclick = () => {
+                const acts = window._scheduleActivities;
+                const tz = window._scheduleTimezone;
+                const agent = window._scheduleAgentName;
+                if (!agent || acts === undefined) return;
+                scheduleSave(agent, acts || [], tz, undefined, (err) => {
+                    if (err) { alert('Failed to save schedule: ' + err); return; }
+                    scheduleMarkClean();
+                    loadSchedule(agent);
+                });
+            };
+        }
         if (timeZone) {
             scheduleUpdateAgentClock();
             window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
