@@ -131,18 +131,18 @@ function renderGlobalDocEditor(content, filename, configDir) {
         <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
-                <input type="text" id="global-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                <input type="text" id="global-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
                 <div id="global-docs-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
-                <select id="global-docs-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                <select id="global-docs-move-destination" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                     <option value="">Move to...</option>
                 </select>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
-                <textarea id="global-docs-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                <textarea id="global-docs-content" style="width: 100%; box-sizing: border-box; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
                 <div id="global-docs-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
         </div>
@@ -530,18 +530,18 @@ function renderAgentDocEditor(content, filename, configDir) {
         <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
-                <input type="text" id="agent-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                <input type="text" id="agent-docs-filename" value="${escapeHtml(filename)}" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
                 <div id="agent-docs-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
-                <select id="agent-docs-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                <select id="agent-docs-move-destination" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                     <option value="">Move to...</option>
                 </select>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
-                <textarea id="agent-docs-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                <textarea id="agent-docs-content" style="width: 100%; box-sizing: border-box; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
                 <div id="agent-docs-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
         </div>
@@ -1013,18 +1013,18 @@ function renderGlobalPromptEditor(content, filename, configDir) {
         <div style="background: white; padding: 16px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Filename:</label>
-                <input type="text" id="global-prompts-filename" value="${escapeHtml(filename)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
+                <input type="text" id="global-prompts-filename" value="${escapeHtml(filename)}" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" />
                 <div id="global-prompts-filename-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Move to:</label>
-                <select id="global-prompts-move-destination" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%;">
+                <select id="global-prompts-move-destination" style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                     <option value="">Move to...</option>
                 </select>
             </div>
             <div style="margin-bottom: 12px;">
                 <label style="display: block; margin-bottom: 4px; font-weight: bold;">Content:</label>
-                <textarea id="global-prompts-content" style="width: 100%; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
+                <textarea id="global-prompts-content" style="width: 100%; box-sizing: border-box; min-height: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px;">${escapeHtml(content)}</textarea>
                 <div id="global-prompts-save-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
             </div>
         </div>
@@ -1631,78 +1631,49 @@ function renderLLMItem(llm) {
     const promptPrice = llm.prompt_price ? parseFloat(llm.prompt_price).toFixed(2) : '0.00';
     const completionPrice = llm.completion_price ? parseFloat(llm.completion_price).toFixed(2) : '0.00';
     const description = llm.description || '';
-    
+
     return `
-        <div class="llm-item" data-llm-id="${llm.id}" draggable="true" style="padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; cursor: move;">
-            <div style="flex: 1;">
-                <!-- First line: Model ID and Prices -->
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-                    <label style="font-size: 12px; color: #666; white-space: nowrap; margin-right: 8px;" title="API model identifier (e.g. openai/gpt-4o).">Model ID:</label>
-                        <div style="flex: 1;">
-                            <input 
-                                type="text" 
-                                class="llm-field" 
-                                data-field="model_id"
-                                data-llm-id="${llm.id}"
-                                value="${escapeHtml(llm.model_id)}"
-                                style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
-                                onblur="updateLLMField(${llm.id}, 'model_id', this.value)">
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px;">
-                            <label style="font-size: 12px; color: #666; white-space: nowrap; margin-left: 8px;" title="Prompt price and completion price per 1M tokens (USD).">Prices:</label>
-                            <input 
-                                type="number" 
-                                step="0.01"
-                                class="llm-field" 
-                                data-field="prompt_price"
-                                data-llm-id="${llm.id}"
-                                value="${promptPrice}"
-                                placeholder="0.00"
-                                style="width: 60px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;"
-                                onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'prompt_price', parseFloat(this.value) || 0)">
-                            <span style="color: #666;">/</span>
-                            <input 
-                                type="number" 
-                                step="0.01"
-                                class="llm-field" 
-                                data-field="completion_price"
-                                data-llm-id="${llm.id}"
-                                value="${completionPrice}"
-                                placeholder="0.00"
-                                style="width: 60px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;"
-                                onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
-                        </div>
-                        <div>
-                            <button onclick="deleteLLM(${llm.id})" title="Remove this LLM from the list." style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                <!-- Second line: Name -->
+        <div class="llm-item" data-llm-id="${llm.id}" data-expanded="false" draggable="true" style="padding: 0; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; cursor: move;">
+            <div class="llm-item-header" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px;">
+                <span class="llm-drag-handle" title="Drag to reorder" onmousedown="event.stopPropagation();" onclick="event.stopPropagation();" style="cursor: grab; padding: 0 4px; color: #999; font-size: 14px; line-height: 1; user-select: none;">&#8942;&#8942;</span>
+                <button type="button" class="llm-toggle-btn" onclick="toggleLLMItem(this); event.stopPropagation();" onmousedown="event.stopPropagation();" title="Expand or collapse" style="background: none; border: none; padding: 0 4px; cursor: pointer; font-size: 10px; line-height: 1; color: #666;">&#9654;</button>
+                <input type="text" class="llm-field" data-field="model_id" data-llm-id="${llm.id}" value="${escapeHtml(llm.model_id)}" title="API model identifier (e.g. openai/gpt-4o)." style="flex: 1; min-width: 0; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onblur="updateLLMField(${llm.id}, 'model_id', this.value)">
+                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                    <input type="number" step="0.01" class="llm-field" data-field="prompt_price" data-llm-id="${llm.id}" value="${promptPrice}" placeholder="0.00" title="Prompt price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'prompt_price', parseFloat(this.value) || 0)">
+                    <span style="color: #666;">/</span>
+                    <input type="number" step="0.01" class="llm-field" data-field="completion_price" data-llm-id="${llm.id}" value="${completionPrice}" placeholder="0.00" title="Completion price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
+                </div>
+                <button type="button" class="llm-delete-btn" onclick="deleteLLM(${llm.id}); event.stopPropagation();" onmousedown="event.stopPropagation();" title="Remove this LLM from the list." style="padding: 2px 6px; background: none; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1; color: #999;">&#215;</button>
+            </div>
+            <div class="llm-item-body" style="display: none; padding: 0 12px 12px 12px;">
                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
                     <label style="font-size: 12px; color: #666; white-space: nowrap;" title="Display name for this LLM in the UI.">Name:</label>
-                    <input 
-                        type="text" 
-                        class="llm-field" 
-                        data-field="name"
-                        data-llm-id="${llm.id}"
-                        value="${escapeHtml(llm.name)}"
-                        style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
-                        onblur="updateLLMField(${llm.id}, 'name', this.value)">
+                    <input type="text" class="llm-field" data-field="name" data-llm-id="${llm.id}" value="${escapeHtml(llm.name)}" style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onblur="updateLLMField(${llm.id}, 'name', this.value)">
                 </div>
-                <!-- Third line: Description -->
-                <div>
+                <div style="margin-top: 12px; margin-bottom: 8px;">
                     <label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;" title="Optional notes about this model (e.g. provider, capabilities).">Description:</label>
-                    <textarea 
-                        class="llm-field" 
-                        data-field="description"
-                        data-llm-id="${llm.id}"
-                        style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-height: 50px; resize: vertical;"
-                        onblur="updateLLMField(${llm.id}, 'description', this.value)">${escapeHtml(description)}</textarea>
+                    <textarea class="llm-field llm-description" data-field="description" data-llm-id="${llm.id}" style="width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; min-height: 60px; resize: vertical; overflow-y: hidden;" onblur="updateLLMField(${llm.id}, 'description', this.value)">${escapeHtml(description)}</textarea>
                 </div>
             </div>
         </div>
     `;
+}
+
+function toggleLLMItem(toggleBtn) {
+    const item = toggleBtn.closest('.llm-item');
+    if (!item) return;
+    const body = item.querySelector('.llm-item-body');
+    const isExpanded = item.getAttribute('data-expanded') === 'true';
+    if (isExpanded) {
+        body.style.display = 'none';
+        item.setAttribute('data-expanded', 'false');
+        toggleBtn.innerHTML = '&#9654;';
+    } else {
+        body.style.display = 'block';
+        item.setAttribute('data-expanded', 'true');
+        toggleBtn.innerHTML = '&#9660;';
+        scheduleAutoGrowRefresh(item);
+    }
 }
 
 function initializeLLMDragAndDrop() {

@@ -1243,10 +1243,10 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
             // All messages summarized - show placeholder
             html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
         } else {
-            // Has unsummarized messages - show header with all controls
-            html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">';
-            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages ' + tooltipIconHtml('Messages not yet covered by a summary; use Summarize to create one') + '</h3>';
-            html += '<div style="display: flex; align-items: center; gap: 16px;">';
+            // Has unsummarized messages - show header with all controls (wraps on narrow width)
+            html += '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 12px;">';
+            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold; flex: 1 1 100%;">Unsummarized Messages ' + tooltipIconHtml('Messages not yet covered by a summary; use Summarize to create one') + '</h3>';
+            html += '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;">';
             html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
             html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
             html += 'Display Translation ' + tooltipIconHtml('Show English translation alongside messages') + '</label>';
@@ -1639,7 +1639,6 @@ async function loadCustomEmojiAnimations(agentName) {
 async function loadTGSAnimationsForConversation(agentName, userId) {
     // Find all TGS player containers in conversation view
     const tgsContainers = document.querySelectorAll('#conversation-container [id^="tgs-player-"]');
-    console.log(`Found ${tgsContainers.length} TGS containers in conversation to load`);
 
     for (const container of tgsContainers) {
         const uniqueId = container.getAttribute('data-unique-id') || container.id.replace('tgs-player-', '');
@@ -1651,7 +1650,6 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
         }
         
         const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${userId}/media/${messageId}/${uniqueId}`;
-        console.log(`Loading TGS for ${uniqueId} from conversation: ${mediaUrl}`);
 
         try {
             // Fetch the TGS file
@@ -1668,10 +1666,8 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
             // Try pako first since DecompressionStream is unreliable
             if (typeof pako !== 'undefined') {
                 try {
-                    console.log('Attempting pako decompression for conversation TGS...');
                     const decompressed = pako.inflate(new Uint8Array(tgsData), { to: 'string' });
                     lottieJson = JSON.parse(decompressed);
-                    console.log('Pako decompression successful for conversation TGS');
                 } catch (pakoError) {
                     console.error('Pako decompression failed:', pakoError);
                     throw new Error('Failed to decompress TGS file with pako');
@@ -1679,11 +1675,9 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
             } else {
                 // Fallback to DecompressionStream if pako not available
                 try {
-                    console.log('Attempting DecompressionStream decompression for conversation TGS...');
                     const decompressedData = await decompressGzip(tgsData);
                     const jsonText = new TextDecoder().decode(decompressedData);
                     lottieJson = JSON.parse(jsonText);
-                    console.log('DecompressionStream decompression successful for conversation TGS');
                 } catch (decompError) {
                     console.error('DecompressionStream failed:', decompError.message);
                     throw new Error('Failed to decompress TGS file - no suitable decompression method available');
@@ -1702,7 +1696,6 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
             container.appendChild(animationContainer);
 
             // Initialize Lottie animation
-            console.log('Initializing Lottie animation for conversation TGS...');
             const animation = lottie.loadAnimation({
                 container: animationContainer,
                 renderer: 'svg',
@@ -1710,7 +1703,6 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
                 autoplay: true,
                 animationData: lottieJson
             });
-            console.log('Lottie animation initialized successfully for conversation TGS');
 
             // Handle animation errors
                     animation.addEventListener('error', (error) => {
@@ -1725,9 +1717,7 @@ async function loadTGSAnimationsForConversation(agentName, userId) {
                     });
 
             // Handle successful loading
-            animation.addEventListener('DOMLoaded', () => {
-                console.log('Lottie animation DOM loaded successfully for conversation TGS');
-            });
+            animation.addEventListener('DOMLoaded', () => {});
 
         } catch (error) {
             if (error && error.message === 'unauthorized') {
@@ -2198,7 +2188,6 @@ function handleTranslationEvent(data, checkbox) {
         }
     } else if (data.type === 'complete') {
         // Translation complete
-        console.log('Translation stream completed');
         translationStreamReader = null;
         translationAbortController = null;
     } else if (data.type === 'error') {

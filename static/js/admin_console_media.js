@@ -361,7 +361,8 @@ function createMediaItemHTML(media) {
     if (!isAudioFile && (isVideoSticker || effectiveMime.startsWith('video') || effectiveMime === 'image/gif')) {
             // Video content (mp4/webm/gif) - including video stickers
             const poster = media.thumbnail_url ? ` poster="${media.thumbnail_url}"` : '';
-            mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto;"${poster}>
+            const mediaUrlEsc = escJsAttr(mediaUrl);
+            mediaElement = `<video controls preload="metadata" style="width: 100%; height: auto; cursor: pointer;"${poster} onclick="event.preventDefault(); event.stopPropagation(); showMediaFullscreen('${mediaUrlEsc}', 'video');">
                 <source src="${mediaUrl}" type="${effectiveMime || 'video/webm'}">
                 Your browser does not support the video tag.
             </video>`;
@@ -401,7 +402,8 @@ function createMediaItemHTML(media) {
                 Your browser does not support the audio tag.
             </audio>`;
     } else if (mediaUrl) {
-            mediaElement = `<img src="${mediaUrl}" alt="${media.sticker_name || media.unique_id}">`;
+            const mediaUrlEsc = escJsAttr(mediaUrl);
+            mediaElement = `<img src="${mediaUrl}" alt="${escapeHtml(media.sticker_name || media.unique_id)}" style="cursor: pointer;" onclick="event.preventDefault(); event.stopPropagation(); showMediaFullscreen('${mediaUrlEsc}', 'image');">`;
     } else {
         mediaElement = '<div style="color: #666;">No media file</div>';
     }
@@ -546,21 +548,17 @@ async function loadTGSAnimations() {
 async function decompressGzip(data) {
     // Check if DecompressionStream is supported
     if (!('DecompressionStream' in window)) {
-        console.log('DecompressionStream not supported in this browser');
         throw new Error('DecompressionStream not supported in this browser');
     }
 
     try {
-        console.log('Creating DecompressionStream...');
         const stream = new DecompressionStream('gzip');
         const writer = stream.writable.getWriter();
         const reader = stream.readable.getReader();
 
-        console.log('Writing data to stream...');
         await writer.write(data);
         await writer.close();
 
-        console.log('Reading decompressed data...');
         const chunks = [];
         let done = false;
 
@@ -572,7 +570,6 @@ async function decompressGzip(data) {
             }
         }
 
-        console.log(`Decompressed into ${chunks.length} chunks`);
         const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
         const result = new Uint8Array(totalLength);
         let offset = 0;
@@ -582,7 +579,6 @@ async function decompressGzip(data) {
             offset += chunk.length;
         }
 
-        console.log(`Total decompressed size: ${result.length} bytes`);
         return result;
     } catch (error) {
         console.error('DecompressionStream error:', error);

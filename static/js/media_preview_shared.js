@@ -2,6 +2,43 @@
 // Copyright (c) 2025-2026 Cindy's World LLC and contributors
 // Licensed under the MIT License. See LICENSE.md for details.
 
+/**
+ * Open a media (image or video) in a fullscreen overlay. Used by Global Media Editor and Agents->Media.
+ * @param {string} url - Source URL for the media
+ * @param {'image'|'video'} type - Type of media
+ */
+function showMediaFullscreen(url, type) {
+    const overlay = document.getElementById('media-fullscreen-overlay');
+    const imgEl = document.getElementById('media-fullscreen-img');
+    const videoEl = document.getElementById('media-fullscreen-video');
+    if (!overlay || !imgEl || !videoEl) return;
+    imgEl.style.display = 'none';
+    imgEl.removeAttribute('src');
+    videoEl.style.display = 'none';
+    videoEl.removeAttribute('src');
+    videoEl.pause();
+    if (type === 'image' && url) {
+        imgEl.src = url;
+        imgEl.style.display = 'block';
+    } else if (type === 'video' && url) {
+        videoEl.src = url;
+        videoEl.style.display = 'block';
+        videoEl.play().catch(() => {});
+    }
+    overlay.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMediaFullscreen() {
+    const overlay = document.getElementById('media-fullscreen-overlay');
+    const imgEl = document.getElementById('media-fullscreen-img');
+    const videoEl = document.getElementById('media-fullscreen-video');
+    if (overlay) overlay.style.display = 'none';
+    if (imgEl) { imgEl.removeAttribute('src'); imgEl.style.display = 'none'; }
+    if (videoEl) { videoEl.pause(); videoEl.removeAttribute('src'); videoEl.style.display = 'none'; }
+    document.body.style.overflow = '';
+}
+
 async function adminDecompressGzip(data) {
     if (!('DecompressionStream' in window)) {
         throw new Error('DecompressionStream not supported in this browser');
