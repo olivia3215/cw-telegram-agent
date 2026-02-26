@@ -1172,16 +1172,17 @@ Memory files are organized in two locations using **global user-centric memory**
 configdir/
 ├── agents/
 │   └── AgentName/
-│       └── memory/
-│           └── UserID.json      # Notes (conversation-specific memories, stored in MySQL)
+│       └── ...                 # Agent config and docs (notes are in MySQL)
 └── ...
 
 state/
+├── media/                      # Media cache (JSON + debug files)
+├── media_scratch/              # Temporary media processing
 ├── AgentName/
-│   ├── memory.json             # Global episodic memories (filesystem only)
-│   └── memory/
-│       └── {channel_id}.json   # Channel-specific plans and LLM overrides (filesystem only)
-└── ...
+│   └── telegram.session        # Telegram session data
+├── work_queue.json             # Task queue state
+├── work_queue.json.bak
+└── openrouter_roleplay_models.json   # OpenRouter cache (if used)
 ```
 
 **Storage Backend:**
@@ -1229,9 +1230,9 @@ The memory content section includes:
 - **Performance**: Acceptable since memory data is small and reads are infrequent
 - **Freshness**: Ensures new memories appear immediately in subsequent conversations
 
-### Memory File Format
+### Memory Data Format
 
-Memory files are JSON arrays. Each element is a JSON object with the schema:
+Memory entries (stored in MySQL `memories` table) use the following logical schema:
 
 ```
 {
@@ -1244,7 +1245,7 @@ Memory files are JSON arrays. Each element is a JSON object with the schema:
 }
 ```
 
-Example `memory.json` contents:
+Example memory entries (as stored in MySQL):
 
 ```json
 [

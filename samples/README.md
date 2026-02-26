@@ -389,7 +389,7 @@ When an agent has a daily schedule configured:
 
 ### Schedule Storage
 
-Schedules are stored in the agent's state directory at `{STATE_DIRECTORY}/{agent_name}/schedule.json`. The schedule includes:
+Schedules are stored in MySQL (see README.md for database setup). The schedule includes:
 - Activities with start/end times (timezone-aware)
 - Activity types (freeform strings like "sleeping", "eating", "working", etc.)
 - Responsiveness levels (0-100)
@@ -946,7 +946,7 @@ Agents can use retrieve tasks to load both web URLs and local files:
 The system will:
 1. Load `Friends.md` from the docs directories (agent-specific first, then shared)
 2. Load `Family.md` from the docs directories
-3. Load the agent's schedule from `{STATE_DIRECTORY}/{agent_name}/schedule.json`
+3. Load the agent's schedule from MySQL (same data used by the schedule task)
 4. Fetch the web URL normally
 
 ### Error Handling
