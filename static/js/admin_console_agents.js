@@ -2584,7 +2584,7 @@ function updateBirthdayDays() {
     if (!month) {
         daySelect.value = '';
         // Enable cancel button since we made a change
-        document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+        document.getElementById('agent-profile-cancel-wrap').style.display = 'inline-block';
         return;
     }
     
@@ -2612,7 +2612,7 @@ function updateBirthdayDays() {
     }
     
     // Enable cancel button since we made a change
-    document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+    document.getElementById('agent-profile-cancel-wrap').style.display = 'inline-block';
 }
 
 // Validate bio character count
@@ -2785,7 +2785,7 @@ async function loadAgentProfile(agentName) {
         validateBio();
         
         // Hide cancel button
-        document.getElementById('agent-profile-cancel-btn').style.display = 'none';
+        document.getElementById('agent-profile-cancel-wrap').style.display = 'none';
         document.getElementById('agent-profile-save-status').textContent = '';
         setAgentProfileNeedsSave(false);
         
@@ -2970,7 +2970,7 @@ function cancelAgentProfileEdit() {
         }
         
         validateBio();
-        document.getElementById('agent-profile-cancel-btn').style.display = 'none';
+        document.getElementById('agent-profile-cancel-wrap').style.display = 'none';
         document.getElementById('agent-profile-save-status').textContent = '';
         setAgentProfileNeedsSave(false);
     }
@@ -2998,11 +2998,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const field = document.getElementById(fieldId);
         if (field) {
             field.addEventListener('input', () => {
-                document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                document.getElementById('agent-profile-cancel-wrap').style.display = 'inline-block';
                 setAgentProfileNeedsSave(true);
             });
             field.addEventListener('change', () => {
-                document.getElementById('agent-profile-cancel-btn').style.display = 'inline-block';
+                document.getElementById('agent-profile-cancel-wrap').style.display = 'inline-block';
                 setAgentProfileNeedsSave(true);
             });
         }
@@ -3629,9 +3629,9 @@ function renderMediaItem(agentName, mediaItem) {
     div.className = 'media-item';
     div.dataset.uniqueId = mediaItem.unique_id;
     
-    // Thumbnail container (like media-preview)
+    // Preview container (shared with Global Media Editor - .media-preview)
     const thumbnailDiv = document.createElement('div');
-    thumbnailDiv.className = 'media-thumbnail';
+    thumbnailDiv.className = 'media-preview';
     
     const mediaUrl = `${API_BASE}/agents/${encodeURIComponent(agentName)}/media/${encodeURIComponent(mediaItem.unique_id)}/file`;
     const mimeType = (mediaItem.mime_type || '').toLowerCase();
@@ -3661,6 +3661,8 @@ function renderMediaItem(agentName, mediaItem) {
         video.preload = 'metadata';
         video.style.width = '100%';
         video.style.height = '100%';
+        video.style.cursor = 'pointer';
+        video.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showMediaFullscreen(mediaUrl, 'video'); };
         const source = document.createElement('source');
         source.src = mediaUrl;
         source.type = mimeType || 'video/mp4';
@@ -3670,6 +3672,8 @@ function renderMediaItem(agentName, mediaItem) {
         const img = document.createElement('img');
         img.src = mediaUrl;
         img.alt = 'Media';
+        img.style.cursor = 'pointer';
+        img.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showMediaFullscreen(mediaUrl, 'image'); };
         img.onerror = function() {
             console.error('Failed to load media:', mediaItem.unique_id);
             this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><rect width="150" height="150" fill="%23f5f5f5"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif" font-size="14">Failed to load</text></svg>';
@@ -4148,6 +4152,47 @@ function formatScheduleDateTime(isoStr, timeZone) {
     }
 }
 
+/** Format start_time for display: date + time, no timezone (e.g. "2026-02-24 19:21"). */
+function formatScheduleStartForInput(iso) {
+    if (!iso) return '';
+    const m = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+    return m ? m[1] + ' ' + m[2] + ':' + m[3] : iso;
+}
+
+/** Format end_time for display: time only (e.g. "21:00"). */
+function formatScheduleEndForInput(iso) {
+    if (!iso) return '';
+    const m = iso.match(/T(\d{2}):(\d{2})/);
+    return m ? m[1] + ':' + m[2] : iso;
+}
+
+/** Get timezone offset suffix from an ISO string (e.g. "+01:00" or "Z"). */
+function getScheduleOffsetFromISO(iso) {
+    if (!iso) return '+00:00';
+    const m = iso.match(/([+-]\d{2}:\d{2}|Z)$/);
+    return m ? (m[1] === 'Z' ? '+00:00' : m[1]) : '+00:00';
+}
+
+/** Parse start input "YYYY-MM-DD HH:mm" back to full ISO using existing offset. */
+function parseScheduleStartFromInput(val, existingISO) {
+    const offset = getScheduleOffsetFromISO(existingISO || '');
+    const m = String(val).trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})/);
+    if (!m) return val;
+    const date = m[1], h = m[2].padStart(2, '0'), min = m[3];
+    return date + 'T' + h + ':' + min + ':00' + offset;
+}
+
+/** Parse end input "HH:mm" back to full ISO using date and offset from existing end_time. */
+function parseScheduleEndFromInput(val, existingISO) {
+    const offset = getScheduleOffsetFromISO(existingISO || '');
+    const m = String(val).trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return existingISO || '';
+    const datePart = existingISO ? existingISO.match(/^(\d{4}-\d{2}-\d{2})/) : null;
+    const date = datePart ? datePart[1] : '2026-01-01';
+    const h = m[1].padStart(2, '0'), min = m[2];
+    return date + 'T' + h + ':' + min + ':00' + offset;
+}
+
 function scheduleUpdateAgentClock() {
     const span = document.getElementById('schedule-agent-time-value');
     const tz = window._scheduleClockTimezone;
@@ -4171,56 +4216,142 @@ function scheduleUpdateAgentClock() {
     }
 }
 
+function scheduleMarkDirty() {
+    window._scheduleDirty = true;
+    const bar = document.getElementById('schedule-unsaved-bar');
+    if (bar) bar.style.display = 'flex';
+}
+
+function scheduleMarkClean() {
+    window._scheduleDirty = false;
+    const bar = document.getElementById('schedule-unsaved-bar');
+    if (bar) bar.style.display = 'none';
+}
+
+function scheduleUpdateActivityField(index, field, value) {
+    if (!window._scheduleActivities || !window._scheduleActivities[index]) return;
+    window._scheduleActivities[index] = { ...window._scheduleActivities[index], [field]: value };
+    scheduleMarkDirty();
+}
+
+function scheduleUpdateStartInput(index) {
+    const act = window._scheduleActivities && window._scheduleActivities[index];
+    if (!act) return;
+    const input = document.querySelector('.schedule-field-start[data-index="' + index + '"]');
+    if (!input) return;
+    const parsed = parseScheduleStartFromInput(input.value, act.start_time);
+    scheduleUpdateActivityField(index, 'start_time', parsed);
+}
+
+function scheduleUpdateEndInput(index) {
+    const act = window._scheduleActivities && window._scheduleActivities[index];
+    if (!act) return;
+    const input = document.querySelector('.schedule-field-end[data-index="' + index + '"]');
+    if (!input) return;
+    const parsed = parseScheduleEndFromInput(input.value, act.end_time);
+    scheduleUpdateActivityField(index, 'end_time', parsed);
+}
+
+function scheduleToggleExpand(index) {
+    if (!window._scheduleExpandedIndices) window._scheduleExpandedIndices = new Set();
+    if (window._scheduleExpandedIndices.has(index)) {
+        window._scheduleExpandedIndices.delete(index);
+    } else {
+        window._scheduleExpandedIndices.add(index);
+    }
+    const container = document.getElementById('schedule-container');
+    const agentName = window._scheduleAgentName;
+    const timeZone = window._scheduleTimezone;
+    if (container && agentName !== undefined) {
+        renderScheduleContent(container, agentName, window._scheduleActivities, timeZone);
+    }
+}
+
 function renderScheduleContent(container, agentName, activities, timeZone) {
     if (window._scheduleClockInterval) {
         clearInterval(window._scheduleClockInterval);
         window._scheduleClockInterval = null;
     }
     window._scheduleClockTimezone = timeZone || null;
+    window._scheduleAgentName = agentName;
+    window._scheduleActivities = (activities || []).map(a => ({ ...a }));
+    if (!window._scheduleExpandedIndices) window._scheduleExpandedIndices = new Set();
+    const isDirty = !!window._scheduleDirty;
     const clockRow = timeZone
         ? '<div id="schedule-clock-row" style="margin-bottom: 16px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 15px;"><strong>Current time (agent\'s time zone):</strong> <span id="schedule-agent-time-value">--:--:--</span></div>'
         : '';
+    const saveBar = '<div id="schedule-unsaved-bar" style="display: ' + (isDirty ? 'flex' : 'none') + '; align-items: center; gap: 12px; margin-bottom: 16px; padding: 10px 14px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;"><span>You have unsaved changes.</span><button type="button" id="schedule-save-all-btn" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save</button></div>';
     const btnRow = '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">' +
-        '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
+        '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null, null, null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
         '<button type="button" id="schedule-extend-btn" onclick="scheduleExtend(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Extend schedule</button>' +
         '<button type="button" id="schedule-delete-all-btn" onclick="scheduleDeleteAll(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete all</button>' +
         '</div>';
     if (!activities || activities.length === 0) {
-        container.innerHTML = clockRow + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        container.innerHTML = clockRow + saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        const saveAllBtn = document.getElementById('schedule-save-all-btn');
+        if (saveAllBtn) {
+            saveAllBtn.onclick = () => {
+                const acts = window._scheduleActivities;
+                const tz = window._scheduleTimezone;
+                const agent = window._scheduleAgentName;
+                if (!agent || acts === undefined) return;
+                scheduleSave(agent, acts || [], tz, undefined, (err) => {
+                    if (err) { alert('Failed to save schedule: ' + err); return; }
+                    scheduleMarkClean();
+                    loadSchedule(agent);
+                });
+            };
+        }
         if (timeZone) {
             scheduleUpdateAgentClock();
             window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
         }
         return;
     }
-    let html = clockRow + btnRow + '<table style="width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;"><thead><tr style="background: #f5f5f5;">';
-    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Start</th>';
-    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">End</th>';
-    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Activity</th>';
-    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Responsiveness</th>';
-    html += '<th style="padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0;">Actions</th></tr></thead><tbody>';
+    let html = clockRow + saveBar + btnRow + '<div id="schedule-activity-list" style="display: flex; flex-direction: column; gap: 8px;">';
     activities.forEach((act, idx) => {
-        const startFmt = formatScheduleDateTime(act.start_time, timeZone);
-        const endFmt = formatScheduleDateTime(act.end_time, timeZone);
-        const name = escapeHtml(act.activity_name || '');
-        const resp = act.responsiveness !== undefined ? act.responsiveness : '';
-        html += '<tr style="border-bottom: 1px solid #eee;">';
-        html += '<td style="padding: 10px 12px;">' + startFmt + '</td>';
-        html += '<td style="padding: 10px 12px;">' + endFmt + '</td>';
-        html += '<td style="padding: 10px 12px;">' + name + '</td>';
-        html += '<td style="padding: 10px 12px;">' + resp + '</td>';
-        html += '<td style="padding: 10px 12px; white-space: nowrap;">';
-        html += '<button type="button" onclick="scheduleAddAbove(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Add above</button>';
-        html += '<button type="button" onclick="scheduleAddBelow(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Add below</button>';
-        html += '<button type="button" onclick="scheduleEdit(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Edit</button>';
+        const startVal = escapeHtml(formatScheduleStartForInput(act.start_time));
+        const endVal = escapeHtml(formatScheduleEndForInput(act.end_time));
+        const nameVal = escapeHtml(act.activity_name || '');
+        const descVal = escapeHtml(act.description || '');
+        const respVal = act.responsiveness !== undefined && act.responsiveness !== '' ? Number(act.responsiveness) : '';
+        const expanded = window._scheduleExpandedIndices.has(idx);
+        const agentEsc = escJsAttr(agentName);
+        html += '<div class="schedule-activity-item" data-index="' + idx + '" style="border: 1px solid #ddd; border-radius: 8px; background: #fff; overflow: hidden;">';
+        html += '<div class="schedule-activity-header" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap;">';
+        html += '<button type="button" class="schedule-toggle-btn" onclick="scheduleToggleExpand(' + idx + '); event.stopPropagation();" style="background: none; border: none; padding: 0 4px; cursor: pointer; font-size: 10px; color: #666;">' + (expanded ? '&#9660;' : '&#9654;') + '</button>';
+        html += '<input type="text" class="schedule-field-start" data-index="' + idx + '" value="' + startVal + '" placeholder="Date time" style="width: 140px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onchange="scheduleUpdateStartInput(' + idx + ')">';
+        html += '<input type="text" class="schedule-field-end" data-index="' + idx + '" value="' + endVal + '" placeholder="Time" style="width: 70px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onchange="scheduleUpdateEndInput(' + idx + ')">';
+        html += '<input type="text" class="schedule-field-name" data-index="' + idx + '" value="' + nameVal + '" placeholder="Activity" style="flex: 1; min-width: 120px; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onchange="scheduleUpdateActivityField(' + idx + ', \'activity_name\', this.value)">';
+        html += '</div>';
+        html += '<div class="schedule-activity-body" style="display: ' + (expanded ? 'block' : 'none') + '; padding: 0 12px 12px 12px;">';
+        html += '<div style="margin-bottom: 8px;"><label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Description</label><textarea class="schedule-field-desc" data-index="' + idx + '" rows="3" style="width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; resize: vertical;" onchange="scheduleUpdateActivityField(' + idx + ', \'description\', this.value)">' + descVal + '</textarea></div>';
+        html += '<div style="margin-bottom: 8px;"><label style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Responsiveness (0–100)</label><input type="number" class="schedule-field-resp" data-index="' + idx + '" min="0" max="100" value="' + respVal + '" style="width: 80px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onchange="scheduleUpdateActivityField(' + idx + ', \'responsiveness\', parseInt(this.value, 10))"></div>';
+        html += '<div style="display: flex; gap: 8px; flex-wrap: wrap;">';
+        html += '<button type="button" onclick="scheduleAddAbove(\'' + agentEsc + '\', ' + idx + ')" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">Add above</button>';
+        html += '<button type="button" onclick="scheduleAddBelow(\'' + agentEsc + '\', ' + idx + ')" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">Add below</button>';
         if (idx < activities.length - 1) {
-            html += '<button type="button" onclick="scheduleMergeWithNext(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="margin-right: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Merge with next</button>';
+            html += '<button type="button" onclick="scheduleMergeWithNext(\'' + agentEsc + '\', ' + idx + ')" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">Merge with next</button>';
         }
-        html += '<button type="button" onclick="scheduleDelete(\'' + escJsAttr(agentName) + '\', ' + idx + ')" style="padding: 4px 8px; font-size: 12px; cursor: pointer; color: #c00;">Delete</button>';
-        html += '</td></tr>';
+        html += '<button type="button" class="schedule-delete-btn" onclick="scheduleDelete(\'' + agentEsc + '\', ' + idx + ')" style="padding: 2px 8px; background: none; border: none; cursor: pointer; font-size: 16px; color: #999;" title="Delete">&#215;</button>';
+        html += '</div></div></div>';
     });
-    html += '</tbody></table>';
+    html += '</div>';
     container.innerHTML = html;
+    const saveAllBtn = document.getElementById('schedule-save-all-btn');
+    if (saveAllBtn) {
+        saveAllBtn.onclick = () => {
+            const acts = window._scheduleActivities;
+            const tz = window._scheduleTimezone;
+            const agent = window._scheduleAgentName;
+            if (!agent || !acts) return;
+            scheduleSave(agent, acts, tz, undefined, (err) => {
+                if (err) { alert('Failed to save schedule: ' + err); return; }
+                scheduleMarkClean();
+                loadSchedule(agent);
+            });
+        };
+    }
     if (timeZone) {
         scheduleUpdateAgentClock();
         window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
@@ -4243,6 +4374,8 @@ function loadSchedule(agentName) {
                 container.innerHTML = `<div class="error">${escapeHtml(data.error)}</div>`;
                 return;
             }
+            window._scheduleDirty = false;
+            window._scheduleExpandedIndices = new Set();
             renderScheduleContent(container, agentName, data.activities || [], data.timezone || null);
         })
         .catch(error => {
@@ -4275,7 +4408,9 @@ function scheduleExtend(agentName) {
                 extendBtn.textContent = 'Extend schedule';
                 return;
             }
-            renderScheduleContent(container, agentName, data.activities || [], data.timezone || null);
+            window._scheduleDirty = true;
+            window._scheduleActivities = (data.activities || []).map(a => ({ ...a }));
+            renderScheduleContent(container, agentName, window._scheduleActivities, data.timezone || null);
         })
         .catch(error => {
             if (error && error.message === 'unauthorized') return;
@@ -4288,38 +4423,13 @@ function scheduleExtend(agentName) {
 
 function scheduleDeleteAll(agentName) {
     const container = document.getElementById('schedule-container');
-    const deleteBtn = document.getElementById('schedule-delete-all-btn');
     const agentSelect = document.getElementById('agents-agent-select');
     if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
-    if (!confirm('Delete all schedule entries for this agent? This cannot be undone.')) return;
-    if (deleteBtn) {
-        deleteBtn.disabled = true;
-        deleteBtn.textContent = 'Deleting…';
-    }
-    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activities: [] })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) {
-                if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
-                return;
-            }
-            if (data.error) {
-                alert('Delete all failed: ' + data.error);
-                if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
-                return;
-            }
-            loadSchedule(agentName);
-        })
-        .catch(error => {
-            if (error && error.message === 'unauthorized') return;
-            if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
-            alert('Delete all failed: ' + (error && error.message ? error.message : String(error)));
-            if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.textContent = 'Delete all'; }
-        });
+    if (!confirm('Delete all schedule entries for this agent? You can save or discard changes.')) return;
+    window._scheduleActivities = [];
+    if (window._scheduleExpandedIndices) window._scheduleExpandedIndices.clear();
+    scheduleMarkDirty();
+    renderScheduleContent(container, agentName, [], window._scheduleTimezone || null);
 }
 
 function scheduleGetActivities(agentName, cb) {
@@ -4379,20 +4489,19 @@ function scheduleAddActivity(agentName, suggestedStart, suggestedEnd, insertBefo
         const desc = document.getElementById('schedule-form-description').value.trim();
         if (!start || !end || !name) { alert('Start time, end time, and activity name are required.'); return; }
         if (isNaN(resp) || resp < 0 || resp > 100) { alert('Responsiveness must be 0–100.'); return; }
-        scheduleGetActivities(agentName, (activities, err) => {
-            if (err) { alert('Failed to load schedule: ' + err); return; }
-            const newId = 'act-' + Math.random().toString(16).slice(2, 10);
-            const newAct = { id: newId, start_time: start, end_time: end, activity_name: name, responsiveness: resp, description: desc };
-            if (insertBeforeIndex != null && insertBeforeIndex >= 0) {
-                activities.splice(insertBeforeIndex, 0, newAct);
-            } else {
-                activities.push(newAct);
-            }
-            scheduleSave(agentName, activities, undefined, undefined, (saveErr) => {
-                if (saveErr) alert('Failed to save: ' + saveErr);
-                modal.remove();
-            });
-        });
+        let activities = window._scheduleActivities || [];
+        const newId = 'act-' + Math.random().toString(16).slice(2, 10);
+        const newAct = { id: newId, start_time: start, end_time: end, activity_name: name, responsiveness: resp, description: desc };
+        if (insertBeforeIndex != null && insertBeforeIndex >= 0) {
+            activities.splice(insertBeforeIndex, 0, newAct);
+        } else {
+            activities.push(newAct);
+        }
+        window._scheduleActivities = activities;
+        scheduleMarkDirty();
+        const container = document.getElementById('schedule-container');
+        if (container) renderScheduleContent(container, agentName, activities, window._scheduleTimezone || null);
+        modal.remove();
     };
 }
 
@@ -4432,66 +4541,29 @@ function scheduleAddBelow(agentName, index) {
     });
 }
 
-function scheduleEdit(agentName, index) {
-    scheduleGetActivities(agentName, (activities, err) => {
-        if (err) { alert('Failed to load schedule: ' + err); return; }
-        const act = activities[index];
-        if (!act) return;
-        const modal = document.createElement('div');
-        modal.id = 'schedule-edit-modal';
-        modal.style.cssText = 'position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;';
-        modal.innerHTML = '<div style="background: white; padding: 24px; border-radius: 8px; max-width: 480px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">' +
-            '<h3 style="margin-top: 0;">Edit activity</h3>' +
-            '<p style="margin-bottom: 12px; font-size: 13px; color: #666;">Use ISO 8601 with timezone</p>' +
-            '<label>Start time</label><input type="text" id="schedule-edit-start" value="' + escapeHtml(act.start_time || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
-            '<label>End time</label><input type="text" id="schedule-edit-end" value="' + escapeHtml(act.end_time || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
-            '<label>Activity name</label><input type="text" id="schedule-edit-name" value="' + escapeHtml(act.activity_name || '') + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
-            '<label>Responsiveness (0–100)</label><input type="number" id="schedule-edit-responsiveness" min="0" max="100" value="' + (act.responsiveness !== undefined ? act.responsiveness : 80) + '" style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">' +
-            '<label>Description</label><textarea id="schedule-edit-description" rows="3" style="width: 100%; padding: 8px; margin-bottom: 16px; box-sizing: border-box; resize: vertical;">' + escapeHtml(act.description || '') + '</textarea>' +
-            '<div style="display: flex; gap: 8px;"><button type="button" id="schedule-edit-save" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Save</button><button type="button" id="schedule-edit-cancel" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button></div>' +
-            '</div>';
-        document.body.appendChild(modal);
-        document.getElementById('schedule-edit-cancel').onclick = () => modal.remove();
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        document.getElementById('schedule-edit-save').onclick = () => {
-            const start = document.getElementById('schedule-edit-start').value.trim();
-            const end = document.getElementById('schedule-edit-end').value.trim();
-            const name = document.getElementById('schedule-edit-name').value.trim();
-            const resp = parseInt(document.getElementById('schedule-edit-responsiveness').value, 10);
-            const desc = document.getElementById('schedule-edit-description').value.trim();
-            if (!start || !end || !name) { alert('Start time, end time, and activity name are required.'); return; }
-            if (isNaN(resp) || resp < 0 || resp > 100) { alert('Responsiveness must be 0–100.'); return; }
-            const updated = activities.slice();
-            updated[index] = { ...act, start_time: start, end_time: end, activity_name: name, responsiveness: resp, description: desc };
-            scheduleSave(agentName, updated, undefined, undefined, (saveErr) => {
-                if (saveErr) alert('Failed to save: ' + saveErr);
-                else modal.remove();
-            });
-        };
-    });
-}
-
 function scheduleMergeWithNext(agentName, index) {
-    scheduleGetActivities(agentName, (activities, err) => {
-        if (err) { alert('Failed to load schedule: ' + err); return; }
-        if (index >= activities.length - 1) return;
-        const curr = activities[index];
-        const next = activities[index + 1];
-        const merged = activities.slice(0, index).concat([{ ...curr, end_time: next.end_time }]).concat(activities.slice(index + 2));
-        scheduleSave(agentName, merged, undefined, undefined, (saveErr) => {
-            if (saveErr) alert('Failed to save: ' + saveErr);
-        });
-    });
+    const activities = window._scheduleActivities;
+    if (!activities || index >= activities.length - 1) return;
+    const curr = activities[index];
+    const next = activities[index + 1];
+    const merged = activities.slice(0, index).concat([{ ...curr, end_time: next.end_time }]).concat(activities.slice(index + 2));
+    window._scheduleActivities = merged;
+    scheduleMarkDirty();
+    const container = document.getElementById('schedule-container');
+    if (container) renderScheduleContent(container, agentName, merged, window._scheduleTimezone || null);
 }
 
 function scheduleDelete(agentName, index) {
-    scheduleGetActivities(agentName, (activities, err) => {
-        if (err) { alert('Failed to load schedule: ' + err); return; }
-        const filtered = activities.filter((_, i) => i !== index);
-        scheduleSave(agentName, filtered, undefined, undefined, (saveErr) => {
-            if (saveErr) alert('Failed to save: ' + saveErr);
-        });
-    });
+    const activities = window._scheduleActivities;
+    if (!activities || index < 0 || index >= activities.length) return;
+    const filtered = activities.filter((_, i) => i !== index);
+    if (window._scheduleExpandedIndices) {
+        window._scheduleExpandedIndices = new Set([...window._scheduleExpandedIndices].filter(i => i !== index).map(i => i > index ? i - 1 : i));
+    }
+    window._scheduleActivities = filtered;
+    scheduleMarkDirty();
+    const container = document.getElementById('schedule-container');
+    if (container) renderScheduleContent(container, agentName, filtered, window._scheduleTimezone || null);
 }
 
 // Initialize media upload features when DOM is ready

@@ -354,88 +354,82 @@
             <div id="agents-container" class="main-container">
                 <!-- Profile Subtab -->
                 <div class="subtab-panel active" data-subtab-panel="profile">
-                    <!-- Agent Profile Section -->
-                    <div id="agent-profile-section" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <!-- Agent Profile Section (shared layout with Conversations->Profile) -->
+                    <div id="agent-profile-section" class="profile-form" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
                         <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #2c3e50;">Agent Profile</h3>
-                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
-                            <!-- Profile Photo -->
-                            <div style="text-align: center;">
-                                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                    <button id="agent-profile-photo-prev" onclick="showPreviousAgentProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8249;</button>
-                                    <img id="agent-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showProfilePhotoFullscreen()">
-                                    <video id="agent-profile-video" src="" style="display: none; width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" autoplay muted loop playsinline onclick="showProfilePhotoFullscreen()"></video>
-                                    <button id="agent-profile-photo-next" onclick="showNextAgentProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8250;</button>
-                                </div>
-                                <div id="agent-profile-photo-index" style="margin-top: 6px; font-size: 12px; color: #666; min-height: 16px;"></div>
+                        <div class="profile-form-name-row">
+                            <div class="profile-form-photo">
+                                <img id="agent-profile-photo" src="" alt="Profile Photo" onclick="showProfilePhotoFullscreen()">
+                                <video id="agent-profile-video" src="" style="display: none;" autoplay muted loop playsinline onclick="showProfilePhotoFullscreen()"></video>
+                                <div id="agent-profile-photo-index" style="margin-top: 4px; font-size: 12px; color: #666; min-height: 16px;"></div>
                                 <div style="margin-top: 2px; font-size: 12px; color: #666;">Click to enlarge</div>
                             </div>
-                            <!-- Profile Photo Fullscreen Modal -->
-                            <div id="profile-photo-modal" style="display: none; position: fixed; z-index: 2000; inset: 0; background-color: rgba(0,0,0,0.6); cursor: pointer; overflow: auto;" onclick="closeProfilePhotoFullscreen()">
-                                <div style="width: min(92vw, 980px); margin: 30px auto; background: #fff; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 16px rgba(0,0,0,0.2); padding: 14px;" onclick="event.stopPropagation()">
-                                    <button id="profile-photo-fullscreen-prev" onclick="showPreviousAgentProfilePhoto(event, true)" style="display: none; position: fixed; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
-                                    <img id="profile-photo-fullscreen" src="" alt="Profile Photo" style="display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;">
-                                    <video id="profile-video-fullscreen" src="" style="display: none; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;" autoplay muted loop playsinline controls></video>
-                                    <div style="margin-top: 10px; color: #222;">
-                                        <p id="profile-photo-meta-index" style="margin: 0 0 6px 0;"><strong>Item:</strong> 1 of 1</p>
-                                        <p id="profile-photo-meta-type" style="margin: 0;"><strong>Type:</strong> image</p>
-                                    </div>
-                                    <button id="profile-photo-fullscreen-next" onclick="showNextAgentProfilePhoto(event, true)" style="display: none; position: fixed; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
+                            <div class="profile-form-name-fields">
+                                <div>
+                                    <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name: <span class="info-icon" data-tooltip="Telegram profile first name.">i</span></label>
+                                    <input type="text" id="agent-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                </div>
+                                <div>
+                                    <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name: <span class="info-icon" data-tooltip="Telegram profile last name.">i</span></label>
+                                    <input type="text" id="agent-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                 </div>
                             </div>
-                            <!-- Profile Fields -->
-                            <div style="display: grid; gap: 16px;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                                    <div>
-                                        <label for="agent-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name: <span class="info-icon" data-tooltip="Telegram profile first name.">i</span></label>
-                                        <input type="text" id="agent-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                    </div>
-                                    <div>
-                                        <label for="agent-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name: <span class="info-icon" data-tooltip="Telegram profile last name.">i</span></label>
-                                        <input type="text" id="agent-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                    </div>
+                        </div>
+                        <!-- Profile Photo Fullscreen Modal (prev/next stay here only) -->
+                        <div id="profile-photo-modal" style="display: none; position: fixed; z-index: 2000; inset: 0; background-color: rgba(0,0,0,0.6); cursor: pointer; overflow: auto;" onclick="closeProfilePhotoFullscreen()">
+                            <div style="width: min(92vw, 980px); margin: 30px auto; background: #fff; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 16px rgba(0,0,0,0.2); padding: 14px;" onclick="event.stopPropagation()">
+                                <button id="profile-photo-fullscreen-prev" onclick="showPreviousAgentProfilePhoto(event, true)" style="display: none; position: fixed; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
+                                <img id="profile-photo-fullscreen" src="" alt="Profile Photo" style="display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;">
+                                <video id="profile-video-fullscreen" src="" style="display: none; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;" autoplay muted loop playsinline controls></video>
+                                <div style="margin-top: 10px; color: #222;">
+                                    <p id="profile-photo-meta-index" style="margin: 0 0 6px 0;"><strong>Item:</strong> 1 of 1</p>
+                                    <p id="profile-photo-meta-type" style="margin: 0;"><strong>Type:</strong> image</p>
                                 </div>
-                                <div>
-<label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username: <span class="info-icon" data-tooltip="Telegram @username (without @).">i</span></label>
-                                        <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                <button id="profile-photo-fullscreen-next" onclick="showNextAgentProfilePhoto(event, true)" style="display: none; position: fixed; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
+                            </div>
+                        </div>
+                        <div class="profile-form-fields">
+                            <div>
+                                <label for="agent-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username: <span class="info-icon" data-tooltip="Telegram @username (without @).">i</span></label>
+                                <input type="text" id="agent-profile-username" placeholder="@username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                            </div>
+                            <div>
+                                <label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID: <span class="info-icon" data-tooltip="Numeric Telegram user ID (read-only).">i</span></label>
+                                <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+                            </div>
+                            <div>
+                                <label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio: <span class="info-icon" data-tooltip="Telegram profile bio (max 70 chars).">i</span></label>
+                                <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
+                                <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
+                            </div>
+                            <div>
+                                <label for="agent-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday: <span class="info-icon" data-tooltip="Profile birthday (month, day, optional year).">i</span></label>
+                                <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
+                                    <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                        <option value="">Month</option>
+                                        <option value="1">January</option>
+                                        <option value="2">February</option>
+                                        <option value="3">March</option>
+                                        <option value="4">April</option>
+                                        <option value="5">May</option>
+                                        <option value="6">June</option>
+                                        <option value="7">July</option>
+                                        <option value="8">August</option>
+                                        <option value="9">September</option>
+                                        <option value="10">October</option>
+                                        <option value="11">November</option>
+                                        <option value="12">December</option>
+                                    </select>
+                                    <select id="agent-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                                        <option value="">Day</option>
+                                    </select>
+                                    <input type="number" id="agent-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                                 </div>
-                                <div>
-<label for="agent-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID: <span class="info-icon" data-tooltip="Numeric Telegram user ID (read-only).">i</span></label>
-                                        <input type="text" id="agent-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
-                                </div>
-                                <div>
-<label for="agent-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio: <span class="info-icon" data-tooltip="Telegram profile bio (max 70 chars).">i</span></label>
-                                        <textarea id="agent-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical;" oninput="validateBio()"></textarea>
-                                    <div id="agent-profile-bio-status" style="margin-top: 4px; font-size: 12px;"></div>
-                                </div>
-                                <div>
-                                    <label for="agent-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday: <span class="info-icon" data-tooltip="Profile birthday (month, day, optional year).">i</span></label>
-                                    <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
-                                        <select id="agent-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                            <option value="">Month</option>
-                                            <option value="1">January</option>
-                                            <option value="2">February</option>
-                                            <option value="3">March</option>
-                                            <option value="4">April</option>
-                                            <option value="5">May</option>
-                                            <option value="6">June</option>
-                                            <option value="7">July</option>
-                                            <option value="8">August</option>
-                                            <option value="9">September</option>
-                                            <option value="10">October</option>
-                                            <option value="11">November</option>
-                                            <option value="12">December</option>
-                                        </select>
-                                        <select id="agent-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                            <option value="">Day</option>
-                                        </select>
-                                        <input type="number" id="agent-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                                    </div>
-                                </div>
-                                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                    <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button> <span class="info-icon" data-tooltip="Save profile changes to Telegram.">i</span>
-                                    <button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button> <span class="info-icon" data-tooltip="Discard unsaved profile changes.">i</span>
-                                    <div id="agent-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
-                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button onclick="saveAgentProfile()" id="agent-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Profile</button> <span class="info-icon" data-tooltip="Save profile changes to Telegram.">i</span>
+                                <span id="agent-profile-cancel-wrap" style="display: none;"><button onclick="cancelAgentProfileEdit()" id="agent-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button> <span class="info-icon" data-tooltip="Discard unsaved profile changes.">i</span></span>
+                                <div id="agent-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
                             </div>
                         </div>
                     </div>
@@ -572,7 +566,7 @@
             </div>
             <div id="conversations-container" class="main-container">
                 <div class="subtab-panel active" data-subtab-panel="profile-conv">
-                    <div id="conversation-profile-section" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <div id="conversation-profile-section" class="profile-form" style="display: none; margin-bottom: 24px; padding: 20px; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0; margin-bottom: 12px;">
                             <h3 style="margin: 0; font-size: 18px; color: #2c3e50;">Conversation Profile</h3>
                             <label style="display: flex; align-items: center; gap: 6px; font-weight: 500; color: #2c3e50;">
@@ -581,85 +575,81 @@
                             </label>
                         </div>
                         <div id="conversation-profile-deleted" style="display: none; margin-bottom: 12px; color: #dc3545; font-weight: 500;">Deleted account</div>
-                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start;">
-                            <div style="text-align: center;">
-                                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                    <button id="conversation-profile-photo-prev" onclick="showPreviousConversationProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8249;</button>
-                                    <img id="conversation-profile-photo" src="" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" onclick="showConversationProfilePhotoFullscreen()">
-                                    <video id="conversation-profile-video" src="" style="display: none; width: 100px; height: 100px; border-radius: 50%; border: 2px solid #e0e0e0; cursor: pointer; object-fit: cover; background: #f5f5f5;" autoplay muted loop playsinline onclick="showConversationProfilePhotoFullscreen()"></video>
-                                    <button id="conversation-profile-photo-next" onclick="showNextConversationProfilePhoto(event)" style="display: none; width: 28px; height: 28px; border-radius: 14px; border: 1px solid #d0d0d0; background: #ffffff; cursor: pointer; font-size: 16px;">&#8250;</button>
-                                </div>
-                                <div id="conversation-profile-photo-index" style="margin-top: 6px; font-size: 12px; color: #666; min-height: 16px;"></div>
+                        <div class="profile-form-name-row">
+                            <div class="profile-form-photo">
+                                <img id="conversation-profile-photo" src="" alt="Profile Photo" onclick="showConversationProfilePhotoFullscreen()">
+                                <video id="conversation-profile-video" src="" style="display: none;" autoplay muted loop playsinline onclick="showConversationProfilePhotoFullscreen()"></video>
+                                <div id="conversation-profile-photo-index" style="margin-top: 4px; font-size: 12px; color: #666; min-height: 16px;"></div>
                                 <div style="margin-top: 2px; font-size: 12px; color: #666;">Click to enlarge</div>
                             </div>
-                            <div id="conversation-profile-photo-modal" style="display: none; position: fixed; z-index: 2000; inset: 0; background-color: rgba(0,0,0,0.6); cursor: pointer; overflow: auto;" onclick="closeConversationProfilePhotoFullscreen()">
-                                <div style="width: min(92vw, 980px); margin: 30px auto; background: #fff; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 16px rgba(0,0,0,0.2); padding: 14px;" onclick="event.stopPropagation()">
-                                    <button id="conversation-profile-photo-fullscreen-prev" onclick="showPreviousConversationProfilePhoto(event, true)" style="display: none; position: fixed; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
-                                    <img id="conversation-profile-photo-fullscreen" src="" alt="Profile Photo" style="display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;">
-                                    <video id="conversation-profile-video-fullscreen" src="" style="display: none; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;" autoplay muted loop playsinline controls></video>
-                                    <div style="margin-top: 10px; color: #222;">
-                                        <p id="conversation-profile-photo-meta-index" style="margin: 0 0 6px 0;"><strong>Item:</strong> 1 of 1</p>
-                                        <p id="conversation-profile-photo-meta-type" style="margin: 0;"><strong>Type:</strong> image</p>
-                                    </div>
-                                    <button id="conversation-profile-photo-fullscreen-next" onclick="showNextConversationProfilePhoto(event, true)" style="display: none; position: fixed; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
+                            <div id="conversation-profile-name-row" class="profile-form-name-fields">
+                                <div>
+                                    <label id="conversation-profile-first-name-label" for="conversation-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
+                                    <input type="text" id="conversation-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
+                                </div>
+                                <div id="conversation-profile-last-name-container">
+                                    <label for="conversation-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
+                                    <input type="text" id="conversation-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
                                 </div>
                             </div>
-                            <div style="display: grid; gap: 16px;">
-                                <div id="conversation-profile-name-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                                    <div>
-                                        <label id="conversation-profile-first-name-label" for="conversation-profile-first-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">First Name:</label>
-                                        <input type="text" id="conversation-profile-first-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
-                                    </div>
-                                    <div id="conversation-profile-last-name-container">
-                                        <label for="conversation-profile-last-name" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Last Name:</label>
-                                        <input type="text" id="conversation-profile-last-name" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly oninput="conversationProfileFieldChanged()">
-                                    </div>
+                        </div>
+                        <div id="conversation-profile-photo-modal" style="display: none; position: fixed; z-index: 2000; inset: 0; background-color: rgba(0,0,0,0.6); cursor: pointer; overflow: auto;" onclick="closeConversationProfilePhotoFullscreen()">
+                            <div style="width: min(92vw, 980px); margin: 30px auto; background: #fff; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 16px rgba(0,0,0,0.2); padding: 14px;" onclick="event.stopPropagation()">
+                                <button id="conversation-profile-photo-fullscreen-prev" onclick="showPreviousConversationProfilePhoto(event, true)" style="display: none; position: fixed; left: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8249;</button>
+                                <img id="conversation-profile-photo-fullscreen" src="" alt="Profile Photo" style="display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;">
+                                <video id="conversation-profile-video-fullscreen" src="" style="display: none; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; background: #f6f6f6;" autoplay muted loop playsinline controls></video>
+                                <div style="margin-top: 10px; color: #222;">
+                                    <p id="conversation-profile-photo-meta-index" style="margin: 0 0 6px 0;"><strong>Item:</strong> 1 of 1</p>
+                                    <p id="conversation-profile-photo-meta-type" style="margin: 0;"><strong>Type:</strong> image</p>
                                 </div>
-                                <div>
-                                    <label for="conversation-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
-                                    <input type="text" id="conversation-profile-username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
+                                <button id="conversation-profile-photo-fullscreen-next" onclick="showNextConversationProfilePhoto(event, true)" style="display: none; position: fixed; right: 16px; top: 50%; transform: translateY(-50%); border: none; background: rgba(0,0,0,0.45); color: white; width: 44px; height: 44px; border-radius: 22px; cursor: pointer; font-size: 28px; z-index: 2001;">&#8250;</button>
+                            </div>
+                        </div>
+                        <div class="profile-form-fields">
+                            <div>
+                                <label for="conversation-profile-username" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Username:</label>
+                                <input type="text" id="conversation-profile-username" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
+                            </div>
+                            <div>
+                                <label for="conversation-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
+                                <input type="text" id="conversation-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+                            </div>
+                            <div id="conversation-profile-member-count-container" style="display: none;">
+                                <label for="conversation-profile-member-count" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Members:</label>
+                                <input type="text" id="conversation-profile-member-count" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
+                            </div>
+                            <div>
+                                <label id="conversation-profile-bio-label" for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
+                                <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
+                            </div>
+                            <div id="conversation-profile-birthday-container">
+                                <label for="conversation-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
+                                <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
+                                    <select id="conversation-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
+                                        <option value="">Month</option>
+                                        <option value="1">January</option>
+                                        <option value="2">February</option>
+                                        <option value="3">March</option>
+                                        <option value="4">April</option>
+                                        <option value="5">May</option>
+                                        <option value="6">June</option>
+                                        <option value="7">July</option>
+                                        <option value="8">August</option>
+                                        <option value="9">September</option>
+                                        <option value="10">October</option>
+                                        <option value="11">November</option>
+                                        <option value="12">December</option>
+                                    </select>
+                                    <select id="conversation-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
+                                        <option value="">Day</option>
+                                    </select>
+                                    <input type="number" id="conversation-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
                                 </div>
-                                <div>
-                                    <label for="conversation-profile-telegram-id" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Telegram ID:</label>
-                                    <input type="text" id="conversation-profile-telegram-id" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
-                                </div>
-                                <div id="conversation-profile-member-count-container" style="display: none;">
-                                    <label for="conversation-profile-member-count" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Members:</label>
-                                    <input type="text" id="conversation-profile-member-count" readonly style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;">
-                                </div>
-                                <div>
-                                    <label id="conversation-profile-bio-label" for="conversation-profile-bio" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Bio:</label>
-                                    <textarea id="conversation-profile-bio" rows="3" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; resize: vertical; background: #f5f5f5; color: #666;" readonly></textarea>
-                                </div>
-                                <div id="conversation-profile-birthday-container">
-                                    <label for="conversation-profile-birthday-month" style="display: block; margin-bottom: 4px; font-weight: 500; color: #2c3e50;">Birthday:</label>
-                                    <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center;">
-                                        <select id="conversation-profile-birthday-month" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
-                                            <option value="">Month</option>
-                                            <option value="1">January</option>
-                                            <option value="2">February</option>
-                                            <option value="3">March</option>
-                                            <option value="4">April</option>
-                                            <option value="5">May</option>
-                                            <option value="6">June</option>
-                                            <option value="7">July</option>
-                                            <option value="8">August</option>
-                                            <option value="9">September</option>
-                                            <option value="10">October</option>
-                                            <option value="11">November</option>
-                                            <option value="12">December</option>
-                                        </select>
-                                        <select id="conversation-profile-birthday-day" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" disabled>
-                                            <option value="">Day</option>
-                                        </select>
-                                        <input type="number" id="conversation-profile-birthday-year" placeholder="Year (optional)" min="1900" max="2100" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; background: #f5f5f5; color: #666;" readonly>
-                                    </div>
-                                </div>
-                                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                    <button onclick="saveConversationProfile()" id="conversation-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;" disabled>Save Contact</button>
-                                    <button onclick="cancelConversationProfileEdit()" id="conversation-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
-                                    <div id="conversation-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
-                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button onclick="saveConversationProfile()" id="conversation-profile-save-btn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;" disabled>Save Contact</button>
+                                <button onclick="cancelConversationProfileEdit()" id="conversation-profile-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; display: none;">Cancel</button>
+                                <div id="conversation-profile-save-status" style="margin-left: 8px; line-height: 32px; font-size: 14px;"></div>
                             </div>
                         </div>
                     </div>
@@ -715,6 +705,11 @@
         </section>
 
 
+    </div>
+    <!-- Shared media fullscreen (Global Media Editor + Agents->Media) -->
+    <div id="media-fullscreen-overlay" style="display: none; position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.85); cursor: pointer; overflow: auto;" onclick="closeMediaFullscreen()" aria-label="Close">
+        <img id="media-fullscreen-img" src="" alt="Full size" style="display: none; max-width: 95vw; max-height: 90vh; object-fit: contain; margin: auto; position: relative; top: 50%; transform: translateY(-50%); pointer-events: none;">
+        <video id="media-fullscreen-video" src="" style="display: none; max-width: 95vw; max-height: 90vh; object-fit: contain; margin: auto; position: relative; top: 50%; transform: translateY(-50%);" controls onclick="event.stopPropagation()"></video>
     </div>
     <script src="/admin/static/js/admin_console_core.js"></script>
     <script src="/admin/static/js/admin_console_global.js"></script>

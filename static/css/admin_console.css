@@ -369,9 +369,10 @@ body.auth-locked {
         max-width: 100%;
     }
 }
+/* Shared larger frame for Global Media Editor and Agents->Media */
 .media-preview {
-    flex: 0 0 50%;
-    max-width: 50%;
+    flex: 0 0 65%;
+    max-width: 65%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -384,11 +385,13 @@ body.auth-locked {
     width: 100%;
     height: auto;
     display: block;
+    cursor: pointer;
 }
 .media-preview video {
     width: 100%;
     height: auto;
     object-fit: contain;
+    cursor: pointer;
 }
 .media-preview audio {
     width: 100%;
@@ -483,24 +486,6 @@ body.auth-locked {
     box-sizing: border-box;
 }
 
-.media-thumbnail {
-    flex: 0 0 50%;
-    max-width: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    padding: 8px;
-    background: #f5f5f5;
-    border-radius: 4px;
-}
-
-.media-thumbnail img {
-    width: 100%;
-    height: auto;
-    display: block;
-}
-
 .media-item-content {
     flex: 1;
     padding: 8px 0;
@@ -513,7 +498,7 @@ body.auth-locked {
     .media-item {
         flex-direction: column;
     }
-    .media-thumbnail {
+    .media-preview {
         flex: none;
         max-width: 100%;
     }
@@ -657,5 +642,77 @@ body.auth-locked {
 }
 .info-icon[data-tooltip].tooltip-visible::after {
     pointer-events: auto;
+}
+
+.llm-delete-btn:hover {
+    color: #666;
+}
+
+.llm-delete-btn:focus {
+    outline: 1px dotted #999;
+}
+
+.schedule-delete-btn:hover {
+    color: #666;
+}
+
+/* Schedule: on narrow viewports put activity name on its own line */
+.schedule-activity-header {
+    flex-wrap: wrap;
+}
+@media (max-width: 480px) {
+    .schedule-activity-header .schedule-field-name {
+        flex: 1 1 100%;
+        min-width: 100%;
+    }
+}
+
+/* Shared profile form layout (Agents->Profile and Conversations->Profile) */
+.profile-form {
+    box-sizing: border-box;
+}
+.profile-form input,
+.profile-form select,
+.profile-form textarea {
+    box-sizing: border-box;
+    max-width: 100%;
+}
+.profile-form-name-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+.profile-form-photo {
+    flex: 0 0 auto;
+    text-align: center;
+}
+.profile-form-photo img,
+.profile-form-photo video {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 2px solid #e0e0e0;
+    object-fit: cover;
+    background: #f5f5f5;
+    cursor: pointer;
+}
+.profile-form-name-fields {
+    flex: 1;
+    min-width: 200px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.profile-form-fields {
+    margin-top: 16px;
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+@media (max-width: 480px) {
+    .profile-form-name-fields {
+        grid-template-columns: 1fr;
+    }
 }
 
