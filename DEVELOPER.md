@@ -94,15 +94,12 @@ state/
 ├── media/              # Media cache (JSON descriptions + debug media files)
 │   ├── <unique_id>.json     # AI-generated descriptions
 │   └── <unique_id>.<ext>    # Debug media files (.webp, .tgs, etc.)
+├── media_scratch/      # Temporary media processing
 ├── <agent_name>/       # Agent session directories
-│   ├── telegram.session
-│   ├── memory.json     # Global memories (filesystem backend only)
-│   ├── schedule.json   # Agent schedule (filesystem backend only)
-│   └── memory/         # Channel-specific data (filesystem backend only)
-│       └── {channel_id}.json
-├── translations.json   # Translation cache (filesystem backend only)
+│   └── telegram.session
 ├── work_queue.json     # Task queue state
-└── work_queue.json.bak
+├── work_queue.json.bak
+└── openrouter_roleplay_models.json   # OpenRouter roleplay model cache (if used)
 ```
 
 **Storage Backend:**
