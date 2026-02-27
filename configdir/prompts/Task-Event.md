@@ -12,7 +12,7 @@ Provide `intent` (what to do when the event fires) and `time` (when to fire). Ti
 [
   {
     "kind": "event",
-    "intent": "Remind me to reply to Alice about the meeting.",
+    "intent": "Reply to Alice about the meeting.",
     "time": "2026-03-01T14:00:00"
   }
 ]
@@ -41,7 +41,7 @@ Reuse the same `id` with new fields to update:
   {
     "kind": "event",
     "id": "event-abc123",
-    "intent": "Remind me to reply to Alice (updated).",
+    "intent": "Reply to Alice (updated).",
     "time": "2026-03-01T15:00:00"
   }
 ]
@@ -74,3 +74,4 @@ Use the event's `id` with empty `intent` to delete it:
 - Use events for reminders and delayed follow-ups in this channel.
 - Keep intent clear so your future self knows what to do.
 - Delete or update events when they are no longer needed.
+- Use either a timezone offset in `time`, or a zone-naive `time` and a `timezone`, but not both.
