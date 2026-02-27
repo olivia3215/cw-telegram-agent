@@ -34,6 +34,10 @@ async function loadAgents() {
                 agents.forEach(agent => {
                     agentContentChecks[agent.config_name] = agent.has_plans || false;
                 });
+            } else if (subtabName === 'events') {
+                agents.forEach(agent => {
+                    agentContentChecks[agent.config_name] = agent.has_events || false;
+                });
             } else if (subtabName === 'memories') {
                 agents.forEach(agent => {
                     agentContentChecks[agent.config_name] = agent.has_memories || false;

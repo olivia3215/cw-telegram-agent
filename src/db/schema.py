@@ -280,6 +280,22 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Create events table (scheduled actions for agents)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id VARCHAR(255) NOT NULL,
+                    agent_telegram_id BIGINT NOT NULL,
+                    channel_id BIGINT NOT NULL,
+                    time_utc DATETIME NOT NULL,
+                    intent TEXT NOT NULL,
+                    interval_value VARCHAR(63) NULL,
+                    occurrences INT NULL,
+                    PRIMARY KEY (id, agent_telegram_id, channel_id),
+                    INDEX idx_agent_channel (agent_telegram_id, channel_id),
+                    INDEX idx_time_utc (time_utc)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             conn.commit()
             logger.info("Database schema created successfully")
             

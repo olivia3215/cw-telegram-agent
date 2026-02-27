@@ -74,6 +74,10 @@ class AgentStorageMixin:
         """Load channel-specific plan content from state directory."""
         return self._storage.load_plan_content(channel_id)
 
+    def _load_event_content(self, channel_id: int) -> str:
+        """Load channel-specific events (times in agent timezone) for the prompt."""
+        return self._storage.load_event_content(channel_id, self.timezone)
+
     async def _load_summary_content(self, channel_id: int, json_format: bool = False, include_metadata: bool = False) -> str:
         """Load channel-specific summary content from state directory."""
         return self._storage.load_summary_content(channel_id, json_format=json_format, include_metadata=include_metadata)

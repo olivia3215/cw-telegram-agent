@@ -19,6 +19,7 @@ from db import memories
 from db import plans
 from db import schedules
 from db import summaries
+from db import events as db_events
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,36 @@ class AgentStorageMySQL:
         except Exception as exc:
             logger.warning(
                 f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load plan content from MySQL: {exc}"
+            )
+        return ""
+
+    def load_event_content(self, channel_id: int, tz) -> str:
+        """
+        Load channel-specific events for the prompt. Times are converted to the given timezone.
+        Returns JSON string of events, or empty string if none.
+        """
+        try:
+            from datetime import UTC, datetime
+
+            raw = db_events.load_events(self.agent_telegram_id, channel_id)
+            if not raw:
+                return ""
+            out = []
+            for ev in raw:
+                e = {"id": ev["id"], "intent": ev.get("intent", "")}
+                if ev.get("time_utc"):
+                    dt_utc = datetime.fromisoformat(ev["time_utc"].replace("Z", "+00:00"))
+                    if dt_utc.tzinfo is None:
+                        dt_utc = dt_utc.replace(tzinfo=UTC)
+                    e["time"] = dt_utc.astimezone(tz).isoformat()
+                    e["interval"] = ev["interval"]
+                if ev.get("occurrences") is not None:
+                    e["occurrences"] = ev["occurrences"]
+                out.append(e)
+            return json.dumps(out, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            logger.warning(
+                f"{format_log_prefix_resolved(self.agent_config_name, None)} Failed to load event content: {exc}"
             )
         return ""
 

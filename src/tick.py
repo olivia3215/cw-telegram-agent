@@ -6,7 +6,7 @@
 import asyncio
 import logging
 import os
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from telethon.errors.rpcerrorlist import (  # pyright: ignore[reportMissingImports]
     ChatWriteForbiddenError,
@@ -22,6 +22,7 @@ from exceptions import ShutdownException
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
+from task_graph_helpers import insert_received_task_for_conversation
 from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.telegram import get_channel_name
 
@@ -208,6 +209,93 @@ async def trigger_typing_indicators():
             logger.debug(f"Error checking typing indicators for agent {agent_id}: {e}")
 
 
+async def _process_due_events():
+    """
+    At the start of each tick: compute the global next event (soonest across non-gagged channels).
+    If that event's time has passed, fire it (insert received task with xsend_intent),
+    then reschedule or delete the event.
+    """
+    try:
+        from db import events as db_events
+    except Exception as e:
+        logger.debug(f"Event tick: could not import db.events: {e}")
+        return
+    try:
+        candidates = db_events.get_next_events_ordered(limit=50)
+    except Exception as e:
+        logger.debug(f"Event tick: could not get next events (table may not exist): {e}")
+        return
+    now_utc = clock.now(UTC)
+    if not hasattr(now_utc, "tzinfo"):
+        now_utc = now_utc.replace(tzinfo=UTC)
+    if not candidates:
+        return
+    for ev in candidates:
+        agent_id = ev["agent_telegram_id"]
+        channel_id = ev["channel_id"]
+        time_utc = ev.get("time_utc")
+        if not time_utc:
+            continue
+        # DB stores UTC; driver may return naive datetime — make aware for comparison with now_utc
+        if not hasattr(time_utc, "tzinfo") or time_utc.tzinfo is None:
+            time_utc = time_utc.replace(tzinfo=UTC)
+        if time_utc > now_utc:
+            continue
+        try:
+            agent = get_agent_for_id(agent_id)
+            if not agent or agent.is_disabled:
+                continue
+            gagged = await agent.is_conversation_gagged(channel_id)
+            if gagged:
+                continue
+        except Exception as e:
+            logger.debug(f"Event tick: skip event {ev.get('id')} agent {agent_id} channel {channel_id}: {e}")
+            continue
+        event_id = ev["id"]
+        intent = ev.get("intent") or ""
+        interval_value = ev.get("interval_value")
+        occurrences = ev.get("occurrences")
+        try:
+            channel_name = await get_channel_name(agent, channel_id)
+            log_prefix = await format_log_prefix(agent.name, channel_name)
+        except Exception:
+            log_prefix = f"agent:{agent_id} channel:{channel_id}"
+        try:
+            await insert_received_task_for_conversation(
+                recipient_id=str(agent_id),
+                channel_id=str(channel_id),
+                xsend_intent=intent,
+                bypass_gagged=True,
+            )
+            logger.info(f"{log_prefix} Fired event {event_id} (xsend_intent)")
+        except Exception as e:
+            logger.exception(f"{log_prefix} Failed to insert received task for event {event_id}: {e}")
+            return
+        interval_seconds = db_events.parse_interval_seconds(interval_value) if interval_value else None
+        should_reschedule = (
+            interval_seconds is not None
+            and interval_seconds > 0
+            and (occurrences is None or occurrences > 1)
+        )
+        if should_reschedule:
+            new_time_utc = time_utc + timedelta(seconds=interval_seconds)
+            new_occurrences = (occurrences - 1) if occurrences is not None else None
+            try:
+                db_events.update_event_time_and_occurrences(
+                    agent_id, channel_id, event_id, new_time_utc, occurrences=new_occurrences
+                )
+                logger.info(f"{log_prefix} Rescheduled event {event_id} to {new_time_utc}")
+            except Exception as e:
+                logger.exception(f"{log_prefix} Failed to reschedule event {event_id}: {e}")
+        else:
+            try:
+                db_events.delete_event(agent_id, channel_id, event_id)
+                logger.info(f"{log_prefix} Deleted event {event_id} after fire")
+            except Exception as e:
+                logger.exception(f"{log_prefix} Failed to delete event {event_id}: {e}")
+        return
+
+
 
 
 async def run_one_tick(work_queue=None, state_file_path: str = None):
@@ -234,6 +322,9 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
     # Reset per-tick AI description budget at start of each tick
     import config
     reset_description_budget(config.MEDIA_DESC_BUDGET_PER_TICK)
+
+    # Process due events (compute next at start of tick, fire if due, then reschedule or delete)
+    await _process_due_events()
 
     # Check and extend schedules if needed (non-blocking)
     # Trigger typing indicators for pending wait tasks

@@ -400,6 +400,7 @@ async function loadConversationPartners(agentName, subtab, forceRefresh = false)
                 // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
                 'conversation-parameters': 'conversation_parameters',
                 'plans': 'plans',
+                'events': 'events',
                 'conversation': 'conversation',  // Special case, uses different endpoint
                 'work-queue': 'work_queue'
             };
@@ -922,6 +923,166 @@ function deletePlan(agentName, userId, planId) {
         }
         alert('Error deleting plan: ' + error);
     });
+}
+
+// --- Events (scheduled actions) ---
+function loadEvents() {
+    const agentSelect = document.getElementById('conversations-agent-select');
+    const partnerSelect = document.getElementById('conversations-partner-select');
+    const userIdInput = document.getElementById('conversations-user-id');
+
+    const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+    const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+    if (!agentName || !userId) {
+        const container = document.getElementById('events-container');
+        if (container) showLoading(container, 'Select an agent and conversation partner');
+        return;
+    }
+
+    const container = document.getElementById('events-container');
+    showLoading(container, 'Loading events...');
+
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showError(container, data.error);
+                return;
+            }
+
+            const events = data.events || [];
+            let html = '<div style="margin-bottom: 16px;"><button onclick="createNewEvent(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ New Event</button></div>';
+
+            if (events.length === 0) {
+                html += '<div class="placeholder-card">No events for this conversation.</div>';
+                container.innerHTML = html;
+                return;
+            }
+
+            const intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+            html += events.map(ev => {
+                const timeVal = (ev.time || '').slice(0, 19).replace('T', 'T');
+                let intervalNum = '';
+                let intervalUnit = 'hours';
+                if (ev.interval && typeof ev.interval === 'string') {
+                    const parts = ev.interval.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        intervalNum = parseFloat(parts[0]) || '';
+                        const u = (parts[1] || '').toLowerCase();
+                        if (u.indexOf('minute') >= 0) intervalUnit = 'minutes';
+                        else if (u.indexOf('hour') >= 0) intervalUnit = 'hours';
+                        else if (u.indexOf('day') >= 0) intervalUnit = 'days';
+                        else if (u.indexOf('week') >= 0) intervalUnit = 'weeks';
+                    }
+                }
+                const occ = ev.occurrences != null ? ev.occurrences : '';
+                return `
+                <div class="memory-item event-item" data-event-id="${escapeHtml(ev.id)}" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <strong>Event: ${escapeHtml(ev.id)}</strong>
+                        <button onclick="deleteEvent('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label>Intent:</label>
+                        <textarea id="event-intent-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="scheduleEventAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">${escapeHtml(ev.intent || '')}</textarea>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label>Time (agent TZ):</label>
+                        <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${timeVal}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="scheduleEventAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+                        <div>
+                            <label>Interval (e.g. 1 hours):</label>
+                            <input type="number" id="event-interval-num-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${intervalNum}" step="0.5" min="0" placeholder="number" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="scheduleEventAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                            <select id="event-interval-unit-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;" onchange="scheduleEventAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                                ${intervalUnits.map(u => '<option value="' + u + '"' + (u === intervalUnit ? ' selected' : '') + '>' + u + '</option>').join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label>Occurrences (optional):</label>
+                            <input type="number" id="event-occurrences-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${occ}" min="1" placeholder="empty = unlimited" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="scheduleEventAutoSave('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                        </div>
+                    </div>
+                    <div id="event-status-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="font-size: 12px; color: #28a745;">Saved</div>
+                </div>`;
+            }).join('');
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') return;
+            container.innerHTML = '<div class="error">Error loading events: ' + escapeHtml(error) + '</div>';
+        });
+}
+
+const eventAutoSaveTimers = {};
+function scheduleEventAutoSave(agentName, userId, eventId) {
+    const key = `${userId}-${eventId}`;
+    if (eventAutoSaveTimers[key]) clearTimeout(eventAutoSaveTimers[key]);
+    const statusEl = document.getElementById(`event-status-${userId}-${eventId}`);
+    if (statusEl) { statusEl.textContent = 'Typing...'; statusEl.style.color = '#007bff'; }
+    eventAutoSaveTimers[key] = setTimeout(() => {
+        const intentEl = document.getElementById(`event-intent-${userId}-${eventId}`);
+        const timeEl = document.getElementById(`event-time-${userId}-${eventId}`);
+        const intervalNumEl = document.getElementById(`event-interval-num-${userId}-${eventId}`);
+        const intervalUnitEl = document.getElementById(`event-interval-unit-${userId}-${eventId}`);
+        const occurrencesEl = document.getElementById(`event-occurrences-${userId}-${eventId}`);
+        if (!intentEl || !timeEl) return;
+        const intent = intentEl.value.trim();
+        const timeVal = timeEl.value;
+        if (!timeVal) return;
+        const intervalNum = intervalNumEl && intervalNumEl.value.trim() !== '' ? parseFloat(intervalNumEl.value) : null;
+        const intervalUnit = intervalUnitEl ? intervalUnitEl.value : 'hours';
+        const interval = (intervalNum != null && intervalNum > 0) ? `${intervalNum} ${intervalUnit}` : null;
+        const occ = occurrencesEl && occurrencesEl.value.trim() !== '' ? parseInt(occurrencesEl.value, 10) : null;
+        const timeIso = timeVal.length === 16 ? timeVal + ':00' : timeVal;
+        if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = '#007bff'; }
+        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}/${eventId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ intent: intent, time: timeIso, interval: interval || null, occurrences: occ })
+        })
+        .then(r => r.json())
+        .then(data => {
+            const statusEl = document.getElementById(`event-status-${userId}-${eventId}`);
+            if (statusEl) {
+                statusEl.textContent = data.error ? 'Error' : 'Saved';
+                statusEl.style.color = data.error ? '#dc3545' : '#28a745';
+            }
+        })
+        .catch(() => {
+            const statusEl = document.getElementById(`event-status-${userId}-${eventId}`);
+            if (statusEl) { statusEl.textContent = 'Error'; statusEl.style.color = '#dc3545'; }
+        });
+    }, 800);
+}
+
+function createNewEvent(agentName, userId) {
+    if (!agentName || !userId) { alert('Please select an agent and conversation partner'); return; }
+    const now = new Date();
+    const timeStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + 'T' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':00';
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent: 'New event', time: timeStr })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) alert('Error creating event: ' + data.error);
+        else loadEvents();
+    })
+    .catch(err => { if (err && err.message !== 'unauthorized') alert('Error: ' + err); });
+}
+
+function deleteEvent(agentName, userId, eventId) {
+    if (!confirm('Delete this event?')) return;
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}/${eventId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) alert('Error: ' + data.error);
+        else loadEvents();
+    })
+    .catch(err => { if (err && err.message !== 'unauthorized') alert('Error: ' + err); });
 }
 
 // Auto-save for summaries

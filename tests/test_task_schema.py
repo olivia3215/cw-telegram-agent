@@ -79,7 +79,7 @@ def test_get_task_response_schema_dict_no_filtering():
     expected_tasks = {
         "think", "send", "react", "sticker", "send_media", "wait",
         "block", "unblock", "remember", "intend", "plan", "note",
-        "summarize", "retrieve", "xsend", "schedule"
+        "summarize", "retrieve", "xsend", "schedule", "event"
     }
     assert task_kinds == expected_tasks
 

@@ -688,6 +688,8 @@ function switchSubtab(subtabName) {
                 loadConversationParameters();
             } else if (subtabName === 'plans') {
                 loadPlans();
+            } else if (subtabName === 'events') {
+                typeof loadEvents === 'function' && loadEvents();
             } else if (subtabName === 'conversation') {
                 loadConversation();
             } else if (subtabName === 'costs-conv') {
@@ -714,6 +716,9 @@ function switchSubtab(subtabName) {
                 if (container) showLoading(container, noConvMsg);
             } else if (subtabName === 'plans') {
                 const container = document.getElementById('plans-container');
+                if (container) container.innerHTML = '';
+            } else if (subtabName === 'events') {
+                const container = document.getElementById('events-container');
                 if (container) container.innerHTML = '';
             } else if (subtabName === 'conversation') {
                 const container = document.getElementById('conversation-container');
@@ -882,6 +887,11 @@ async function partnerHasContent(agentName, userId, subtabName) {
             const data = await response.json();
             if (data.error) return false;
             return data.plans && data.plans.length > 0;
+        } else if (subtabName === 'events') {
+            const response = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}`);
+            const data = await response.json();
+            if (data.error) return false;
+            return data.events && data.events.length > 0;
         } else if (subtabName === 'conversation') {
             // For conversation subtab, check summaries locally (no Telegram API call)
             // This is handled by the batch endpoint in loadConversationPartners
