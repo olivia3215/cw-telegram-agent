@@ -108,8 +108,13 @@ class AgentRegistry:
         return self._registry.get(config_name)
 
     def get_by_agent_id(self, agent_id):
+        """Get an agent by Telegram agent_id. Accepts int or string (e.g. from JSON)."""
+        try:
+            agent_id_int = int(agent_id)
+        except (TypeError, ValueError):
+            return None
         for agent in self.all_agents(include_disabled=True):
-            if agent.agent_id == agent_id:
+            if agent.agent_id == agent_id_int:
                 return agent
         return None
 
