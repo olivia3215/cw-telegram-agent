@@ -23,10 +23,12 @@ from utils.formatting import format_log_prefix, format_log_prefix_resolved
 logger = logging.getLogger(__name__)
 
 
-def _parse_time_to_utc(time_str: str, tz: ZoneInfo) -> datetime | None:
+def _parse_time_to_utc(time_str: str, tz: ZoneInfo, *, explicit_timezone: bool = False) -> datetime | None:
     """
     Parse ISO-ish time string to UTC.
     If the string has no timezone offset, interpret in the given tz.
+    If the string has an offset (e.g. Z) and explicit_timezone is True (caller set timezone),
+    the timezone takes priority: treat the datetime as zone-naive in that zone, then convert to UTC.
     """
     if not time_str or not isinstance(time_str, str):
         return None
@@ -37,6 +39,9 @@ def _parse_time_to_utc(time_str: str, tz: ZoneInfo) -> datetime | None:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if dt.tzinfo is not None and explicit_timezone:
+        dt_naive = dt.replace(tzinfo=None)
+        return dt_naive.replace(tzinfo=tz).astimezone(UTC)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=tz)
     return dt.astimezone(UTC)
@@ -84,7 +89,7 @@ async def handle_immediate_event(task: TaskNode, *, agent, channel_id: int) -> b
         except Exception as e:
             logger.warning(f"{log_prefix} Invalid timezone {timezone_str}: {e}")
 
-    time_utc = _parse_time_to_utc(coerce_to_str(time_str), tz)
+    time_utc = _parse_time_to_utc(coerce_to_str(time_str), tz, explicit_timezone=bool(timezone_str))
     if time_utc is None:
         logger.warning(f"{log_prefix} Could not parse event time: {time_str}")
         return True
