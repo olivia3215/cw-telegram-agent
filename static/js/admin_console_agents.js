@@ -4352,10 +4352,21 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
             html += '<button type="button" onclick="scheduleMergeWithNext(\'' + agentEsc + '\', ' + idx + ')" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">Merge with next</button>';
         }
         html += '<button type="button" class="schedule-delete-btn" onclick="scheduleDelete(\'' + agentEsc + '\', ' + idx + ')" style="padding: 2px 8px; background: none; border: none; cursor: pointer; font-size: 16px; color: #999;" title="Delete">&#215;</button>';
+        html += '</div>';
+        if (expanded) {
+            html += '<div id="schedule-events-' + idx + '" class="schedule-activity-events" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;"><div class="loading">Loading events...</div></div>';
+        }
         html += '</div></div></div>';
     });
     html += '</div>';
     container.innerHTML = html;
+    const scheduleActivities = window._scheduleActivities || [];
+    (window._scheduleExpandedIndices || new Set()).forEach(function(idx) {
+        const act = scheduleActivities[idx];
+        if (act && act.start_time && act.end_time) {
+            loadScheduleEntryEvents(window._scheduleAgentName, act.start_time, act.end_time, idx);
+        }
+    });
     const saveAllBtn = document.getElementById('schedule-save-all-btn');
     if (saveAllBtn) {
         saveAllBtn.onclick = () => {
@@ -4448,6 +4459,248 @@ function scheduleDeleteAll(agentName) {
     if (window._scheduleExpandedIndices) window._scheduleExpandedIndices.clear();
     scheduleMarkDirty();
     renderScheduleContent(container, agentName, [], window._scheduleTimezone || null);
+}
+
+function scheduleDeleteAll(agentName) {
+    const container = document.getElementById('schedule-container');
+    const agentSelect = document.getElementById('agents-agent-select');
+    if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
+    if (!confirm('Delete all schedule entries for this agent? You can save or discard changes.')) return;
+    window._scheduleActivities = [];
+    if (window._scheduleExpandedIndices) window._scheduleExpandedIndices.clear();
+    scheduleMarkDirty();
+    renderScheduleContent(container, agentName, [], window._scheduleTimezone || null);
+}
+
+// --- Schedule tab: events in time window ---
+function loadScheduleEntryEvents(agentName, startTime, endTime, activityIndex) {
+    const container = document.getElementById('schedule-events-' + activityIndex);
+    if (!container) return;
+    const params = new URLSearchParams({ start: startTime, end: endTime });
+    Promise.all([
+        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule/events?${params}`).then(r => r.json()),
+        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`).then(r => r.json())
+    ]).then(function([eventsData, partnersData]) {
+        if (eventsData.error) {
+            container.innerHTML = '<div class="error">' + escapeHtml(eventsData.error) + '</div>';
+            return;
+        }
+        if (partnersData.error) {
+            container.innerHTML = '<div class="error">Could not load partners: ' + escapeHtml(partnersData.error) + '</div>';
+            return;
+        }
+        const events = eventsData.events || [];
+        const partners = partnersData.partners || [];
+        window._schedulePartnersList = partners;
+        const timezoneLabel = eventsData.timezone_display || 'agent TZ';
+        window._scheduleEventsTimezoneDisplay = window._scheduleEventsTimezoneDisplay || {};
+        window._scheduleEventsTimezoneDisplay[activityIndex] = timezoneLabel;
+        const intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+        function partnerOptions(selectedUserId) {
+            let opts = '<option value="">Choose partner...</option>';
+            partners.forEach(function(p) {
+                const uid = p.user_id || p;
+                const label = (p.name && p.name.trim()) ? (p.name + ' (' + uid + ')') : uid;
+                const uname = p.username ? ' [@' + p.username + ']' : '';
+                opts += '<option value="' + escapeHtml(uid) + '"' + (uid === String(selectedUserId) ? ' selected' : '') + '>' + escapeHtml(label + uname) + '</option>';
+            });
+            return opts;
+        }
+        let html = '<h4 style="margin: 0 0 8px 0; font-size: 14px;">Events in this window</h4>';
+        html += '<button type="button" id="schedule-events-' + activityIndex + '-new-btn" onclick="scheduleAddNewEvent(\'' + escJsAttr(agentName) + '\', ' + activityIndex + ', \'' + escJsAttr(startTime) + '\')" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; margin-bottom: 12px;">+ New Event</button>';
+        if (events.length > 0) {
+            events.forEach(function(ev) {
+                const userId = ev.user_id || '';
+                const timeVal = (ev.time || '').slice(0, 19).replace('T', 'T');
+                let intervalNum = '';
+                let intervalUnit = 'hours';
+                if (ev.interval && typeof ev.interval === 'string') {
+                    const parts = ev.interval.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        intervalNum = parseFloat(parts[0]) || '';
+                        const u = (parts[1] || '').toLowerCase();
+                        if (u.indexOf('minute') >= 0) intervalUnit = 'minutes';
+                        else if (u.indexOf('hour') >= 0) intervalUnit = 'hours';
+                        else if (u.indexOf('day') >= 0) intervalUnit = 'days';
+                        else if (u.indexOf('week') >= 0) intervalUnit = 'weeks';
+                    }
+                }
+                const occ = ev.occurrences != null ? ev.occurrences : '';
+                const prefix = 'schedule-event-' + activityIndex + '-';
+                html += '<div class="memory-item event-item schedule-context-event" data-activity-index="' + activityIndex + '" data-event-id="' + escapeHtml(ev.id) + '" data-user-id="' + escapeHtml(userId) + '" data-dirty="0" style="background: #fafafa; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #eee;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+                html += '<strong>Event: ' + escapeHtml(ev.id) + '</strong>';
+                html += '<span>';
+                html += '<button id="' + prefix + 'save-btn-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" onclick="saveEventSchedule(\'' + escJsAttr(agentName) + '\', ' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\', \'' + escJsAttr(userId) + '\')" style="display: none; padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px;">Save</button>';
+                html += '<button onclick="deleteEventSchedule(\'' + escJsAttr(agentName) + '\', ' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')" style="padding: 4px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>';
+                html += '</span></div>';
+                html += '<div style="margin-bottom: 6px;"><label style="font-size: 12px;">Conversation partner</label><select id="' + prefix + 'partner-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="margin-left: 8px; padding: 4px 8px;" onchange="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + partnerOptions(userId) + '</select></div>';
+                html += '<div style="margin-bottom: 6px;"><label>Intent:</label><textarea id="' + prefix + 'intent-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="width: 100%; min-height: 50px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; box-sizing: border-box;" oninput="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + escapeHtml(ev.intent || '') + '</textarea></div>';
+                html += '<div style="margin-bottom: 6px;"><label>Time in ' + escapeHtml(timezoneLabel) + ':</label><input type="datetime-local" id="' + prefix + 'time-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + timeVal + '" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; box-sizing: border-box;" onchange="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"></div>';
+                html += '<div style="display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;"><div><label>Interval:</label><input type="number" id="' + prefix + 'interval-num-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + intervalNum + '" step="0.5" min="0" placeholder="number" style="width: 60px; padding: 4px;" oninput="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"><select id="' + prefix + 'interval-unit-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="padding: 4px;" onchange="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + intervalUnits.map(function(u) { return '<option value="' + u + '"' + (u === intervalUnit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div><div><label>Occurrences:</label><input type="number" id="' + prefix + 'occurrences-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + occ + '" min="1" placeholder="empty" style="width: 60px; padding: 4px;" oninput="markEventDirtySchedule(' + activityIndex + ', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"></div></div>';
+                html += '<div id="' + prefix + 'status-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="font-size: 11px; color: #666;"></div></div>';
+            });
+        }
+        container.innerHTML = html;
+    }).catch(function(err) {
+        if (err && err.message === 'unauthorized') return;
+        container.innerHTML = '<div class="error">Error loading events: ' + escapeHtml(String(err && err.message ? err.message : err)) + '</div>';
+    });
+}
+
+function markEventDirtySchedule(activityIndex, userId, eventId) {
+    const prefix = 'schedule-event-' + activityIndex + '-';
+    const statusEl = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
+    const card = statusEl && statusEl.closest('.event-item');
+    if (!card) return;
+    card.setAttribute('data-dirty', '1');
+    const saveBtn = document.getElementById(prefix + 'save-btn-' + userId + '-' + eventId);
+    if (saveBtn) saveBtn.style.display = 'inline-block';
+    if (statusEl) statusEl.textContent = '';
+}
+
+function getEventFormValuesSchedule(activityIndex, userId, eventId) {
+    const prefix = 'schedule-event-' + activityIndex + '-';
+    const intentEl = document.getElementById(prefix + 'intent-' + userId + '-' + eventId);
+    const timeEl = document.getElementById(prefix + 'time-' + userId + '-' + eventId);
+    const intervalNumEl = document.getElementById(prefix + 'interval-num-' + userId + '-' + eventId);
+    const intervalUnitEl = document.getElementById(prefix + 'interval-unit-' + userId + '-' + eventId);
+    const occurrencesEl = document.getElementById(prefix + 'occurrences-' + userId + '-' + eventId);
+    const partnerEl = document.getElementById(prefix + 'partner-' + userId + '-' + eventId);
+    if (!intentEl || !timeEl) return null;
+    const timeVal = timeEl.value;
+    if (!timeVal) return null;
+    const intervalNum = intervalNumEl && intervalNumEl.value.trim() !== '' ? parseFloat(intervalNumEl.value) : null;
+    const intervalUnit = intervalUnitEl ? intervalUnitEl.value : 'hours';
+    const interval = (intervalNum != null && intervalNum > 0) ? (intervalNum + ' ' + intervalUnit) : null;
+    const occ = occurrencesEl && occurrencesEl.value.trim() !== '' ? parseInt(occurrencesEl.value, 10) : null;
+    const timeIso = timeVal.length === 16 ? timeVal + ':00' : timeVal;
+    const newUserId = partnerEl ? partnerEl.value : userId;
+    return { intent: intentEl.value.trim(), time: timeIso, interval: interval, occurrences: occ, newUserId: newUserId };
+}
+
+function saveEventSchedule(agentName, activityIndex, userId, eventId, originalUserId) {
+    const payload = getEventFormValuesSchedule(activityIndex, userId, eventId);
+    if (!payload) { alert('Intent and time are required.'); return; }
+    const newUserId = payload.newUserId;
+    if (!newUserId) { alert('Please select a conversation partner.'); return; }
+    const prefix = 'schedule-event-' + activityIndex + '-';
+    const statusEl = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
+    if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = '#007bff'; }
+    const isDraft = eventId.indexOf('event-draft-') === 0;
+    const partnerChanged = (originalUserId !== newUserId);
+    const doSave = function(targetUserId) {
+        const body = { intent: payload.intent, time: payload.time, interval: payload.interval, occurrences: payload.occurrences };
+        const url = (isDraft || partnerChanged) ? `${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${encodeURIComponent(targetUserId)}` : `${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${encodeURIComponent(targetUserId)}/${encodeURIComponent(eventId)}`;
+        const method = (isDraft || partnerChanged) ? 'POST' : 'PUT';
+        fetchWithAuth(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function(r) { return r.json().then(function(data) { return { status: r.status, data: data }; }); })
+            .then(function(res) {
+                const statusEl2 = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
+                if (res.status === 404) {
+                    if (statusEl2) { statusEl2.textContent = 'Event no longer exists.'; statusEl2.style.color = '#856404'; }
+                    var act = (window._scheduleActivities || [])[activityIndex];
+                    if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+                    return;
+                }
+                if (res.data.error) {
+                    if (statusEl2) { statusEl2.textContent = res.data.error; statusEl2.style.color = '#dc3545'; }
+                    return;
+                }
+                if (partnerChanged && !isDraft) {
+                    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${encodeURIComponent(originalUserId)}/${encodeURIComponent(eventId)}`, { method: 'DELETE' })
+                        .then(function() {
+                            var act = (window._scheduleActivities || [])[activityIndex];
+                            if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+                        });
+                    return;
+                }
+                if (statusEl2) { statusEl2.textContent = 'Saved'; statusEl2.style.color = '#28a745'; }
+                const card = statusEl2 && statusEl2.closest('.event-item');
+                if (card) { card.setAttribute('data-dirty', '0'); card.setAttribute('data-user-id', targetUserId); }
+                const saveBtn = document.getElementById(prefix + 'save-btn-' + userId + '-' + eventId);
+                if (saveBtn) saveBtn.style.display = 'none';
+                if (isDraft) { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
+            })
+            .catch(function() {
+                var statusEl2 = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
+                if (statusEl2) { statusEl2.textContent = 'Error'; statusEl2.style.color = '#dc3545'; }
+            });
+    };
+    if (partnerChanged && !isDraft) {
+        doSave(newUserId);
+    } else {
+        doSave((isDraft || partnerChanged) ? newUserId : userId);
+    }
+}
+
+function deleteEventSchedule(agentName, activityIndex, userId, eventId) {
+    if (!confirm('Delete this event?')) return;
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${encodeURIComponent(userId)}/${encodeURIComponent(eventId)}`, { method: 'DELETE' })
+        .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+        .then(function(res) {
+            if (res.data.error) alert('Error: ' + res.data.error);
+            else {
+                var act = (window._scheduleActivities || [])[activityIndex];
+                if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+            }
+        })
+        .catch(function(err) { if (err && err.message !== 'unauthorized') alert('Error: ' + err); });
+}
+
+function scheduleAddNewEvent(agentName, activityIndex, startTime) {
+    var container = document.getElementById('schedule-events-' + activityIndex);
+    if (!container) return;
+    var placeholder = container.querySelector('.placeholder-card');
+    if (placeholder) placeholder.remove();
+    var draftId = 'event-draft-' + Math.random().toString(36).slice(2, 10);
+    var timeStr = '';
+    if (startTime && typeof startTime === 'string' && startTime.length >= 16) {
+        timeStr = startTime.slice(0, 16);
+    }
+    if (!timeStr) {
+        try {
+            var d = new Date(startTime);
+            if (!isNaN(d.getTime())) {
+                timeStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            }
+        } catch (e) {}
+    }
+    if (!timeStr) timeStr = new Date().toISOString().slice(0, 16);
+    var timezoneLabel = (window._scheduleEventsTimezoneDisplay && window._scheduleEventsTimezoneDisplay[activityIndex]) || 'agent TZ';
+    var intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+    var prefix = 'schedule-event-' + activityIndex + '-';
+    var userIdPlaceholder = '__new__';
+    var draftHtml = '<div class="memory-item event-item schedule-context-event" data-activity-index="' + activityIndex + '" data-event-id="' + draftId + '" data-user-id="' + userIdPlaceholder + '" data-dirty="1" style="background: #fff3cd; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #ffc107;">';
+    draftHtml += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;"><strong>Event: ' + escapeHtml(draftId) + '</strong><span>';
+    draftHtml += '<button id="' + prefix + 'save-btn-' + userIdPlaceholder + '-' + draftId + '" onclick="saveEventSchedule(\'' + escJsAttr(agentName) + '\', ' + activityIndex + ', \'' + userIdPlaceholder + '\', \'' + escJsAttr(draftId) + '\', \'' + userIdPlaceholder + '\')" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px;">Save</button>';
+    draftHtml += '<button onclick="removeEventDraftSchedule(' + activityIndex + ', \'' + escJsAttr(draftId) + '\')" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel</button></span></div>';
+    draftHtml += '<div style="margin-bottom: 6px;"><label style="font-size: 12px;">Conversation partner</label><select id="' + prefix + 'partner-' + userIdPlaceholder + '-' + draftId + '" style="margin-left: 8px; padding: 4px 8px;">';
+    draftHtml += '<option value="">Choose partner...</option>';
+    (window._schedulePartnersList || []).forEach(function(p) {
+        var uid = p.user_id || p;
+        var label = (p.name && p.name.trim()) ? (p.name + ' (' + uid + ')') : uid;
+        draftHtml += '<option value="' + escapeHtml(uid) + '">' + escapeHtml(label) + '</option>';
+    });
+    draftHtml += '</select></div>';
+    draftHtml += '<div style="margin-bottom: 6px;"><label>Intent:</label><textarea id="' + prefix + 'intent-' + userIdPlaceholder + '-' + draftId + '" style="width: 100%; min-height: 50px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; box-sizing: border-box;">New event</textarea></div>';
+    draftHtml += '<div style="margin-bottom: 6px;"><label>Time in ' + escapeHtml(timezoneLabel) + ':</label><input type="datetime-local" id="' + prefix + 'time-' + userIdPlaceholder + '-' + draftId + '" value="' + timeStr + '" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; box-sizing: border-box;"></div>';
+    draftHtml += '<div style="display: flex; gap: 8px; margin-bottom: 6px;"><div><label>Interval:</label><input type="number" id="' + prefix + 'interval-num-' + userIdPlaceholder + '-' + draftId + '" value="" step="0.5" min="0" style="width: 60px; padding: 4px;"><select id="' + prefix + 'interval-unit-' + userIdPlaceholder + '-' + draftId + '" style="padding: 4px;">' + intervalUnits.map(function(u) { return '<option value="' + u + '"' + (u === 'hours' ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div><div><label>Occurrences:</label><input type="number" id="' + prefix + 'occurrences-' + userIdPlaceholder + '-' + draftId + '" value="" min="1" style="width: 60px; padding: 4px;"></div></div>';
+    draftHtml += '<div id="' + prefix + 'status-' + userIdPlaceholder + '-' + draftId + '" style="font-size: 11px; color: #666;"></div></div>';
+    var newBtn = document.getElementById('schedule-events-' + activityIndex + '-new-btn');
+    if (newBtn) {
+        newBtn.insertAdjacentHTML('afterend', draftHtml);
+    } else {
+        container.insertAdjacentHTML('beforeend', draftHtml);
+    }
+}
+
+function removeEventDraftSchedule(activityIndex, eventId) {
+    var prefix = 'schedule-event-' + activityIndex + '-';
+    var userIdPlaceholder = '__new__';
+    var statusEl = document.getElementById(prefix + 'status-' + userIdPlaceholder + '-' + eventId);
+    var card = statusEl && statusEl.closest('.event-item');
+    if (card) card.remove();
 }
 
 function scheduleGetActivities(agentName, cb) {

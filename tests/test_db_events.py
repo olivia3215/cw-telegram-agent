@@ -46,3 +46,47 @@ class TestParseIntervalSeconds:
     def test_invalid_returns_none(self):
         assert db_events.parse_interval_seconds("") is None
         assert db_events.parse_interval_seconds("x hours") is None
+
+
+class TestLoadEventsForAgentInWindow:
+    """Tests for load_events_for_agent_in_window (with mocked DB)."""
+
+    def test_returns_events_with_channel_id(self):
+        from unittest.mock import patch, MagicMock
+        from datetime import datetime
+
+        with patch("db.events.get_db_connection") as mock_conn:
+            mock_cursor = MagicMock()
+            mock_conn.return_value.__enter__.return_value.cursor.return_value = mock_cursor
+            mock_cursor.fetchall.return_value = [
+                {
+                    "id": "ev-1",
+                    "channel_id": 999,
+                    "time_utc": datetime(2025, 6, 1, 12, 30, 0),
+                    "intent": "Check in",
+                    "interval_value": "1 hours",
+                    "occurrences": 3,
+                },
+                {
+                    "id": "ev-2",
+                    "channel_id": 888,
+                    "time_utc": datetime(2025, 6, 1, 12, 45, 0),
+                    "intent": "Remind",
+                    "interval_value": None,
+                    "occurrences": None,
+                },
+            ]
+            result = db_events.load_events_for_agent_in_window(
+                12345,
+                datetime(2025, 6, 1, 12, 0, 0),
+                datetime(2025, 6, 1, 13, 0, 0),
+            )
+            assert len(result) == 2
+            assert result[0]["id"] == "ev-1"
+            assert result[0]["channel_id"] == 999
+            assert result[0]["intent"] == "Check in"
+            assert result[0]["interval"] == "1 hours"
+            assert result[0]["occurrences"] == 3
+            assert result[1]["id"] == "ev-2"
+            assert result[1]["channel_id"] == 888
+            assert result[1].get("occurrences") is None

@@ -111,6 +111,63 @@ def load_events(agent_telegram_id: int, channel_id: int) -> list[dict[str, Any]]
             cursor.close()
 
 
+def load_events_for_agent_in_window(
+    agent_telegram_id: int,
+    window_start_utc: datetime | str,
+    window_end_utc: datetime | str,
+) -> list[dict[str, Any]]:
+    """
+    Load events for an agent whose next occurrence (time_utc) falls in [window_start_utc, window_end_utc).
+    Half-open interval: >= start and < end, so an event at exactly the entry end time is excluded.
+    Returns list of dicts with id, intent, time_utc (ISO), interval, occurrences, channel_id.
+    """
+    if isinstance(window_start_utc, datetime):
+        start_str = window_start_utc.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        start_str = normalize_datetime_for_mysql(window_start_utc)
+    if isinstance(window_end_utc, datetime):
+        end_str = window_end_utc.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        end_str = normalize_datetime_for_mysql(window_end_utc)
+    if not start_str or not end_str:
+        return []
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, channel_id, time_utc, intent, interval_value, occurrences
+                FROM events
+                WHERE agent_telegram_id = %s AND time_utc >= %s AND time_utc < %s
+                ORDER BY time_utc ASC
+                """,
+                (agent_telegram_id, start_str, end_str),
+            )
+            rows = cursor.fetchall()
+            conn.commit()
+            out = []
+            for row in rows:
+                ev = {
+                    "id": row["id"],
+                    "channel_id": int(row["channel_id"]),
+                    "intent": row["intent"] or "",
+                }
+                if row["time_utc"]:
+                    ev["time_utc"] = row["time_utc"].isoformat()
+                if row.get("interval_value") is not None:
+                    ev["interval"] = row["interval_value"]
+                if row.get("occurrences") is not None:
+                    ev["occurrences"] = int(row["occurrences"])
+                out.append(ev)
+            return out
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Failed to load events for agent in window: {e}")
+            raise
+        finally:
+            cursor.close()
+
+
 def save_event(
     agent_telegram_id: int,
     channel_id: int,
