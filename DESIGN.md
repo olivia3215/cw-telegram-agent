@@ -241,6 +241,8 @@ Task executions are logged at three points in the system:
    - Called from `run_one_tick()` after handler completes
    - Excludes `wait` tasks
 
+**Events (scheduled actions):** At the start of each tick, before round-robin task execution, the system computes the global next event (soonest by UTC across non-gagged channels). If that event's time has passed, it fires by inserting a `received` task with `xsend_intent` set to the event's intent, then reschedules (time += interval, occurrences decremented) or deletes the event. Events are stored in the `events` table; agents can create/update/delete them via the `event` task (see `configdir/prompts/Task-Event.md`). The LLM prompt for a conversation includes an **# Events** section (when the channel has events) with times in the agent's timezone.
+
 2. **Task Failure** (`src/tick.py`)
    - Logged when tasks raise exceptions
    - Captures failure message and task details
@@ -249,7 +251,7 @@ Task executions are logged at three points in the system:
 3. **Immediate Task Dispatch** (`src/handlers/registry.py`)
    - Logged for tasks processed immediately (not via task graph)
    - Called before handler execution
-   - Examples: `remember`, `think`, `note`, `plan`, `intend`
+   - Examples: `remember`, `think`, `note`, `plan`, `intend`, `event`
 
 4. **Retrieve Task Execution** (`src/handlers/received_helpers/task_parsing.py`)
    - Logged during retrieval augmentation loop

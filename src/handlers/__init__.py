@@ -6,6 +6,7 @@
 from . import (
     block,  # noqa: F401
     clear_conversation,  # noqa: F401
+    event,  # noqa: F401
     intend,  # noqa: F401
     note,  # noqa: F401
     plan,  # noqa: F401

@@ -400,6 +400,7 @@ async function loadConversationPartners(agentName, subtab, forceRefresh = false)
                 // "conversation parameters" asterisk marker is driven by DB-backed per-conversation overrides.
                 'conversation-parameters': 'conversation_parameters',
                 'plans': 'plans',
+                'events': 'events',
                 'conversation': 'conversation',  // Special case, uses different endpoint
                 'work-queue': 'work_queue'
             };
@@ -922,6 +923,252 @@ function deletePlan(agentName, userId, planId) {
         }
         alert('Error deleting plan: ' + error);
     });
+}
+
+// --- Events (scheduled actions) ---
+function loadEvents() {
+    const agentSelect = document.getElementById('conversations-agent-select');
+    const partnerSelect = document.getElementById('conversations-partner-select');
+    const userIdInput = document.getElementById('conversations-user-id');
+
+    const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+    const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+
+    if (!agentName || !userId) {
+        const container = document.getElementById('events-container');
+        if (container) showLoading(container, 'Select an agent and conversation partner');
+        return Promise.resolve();
+    }
+
+    const container = document.getElementById('events-container');
+    showLoading(container, 'Loading events...');
+
+    const url = `${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}`;
+    return fetchWithAuth(url, { method: 'GET' })
+        .then(response => {
+            const ct = (response.headers.get('Content-Type') || '').toLowerCase();
+            const isJson = ct.indexOf('application/json') >= 0;
+            if (!response.ok) {
+                return isJson ? response.json().then(data => ({ ok: false, status: response.status, data })) : response.text().then(text => ({ ok: false, status: response.status, data: { error: (text && text.trim().startsWith('<')) ? 'Server returned an error page (' + response.status + '). Try again.' : (text || 'Server returned ' + response.status) } }));
+            }
+            if (!isJson) return response.text().then(() => ({ ok: false, status: response.status, data: { error: 'Server did not return JSON' } }));
+            return response.json().then(data => ({ ok: true, data }));
+        })
+        .then(({ ok, status, data }) => {
+            if (!ok) {
+                showError(container, data.error || `Request failed (${status}). Try again.`);
+                return;
+            }
+
+            const events = data.events || [];
+            const timezoneLabel = data.timezone_display || 'agent TZ';
+            if (typeof window !== 'undefined') window._eventsTimezoneDisplay = timezoneLabel;
+            let html = '<div style="margin-bottom: 16px;"><button onclick="createNewEvent(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ New Event</button></div>';
+
+            if (events.length === 0) {
+                html += '<div class="placeholder-card">No events for this conversation.</div>';
+                container.innerHTML = html;
+                return;
+            }
+
+            const intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+            html += events.map(ev => {
+                const timeVal = (ev.time || '').slice(0, 19).replace('T', 'T');
+                let intervalNum = '';
+                let intervalUnit = 'hours';
+                if (ev.interval && typeof ev.interval === 'string') {
+                    const parts = ev.interval.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        intervalNum = parseFloat(parts[0]) || '';
+                        const u = (parts[1] || '').toLowerCase();
+                        if (u.indexOf('minute') >= 0) intervalUnit = 'minutes';
+                        else if (u.indexOf('hour') >= 0) intervalUnit = 'hours';
+                        else if (u.indexOf('day') >= 0) intervalUnit = 'days';
+                        else if (u.indexOf('week') >= 0) intervalUnit = 'weeks';
+                    }
+                }
+                const occ = ev.occurrences != null ? ev.occurrences : '';
+                return `
+                <div class="memory-item event-item" data-event-id="${escapeHtml(ev.id)}" data-dirty="0" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <strong>Event: ${escapeHtml(ev.id)}</strong>
+                        <span>
+                            <button id="event-save-btn-${escJsAttr(userId)}-${escJsAttr(ev.id)}" onclick="saveEvent('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')" style="display: none; padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 6px;">Save</button>
+                            <button onclick="deleteEvent('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(ev.id)}')" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
+                        </span>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label>Intent:</label>
+                        <textarea id="event-intent-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">${escapeHtml(ev.intent || '')}</textarea>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label>Time (${escapeHtml(timezoneLabel)}):</label>
+                        <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${timeVal}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+                        <div>
+                            <label>Interval:</label>
+                            <input type="number" id="event-interval-num-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${intervalNum}" step="0.5" min="0" placeholder="number" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                            <select id="event-interval-unit-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                                ${intervalUnits.map(u => '<option value="' + u + '"' + (u === intervalUnit ? ' selected' : '') + '>' + u + '</option>').join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label>Occurrences (optional):</label>
+                            <input type="number" id="event-occurrences-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${occ}" min="1" placeholder="empty = unlimited" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
+                        </div>
+                    </div>
+                    <div id="event-status-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="font-size: 12px; color: #666;"></div>
+                </div>`;
+            }).join('');
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            if (error && error.message === 'unauthorized') return;
+            const msg = (error && error.name === 'SyntaxError') ? 'Server returned an unexpected response. Try again.' : (error && error.message) ? error.message : String(error);
+            container.innerHTML = '<div class="error">Error loading events: ' + escapeHtml(msg) + '</div>';
+        });
+}
+
+function markEventDirty(userId, eventId) {
+    const statusEl = document.getElementById('event-status-' + userId + '-' + eventId);
+    const card = statusEl && statusEl.closest('.event-item');
+    if (!card) return;
+    card.setAttribute('data-dirty', '1');
+    const saveBtn = document.getElementById('event-save-btn-' + userId + '-' + eventId);
+    if (saveBtn) saveBtn.style.display = 'inline-block';
+    if (statusEl) statusEl.textContent = '';
+}
+
+function getEventFormValues(userId, eventId) {
+    const intentEl = document.getElementById('event-intent-' + userId + '-' + eventId);
+    const timeEl = document.getElementById('event-time-' + userId + '-' + eventId);
+    const intervalNumEl = document.getElementById('event-interval-num-' + userId + '-' + eventId);
+    const intervalUnitEl = document.getElementById('event-interval-unit-' + userId + '-' + eventId);
+    const occurrencesEl = document.getElementById('event-occurrences-' + userId + '-' + eventId);
+    if (!intentEl || !timeEl) return null;
+    const timeVal = timeEl.value;
+    if (!timeVal) return null;
+    const intervalNum = intervalNumEl && intervalNumEl.value.trim() !== '' ? parseFloat(intervalNumEl.value) : null;
+    const intervalUnit = intervalUnitEl ? intervalUnitEl.value : 'hours';
+    const interval = (intervalNum != null && intervalNum > 0) ? (intervalNum + ' ' + intervalUnit) : null;
+    const occ = occurrencesEl && occurrencesEl.value.trim() !== '' ? parseInt(occurrencesEl.value, 10) : null;
+    const timeIso = timeVal.length === 16 ? timeVal + ':00' : timeVal;
+    return { intent: intentEl.value.trim(), time: timeIso, interval: interval, occurrences: occ };
+}
+
+function saveEvent(agentName, userId, eventId) {
+    const payload = getEventFormValues(userId, eventId);
+    if (!payload) { alert('Intent and time are required.'); return; }
+    const statusEl = document.getElementById('event-status-' + userId + '-' + eventId);
+    if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = '#007bff'; }
+    const isDraft = eventId.indexOf('event-draft-') === 0;
+    const url = isDraft
+        ? `${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}`
+        : `${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}/${eventId}`;
+    const method = isDraft ? 'POST' : 'PUT';
+    fetchWithAuth(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => {
+            const ct = (r.headers.get('Content-Type') || '').toLowerCase();
+            const isJson = ct.indexOf('application/json') >= 0;
+            return isJson ? r.json().then(data => ({ status: r.status, data })) : { status: r.status, data: {} };
+        })
+        .then(({ status, data }) => {
+            const statusEl2 = document.getElementById('event-status-' + userId + '-' + eventId);
+            if (status === 404) {
+                if (statusEl2) { statusEl2.textContent = 'Event no longer exists (may have been fired)'; statusEl2.style.color = '#856404'; }
+                setTimeout(function() { loadEvents(); }, 0);
+                return;
+            }
+            if (data.error) {
+                if (statusEl2) { statusEl2.textContent = data.error; statusEl2.style.color = '#dc3545'; }
+                return;
+            }
+            if (statusEl2) { statusEl2.textContent = 'Saved'; statusEl2.style.color = '#28a745'; }
+            const card = statusEl2 && statusEl2.closest('.event-item');
+            if (card) {
+                card.setAttribute('data-dirty', '0');
+                const saveBtn = document.getElementById('event-save-btn-' + userId + '-' + eventId);
+                if (saveBtn) saveBtn.style.display = 'none';
+            }
+            if (isDraft) setTimeout(function() { loadEvents(); }, 0);
+        })
+        .catch(() => {
+            const statusEl2 = document.getElementById('event-status-' + userId + '-' + eventId);
+            if (statusEl2) { statusEl2.textContent = 'Error'; statusEl2.style.color = '#dc3545'; }
+        });
+}
+
+function createNewEvent(agentName, userId) {
+    if (!agentName || !userId) { alert('Please select an agent and conversation partner'); return; }
+    const container = document.getElementById('events-container');
+    if (!container) return;
+    var placeholder = container.querySelector('.placeholder-card');
+    if (placeholder) placeholder.remove();
+    var draftId = 'event-draft-' + Math.random().toString(36).slice(2, 10);
+    var now = new Date();
+    now.setHours(now.getHours() + 1);
+    now.setMinutes(0, 0, 0);
+    var timeStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + 'T' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':00';
+    var intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+    var draftHtml = `
+    <div class="memory-item event-item" data-event-id="${escapeHtml(draftId)}" data-dirty="1" style="background: white; padding: 16px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <strong>Event: ${escapeHtml(draftId)}</strong>
+            <span>
+                <button id="event-save-btn-${escJsAttr(userId)}-${draftId}" onclick="saveEvent('${escJsAttr(agentName)}', '${escJsAttr(userId)}', '${escJsAttr(draftId)}')" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 6px;">Save</button>
+                <button onclick="removeEventDraft('${escJsAttr(userId)}', '${escJsAttr(draftId)}')" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel</button>
+            </span>
+        </div>
+        <div style="margin-bottom: 8px;">
+            <label>Intent:</label>
+            <textarea id="event-intent-${escJsAttr(userId)}-${draftId}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">New event</textarea>
+        </div>
+        <div style="margin-bottom: 8px;">
+            <label>Time (${escapeHtml(typeof window !== 'undefined' && window._eventsTimezoneDisplay ? window._eventsTimezoneDisplay : 'agent TZ')}):</label>
+            <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${draftId}" value="${timeStr}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
+        </div>
+        <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+            <div>
+                <label>Interval:</label>
+                <input type="number" id="event-interval-num-${escJsAttr(userId)}-${draftId}" value="" step="0.5" min="0" placeholder="number" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
+                <select id="event-interval-unit-${escJsAttr(userId)}-${draftId}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
+                    ${intervalUnits.map(function(u){ return '<option value="' + u + '"' + (u === 'hours' ? ' selected' : '') + '>' + u + '</option>'; }).join('')}
+                </select>
+            </div>
+            <div>
+                <label>Occurrences (optional):</label>
+                <input type="number" id="event-occurrences-${escJsAttr(userId)}-${draftId}" value="" min="1" placeholder="empty = unlimited" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
+            </div>
+        </div>
+        <div id="event-status-${escJsAttr(userId)}-${draftId}" style="font-size: 12px; color: #666;"></div>
+    </div>`;
+    container.insertAdjacentHTML('beforeend', draftHtml);
+}
+
+function removeEventDraft(userId, eventId) {
+    if (eventId.indexOf('event-draft-') !== 0) return;
+    var statusEl = document.getElementById('event-status-' + userId + '-' + eventId);
+    var card = statusEl && statusEl.closest('.event-item');
+    if (card) card.remove();
+    var container = document.getElementById('events-container');
+    if (container && !container.querySelector('.event-item')) {
+        var placeholder = document.createElement('div');
+        placeholder.className = 'placeholder-card';
+        placeholder.textContent = 'No events for this conversation.';
+        container.appendChild(placeholder);
+    }
+}
+
+function deleteEvent(agentName, userId, eventId) {
+    if (!confirm('Delete this event?')) return;
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${userId}/${eventId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) alert('Error: ' + data.error);
+        else loadEvents();
+    })
+    .catch(err => { if (err && err.message !== 'unauthorized') alert('Error: ' + err); });
 }
 
 // Auto-save for summaries

@@ -566,7 +566,7 @@ The system uses a storage abstraction to support both filesystem and MySQL backe
 - `agent/storage_factory.py` creates the appropriate storage backend
 
 **Current Implementation:**
-- **MySQL**: Used for all agent data (memories, intentions, plans, summaries, schedules, notes, media metadata, agent activity, channel metadata)
+- **MySQL**: Used for all agent data (memories, intentions, plans, summaries, schedules, notes, events, media metadata, agent activity, channel metadata)
 - **Filesystem**: Used for:
   - Media files (always on disk)
   - Telegram session files
@@ -578,6 +578,7 @@ The system uses a storage abstraction to support both filesystem and MySQL backe
 - `memories` - Global and channel-specific memories
 - `intentions` - Agent intentions
 - `plans` - Channel-specific plans
+- `events` - Channel-specific scheduled events (future actions with optional recurrence); fired by the tick loop via `xsend_intent`
 - `summaries` - Conversation summaries
 - `schedules` - Agent schedules
 - `notes` - Notes (conversation-specific memories) stored in MySQL

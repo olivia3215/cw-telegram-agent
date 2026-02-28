@@ -176,6 +176,16 @@ def register_main_routes(agents_bp: Blueprint):
                 except Exception as e:
                     logger.debug(f"Error checking plans in MySQL: {e}")
                     agents_with_plans_set = set()
+
+                try:
+                    from db.events import has_events_for_agent
+                    agents_with_events_set = {
+                        aid for aid in agent_ids_with_agent_id
+                        if has_events_for_agent(aid)
+                    }
+                except Exception as e:
+                    logger.debug(f"Error checking events in MySQL: {e}")
+                    agents_with_events_set = set()
                 
                 try:
                     from db.memories import agents_with_memories
@@ -192,6 +202,7 @@ def register_main_routes(agents_bp: Blueprint):
                     agents_with_intentions_set = set()
             else:
                 agents_with_plans_set = set()
+                agents_with_events_set = set()
                 agents_with_memories_set = set()
                 agents_with_intentions_set = set()
             
@@ -236,8 +247,9 @@ def register_main_routes(agents_bp: Blueprint):
                             logger.debug(f"Failed to check docs path for {agent.config_name} in {config_dir}: {e}")
                             continue
                 
-                # Check if agent has plans, memories, and intentions (from bulk queries)
+                # Check if agent has plans, events, memories, and intentions (from bulk queries)
                 has_plans = agent.agent_id is not None and agent.agent_id in agents_with_plans_set
+                has_events = agent.agent_id is not None and agent.agent_id in agents_with_events_set
                 has_memories = agent.agent_id is not None and agent.agent_id in agents_with_memories_set
                 has_intentions = agent.agent_id is not None and agent.agent_id in agents_with_intentions_set
                 
@@ -256,6 +268,7 @@ def register_main_routes(agents_bp: Blueprint):
                     "is_disabled": agent.is_disabled,
                     "has_documents": has_documents,
                     "has_plans": has_plans,
+                    "has_events": has_events,
                     "has_memories": has_memories,
                     "has_intentions": has_intentions,
                     "has_notes": has_notes,

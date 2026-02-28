@@ -402,6 +402,7 @@ def register_memory_routes(agents_bp: Blueprint):
                     "conversation_gagged": False,
                     "conversation_parameters": False,
                     "plans": False,
+                    "events": False,
                     "work_queue": False
                 }
             
@@ -460,6 +461,14 @@ def register_memory_routes(agents_bp: Blueprint):
                     checks["plans"] = len(plans) > 0
                 except Exception:
                     checks["plans"] = False
+
+                # Check events
+                try:
+                    from db import events as db_events
+                    events_list = db_events.load_events(agent.agent_id, channel_id)
+                    checks["events"] = len(events_list) > 0
+                except Exception:
+                    checks["events"] = False
                 
                 # Check work queue
                 try:

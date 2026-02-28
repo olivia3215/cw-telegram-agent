@@ -313,6 +313,16 @@ async def build_complete_system_prompt(
     else:
         logger.info(f"{log_prefix} No memory content found for channel {channel_id}")
 
+    # Add events (scheduled actions) for this channel; times in agent timezone
+    event_content = agent._load_event_content(channel_id)
+    if event_content:
+        system_prompt += (
+            "\n\n# Events\n\nThe following future events are scheduled for this channel:\n\n```json\n"
+            + event_content
+            + "\n```\n"
+        )
+        logger.info(f"{log_prefix} Added events to system prompt for channel {channel_id}")
+
     # Add current time
     now = agent.get_current_time()
     system_prompt += (

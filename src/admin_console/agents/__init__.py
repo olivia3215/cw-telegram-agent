@@ -15,6 +15,7 @@ from admin_console.agents import (
     configuration,
     conversation,
     conversation_llm,
+    events,
     intentions,
     login,
     media,
@@ -34,6 +35,7 @@ costs.register_cost_routes(agents_bp)
 contacts.register_contact_routes(agents_bp)
 conversation.register_conversation_routes(agents_bp)
 conversation_llm.register_conversation_llm_routes(agents_bp)
+events.register_event_routes(agents_bp)
 intentions.register_intention_routes(agents_bp)
 login.register_login_routes(agents_bp)
 media.register_media_routes(agents_bp)

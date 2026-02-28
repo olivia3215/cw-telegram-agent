@@ -397,6 +397,45 @@ _TASK_RESPONSE_SCHEMA_DICT: Dict[str, Any] = {
                 "properties": {
                     "kind": {
                         "type": "string",
+                        "enum": ["event"],
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Optional event identifier for updating or deleting an existing event.",
+                    },
+                    "intent": {
+                        "type": "string",
+                        "description": "Intent text for the scheduled action (what to do when the event fires). Use empty string to delete an existing event.",
+                    },
+                    "time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the event should fire (ISO 8601 with timezone, or interpreted in agent timezone if timezone omitted). Required for create.",
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone (e.g. America/New_York). If omitted, time is interpreted in the agent's timezone.",
+                    },
+                    "interval": {
+                        "type": "string",
+                        "description": "Optional recurrence interval, e.g. '1 hours', '30 minutes', '1 days', '1 weeks'. Singular or plural accepted.",
+                    },
+                    "occurrences": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional number of times the event should recur. If omitted with interval, recurs until deleted.",
+                    },
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+                "title": "Event Task",
+                "description": "Create, update, or delete a channel-specific scheduled event (future action with optional recurrence).",
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
                         "enum": ["summarize"],
                     },
                     "id": {

@@ -102,6 +102,13 @@ def delete_all_agent_data(agent_telegram_id: int) -> dict[str, int]:
                 (agent_telegram_id,),
             )
             deleted_counts["conversation_gagged"] = cursor.rowcount
+
+            # Delete from events
+            cursor.execute(
+                "DELETE FROM events WHERE agent_telegram_id = %s",
+                (agent_telegram_id,),
+            )
+            deleted_counts["events"] = cursor.rowcount
             
             conn.commit()
             
