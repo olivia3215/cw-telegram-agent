@@ -224,3 +224,39 @@ async def test_non_wait_tasks_with_preserve_true_can_become_dependencies(monkeyp
     send_task_node = new_graph.get_node("send-preserve-test")
     assert send_task_node is not None
     assert send_task_node.params.get("preserve") is True
+
+
+@pytest.mark.asyncio
+async def test_self_channel_skips_received_task_creation(monkeypatch):
+    """
+    When channel_id equals agent_id (saved messages / self channel), no received task is created.
+    """
+    WorkQueue.reset_instance()
+    work_queue = WorkQueue.get_instance()
+    agent_id = 999
+    channel_id = 999  # Same as agent_id = self channel
+
+    mock_client = AsyncMock()
+    mock_client.is_connected = MagicMock(return_value=True)
+
+    mock_agent = MagicMock(
+        system_prompt_name="TestPrompt",
+        llm=MagicMock(history_size=10),
+        client=mock_client,
+        is_disabled=False,
+        agent_id=agent_id,
+    )
+    mock_agent.ensure_client_connected = AsyncMock(return_value=True)
+
+    monkeypatch.setattr("task_graph_helpers.get_agent_for_id", lambda x: mock_agent)
+    monkeypatch.setattr("task_graph_helpers.get_channel_name", AsyncMock(return_value="Saved Messages"))
+
+    await insert_received_task_for_conversation(
+        recipient_id=agent_id,
+        channel_id=channel_id,
+        message_id=1,
+    )
+
+    # No graph should exist for self channel
+    g = work_queue.graph_for_conversation(agent_id, channel_id)
+    assert g is None

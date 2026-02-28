@@ -53,7 +53,7 @@ async def handle_immediate_event(task: TaskNode, *, agent, channel_id: int) -> b
         logger.warning("[event] Missing agent context; deferring event task")
         return False
     if not getattr(agent, "is_authenticated", False) or not getattr(agent, "agent_id", None):
-        log_prefix = await format_log_prefix(agent.name, None)
+        log_prefix = await format_log_prefix(agent.name, channel_id, agent=agent)
         logger.warning(f"{log_prefix} Cannot process event task: agent not authenticated")
         return False
 
@@ -69,7 +69,7 @@ async def handle_immediate_event(task: TaskNode, *, agent, channel_id: int) -> b
     occurrences = params.pop("occurrences", None)
 
     agent_id = agent.agent_id
-    log_prefix = await format_log_prefix(agent.name, None)
+    log_prefix = await format_log_prefix(agent.name, channel_id, agent=agent)
 
     if not intent and event_id:
         try:

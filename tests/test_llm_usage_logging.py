@@ -360,3 +360,67 @@ def test_gemini_no_thinking_tokens_still_works():
                     assert "cost=$0.0020" in log_message
 
 
+def test_gemini_rest_response_with_none_token_counts_does_not_raise():
+    """Regression: API may return null for token counts; avoid None + int (issue #656)."""
+    from llm.gemini import GeminiLLM
+
+    mock_response = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Test response"}]
+                }
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 100,
+            "candidatesTokenCount": None,  # API can return null
+            "thoughtsTokenCount": None,
+        }
+    }
+
+    with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
+        with patch("llm.usage_logging.logger") as mock_logger:
+            with patch("llm.gemini.GOOGLE_GEMINI_API_KEY", "fake-api-key"):
+                with patch("llm.gemini.genai.Client"):
+                    gemini = GeminiLLM(model="gemini-3-flash-preview")
+                    gemini._log_usage_from_rest_response(
+                        obj=mock_response,
+                        agent=SimpleNamespace(name="TestAgent"),
+                        model_name="gemini-3-flash-preview",
+                        operation="query_structured",
+                    )
+                    assert mock_logger.info.call_count == 1
+                    log_message = mock_logger.info.call_args[0][0]
+                    assert "input_tokens=100" in log_message
+                    assert "output_tokens=0" in log_message
+
+
+def test_gemini_sdk_response_with_none_token_counts_does_not_raise():
+    """Regression: SDK may expose None for token counts; avoid None + int (issue #656)."""
+    from llm.gemini import GeminiLLM
+
+    mock_usage = MagicMock()
+    mock_usage.prompt_token_count = 50
+    mock_usage.candidates_token_count = None
+    mock_usage.thoughts_token_count = None
+
+    mock_response = MagicMock()
+    mock_response.usage_metadata = mock_usage
+
+    with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
+        with patch("llm.usage_logging.logger") as mock_logger:
+            with patch("llm.gemini.GOOGLE_GEMINI_API_KEY", "fake-api-key"):
+                with patch("llm.gemini.genai.Client"):
+                    gemini = GeminiLLM(model="gemini-3-flash-preview")
+                    gemini._log_usage_from_sdk_response(
+                        response=mock_response,
+                        agent=SimpleNamespace(name="TestAgent"),
+                        model_name="gemini-3-flash-preview",
+                        operation="query_structured",
+                    )
+                    assert mock_logger.info.call_count == 1
+                    log_message = mock_logger.info.call_args[0][0]
+                    assert "input_tokens=50" in log_message
+                    assert "output_tokens=0" in log_message
+

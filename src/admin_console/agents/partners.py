@@ -138,7 +138,7 @@ def register_partner_routes(agents_bp: Blueprint):
             cached_telegram_partners = None if force_refresh else get_cached_partner_recency(agent.config_name)
             
             if cached_telegram_partners is not None:
-                logger.info(
+                logger.debug(
                     f"Using cached partner recency for agent {agent_config_name} "
                     f"({len(cached_telegram_partners)} partners)"
                 )
@@ -165,7 +165,7 @@ def register_partner_routes(agents_bp: Blueprint):
                     logger.info(f"Agent {agent_config_name} client is not connected - skipping Telegram conversation fetch")
                     telegram_partners = []
                 else:
-                    logger.info(f"Fetching Telegram conversations for agent {agent_config_name} using agent's client (cache miss)")
+                    logger.debug(f"Fetching Telegram conversations for agent {agent_config_name} using agent's client (cache miss)")
                     telegram_partners = []  # Initialize before try block
                     try:
                         # Check if agent's event loop is accessible before creating coroutine

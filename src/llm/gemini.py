@@ -136,11 +136,12 @@ class GeminiLLM(LLM):
         """
         try:
             # Extract usage metadata from REST API response
+            # Coerce to int: API may return null or omit keys; avoid None + int
             usage = obj.get("usageMetadata", {})
-            input_tokens = usage.get("promptTokenCount", 0)
-            output_tokens = usage.get("candidatesTokenCount", 0)
+            input_tokens = int(usage.get("promptTokenCount") or 0)
+            output_tokens = int(usage.get("candidatesTokenCount") or 0)
             # Thinking tokens are billed as output tokens per Google's pricing
-            thinking_tokens = usage.get("thoughtsTokenCount", 0)
+            thinking_tokens = int(usage.get("thoughtsTokenCount") or 0)
             total_output_tokens = output_tokens + thinking_tokens
             
             if input_tokens or total_output_tokens:
@@ -183,12 +184,13 @@ class GeminiLLM(LLM):
             
         try:
             # Gemini responses have usage_metadata attribute
+            # Coerce to int: SDK may expose None for token counts; avoid None + int
             if hasattr(response, "usage_metadata"):
                 usage = response.usage_metadata
-                input_tokens = getattr(usage, "prompt_token_count", 0)
-                output_tokens = getattr(usage, "candidates_token_count", 0)
+                input_tokens = int(getattr(usage, "prompt_token_count", None) or 0)
+                output_tokens = int(getattr(usage, "candidates_token_count", None) or 0)
                 # Thinking tokens are billed as output tokens per Google's pricing
-                thinking_tokens = getattr(usage, "thoughts_token_count", 0)
+                thinking_tokens = int(getattr(usage, "thoughts_token_count", None) or 0)
                 total_output_tokens = output_tokens + thinking_tokens
                 
                 from .usage_logging import log_llm_usage

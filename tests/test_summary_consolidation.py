@@ -181,3 +181,13 @@ async def test_consolidation_does_not_delete_when_llm_returns_empty():
     assert changed is False
     mock_save.assert_not_called()
     mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_consolidation_skips_self_channel():
+    """Summary consolidation is skipped for the agent's self channel (saved messages)."""
+    agent = SimpleNamespace(is_authenticated=True, agent_id=555, name="TestAgent")
+    llm = SimpleNamespace()
+    # Channel 555 = agent_id 555 = self channel
+    changed = await consolidate_oldest_summaries_if_needed(agent, 555, llm)
+    assert changed is False

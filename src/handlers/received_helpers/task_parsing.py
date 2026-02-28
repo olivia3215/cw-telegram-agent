@@ -164,12 +164,12 @@ async def process_retrieve_tasks(
     graph: TaskGraph,
     retrieved_urls: set[str],
     retrieved_contents: list[tuple[str, str]],
-    fetch_url_fn,  # Function to fetch URLs: async def fetch_url(url: str, agent=None) -> tuple[str, str]
+    fetch_url_fn,  # Function to fetch URLs: async def fetch_url(url, agent=None, channel_name=None) -> tuple[str, str]
     channel_name: str | None = None,  # Optional channel name for logging
 ) -> list[TaskNode]:
     """
     Run the retrieval loop: fetch requested URLs and then trigger a retry.
-    
+
     Args:
         tasks: List of tasks to process
         agent: Agent instance
@@ -177,7 +177,7 @@ async def process_retrieve_tasks(
         graph: Task graph
         retrieved_urls: Set of URLs already retrieved
         retrieved_contents: List of (url, content) tuples for retrieved content
-        fetch_url_fn: Function to fetch URLs (async def fetch_url(url: str, agent=None) -> tuple[str, str])
+        fetch_url_fn: Function to fetch URLs (async def fetch_url(url, agent=None, channel_name=None) -> tuple[str, str])
         channel_name: Optional channel name for logging
     
     Returns:
@@ -280,7 +280,7 @@ async def process_retrieve_tasks(
         f"{log_prefix} Fetching {len(urls_to_fetch)} URL(s): {urls_to_fetch}"
     )
     for url in urls_to_fetch:
-        fetched_url, content = await fetch_url_fn(url, agent=agent)
+        fetched_url, content = await fetch_url_fn(url, agent=agent, channel_name=channel_name)
         retrieved_urls.add(fetched_url)
         retrieved_contents.append((fetched_url, content))
         logger.info(
