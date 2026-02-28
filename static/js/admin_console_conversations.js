@@ -1002,7 +1002,7 @@ function loadEvents() {
                         <textarea id="event-intent-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">${escapeHtml(ev.intent || '')}</textarea>
                     </div>
                     <div style="margin-bottom: 8px;">
-                        <label>Time (${escapeHtml(timezoneLabel)}):</label>
+                        <label>Time in ${escapeHtml(timezoneLabel)}:</label>
                         <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${timeVal}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
                     </div>
                     <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
@@ -1125,7 +1125,7 @@ function createNewEvent(agentName, userId) {
             <textarea id="event-intent-${escJsAttr(userId)}-${draftId}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">New event</textarea>
         </div>
         <div style="margin-bottom: 8px;">
-            <label>Time (${escapeHtml(typeof window !== 'undefined' && window._eventsTimezoneDisplay ? window._eventsTimezoneDisplay : 'agent TZ')}):</label>
+            <label>Time in ${escapeHtml(typeof window !== 'undefined' && window._eventsTimezoneDisplay ? window._eventsTimezoneDisplay : 'agent TZ')}:</label>
             <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${draftId}" value="${timeStr}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
         </div>
         <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">

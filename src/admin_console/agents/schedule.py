@@ -9,7 +9,7 @@ Admin API for agent schedule (calendar) maintenance.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
@@ -91,6 +91,49 @@ def register_schedule_routes(agents_bp: Blueprint):
             return jsonify({"success": True, **schedule})
         except Exception as e:
             logger.error(f"Error getting schedule for {agent_config_name}: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+
+    @agents_bp.route("/api/agents/<agent_config_name>/schedule/events", methods=["GET"])
+    def api_get_schedule_events(agent_config_name: str):
+        """Get events for this agent whose next occurrence falls in [start, end). Query: start=, end= (ISO)."""
+        try:
+            agent = get_agent_by_name(agent_config_name)
+            if not agent:
+                return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+            start_str = request.args.get("start")
+            end_str = request.args.get("end")
+            if not start_str or not end_str:
+                return jsonify({"error": "start and end query parameters (ISO datetime) are required"}), 400
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                return jsonify({"error": "start and end must be valid ISO 8601 datetimes"}), 400
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=agent.timezone)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=agent.timezone)
+            start_utc = start_dt.astimezone(UTC)
+            end_utc = end_dt.astimezone(UTC)
+            from db import events as db_events
+            from admin_console.agents.events import _event_to_display
+            raw = db_events.load_events_for_agent_in_window(agent.agent_id, start_utc, end_utc)
+            tz = agent.timezone
+            events = []
+            for ev in raw:
+                display = _event_to_display(ev, tz)
+                display["user_id"] = str(ev["channel_id"])
+                events.append(display)
+            now_tz = datetime.now(tz)
+            offset_sec = (now_tz.utcoffset() or timedelta(0)).total_seconds()
+            sign = "+" if offset_sec >= 0 else "-"
+            hours = int(abs(offset_sec) // 3600)
+            mins = int((abs(offset_sec) % 3600) // 60)
+            offset_str = f"UTC{sign}{hours:02d}:{mins:02d}"
+            timezone_display = f"{agent.get_timezone_identifier()} ({offset_str})"
+            return jsonify({"events": events, "timezone_display": timezone_display})
+        except Exception as e:
+            logger.error(f"Error getting schedule events for {agent_config_name}: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @agents_bp.route("/api/agents/<agent_config_name>/schedule", methods=["PUT"])
