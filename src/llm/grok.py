@@ -373,6 +373,7 @@ class GrokLLM(LLM):
         allowed_task_types: set[str] | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Build messages using the parts-aware builder and call Grok with structured output.
@@ -451,6 +452,7 @@ class GrokLLM(LLM):
                 model_name,
                 "query_structured",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
 
             if text.startswith("⟦"):

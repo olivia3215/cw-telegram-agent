@@ -440,6 +440,7 @@ async def perform_summarization(
             allowed_task_types=allowed_task_types,
             agent=agent,
             channel_telegram_id=channel_id,
+            channel_name=channel_name,
         )
     except Exception as e:
         logger.exception(

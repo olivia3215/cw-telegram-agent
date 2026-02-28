@@ -216,6 +216,7 @@ async def run_llm_with_retrieval(
             allowed_task_types=allowed_task_types,
             agent=agent,
             channel_telegram_id=channel_id,
+            channel_name=channel_name,
         )
     except Exception as e:
         # Use module-level function if not provided

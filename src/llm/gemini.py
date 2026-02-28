@@ -788,6 +788,7 @@ class GeminiLLM(LLM):
         agent: Any | None = None,
         operation: str | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Thin wrapper around the Gemini client for role-structured 'contents'.
@@ -893,6 +894,7 @@ class GeminiLLM(LLM):
                 model_name,
                 operation,
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
 
             # Optional comprehensive logging for debugging
@@ -1060,6 +1062,7 @@ class GeminiLLM(LLM):
         allowed_task_types: set[str] | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -1086,6 +1089,7 @@ class GeminiLLM(LLM):
             agent=agent,
             operation="query_structured",
             channel_telegram_id=channel_telegram_id,
+            channel_name=channel_name,
         )
 
     async def query_plain_text(

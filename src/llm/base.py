@@ -217,6 +217,7 @@ class LLM(ABC):
         allowed_task_types: set[str] | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
