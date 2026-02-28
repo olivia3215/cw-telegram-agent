@@ -499,6 +499,7 @@ async def _process_retrieval_loop(
         )
     
     # Run LLM with retrieval augmentation
+    xsend_intent = (task.params.get("xsend_intent") or "").strip()
     tasks = await run_llm_with_retrieval(
         agent,
         system_prompt,
@@ -512,6 +513,7 @@ async def _process_retrieval_loop(
         parse_llm_reply_fn=parse_llm_reply_fn,
         process_retrieve_tasks_fn=process_retrieve_with_fetch,
         channel_name=channel_name,
+        operation="xsend" if xsend_intent else "received",
     )
     
     return tasks

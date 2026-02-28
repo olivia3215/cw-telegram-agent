@@ -121,6 +121,7 @@ async def run_llm_with_retrieval(
     process_retrieve_tasks_fn,  # Function to process retrieve tasks
     is_retryable_llm_error_fn=None,  # Function to check if error is retryable (defaults to module function)
     channel_name: str | None = None,  # Optional channel name for logging
+    operation: str | None = None,  # Logical operation for cost/task log (e.g. "xsend", "received", "summarize")
 ) -> list[TaskNode]:
     """
     Run LLM query with retrieval augmentation support.
@@ -139,6 +140,7 @@ async def run_llm_with_retrieval(
         process_retrieve_tasks_fn: Function to process retrieve tasks
         is_retryable_llm_error_fn: Optional function to check if error is retryable (defaults to module function)
         channel_name: Optional channel name for logging
+        operation: Logical operation for cost/task log (e.g. "xsend", "received", "summarize")
     
     Returns:
         List of TaskNode objects parsed from the LLM response.
@@ -217,6 +219,7 @@ async def run_llm_with_retrieval(
             agent=agent,
             channel_telegram_id=channel_id,
             channel_name=channel_name,
+            operation=operation,
         )
     except Exception as e:
         # Use module-level function if not provided

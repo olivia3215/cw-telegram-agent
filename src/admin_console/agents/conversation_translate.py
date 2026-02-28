@@ -256,6 +256,7 @@ def register_conversation_translate_routes(agents_bp: Blueprint):
                                     timeout_s=None,  # Use default timeout
                                     agent=agent,
                                     channel_telegram_id=channel_id_for_usage,
+                                    operation="translate",
                                 )
 
                                 if result_text:

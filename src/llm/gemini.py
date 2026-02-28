@@ -1063,6 +1063,7 @@ class GeminiLLM(LLM):
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
         channel_name: str | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Build contents using the parts-aware builder, extract a system instruction (if present),
@@ -1087,7 +1088,7 @@ class GeminiLLM(LLM):
             system_instruction=system_prompt,
             allowed_task_types=allowed_task_types,
             agent=agent,
-            operation="query_structured",
+            operation=operation or "query_structured",
             channel_telegram_id=channel_telegram_id,
             channel_name=channel_name,
         )
@@ -1100,6 +1101,7 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """Query Gemini for plain text without JSON schema constraints."""
         client = getattr(self, "client", None)
@@ -1131,7 +1133,7 @@ class GeminiLLM(LLM):
             response,
             agent,
             model_name,
-            "query_plain_text",
+            operation or "query_plain_text",
             channel_telegram_id=channel_telegram_id,
         )
         return text or ""
@@ -1145,6 +1147,8 @@ class GeminiLLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query Gemini with a JSON schema constraint on the response.
@@ -1223,8 +1227,9 @@ class GeminiLLM(LLM):
                 response,
                 agent,
                 model_name,
-                "query_with_json_schema",
+                operation or "query_with_json_schema",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
 
             # Optional comprehensive logging for debugging

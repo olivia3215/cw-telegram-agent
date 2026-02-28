@@ -93,6 +93,7 @@ async def extend_schedule(agent: "Agent", start_date: datetime | None = None) ->
             history_size=llm.history_size,
             timeout_s=None,
             allowed_task_types=allowed_task_types,
+            operation="schedule",
         )
     except Exception as e:
         logger.error(f"{format_log_prefix_resolved(agent.name, None)} LLM query failed during schedule extension: {e}")

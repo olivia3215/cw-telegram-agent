@@ -390,6 +390,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         timeout_s=None,
                                         agent=agent,
                                         channel_telegram_id=channel_id,
+                                        operation="translate",
                                     )
 
                                     if result_text:

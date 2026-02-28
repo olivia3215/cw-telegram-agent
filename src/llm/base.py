@@ -218,6 +218,7 @@ class LLM(ABC):
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
         channel_name: str | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
@@ -227,6 +228,8 @@ class LLM(ABC):
             allowed_task_types: Optional set of task types to allow in the response schema.
                                If None, all task types are allowed.
             agent: Optional agent object for usage logging context.
+            operation: Logical operation for cost/task log (e.g. "xsend", "received", "summarize").
+                       When None, the entry-point name "query_structured" is used.
         """
         ...
 
@@ -321,6 +324,7 @@ class LLM(ABC):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query the LLM with a JSON schema constraint on the response.
@@ -334,6 +338,7 @@ class LLM(ABC):
             model: Optional model name override
             timeout_s: Optional timeout in seconds for the request
             agent: Optional agent object for usage logging context
+            operation: Logical operation for cost/task log (e.g. "translate"). When None, "query_with_json_schema" is used.
         
         Returns:
             JSON string response that matches the schema
@@ -352,11 +357,14 @@ class LLM(ABC):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query the LLM for an unconstrained plain-text response.
 
         This must not apply JSON schema constraints and should still record
         usage logging consistently with other query paths.
+
+        operation: Logical operation for cost/task log (e.g. "summarize"). When None, "query_plain_text" is used.
         """
         ...
