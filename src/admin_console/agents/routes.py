@@ -277,7 +277,8 @@ def register_main_routes(agents_bp: Blueprint):
                 })
             
             _sort_agents_by_name(agent_list)
-            return jsonify({"agents": agent_list})
+            from admin_console.telegram_id_to_name import get_map_snapshot
+            return jsonify({"agents": agent_list, "telegram_id_to_name": get_map_snapshot()})
         except Exception as e:
             logger.error(f"Error getting agents list: {e}")
             return jsonify({"error": str(e)}), 500
@@ -289,7 +290,8 @@ def register_main_routes(agents_bp: Blueprint):
             from db import agent_activity
             from agent import get_agent_for_id
             from utils.telegram import get_channel_name
-            
+            from admin_console.telegram_id_to_name import get_name
+
             # Get recent activities from database
             activities = agent_activity.get_recent_activity(limit=20)
             
@@ -327,7 +329,10 @@ def register_main_routes(agents_bp: Blueprint):
                 # Get channel name (requires async, so use agent.execute)
                 try:
                     channel_name = None
-                    if agent.client:
+                    mapped_name = get_name(channel_telegram_id)
+                    if mapped_name:
+                        channel_name = mapped_name
+                    elif agent.client:
                         async def _get_channel_name():
                             return await get_channel_name(agent, channel_telegram_id)
                         channel_name = agent.execute(_get_channel_name(), timeout=5.0)

@@ -648,6 +648,15 @@ def register_contact_routes(agents_bp: Blueprint):
                             phone=getattr(entity, "phone", "") or "",
                         )
                     )
+                    # Add to telegram_id→name map for admin console display
+                    try:
+                        from admin_console.telegram_id_to_name import set_name
+                        disp = f"{first_name or getattr(entity, 'first_name', '')} {last_name or getattr(entity, 'last_name', '')}".strip()
+                        if not disp:
+                            disp = _extract_username(entity) or str(channel_id)
+                        set_name(channel_id, disp)
+                    except Exception:
+                        pass
                 else:
                     await agent.client(DeleteContactsRequest(id=[input_user]))
 

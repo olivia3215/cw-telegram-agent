@@ -482,7 +482,14 @@ async function loadConversationPartners(agentName, subtab, forceRefresh = false)
                 // Display format: "Name (user_id) [@username]" or "Name (user_id)" or just "user_id"
                 // Check for both null/undefined and empty string
                 const hasName = partner.name && partner.name.trim().length > 0;
-                let displayName = hasName ? `${partner.name} (${userId})` : userId;
+                let displayName;
+                if (hasName) {
+                    displayName = `${partner.name} (${userId})`;
+                } else if (window.telegramIdToNameMap && window.telegramIdToNameMap[userId]) {
+                    displayName = `${window.telegramIdToNameMap[userId]} (${userId})`;
+                } else {
+                    displayName = userId;
+                }
                 
                 // Add Telegram username if available
                 if (partner.username) {
