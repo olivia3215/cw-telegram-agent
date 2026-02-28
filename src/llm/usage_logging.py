@@ -105,7 +105,9 @@ def log_llm_usage(
         model_name: The model used for the request
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
-        operation: Optional operation type (e.g., "query", "describe_image", "describe_video")
+        operation: Optional logical operation for cost/task log (e.g. "xsend", "received",
+            "describe_image", "describe_video", "describe_audio", "summarize", "translate").
+            When omitted, callers may pass the entry-point name.
         channel_name: Optional channel name for logging prefix
         channel_telegram_id: Optional channel Telegram ID for task log persistence.
             If omitted, falls back to the agent's own Telegram ID.

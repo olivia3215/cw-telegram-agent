@@ -148,6 +148,7 @@ class LLM(ABC):
         model_name: str,
         operation: str,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> None:
         """
         Log LLM usage from an OpenAI-compatible response.
@@ -160,6 +161,7 @@ class LLM(ABC):
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "query_structured")
             channel_telegram_id: Optional channel Telegram ID for task log persistence
+            channel_name: Optional channel name for log prefix attribution
         """
         if hasattr(response, 'usage') and response.usage:
             try:
@@ -174,6 +176,7 @@ class LLM(ABC):
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         operation=operation,
+                        channel_name=channel_name,
                         channel_telegram_id=channel_telegram_id,
                     )
             except Exception as e:
@@ -214,6 +217,8 @@ class LLM(ABC):
         allowed_task_types: set[str] | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Structured query method for conversation-aware LLMs.
@@ -223,6 +228,8 @@ class LLM(ABC):
             allowed_task_types: Optional set of task types to allow in the response schema.
                                If None, all task types are allowed.
             agent: Optional agent object for usage logging context.
+            operation: Logical operation for cost/task log (e.g. "xsend", "received", "summarize").
+                       When None, the entry-point name "query_structured" is used.
         """
         ...
 
@@ -242,6 +249,7 @@ class LLM(ABC):
         mime_type: str | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -265,6 +273,7 @@ class LLM(ABC):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -289,6 +298,7 @@ class LLM(ABC):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -314,6 +324,7 @@ class LLM(ABC):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query the LLM with a JSON schema constraint on the response.
@@ -327,6 +338,7 @@ class LLM(ABC):
             model: Optional model name override
             timeout_s: Optional timeout in seconds for the request
             agent: Optional agent object for usage logging context
+            operation: Logical operation for cost/task log (e.g. "translate"). When None, "query_with_json_schema" is used.
         
         Returns:
             JSON string response that matches the schema
@@ -345,11 +357,14 @@ class LLM(ABC):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query the LLM for an unconstrained plain-text response.
 
         This must not apply JSON schema constraints and should still record
         usage logging consistently with other query paths.
+
+        operation: Logical operation for cost/task log (e.g. "summarize"). When None, "query_plain_text" is used.
         """
         ...

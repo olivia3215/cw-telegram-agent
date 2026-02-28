@@ -157,6 +157,7 @@ class OpenAILLM(LLM):
         mime_type: str | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -241,6 +242,7 @@ class OpenAILLM(LLM):
                 model_name,
                 "describe_image",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
             
             return text
@@ -256,6 +258,7 @@ class OpenAILLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -274,6 +277,7 @@ class OpenAILLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -432,6 +436,8 @@ class OpenAILLM(LLM):
         allowed_task_types: set[str] | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Build messages using the parts-aware builder and call OpenAI with structured output.
@@ -529,8 +535,9 @@ class OpenAILLM(LLM):
                 response,
                 agent,
                 model_name,
-                "query_structured",
+                operation or "query_structured",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
 
             if text.startswith("⟦"):
@@ -565,6 +572,7 @@ class OpenAILLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """Query OpenAI for plain text without schema constraints."""
         model_name = model or self.model_name
@@ -599,7 +607,7 @@ class OpenAILLM(LLM):
             response,
             agent,
             model_name,
-            "query_plain_text",
+            operation or "query_plain_text",
             channel_telegram_id=channel_telegram_id,
         )
         return text or ""
@@ -613,6 +621,7 @@ class OpenAILLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        operation: str | None = None,
     ) -> str:
         """
         Query OpenAI with a JSON schema constraint on the response.
@@ -702,7 +711,7 @@ class OpenAILLM(LLM):
                 response,
                 agent,
                 model_name,
-                "query_with_json_schema",
+                operation or "query_with_json_schema",
                 channel_telegram_id=channel_telegram_id,
             )
 

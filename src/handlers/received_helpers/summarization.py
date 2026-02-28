@@ -96,6 +96,7 @@ async def _query_consolidation_plain_text(
     prompt: str,
     agent,
     channel_telegram_id: int | None = None,
+    operation: str | None = None,
 ) -> str:
     """
     Query the LLM for plain text with no JSON schema.
@@ -106,6 +107,7 @@ async def _query_consolidation_plain_text(
             timeout_s=60.0,
             agent=agent,
             channel_telegram_id=channel_telegram_id,
+            operation=operation or "summarize",
         )
     raise RuntimeError(f"LLM does not implement query_plain_text: {type(llm).__name__}")
 
@@ -160,6 +162,7 @@ async def consolidate_oldest_summaries_if_needed(
             prompt=prompt,
             agent=agent,
             channel_telegram_id=channel_id,
+            operation="summarize",
         )
     except Exception as exc:
         logger.warning(
@@ -440,6 +443,8 @@ async def perform_summarization(
             allowed_task_types=allowed_task_types,
             agent=agent,
             channel_telegram_id=channel_id,
+            channel_name=channel_name,
+            operation="summarize",
         )
     except Exception as e:
         logger.exception(
