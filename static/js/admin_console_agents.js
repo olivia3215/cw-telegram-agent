@@ -4313,6 +4313,19 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         return;
     }
     let html = clockRow + saveBar + btnRow + '<div id="schedule-activity-list" style="display: flex; flex-direction: column; gap: 8px;">';
+    const now = new Date();
+    let currentIndex = -1;
+    for (let i = 0; i < activities.length; i++) {
+        const act = activities[i];
+        try {
+            const start = new Date(act.start_time);
+            const end = new Date(act.end_time);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && start <= now && now <= end) {
+                currentIndex = i;
+                break;
+            }
+        } catch (_) { /* skip invalid dates */ }
+    }
     activities.forEach((act, idx) => {
         const startVal = escapeHtml(formatScheduleStartForInput(act.start_time));
         const endVal = escapeHtml(formatScheduleEndForInput(act.end_time));
@@ -4321,7 +4334,8 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         const respVal = act.responsiveness !== undefined && act.responsiveness !== '' ? Number(act.responsiveness) : '';
         const expanded = window._scheduleExpandedIndices.has(idx);
         const agentEsc = escJsAttr(agentName);
-        html += '<div class="schedule-activity-item" data-index="' + idx + '" style="border: 1px solid #ddd; border-radius: 8px; background: #fff; overflow: hidden;">';
+        const borderStyle = (idx === currentIndex) ? '2px solid #000' : '1px solid #ddd';
+        html += '<div class="schedule-activity-item" data-index="' + idx + '" style="border: ' + borderStyle + '; border-radius: 8px; background: #fff; overflow: hidden;">';
         html += '<div class="schedule-activity-header" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap;">';
         html += '<button type="button" class="schedule-toggle-btn" onclick="scheduleToggleExpand(' + idx + '); event.stopPropagation();" style="background: none; border: none; padding: 0 4px; cursor: pointer; font-size: 10px; color: #666;">' + (expanded ? '&#9660;' : '&#9654;') + '</button>';
         html += '<input type="text" class="schedule-field-start" data-index="' + idx + '" value="' + startVal + '" placeholder="Date time" style="width: 140px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onchange="scheduleUpdateStartInput(' + idx + ')">';
