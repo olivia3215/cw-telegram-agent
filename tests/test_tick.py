@@ -283,3 +283,70 @@ async def test_run_one_tick_removes_graph_completed_during_scheduling(monkeypatc
 
     assert blocked_task.status == TaskStatus.CANCELLED
     assert graph not in queue._task_graphs
+
+
+@pytest.mark.asyncio
+async def test_disabled_agent_skipped_graph_stays_re_enable_runs_task(monkeypatch):
+    """
+    When a task is selected and the agent is then found disabled, we skip the task
+    but leave the graph in the queue. After re-enabling the agent, the next tick
+    runs the task.
+    """
+    dispatch_table = get_task_dispatch_table()
+
+    async def fake_handle_send(task, graph, work_queue=None):
+        pass
+
+    monkeypatch.setitem(dispatch_table, "send", fake_handle_send)
+
+    task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
+    graph = TaskGraph(
+        id="g-disable-reenable",
+        context={"agent_id": 42, "channel_id": 1, "peer_id": 1},
+        tasks=[task],
+    )
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    # Mock agent: disabled at first so we hit "skip without removing" path
+    mock_agent = Agent(
+        name="TestAgent",
+        phone="+123",
+        sticker_set_names=[],
+        instructions="",
+        role_prompt_names=[],
+    )
+    mock_agent.agent_id = 42
+    mock_agent.is_disabled = True
+
+    def get_agent(agent_id):
+        return mock_agent
+
+    monkeypatch.setattr("tick.get_agent_for_id", get_agent)
+
+    # Force round_robin to return our task so we hit the branch where we have a
+    # selected task but then find the agent disabled (skip, do not remove graph)
+    original_round_robin = queue.round_robin_one_task
+    first_call = [True]
+
+    def round_robin_return_task_once():
+        if first_call[0]:
+            first_call[0] = False
+            return task
+        return original_round_robin()
+
+    monkeypatch.setattr(queue, "round_robin_one_task", round_robin_return_task_once)
+
+    # First tick: task selected, agent disabled -> skip, graph must stay in queue
+    await run_one_tick()
+    assert task.status == TaskStatus.PENDING
+    assert graph in queue._task_graphs
+
+    # Re-enable agent
+    mock_agent.is_disabled = False
+
+    # Second tick: normal round_robin (no patch), agent enabled -> task runs, graph removed
+    await run_one_tick()
+    assert task.status == TaskStatus.DONE
+    assert graph not in queue._task_graphs

@@ -106,7 +106,7 @@ class TaskNode:
                 return False
 
             try:
-                wait_time = datetime.strptime(until, ISO_FORMAT)
+                wait_time = datetime.strptime(until.strip(), ISO_FORMAT)
                 if now < wait_time:
                     logger.debug(
                         f"Task {self.id} wait time not reached: now={now.isoformat()}, until={until}."

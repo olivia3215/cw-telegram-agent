@@ -64,9 +64,9 @@ Use the event's `id` with empty `intent` to delete it:
 ## Fields
 
 - **intent** (required for create): Text instruction for your future self when the event fires. Empty string with existing `id` deletes the event.
-- **time** (required for create): When to fire. ISO 8601 date-time; if no timezone offset, your agent timezone is used unless **timezone** is set. If **timezone** is set, it is always used to interpret **time** (e.g. `2026-02-28T09:30:00Z` with **timezone** `America/Los_Angeles` means 09:30 in Los Angeles).
-- **timezone** (optional): IANA timezone for interpreting **time** (e.g. `Europe/London`). If omitted, your configured timezone is used. When set, it overrides any offset in **time** (Z or +00:00); the date and time are read as local time in this zone, then converted to UTC.
-- **interval** (optional): Recurrence step: a number and unit, e.g. `1 hours`, `30 minutes`, `1 days`, `1 weeks`. Singular or plural accepted.
+- **time** (required for create): When to fire. ISO 8601 date-time; if no timezone offset, your agent timezone is used unless **timezone** is set.
+- **timezone** (optional): IANA timezone for interpreting **time** (e.g. `Europe/London`). If omitted, your configured timezone is used. When set, it overrides any offset in **time** (Z or +00:00); the date and time are read as local time in this zone.
+- **interval** (optional): Recurrence step: a number and unit, e.g. `1 hour`, `30 minutes`, `2 days`, `1 weeks`. Singular or plural accepted.
 - **occurrences** (optional): Number of times to recur. If omitted and **interval** is set, the event recurs until you delete it.
 
 ## Best practices
@@ -74,4 +74,4 @@ Use the event's `id` with empty `intent` to delete it:
 - Use events for reminders and delayed follow-ups in this channel.
 - Keep intent clear so your future self knows what to do.
 - Delete or update events when they are no longer needed.
-- When using **timezone**, use a zone-naive **time** (e.g. `2026-02-28T09:30:00`) for clarity; if **time** includes Z or an offset, **timezone** still wins and the time is interpreted in that zone.
+- When using **timezone**, use a zone-naive **time** (e.g. `2026-02-28T09:30:00`) for clarity.

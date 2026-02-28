@@ -961,6 +961,8 @@ function loadEvents() {
             }
 
             const events = data.events || [];
+            const timezoneLabel = data.timezone_display || 'agent TZ';
+            if (typeof window !== 'undefined') window._eventsTimezoneDisplay = timezoneLabel;
             let html = '<div style="margin-bottom: 16px;"><button onclick="createNewEvent(\'' + escJsAttr(agentName) + '\', \'' + escJsAttr(userId) + '\')" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">+ New Event</button></div>';
 
             if (events.length === 0) {
@@ -1000,12 +1002,12 @@ function loadEvents() {
                         <textarea id="event-intent-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">${escapeHtml(ev.intent || '')}</textarea>
                     </div>
                     <div style="margin-bottom: 8px;">
-                        <label>Time (agent TZ):</label>
+                        <label>Time (${escapeHtml(timezoneLabel)}):</label>
                         <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${timeVal}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
                     </div>
                     <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
                         <div>
-                            <label>Interval (e.g. 1 hours):</label>
+                            <label>Interval:</label>
                             <input type="number" id="event-interval-num-${escJsAttr(userId)}-${escJsAttr(ev.id)}" value="${intervalNum}" step="0.5" min="0" placeholder="number" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
                             <select id="event-interval-unit-${escJsAttr(userId)}-${escJsAttr(ev.id)}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(ev.id)}')">
                                 ${intervalUnits.map(u => '<option value="' + u + '"' + (u === intervalUnit ? ' selected' : '') + '>' + u + '</option>').join('')}
@@ -1123,12 +1125,12 @@ function createNewEvent(agentName, userId) {
             <textarea id="event-intent-${escJsAttr(userId)}-${draftId}" style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">New event</textarea>
         </div>
         <div style="margin-bottom: 8px;">
-            <label>Time (agent TZ):</label>
+            <label>Time (${escapeHtml(typeof window !== 'undefined' && window._eventsTimezoneDisplay ? window._eventsTimezoneDisplay : 'agent TZ')}):</label>
             <input type="datetime-local" id="event-time-${escJsAttr(userId)}-${draftId}" value="${timeStr}" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%; box-sizing: border-box;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
         </div>
         <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
             <div>
-                <label>Interval (e.g. 1 hours):</label>
+                <label>Interval:</label>
                 <input type="number" id="event-interval-num-${escJsAttr(userId)}-${draftId}" value="" step="0.5" min="0" placeholder="number" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 4px;" oninput="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
                 <select id="event-interval-unit-${escJsAttr(userId)}-${draftId}" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px;" onchange="markEventDirty('${escJsAttr(userId)}', '${escJsAttr(draftId)}')">
                     ${intervalUnits.map(function(u){ return '<option value="' + u + '"' + (u === 'hours' ? ' selected' : '') + '>' + u + '</option>'; }).join('')}

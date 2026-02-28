@@ -9,7 +9,7 @@ Admin console API for events (scheduled actions).
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
@@ -58,7 +58,18 @@ def register_event_routes(agents_bp: Blueprint):
             raw = db_events.load_events(agent.agent_id, channel_id)
             tz = agent.timezone
             events = [_event_to_display(ev, tz) for ev in raw]
-            response = jsonify({"events": events})
+            # Timezone name and offset for the Events UI label (e.g. "America/Los_Angeles (UTC-08:00)")
+            now_tz = datetime.now(tz)
+            offset_sec = (now_tz.utcoffset() or timedelta(0)).total_seconds()
+            sign = "+" if offset_sec >= 0 else "-"
+            hours = int(abs(offset_sec) // 3600)
+            mins = int((abs(offset_sec) % 3600) // 60)
+            offset_str = f"UTC{sign}{hours:02d}:{mins:02d}"
+            timezone_display = f"{agent.get_timezone_identifier()} ({offset_str})"
+            response = jsonify({
+                "events": events,
+                "timezone_display": timezone_display,
+            })
             return add_cache_busting_headers(response)
         except Exception as e:
             logger.error(f"Error getting events for {agent_config_name}/{user_id}: {e}")

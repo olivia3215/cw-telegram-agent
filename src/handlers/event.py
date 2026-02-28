@@ -59,7 +59,8 @@ async def handle_immediate_event(task: TaskNode, *, agent, channel_id: int) -> b
 
     params = dict(task.params or {})
     params.pop("kind", None)
-    event_id = params.pop("id", None) or f"event-{uuid.uuid4().hex[:8]}"
+    # Use task.id so create/update/delete use the same identifier (id is stored in node, not in params).
+    event_id = params.pop("id", None) or task.id or f"event-{uuid.uuid4().hex[:8]}"
     intent_raw = params.pop("intent", None)
     intent = (coerce_to_str(intent_raw).strip() if intent_raw is not None else "") or ""
     time_str = params.pop("time", None)

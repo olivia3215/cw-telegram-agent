@@ -364,9 +364,8 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
                 if agent.is_disabled:
                     log_prefix = await format_log_prefix(agent_name, channel_name)
                     logger.info(
-                        f"{log_prefix} Agent is disabled, cancelling task graph {graph.id}"
+                        f"{log_prefix} Agent is disabled, skipping task {task.id} this tick (graph left in queue)"
                     )
-                    work_queue.remove(graph)
                     return
         except Exception as e:
             logger.exception(f"run_one_tick: error resolving agent {agent_id}: {e}")
