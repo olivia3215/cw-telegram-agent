@@ -251,6 +251,7 @@ class AIGeneratingMediaSource(MediaSource):
         try:
             t1 = time.perf_counter()
             usage_channel_telegram_id = metadata.get("channel_id")
+            usage_channel_name = metadata.get("channel_name")
 
             # Use describe_video for:
             # - Media that needs video analysis (videos, animations)
@@ -264,6 +265,7 @@ class AIGeneratingMediaSource(MediaSource):
                     duration=duration,
                     timeout_s=get_describe_timeout_secs(),
                     channel_telegram_id=usage_channel_telegram_id,
+                    channel_name=usage_channel_name,
                 )
             elif effective_kind == "audio" or is_audio_mime_type(final_mime_type):
                 # Audio files (including voice messages)
@@ -289,6 +291,7 @@ class AIGeneratingMediaSource(MediaSource):
                         duration=duration,
                         timeout_s=get_describe_timeout_secs(),
                         channel_telegram_id=usage_channel_telegram_id,
+                        channel_name=usage_channel_name,
                     )
                 else:
                     # LLM doesn't support audio description - this shouldn't happen, but fall through to describe_image
@@ -302,6 +305,7 @@ class AIGeneratingMediaSource(MediaSource):
                         None,
                         timeout_s=get_describe_timeout_secs(),
                         channel_telegram_id=usage_channel_telegram_id,
+                        channel_name=usage_channel_name,
                     )
             else:
                 # Ensure we have a valid MIME type before calling describe_image
@@ -317,6 +321,7 @@ class AIGeneratingMediaSource(MediaSource):
                     image_mime_type,
                     timeout_s=get_describe_timeout_secs(),
                     channel_telegram_id=usage_channel_telegram_id,
+                    channel_name=usage_channel_name,
                 )
             desc = (desc or "").strip()
         except httpx.TimeoutException:

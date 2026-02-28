@@ -121,6 +121,7 @@ class GeminiLLM(LLM):
         model_name: str,
         operation: str,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> None:
         """
         Log LLM usage from a REST API response.
@@ -131,6 +132,7 @@ class GeminiLLM(LLM):
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "describe_video")
             channel_telegram_id: Optional channel Telegram ID for task log persistence
+            channel_name: Optional channel name for log prefix attribution
         """
         try:
             # Extract usage metadata from REST API response
@@ -149,6 +151,7 @@ class GeminiLLM(LLM):
                     input_tokens=input_tokens,
                     output_tokens=total_output_tokens,
                     operation=operation,
+                    channel_name=channel_name,
                     channel_telegram_id=channel_telegram_id,
                 )
         except Exception as e:
@@ -162,6 +165,7 @@ class GeminiLLM(LLM):
         model_name: str,
         operation: str | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> None:
         """
         Log LLM usage from an SDK response object.
@@ -172,6 +176,7 @@ class GeminiLLM(LLM):
             model_name: Model name for logging
             operation: Optional operation type (e.g., "query_structured")
             channel_telegram_id: Optional channel Telegram ID for task log persistence
+            channel_name: Optional channel name for log prefix attribution
         """
         if response is None:
             return
@@ -193,6 +198,7 @@ class GeminiLLM(LLM):
                     input_tokens=input_tokens,
                     output_tokens=total_output_tokens,
                     operation=operation,
+                    channel_name=channel_name,
                     channel_telegram_id=channel_telegram_id,
                 )
         except Exception as e:
@@ -290,6 +296,7 @@ class GeminiLLM(LLM):
         mime_type: str | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -415,6 +422,7 @@ class GeminiLLM(LLM):
                 model,
                 "describe_image",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
             
             return text
@@ -429,6 +437,7 @@ class GeminiLLM(LLM):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -607,6 +616,7 @@ class GeminiLLM(LLM):
                 model,
                 "describe_video",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
             
             return text
@@ -621,6 +631,7 @@ class GeminiLLM(LLM):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
@@ -759,6 +770,7 @@ class GeminiLLM(LLM):
                 model,
                 "describe_audio",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
             
             return text

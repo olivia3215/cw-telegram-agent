@@ -148,6 +148,7 @@ class LLM(ABC):
         model_name: str,
         operation: str,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> None:
         """
         Log LLM usage from an OpenAI-compatible response.
@@ -160,6 +161,7 @@ class LLM(ABC):
             model_name: Model name for logging
             operation: Operation type (e.g., "describe_image", "query_structured")
             channel_telegram_id: Optional channel Telegram ID for task log persistence
+            channel_name: Optional channel name for log prefix attribution
         """
         if hasattr(response, 'usage') and response.usage:
             try:
@@ -174,6 +176,7 @@ class LLM(ABC):
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         operation=operation,
+                        channel_name=channel_name,
                         channel_telegram_id=channel_telegram_id,
                     )
             except Exception as e:
@@ -242,6 +245,7 @@ class LLM(ABC):
         mime_type: str | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -265,6 +269,7 @@ class LLM(ABC):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -289,6 +294,7 @@ class LLM(ABC):
         duration: int | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.

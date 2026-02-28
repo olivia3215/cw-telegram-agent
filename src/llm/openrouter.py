@@ -108,6 +108,7 @@ class OpenRouterLLM(LLM):
         mime_type: str | None = None,
         timeout_s: float | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given image.
@@ -190,6 +191,7 @@ class OpenRouterLLM(LLM):
                 model_name,
                 "describe_image",
                 channel_telegram_id=channel_telegram_id,
+                channel_name=channel_name,
             )
             
             return text
@@ -205,6 +207,7 @@ class OpenRouterLLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given video.
@@ -223,6 +226,7 @@ class OpenRouterLLM(LLM):
         timeout_s: float | None = None,
         agent: Any | None = None,
         channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
     ) -> str:
         """
         Return a rich, single-string description for the given audio.
