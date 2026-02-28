@@ -182,6 +182,13 @@ async def main():
             logger.error("Failed to authenticate any agents, exiting.")
             return
 
+        # Populate telegram_id→name map in background (do not await)
+        try:
+            from admin_console.telegram_id_to_name import populate_from_agents
+            asyncio.create_task(populate_from_agents(agents_list))
+        except Exception as e:
+            logger.warning("Failed to start telegram_id_to_name population: %s", e)
+
         if admin_enabled and puppet_master_manager.is_configured:
             try:
                 puppet_master_manager.ensure_ready(agents_list)

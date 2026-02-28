@@ -387,6 +387,12 @@ def register_membership_routes(agents_bp: Blueprint):
                             "channel_id": str(channel_id),
                             "name": getattr(entity, "title", None) or identifier,
                         }
+                        # Add to telegram_id→name map for admin console display
+                        try:
+                            from admin_console.telegram_id_to_name import set_name
+                            set_name(channel_id, response["name"])
+                        except Exception:
+                            pass
                         warnings = [w for w in (mute_warning, gagged_warning) if w]
                         if warnings:
                             response["warning"] = "; ".join(warnings)

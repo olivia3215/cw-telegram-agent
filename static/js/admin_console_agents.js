@@ -12,6 +12,8 @@ async function loadAgents() {
         }
         
         const agents = data.agents || [];
+        window.agentsList = agents;
+        window.telegramIdToNameMap = data.telegram_id_to_name || {};
         
         // Determine which subtab to check content for
         const agentsTabActive = document.querySelector('.tab-panel[data-tab-panel="agents"]')?.classList.contains('active');
@@ -218,6 +220,7 @@ async function loadAgentCosts(agentName) {
         const days = data.days || 7;
         const totalCost = Number(data.total_cost || 0);
         const logs = data.logs || [];
+        const idToName = window.telegramIdToNameMap || {};
 
         let html = `
             <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -231,24 +234,31 @@ async function loadAgentCosts(agentName) {
             html += '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
             html += '<thead><tr style="border-bottom: 1px solid #ddd; text-align: left;">';
             html += '<th style="padding: 8px;">Timestamp</th>';
-            html += '<th style="padding: 8px;">Channel</th>';
+            html += '<th style="padding: 8px;" title="Channel (link to Conversations→Costs for this conversation).">Channel</th>';
             html += '<th style="padding: 8px;">Operation</th>';
             html += '<th style="padding: 8px;">Model</th>';
             html += '<th style="padding: 8px;">Input</th>';
             html += '<th style="padding: 8px;">Output</th>';
             html += '<th style="padding: 8px;">Cost</th>';
             html += '</tr></thead><tbody>';
-            html += logs.map(log => `
+            html += logs.map(log => {
+                const channelId = log.channel_telegram_id;
+                const channelName = idToName[String(channelId)];
+                const channelDisplay = channelName
+                    ? escapeHtml(channelName) + ' (' + escapeHtml(String(channelId || '')) + ')'
+                    : escapeHtml(String(channelId || ''));
+                const channelLink = `<a href="#" onclick="navigateToConversationCosts('${escapeHtml(agentName).replace(/'/g, "\\'")}', '${escapeHtml(String(channelId)).replace(/'/g, "\\'")}'); return false;" title="Go to Conversations→Costs for this conversation">${channelDisplay}</a>`;
+                return `
                 <tr style="border-bottom: 1px solid #f0f0f0;">
                     <td style="padding: 8px;">${escapeHtml(formatTimestamp(log.timestamp))}</td>
-                    <td style="padding: 8px;">${escapeHtml(String(log.channel_telegram_id || ''))}</td>
+                    <td style="padding: 8px;">${channelLink}</td>
                     <td style="padding: 8px;">${escapeHtml(log.operation || '')}</td>
                     <td style="padding: 8px;">${escapeHtml(log.model_name || '')}</td>
                     <td style="padding: 8px;">${escapeHtml(String(log.input_tokens ?? ''))}</td>
                     <td style="padding: 8px;">${escapeHtml(String(log.output_tokens ?? ''))}</td>
                     <td style="padding: 8px;">$${Number(log.cost || 0).toFixed(4)}</td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
             html += '</tbody></table></div>';
         }
 

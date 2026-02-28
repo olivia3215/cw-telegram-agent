@@ -2019,6 +2019,21 @@ async function loadGlobalCosts() {
 
     showLoading(container, 'Loading costs...');
     try {
+        // Ensure we have agents and telegram_id_to_name map (e.g. if user opened Global first)
+        if (!window.agentsList || !window.telegramIdToNameMap) {
+            try {
+                const agentsResponse = await fetchWithAuth(`${API_BASE}/agents`);
+                const agentsData = await agentsResponse.json();
+                if (!agentsData.error) {
+                    window.agentsList = agentsData.agents || [];
+                    window.telegramIdToNameMap = agentsData.telegram_id_to_name || {};
+                }
+            } catch (e) {
+                window.agentsList = window.agentsList || [];
+                window.telegramIdToNameMap = window.telegramIdToNameMap || {};
+            }
+        }
+
         const response = await fetchWithAuth('/admin/api/global/costs');
         const data = await response.json();
         if (data.error) {
@@ -2029,6 +2044,8 @@ async function loadGlobalCosts() {
         const days = data.days || 7;
         const totalCost = Number(data.total_cost || 0);
         const logs = data.logs || [];
+        const agentsList = window.agentsList || [];
+        const idToName = window.telegramIdToNameMap || {};
 
         let html = `
             <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -2042,26 +2059,35 @@ async function loadGlobalCosts() {
             html += '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
             html += '<thead><tr style="border-bottom: 1px solid #ddd; text-align: left;">';
             html += '<th style="padding: 8px;" title="When the cost was logged.">Timestamp</th>';
-            html += '<th style="padding: 8px;" title="Agent Telegram ID.">Agent</th>';
-            html += '<th style="padding: 8px;" title="Channel or chat Telegram ID.">Channel</th>';
+            html += '<th style="padding: 8px;" title="Agent (link to Agents→Costs).">Agent</th>';
+            html += '<th style="padding: 8px;" title="Channel (link to Conversations→Costs).">Channel</th>';
             html += '<th style="padding: 8px;" title="Type of operation (e.g. chat, translation).">Operation</th>';
             html += '<th style="padding: 8px;" title="LLM model used.">Model</th>';
             html += '<th style="padding: 8px;" title="Input token count.">Input</th>';
             html += '<th style="padding: 8px;" title="Output token count.">Output</th>';
             html += '<th style="padding: 8px;" title="Cost in USD.">Cost</th>';
             html += '</tr></thead><tbody>';
-            html += logs.map(log => `
+            html += logs.map(log => {
+                const agentId = log.agent_telegram_id;
+                const channelId = log.channel_telegram_id;
+                const agentObj = agentsList.find(a => a.agent_id === agentId || a.agent_id === Number(agentId));
+                const agentDisplay = agentObj ? escapeHtml(agentObj.name) : escapeHtml(String(agentId || ''));
+                const agentLink = agentObj ? `<a href="#" onclick="navigateToAgentCosts('${escapeHtml(agentObj.config_name).replace(/'/g, "\\'")}'); return false;" title="Go to Agents→Costs for this agent">${agentDisplay}</a>` : agentDisplay;
+                const channelName = idToName[String(channelId)];
+                const channelDisplay = channelName ? escapeHtml(channelName) + ' (' + escapeHtml(String(channelId)) + ')' : escapeHtml(String(channelId || ''));
+                const channelLink = `<a href="#" onclick="navigateToConversationCosts('${agentObj ? escapeHtml(agentObj.config_name).replace(/'/g, "\\'") : ''}', '${escapeHtml(String(channelId)).replace(/'/g, "\\'")}'); return false;" title="Go to Conversations→Costs for this conversation">${channelDisplay}</a>`;
+                return `
                 <tr style="border-bottom: 1px solid #f0f0f0;">
                     <td style="padding: 8px;">${escapeHtml(formatTimestamp(log.timestamp))}</td>
-                    <td style="padding: 8px;">${escapeHtml(String(log.agent_telegram_id || ''))}</td>
-                    <td style="padding: 8px;">${escapeHtml(String(log.channel_telegram_id || ''))}</td>
+                    <td style="padding: 8px;">${agentLink}</td>
+                    <td style="padding: 8px;">${channelLink}</td>
                     <td style="padding: 8px;">${escapeHtml(log.operation || '')}</td>
                     <td style="padding: 8px;">${escapeHtml(log.model_name || '')}</td>
                     <td style="padding: 8px;">${escapeHtml(String(log.input_tokens ?? ''))}</td>
                     <td style="padding: 8px;">${escapeHtml(String(log.output_tokens ?? ''))}</td>
                     <td style="padding: 8px;">$${Number(log.cost || 0).toFixed(4)}</td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
             html += '</tbody></table></div>';
         }
 
@@ -2073,6 +2099,38 @@ async function loadGlobalCosts() {
         }
         container.innerHTML = `<div class="error">Error loading costs: ${escapeHtml(error.message || error)}</div>`;
     }
+}
+
+function navigateToAgentCosts(agentConfigName) {
+    const mainTab = document.querySelector('nav.tab-bar:first-of-type .tab-button[data-tab="agents"]');
+    if (mainTab && !mainTab.classList.contains('active')) mainTab.click();
+    const agentSelect = document.getElementById('agents-agent-select');
+    if (agentSelect && agentConfigName) {
+        agentSelect.value = agentConfigName;
+        agentSelect.dispatchEvent(new Event('change'));
+    }
+    const costsSubtab = document.querySelector('.tab-panel[data-tab-panel="agents"] .tab-button[data-subtab="costs"]');
+    if (costsSubtab && !costsSubtab.classList.contains('active')) costsSubtab.click();
+}
+
+function navigateToConversationCosts(agentConfigName, channelId) {
+    const mainTab = document.querySelector('nav.tab-bar:first-of-type .tab-button[data-tab="conversations"]');
+    if (mainTab && !mainTab.classList.contains('active')) mainTab.click();
+    const agentSelect = document.getElementById('conversations-agent-select');
+    const agentsSelect = document.getElementById('agents-agent-select');
+    if (agentSelect && agentConfigName) {
+        agentSelect.value = agentConfigName;
+        agentSelect.dispatchEvent(new Event('change'));
+        if (agentsSelect && agentsSelect.value !== agentConfigName) {
+            agentsSelect.value = agentConfigName;
+            agentsSelect.dispatchEvent(new Event('change'));
+        }
+    }
+    const userIdInput = document.getElementById('conversations-user-id');
+    if (userIdInput && channelId != null) userIdInput.value = String(channelId);
+    const costsSubtab = document.querySelector('.tab-panel[data-tab-panel="conversations"] .tab-button[data-subtab="costs-conv"]');
+    if (costsSubtab && !costsSubtab.classList.contains('active')) costsSubtab.click();
+    if (typeof loadConversationData === 'function') loadConversationData();
 }
 
 

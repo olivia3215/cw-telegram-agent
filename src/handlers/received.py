@@ -663,6 +663,14 @@ async def _ensure_user_in_contacts(agent, client, user_entity: User, channel_nam
         
         logger.info(f"{log_prefix} Added user {user_id} to contacts (name: {first_name} {last_name}, phone: {phone or 'N/A'})")
         
+        # Add to telegram_id→name map for admin console display
+        try:
+            from admin_console.telegram_id_to_name import set_name
+            display_name = f"{first_name} {last_name}".strip() or getattr(user_entity, "username", None) or str(user_id)
+            set_name(user_id, display_name)
+        except Exception:
+            pass
+
         # Clear contacts cache in entity cache so it will refresh on next lookup
         if agent.entity_cache:
             agent.entity_cache._contacts_cache = None
