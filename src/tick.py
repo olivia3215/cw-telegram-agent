@@ -368,7 +368,7 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
             logger.exception(f"run_one_tick: error resolving agent {agent_id}: {e}")
             return
 
-    log_prefix = log_prefix or await format_log_prefix(agent_name, channel_name)
+    log_prefix = await format_log_prefix(agent_name, channel_name)
     logger.info(f"{log_prefix} Running task {task.id} of type {task.type}")
 
     try:
