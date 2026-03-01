@@ -45,7 +45,7 @@ def _format_price(price_str: str) -> str:
         price_str: Price as string per token (e.g., "0.0000003")
         
     Returns:
-        Formatted price string per 1M tokens (e.g., "$0.30")
+        Formatted price string per 1M tokens (e.g., "$0.3000")
     """
     try:
         if not price_str or price_str == "0" or price_str == "0.0" or price_str == "0.00":
