@@ -19,6 +19,7 @@ from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction  
 from agent import get_agent_for_id
 from clock import clock
 from exceptions import ShutdownException
+from llm.exceptions import RetryableLLMError
 from media.media_budget import reset_description_budget
 from handlers.registry import dispatch_task
 from task_graph import TaskStatus, WorkQueue
@@ -27,6 +28,13 @@ from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.telegram import get_channel_name
 
 logger = logging.getLogger(__name__)
+
+
+def _is_temporary_error(e: Exception) -> bool:
+    """Return True if the exception is a temporary/retryable error that does not need a stack trace."""
+    if isinstance(e, RetryableLLMError):
+        return True
+    return str(e).startswith("Temporary error:")
 
 
 # Lazy import for task logging to avoid circular dependencies
@@ -396,7 +404,10 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         if isinstance(e, PeerIdInvalidError) and agent:
             agent.clear_entity_cache()
         else:
-            logger.exception(f"{log_prefix} Task {task.id} raised exception: {e}")
+            if _is_temporary_error(e):
+                logger.error(f"{log_prefix} Task {task.id} raised exception: {e}")
+            else:
+                logger.exception(f"{log_prefix} Task {task.id} raised exception: {e}")
         
         # Log the task failure
         _log_task_failure(graph, task, error_msg)
