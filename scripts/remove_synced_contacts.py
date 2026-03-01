@@ -38,8 +38,7 @@ async def remove_synced_contacts_for_agent(agent: Agent) -> bool:
     """
     # Use agent.config_name for state directory (same as main server's authenticate_agent)
     client = get_telegram_client(agent.config_name, agent.phone)
-    agent_name = agent.name  # Use name for logging
-    log_prefix = await format_log_prefix(agent_name)
+    log_prefix = await format_log_prefix(agent.name)
 
     try:
         # Use start() instead of connect() to properly load the session file

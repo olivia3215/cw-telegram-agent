@@ -128,12 +128,12 @@ def _find_file_in_docs(filename: str, agent_config_name: str | None) -> Path | N
     return None
 
 
-async def fetch_url(url: str, agent=None) -> tuple[str, str]:
+async def fetch_url(url: str, agent=None, channel_name: str | None = None) -> tuple[str, str]:
     """
     Fetch a URL and return (url, content) tuple.
-    
+
     Supports both HTTP/HTTPS URLs and file: URLs for local documentation files.
-    
+
     For HTTP/HTTPS URLs, this function:
     1. First attempts a standard HTTP request
     2. If a JavaScript challenge page is detected (e.g., Fastly Shield), automatically
@@ -144,6 +144,7 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
     Args:
         url: The URL to fetch (http://, https://, or file:)
         agent: Optional agent object (required for file: URLs to determine search paths)
+        channel_name: Optional channel/conversation name for log attribution
 
     Returns:
         Tuple of (url, content) where content is:
@@ -214,6 +215,7 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
             )
     
     # Handle HTTP/HTTPS URLs
+    log_prefix = await format_log_prefix(agent.name if agent else "unknown", channel_name)
     try:
         # Fetch with 10 second timeout, follow redirects, headers optimized for no-JS
         headers = {
@@ -243,19 +245,17 @@ async def fetch_url(url: str, agent=None) -> tuple[str, str]:
         
         # Check if this is a JavaScript challenge page (can be automated with Playwright)
         if is_challenge_page(content):
-            log_prefix = await format_log_prefix(agent.name)
             logger.info(f"{log_prefix} Challenge page detected for {final_url}, falling back to Playwright...")
             # Fall back to Playwright to handle the JavaScript challenge
             # Use the original URL since Playwright will follow redirects
             return await fetch_url_with_playwright(
                 url,
                 agent_name=agent.name if agent else None,
-                channel_name=None,  # fetch_url has no channel context
+                channel_name=channel_name,
             )
 
         # Check if this is a CAPTCHA page (cannot be automated)
         if is_captcha_page(content, final_url):
-            log_prefix = await format_log_prefix(agent.name)
             logger.warning(f"{log_prefix} CAPTCHA page detected for {final_url}")
             # Return original url for deduplication, not final_url
             return (
@@ -861,8 +861,6 @@ async def handle_received(task: TaskNode, graph: TaskGraph, work_queue=None):
     is_callout = task.params.get("callout", False)
     dialog = await agent.get_cached_entity(channel_id)
     is_group = is_group_or_channel(dialog)
-    channel_name = await get_dialog_name(agent, channel_id)
-    log_prefix = await format_log_prefix(agent.name, channel_name)
 
     # Find target message if specified
     message_id_param = task.params.get("message_id", None)

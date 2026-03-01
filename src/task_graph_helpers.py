@@ -141,10 +141,16 @@ async def insert_received_task_for_conversation(
     # Convert to ints for comparison (needed for gagged check and graph_for_conversation)
     agent_id_int = ensure_int_id(recipient_id)
     channel_id_int = ensure_int_id(channel_id)
-    
-    # Get channel name for logging
     channel_name = await get_channel_name(agent, channel_id_int)
-    log_prefix = await format_log_prefix(agent.name, channel_name)
+    agent_name = agent.name
+    log_prefix = await format_log_prefix(agent_name, channel_name)
+
+    # Skip self channel (saved messages) - no received tasks there
+    if channel_id_int == agent_id_int:
+        logger.debug(
+            f"{log_prefix} Skipping received task creation for self channel (saved messages)"
+        )
+        return
 
     # Check if conversation is gagged (unless bypass_gagged is True, e.g., for xsend)
     if not bypass_gagged:
@@ -355,10 +361,6 @@ async def insert_received_task_for_conversation(
                     f"Telegram client for agent {recipient_id} not connected and reconnection failed after lock acquisition"
                 )
 
-        recipient_name = agent.name
-        channel_name = await get_channel_name(agent, channel_id)
-        log_prefix = await format_log_prefix(recipient_name, channel_name)
-
         # build params
         task_params = {}
         if message_id is not None:
@@ -382,7 +384,7 @@ async def insert_received_task_for_conversation(
         new_context = {
             "agent_id": agent_id_int,
             "channel_id": channel_id_int,
-            "agent_name": recipient_name,
+            "agent_name": agent_name,
             "agent_config_name": agent.config_name,
             "channel_name": channel_name,
         }

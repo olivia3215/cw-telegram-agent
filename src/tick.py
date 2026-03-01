@@ -255,11 +255,8 @@ async def _process_due_events():
         intent = ev.get("intent") or ""
         interval_value = ev.get("interval_value")
         occurrences = ev.get("occurrences")
-        try:
-            channel_name = await get_channel_name(agent, channel_id)
-            log_prefix = await format_log_prefix(agent.name, channel_name)
-        except Exception:
-            log_prefix = f"agent:{agent_id} channel:{channel_id}"
+        channel_name = await get_channel_name(agent, channel_id)
+        log_prefix = await format_log_prefix(agent.name, channel_name)
         try:
             await insert_received_task_for_conversation(
                 recipient_id=str(agent_id),

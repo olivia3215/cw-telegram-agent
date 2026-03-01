@@ -165,9 +165,10 @@ class LLM(ABC):
         """
         if hasattr(response, 'usage') and response.usage:
             try:
-                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
-                output_tokens = getattr(response.usage, 'completion_tokens', 0)
-                
+                # Coerce to int: usage may have None for token counts; avoid None + int in cost calc
+                input_tokens = int(getattr(response.usage, 'prompt_tokens', None) or 0)
+                output_tokens = int(getattr(response.usage, 'completion_tokens', None) or 0)
+
                 if input_tokens or output_tokens:
                     from .usage_logging import log_llm_usage
                     log_llm_usage(

@@ -16,8 +16,10 @@ from handlers.received_helpers.message_processing import process_message_history
 from handlers.registry import dispatch_immediate_task
 from prompt_loader import load_system_prompt
 from utils import get_dialog_name, is_group_or_channel
+from utils.ids import ensure_int_id
 from utils.formatting import format_log_prefix, format_log_prefix_resolved
 from utils.time import parse_datetime_with_optional_tz
+from clock import clock
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,16 @@ async def consolidate_oldest_summaries_if_needed(
     oldest SUMMARY_CONSOLIDATION_BATCH_SIZE summaries into a single replacement
     summary and deletes the originals.
     """
+    log_prefix = await format_log_prefix(agent.name, channel_name)
+    agent_id = getattr(agent, "agent_id", None)
+    if agent_id is not None and isinstance(agent_id, (int, str)):
+        if ensure_int_id(channel_id) == ensure_int_id(agent_id):
+            logger.debug(
+                "%s Skipping summary consolidation for self channel (saved messages)",
+                log_prefix,
+            )
+            return False
+
     if not agent.is_authenticated:
         return False
 
@@ -144,7 +156,7 @@ async def consolidate_oldest_summaries_if_needed(
     if not summary_texts:
         logger.warning(
             "%s Skipping summary consolidation for channel %s: no summary text",
-            await format_log_prefix(agent.name, channel_name),
+            log_prefix,
             channel_id,
         )
         return False
@@ -167,7 +179,7 @@ async def consolidate_oldest_summaries_if_needed(
     except Exception as exc:
         logger.warning(
             "%s Failed to consolidate summaries for channel %s: %s",
-            await format_log_prefix(agent.name, channel_name),
+            log_prefix,
             channel_id,
             exc,
         )
@@ -182,7 +194,7 @@ async def consolidate_oldest_summaries_if_needed(
     if not consolidated_content:
         logger.warning(
             "%s Skipping summary consolidation for channel %s: empty LLM response",
-            await format_log_prefix(agent.name, channel_name),
+            log_prefix,
             channel_id,
         )
         return False
@@ -209,7 +221,7 @@ async def consolidate_oldest_summaries_if_needed(
 
     logger.info(
         "%s Consolidated %d summary entries into %s for channel %s",
-        await format_log_prefix(agent.name, channel_name),
+        log_prefix,
         len(summaries_to_merge),
         replacement_summary_id,
         channel_id,
@@ -342,9 +354,13 @@ async def perform_summarization(
         parse_llm_reply_fn: Function to parse LLM reply (async def parse_llm_reply(...) -> list[TaskNode])
         summarize_all: If True, summarize ALL unsummarized messages (including the most recent ones)
     """
-    from clock import clock
-
+    agent_id = getattr(agent, "agent_id", None)
     log_prefix = await format_log_prefix(agent.name, channel_name)
+    if agent_id is not None and isinstance(agent_id, (int, str)):
+        if ensure_int_id(channel_id) == ensure_int_id(agent_id):
+            logger.debug(f"{log_prefix} Skipping summarization for self channel (saved messages)")
+            return
+
 
     # Filter to unsummarized messages
     unsummarized_messages = []

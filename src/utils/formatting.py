@@ -43,11 +43,12 @@ async def format_log_prefix(
         >>> await format_log_prefix("Alice", channel_id, agent=agent)
         "[Alice->Bob]"  # when channel_id resolves to "Bob"
     """
+    from agent import get_agent_for_id
+    agent = agent or get_agent_for_id(agent_name)
+
     # Resolve agent_name if int
     if isinstance(agent_name, int):
-        from agent import get_agent_for_id
-        a = get_agent_for_id(agent_name)
-        agent_name = a.name if a else str(agent_name)
+        agent_name = agent.name if agent else str(agent_name)
     else:
         agent_name = str(agent_name)
 
