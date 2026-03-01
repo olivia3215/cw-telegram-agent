@@ -12,6 +12,7 @@ from telethon.tl.functions.messages import DeleteHistoryRequest
 import handlers  # noqa: F401 - Import handlers to register task types
 from agent import Agent
 from exceptions import ShutdownException
+from llm.exceptions import RetryableLLMError
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from tick import run_one_tick, run_tick_loop
 from handlers.registry import get_task_dispatch_table
@@ -350,3 +351,115 @@ async def test_disabled_agent_skipped_graph_stays_re_enable_runs_task(monkeypatc
     await run_one_tick()
     assert task.status == TaskStatus.DONE
     assert graph not in queue._task_graphs
+
+
+@pytest.mark.asyncio
+async def test_temporary_error_logged_without_stack_trace(monkeypatch):
+    """Temporary errors (RetryableLLMError or 'Temporary error:' message) use logger.error, not logger.exception."""
+    import tick
+
+    dispatch_table = get_task_dispatch_table()
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
+
+    task = TaskNode(id="temp-err", type="send", params={"to": "test", "text": "hi"})
+    graph = TaskGraph(id="g-temp", context={"agent_id": "a", "peer_id": "p"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    error_log_calls = []
+    exception_log_calls = []
+
+    original_error = tick.logger.error
+    original_exception = tick.logger.exception
+
+    def capturing_error(msg, *args, **kwargs):
+        error_log_calls.append(msg)
+        original_error(msg, *args, **kwargs)
+
+    def capturing_exception(msg, *args, **kwargs):
+        exception_log_calls.append(msg)
+        original_exception(msg, *args, **kwargs)
+
+    monkeypatch.setattr(tick.logger, "error", capturing_error)
+    monkeypatch.setattr(tick.logger, "exception", capturing_exception)
+
+    async def raise_temporary_message(task, graph, work_queue=None):
+        raise Exception("Temporary error: retrieval - will retry with fetched content")
+
+    monkeypatch.setitem(dispatch_table, "send", raise_temporary_message)
+
+    await run_one_tick()
+
+    assert len(error_log_calls) >= 1
+    assert any("Task temp-err raised exception" in str(m) for m in error_log_calls)
+    assert len(exception_log_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_retryable_llm_error_logged_without_stack_trace(monkeypatch):
+    """RetryableLLMError is treated as temporary and does not trigger logger.exception."""
+    import tick
+
+    dispatch_table = get_task_dispatch_table()
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
+
+    task = TaskNode(id="llm-err", type="send", params={"to": "test", "text": "hi"})
+    graph = TaskGraph(id="g-llm", context={"agent_id": "a", "peer_id": "p"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    exception_log_calls = []
+
+    original_exception = tick.logger.exception
+
+    def capturing_exception(msg, *args, **kwargs):
+        exception_log_calls.append(msg)
+        original_exception(msg, *args, **kwargs)
+
+    monkeypatch.setattr(tick.logger, "exception", capturing_exception)
+
+    async def raise_retryable_llm(task, graph, work_queue=None):
+        raise RetryableLLMError("Temporary error: prohibited content - will retry")
+
+    monkeypatch.setitem(dispatch_table, "send", raise_retryable_llm)
+
+    await run_one_tick()
+
+    assert len(exception_log_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_ordinary_exception_logs_stack_trace(monkeypatch):
+    """Non-temporary exceptions still trigger logger.exception (stack trace)."""
+    import tick
+
+    dispatch_table = get_task_dispatch_table()
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
+
+    task = TaskNode(id="ord-err", type="send", params={"to": "test", "text": "hi"})
+    graph = TaskGraph(id="g-ord", context={"agent_id": "a", "peer_id": "p"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    exception_log_calls = []
+
+    original_exception = tick.logger.exception
+
+    def capturing_exception(msg, *args, **kwargs):
+        exception_log_calls.append(msg)
+        original_exception(msg, *args, **kwargs)
+
+    monkeypatch.setattr(tick.logger, "exception", capturing_exception)
+
+    async def raise_ordinary(task, graph, work_queue=None):
+        raise RuntimeError("Something went wrong")
+
+    monkeypatch.setitem(dispatch_table, "send", raise_ordinary)
+
+    await run_one_tick()
+
+    assert len(exception_log_calls) == 1
+    assert "Task ord-err raised exception" in str(exception_log_calls[0])
