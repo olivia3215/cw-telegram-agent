@@ -65,6 +65,11 @@ class TelegramEntityCache:
         """
         entity_id = normalize_peer_id(entity_id)
 
+        # Entity ID 0 is invalid in Telegram (no user/channel has ID 0). Avoid calling
+        # the client so we don't get KeyError from Telethon's get_entity.
+        if entity_id == 0:
+            return None
+
         now = clock.now(UTC)
         cached = self._cache.get(entity_id)
         if cached and cached[1] > now:

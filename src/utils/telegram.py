@@ -47,6 +47,9 @@ async def get_channel_name(agent: "Agent", channel_id: int | None):
         channel_id = normalize_peer_id(channel_id)
     except (ValueError, TypeError):
         return f"Unknown ({channel_id!r})"
+    if channel_id == 0:
+        # Entity ID 0 is invalid in Telegram; avoid fetching and return a clear fallback.
+        return "Unknown (0)"
     try:
         # get_entity can fetch users, chats, or channels
         entity = await agent.get_cached_entity(channel_id)
