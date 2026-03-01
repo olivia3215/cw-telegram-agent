@@ -33,6 +33,9 @@ from .utils import format_string_for_logging as _format_string_for_logging
 
 logger = logging.getLogger(__name__)
 
+# One ten-billionth of a US dollar (Grok cost_in_usd_ticks unit)
+_GROK_USD_TICKS_PER_DOLLAR = 10_000_000_000
+
 # Debug logging flag
 GROK_DEBUG_LOGGING: bool = os.environ.get("GROK_DEBUG_LOGGING", "").lower() in (
     "true",
@@ -69,6 +72,54 @@ class GrokLLM(LLM):
         # Grok uses OpenAI-compatible API at https://api.x.ai/v1
         self.client = AsyncOpenAI(api_key=self.api_key, base_url="https://api.x.ai/v1")
         self.history_size = 100
+
+    def _log_usage_from_openai_response(
+        self,
+        response: Any,
+        agent: Any | None,
+        model_name: str,
+        operation: str,
+        channel_telegram_id: int | None = None,
+        channel_name: str | None = None,
+    ) -> None:
+        """
+        Log LLM usage from a Grok response, using cost_in_usd_ticks when present.
+        cost_in_usd_ticks is in 1/10_000_000_000 USD. Falls back to base token-based
+        cost when the field is missing.
+        """
+        if not hasattr(response, "usage") or not response.usage:
+            return
+        usage = response.usage
+        input_tokens = getattr(usage, "prompt_tokens", 0)
+        output_tokens = getattr(usage, "completion_tokens", 0)
+        if not (input_tokens or output_tokens):
+            return
+        ticks = getattr(usage, "cost_in_usd_ticks", None)
+        try:
+            if ticks is not None and (isinstance(ticks, (int, float)) and ticks >= 0):
+                cost_usd = ticks / _GROK_USD_TICKS_PER_DOLLAR
+                from .usage_logging import log_llm_usage
+                log_llm_usage(
+                    agent=agent,
+                    model_name=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    operation=operation,
+                    channel_name=channel_name,
+                    channel_telegram_id=channel_telegram_id,
+                    cost_usd=cost_usd,
+                )
+                return
+        except Exception as e:
+            logger.warning("Failed to use Grok cost_in_usd_ticks, falling back to token-based cost: %s", e)
+        super()._log_usage_from_openai_response(
+            response,
+            agent,
+            model_name,
+            operation,
+            channel_telegram_id=channel_telegram_id,
+            channel_name=channel_name,
+        )
 
     def is_mime_type_supported_by_llm(self, mime_type: str) -> bool:
         """
