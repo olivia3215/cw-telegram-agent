@@ -35,24 +35,17 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
             return ""
         
         current_activity, time_remaining, next_activity = get_current_activity(schedule, now)
-        
-        # If no current activity, show next activity if available
-        if not current_activity:
-            if not next_activity:
-                return ""
-            # Show next activity as upcoming
-            activity_text = f"\n\n# Current Activity\n\n"
-            activity_text += f"Next activity: {next_activity.activity_name} "
-            activity_text += f"(starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
-            activity_text += f"{next_activity.description}\n"
-            activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
-            return activity_text
-        
+        if not current_activity and not next_activity:
+            return ""
+
         activity_text = f"\n\n# Current Activity\n\n"
-        activity_text += f"You are currently: {current_activity.activity_name} "
-        activity_text += f"({current_activity.start_time.strftime('%I:%M %p')} - {current_activity.end_time.strftime('%I:%M %p')})\n"
-        activity_text += f"{current_activity.description}\n"
-        
+        if current_activity:
+            activity_text += f"You are currently: {current_activity.activity_name} "
+            activity_text += f"({current_activity.start_time.strftime('%I:%M %p')} - {current_activity.end_time.strftime('%I:%M %p')})\n"
+            activity_text += f"{current_activity.description}\n"
+        else:
+            activity_text += "Nothing is happening right now.\n"
+
         # Add time remaining
         if time_remaining:
             hours = int(time_remaining.total_seconds() // 3600)
@@ -65,9 +58,11 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
                 time_str = f"{minutes} minute{'s' if minutes != 1 else ''}"
             activity_text += f"Time remaining: {time_str}\n"
         
-        # Add next activity
+        # Show next activity if available
         if next_activity:
-            activity_text += f"Next activity: {next_activity.activity_name} (starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
+            activity_text += f"Next activity: {next_activity.activity_name} "
+            activity_text += f"(starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
+            activity_text += f"{next_activity.description}\n"
         
         activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"
         return activity_text
