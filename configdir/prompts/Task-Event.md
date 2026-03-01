@@ -2,7 +2,7 @@
 
 # Event (scheduled action) instructions
 
-You can schedule actions to run in the future using the `event` task. Events are channel-specific and can fire once or recur at an interval.
+You can schedule instructions for your future self using the `event` task. Events are channel-specific and can fire once or recur at an interval.
 
 ## Creating an event
 
