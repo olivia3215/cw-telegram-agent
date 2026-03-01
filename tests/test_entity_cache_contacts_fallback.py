@@ -4,7 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 """
-Tests for TelegramEntityCache contacts fallback resolution.
+Tests for TelegramEntityCache contacts fallback resolution and related entity-ID handling.
 """
 
 import pytest
@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from telegram.entity_cache import TelegramEntityCache
 from clock import clock
+from utils.telegram import get_channel_name
 
 
 class FakeUser:
@@ -210,3 +211,30 @@ async def test_entity_cache_direct_success_no_contacts_needed():
     # Note: We can't easily verify client() wasn't called with AsyncMock,
     # but we can verify get_entity was called
     assert client.get_entity.called
+
+
+@pytest.mark.asyncio
+async def test_entity_cache_entity_id_zero_returns_none_without_calling_client():
+    """Entity ID 0 is invalid in Telegram; cache should return None without calling client."""
+    client = AsyncMock()
+    client.get_entity = AsyncMock()
+    
+    agent = FakeAgent()
+    cache = TelegramEntityCache(client, name="test_cache", agent=agent)
+    
+    entity = await cache.get(0)
+    
+    assert entity is None
+    client.get_entity.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_channel_name_zero_returns_unknown_without_fetching():
+    """get_channel_name(agent, 0) returns 'Unknown (0)' without calling get_cached_entity."""
+    agent = MagicMock()
+    agent.get_cached_entity = AsyncMock()
+    
+    result = await get_channel_name(agent, 0)
+    
+    assert result == "Unknown (0)"
+    agent.get_cached_entity.assert_not_called()
