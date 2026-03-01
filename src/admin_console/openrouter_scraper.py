@@ -45,20 +45,20 @@ def _format_price(price_str: str) -> str:
         price_str: Price as string per token (e.g., "0.0000003")
         
     Returns:
-        Formatted price string per 1M tokens (e.g., "$0.30")
+        Formatted price string per 1M tokens (e.g., "$0.3000")
     """
     try:
         if not price_str or price_str == "0" or price_str == "0.0" or price_str == "0.00":
-            return "$0.00"
+            return "$0.0000"
         price = float(price_str)
         if price == 0.0:
-            return "$0.00"
+            return "$0.0000"
         # Convert from per token to per 1M tokens for display
         # API gives us per token, so multiply by 1,000,000 to get per 1M tokens
         price_per_m = price * 1_000_000
-        return f"${price_per_m:.2f}"
+        return f"${price_per_m:.4f}"
     except (ValueError, TypeError):
-        return "$0.00"
+        return "$0.0000"
 
 
 async def _fetch_rankings_page_with_playwright() -> str:

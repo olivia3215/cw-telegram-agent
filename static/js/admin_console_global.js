@@ -1628,8 +1628,8 @@ async function loadGlobalLLMs() {
 }
 
 function renderLLMItem(llm) {
-    const promptPrice = llm.prompt_price ? parseFloat(llm.prompt_price).toFixed(2) : '0.00';
-    const completionPrice = llm.completion_price ? parseFloat(llm.completion_price).toFixed(2) : '0.00';
+    const promptPrice = llm.prompt_price ? parseFloat(llm.prompt_price).toFixed(4) : '0.0000';
+    const completionPrice = llm.completion_price ? parseFloat(llm.completion_price).toFixed(4) : '0.0000';
     const description = llm.description || '';
 
     return `
@@ -1639,9 +1639,9 @@ function renderLLMItem(llm) {
                 <button type="button" class="llm-toggle-btn" onclick="toggleLLMItem(this); event.stopPropagation();" onmousedown="event.stopPropagation();" title="Expand or collapse" style="background: none; border: none; padding: 0 4px; cursor: pointer; font-size: 10px; line-height: 1; color: #666;">&#9654;</button>
                 <input type="text" class="llm-field" data-field="model_id" data-llm-id="${llm.id}" value="${escapeHtml(llm.model_id)}" title="API model identifier (e.g. openai/gpt-4o)." style="flex: 1; min-width: 0; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onblur="updateLLMField(${llm.id}, 'model_id', this.value)">
                 <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
-                    <input type="number" step="0.01" class="llm-field" data-field="prompt_price" data-llm-id="${llm.id}" value="${promptPrice}" placeholder="0.00" title="Prompt price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'prompt_price', parseFloat(this.value) || 0)">
+                    <input type="number" step="0.0001" class="llm-field" data-field="prompt_price" data-llm-id="${llm.id}" value="${promptPrice}" placeholder="0.0000" title="Prompt price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(4); updateLLMField(${llm.id}, 'prompt_price', parseFloat(this.value) || 0)">
                     <span style="color: #666;">/</span>
-                    <input type="number" step="0.01" class="llm-field" data-field="completion_price" data-llm-id="${llm.id}" value="${completionPrice}" placeholder="0.00" title="Completion price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(2); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
+                    <input type="number" step="0.0001" class="llm-field" data-field="completion_price" data-llm-id="${llm.id}" value="${completionPrice}" placeholder="0.0000" title="Completion price per 1M tokens (USD)." style="width: 56px; box-sizing: border-box; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-align: right;" onblur="this.value = parseFloat(this.value || 0).toFixed(4); updateLLMField(${llm.id}, 'completion_price', parseFloat(this.value) || 0)">
                 </div>
                 <button type="button" class="llm-delete-btn" onclick="deleteLLM(${llm.id}); event.stopPropagation();" onmousedown="event.stopPropagation();" title="Remove this LLM from the list." style="padding: 2px 6px; background: none; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1; color: #999;">&#215;</button>
             </div>
@@ -1822,11 +1822,11 @@ async function updateLLMField(llmId, field, value) {
                     }
                     if (data.prompt_price !== undefined) {
                         const promptInput = item.querySelector(`input[data-field="prompt_price"]`);
-                        if (promptInput) promptInput.value = parseFloat(data.prompt_price).toFixed(2);
+                        if (promptInput) promptInput.value = parseFloat(data.prompt_price).toFixed(4);
                     }
                     if (data.completion_price !== undefined) {
                         const completionInput = item.querySelector(`input[data-field="completion_price"]`);
-                        if (completionInput) completionInput.value = parseFloat(data.completion_price).toFixed(2);
+                        if (completionInput) completionInput.value = parseFloat(data.completion_price).toFixed(4);
                     }
                 }
             }
