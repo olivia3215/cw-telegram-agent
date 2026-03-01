@@ -96,6 +96,7 @@ def log_llm_usage(
     operation: Optional[str] = None,
     channel_name: Optional[str] = None,
     channel_telegram_id: Optional[int] = None,
+    cost_usd: Optional[float] = None,
 ) -> None:
     """
     Log LLM usage with token counts and estimated cost.
@@ -111,6 +112,9 @@ def log_llm_usage(
         channel_name: Optional channel name for logging prefix
         channel_telegram_id: Optional channel Telegram ID for task log persistence.
             If omitted, falls back to the agent's own Telegram ID.
+        cost_usd: Optional precise cost in USD. When provided (e.g. from Grok's
+            cost_in_usd_ticks), this value is used instead of calculating cost from
+            token counts and model pricing.
     """
     agent_name = str(getattr(agent, "name", None) or "unknown-agent")
     agent_telegram_id = getattr(agent, "agent_id", None)
@@ -120,7 +124,10 @@ def log_llm_usage(
         except (TypeError, ValueError):
             agent_telegram_id = None
 
-    cost = calculate_cost(model_name, input_tokens, output_tokens)
+    if cost_usd is not None:
+        cost = cost_usd
+    else:
+        cost = calculate_cost(model_name, input_tokens, output_tokens)
     
     # Format cost to the hundredth of a cent (4 decimal places)
     cost_str = f"${cost:.4f}"

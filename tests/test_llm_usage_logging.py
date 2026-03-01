@@ -207,6 +207,98 @@ def test_log_llm_usage_does_not_persist_without_context():
                 assert mock_log_task_execution.call_count == 0
 
 
+def test_log_llm_usage_with_cost_usd_override():
+    """Test that log_llm_usage uses cost_usd when provided (e.g. from Grok cost_in_usd_ticks)."""
+    with patch("llm.usage_logging.logger") as mock_logger:
+        log_llm_usage(
+            agent=SimpleNamespace(name="TestAgent"),
+            model_name="grok-4-1-fast-non-reasoning",
+            input_tokens=492,
+            output_tokens=43,
+            operation="translate",
+            cost_usd=0.00007415,  # e.g. 741500 ticks / 10^10
+        )
+        assert mock_logger.info.call_count == 1
+        log_message = mock_logger.info.call_args[0][0]
+        assert "cost=$0.0001" in log_message
+        assert "input_tokens=492" in log_message
+        assert "output_tokens=43" in log_message
+
+
+def test_log_llm_usage_with_cost_usd_persists_to_task_log():
+    """Test that when cost_usd is provided, persisted task log uses that cost."""
+    with patch("llm.usage_logging.logger"):
+        with patch("db.task_log.log_task_execution") as mock_log_task_execution:
+            log_llm_usage(
+                agent=SimpleNamespace(name="TestAgent", agent_id=123456),
+                model_name="grok-4-1-fast-non-reasoning",
+                input_tokens=100,
+                output_tokens=50,
+                operation="query_structured",
+                cost_usd=0.001234,
+            )
+            assert mock_log_task_execution.call_count == 1
+            details = json.loads(mock_log_task_execution.call_args.kwargs["action_details"])
+            assert details["cost"] == pytest.approx(0.001234)
+            assert details["input_tokens"] == 100
+            assert details["output_tokens"] == 50
+
+
+def test_grok_uses_cost_in_usd_ticks_when_present():
+    """Test that GrokLLM logs precise cost from cost_in_usd_ticks when present."""
+    from llm.grok import GrokLLM
+
+    mock_usage = MagicMock()
+    mock_usage.prompt_tokens = 492
+    mock_usage.completion_tokens = 43
+    mock_usage.cost_in_usd_ticks = 741500  # 741500/10^10 = 0.00007415 USD
+    mock_response = MagicMock()
+    mock_response.usage = mock_usage
+
+    with patch("llm.usage_logging.logger") as mock_logger:
+        with patch("llm.grok.GROK_API_KEY", "fake-key"):
+            grok = GrokLLM(model="grok-4-1-fast-non-reasoning")
+            grok._log_usage_from_openai_response(
+                response=mock_response,
+                agent=SimpleNamespace(name="TestAgent"),
+                model_name="grok-4-1-fast-non-reasoning",
+                operation="translate",
+            )
+            assert mock_logger.info.call_count == 1
+            log_message = mock_logger.info.call_args[0][0]
+            # Precise cost 741500/10^10 = 0.00007415 -> formatted $0.0001
+            assert "cost=$0.0001" in log_message
+            assert "input_tokens=492" in log_message
+            assert "output_tokens=43" in log_message
+
+
+def test_grok_falls_back_to_token_cost_when_no_ticks():
+    """Test that GrokLLM falls back to base token-based cost when cost_in_usd_ticks is missing."""
+    from llm.grok import GrokLLM
+
+    mock_usage = MagicMock()
+    mock_usage.prompt_tokens = 100
+    mock_usage.completion_tokens = 50
+    mock_usage.cost_in_usd_ticks = None  # Not provided
+    mock_response = MagicMock()
+    mock_response.usage = mock_usage
+
+    with patch("llm.usage_logging.get_model_pricing", return_value=(0.50, 3.00)):
+        with patch("llm.usage_logging.logger") as mock_logger:
+            with patch("llm.grok.GROK_API_KEY", "fake-key"):
+                grok = GrokLLM(model="grok-4-1-fast-non-reasoning")
+                grok._log_usage_from_openai_response(
+                    response=mock_response,
+                    agent=SimpleNamespace(name="TestAgent"),
+                    model_name="grok-4-1-fast-non-reasoning",
+                    operation="query_structured",
+                )
+                assert mock_logger.info.call_count == 1
+                log_message = mock_logger.info.call_args[0][0]
+                # Token-based cost: (100/1M*0.50)+(50/1M*3.00)=0.0002
+                assert "cost=$0.0002" in log_message
+
+
 def test_log_llm_usage_falls_back_to_agent_id_for_channel():
     """Test that channel_id falls back to agent_id when conversation ID is missing."""
     with patch("llm.usage_logging.get_model_pricing", return_value=(1.00, 3.00)):
