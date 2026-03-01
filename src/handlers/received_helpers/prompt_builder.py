@@ -58,7 +58,8 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
         
         # If no current activity, show next activity if available
         if next_activity:
-            # Show next activity as upcoming
+            if not activity_text:
+                activity_text += "\n\n# Current Activity\n\n"
             activity_text += f"Next activity: {next_activity.activity_name} "
             activity_text += f"(starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
             activity_text += f"{next_activity.description}\n"
