@@ -3490,15 +3490,20 @@ function updateAgentStartTypingDelay(agentName, value) {
         },
         body: JSON.stringify({ start_typing_delay: startTypingDelay })
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            alert('Error updating start typing delay: ' + data.error);
-            // Reload to restore previous value
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        if (!ok) {
+            const msg = (data && data.error) ? data.error : `Request failed (${status})`;
+            alert('Error updating start typing delay: ' + msg);
             loadAgentConfiguration(agentName);
-        } else {
-            alert('Start typing delay updated successfully');
+            return;
         }
+        if (data && data.error) {
+            alert('Error updating start typing delay: ' + data.error);
+            loadAgentConfiguration(agentName);
+            return;
+        }
+        alert('Start typing delay updated successfully');
     })
     .catch(error => {
         if (error && error.message === 'unauthorized') {
@@ -3518,15 +3523,20 @@ function updateAgentTypingSpeed(agentName, value) {
         },
         body: JSON.stringify({ typing_speed: typingSpeed })
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            alert('Error updating typing speed: ' + data.error);
-            // Reload to restore previous value
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        if (!ok) {
+            const msg = (data && data.error) ? data.error : `Request failed (${status})`;
+            alert('Error updating typing speed: ' + msg);
             loadAgentConfiguration(agentName);
-        } else {
-            alert('Typing speed updated successfully');
+            return;
         }
+        if (data && data.error) {
+            alert('Error updating typing speed: ' + data.error);
+            loadAgentConfiguration(agentName);
+            return;
+        }
+        alert('Typing speed updated successfully');
     })
     .catch(error => {
         if (error && error.message === 'unauthorized') {
