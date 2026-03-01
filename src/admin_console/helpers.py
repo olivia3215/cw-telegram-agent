@@ -211,8 +211,8 @@ def get_available_llms() -> list[dict[str, Any]]:
                 else:
                     label = name
             else:
-                prompt_price_formatted = f"${prompt_price:.2f}"
-                completion_price_formatted = f"${completion_price:.2f}"
+                prompt_price_formatted = f"${prompt_price:.4f}"
+                completion_price_formatted = f"${completion_price:.4f}"
                 label = f"{name} ({prompt_price_formatted} / {completion_price_formatted})"
 
             all_llms.append({

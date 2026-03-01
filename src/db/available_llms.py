@@ -32,15 +32,15 @@ def _format_price(price_str: str) -> str:
     """
     try:
         if not price_str or price_str == "0" or price_str == "0.0" or price_str == "0.00":
-            return "$0.00"
+            return "$0.0000"
         price = float(price_str)
         if price == 0.0:
-            return "$0.00"
+            return "$0.0000"
         # Convert from per token to per 1M tokens for display
         price_per_m = price * 1_000_000
-        return f"${price_per_m:.2f}"
+        return f"${price_per_m:.4f}"
     except (ValueError, TypeError):
-        return "$0.00"
+        return "$0.0000"
 
 
 def _parse_price_from_label(label: str) -> tuple[float, float]:
