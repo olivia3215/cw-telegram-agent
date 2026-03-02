@@ -296,6 +296,50 @@ def create_schema() -> None:
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # Admin console: administrators and RBAC
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS administrators (
+                    email VARCHAR(255) NOT NULL PRIMARY KEY,
+                    name VARCHAR(255),
+                    avatar TEXT,
+                    last_login_attempt DATETIME NULL,
+                    INDEX idx_last_login_attempt (last_login_attempt)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS admin_role_names (
+                    role_name VARCHAR(63) NOT NULL PRIMARY KEY,
+                    description VARCHAR(255) NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS administrator_roles (
+                    email VARCHAR(255) NOT NULL,
+                    role_name VARCHAR(63) NOT NULL,
+                    PRIMARY KEY (email, role_name),
+                    INDEX idx_email (email),
+                    FOREIGN KEY (email) REFERENCES administrators(email) ON DELETE CASCADE,
+                    FOREIGN KEY (role_name) REFERENCES admin_role_names(role_name) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS administrator_resource_grants (
+                    email VARCHAR(255) NOT NULL,
+                    resource_type VARCHAR(63) NOT NULL,
+                    resource_id VARCHAR(255) NOT NULL,
+                    PRIMARY KEY (email, resource_type, resource_id),
+                    INDEX idx_email_resource_type (email, resource_type),
+                    INDEX idx_resource_type_id (resource_type, resource_id),
+                    FOREIGN KEY (email) REFERENCES administrators(email) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
+            # Seed admin_role_names with superuser if not present
+            cursor.execute(
+                "INSERT IGNORE INTO admin_role_names (role_name, description) VALUES (%s, %s)",
+                ("superuser", "Full access to admin console"),
+            )
+
             conn.commit()
             logger.info("Database schema created successfully")
             
