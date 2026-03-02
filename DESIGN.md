@@ -1058,7 +1058,7 @@ The shared library provides common functionality for all service scripts:
 - **Logging**: Colored output with `log_info()`, `log_success()`, `log_warning()`, `log_error()`
 - **Validation**: `check_venv()`, `check_script()`, `check_env()`, `check_running()`
 - **Process Management**: `start_server()`, `stop_server()`, `restart_server()`
-- **Utilities**: `rotate_logs()`, `clean_cache()`, `setup_environment()`
+- **Utilities**: `rotate_logs()` (on start, renames existing run.log to run.YYYY-MM-DDTHH:MM:SS.log; keeps all logs until deleted by hand), `clean_cache()`, `setup_environment()`
 - **Status**: `show_status()`, `show_logs()`, `show_recent_logs()`
 
 **Configuration Variables:**
@@ -1147,7 +1147,7 @@ exec "$(dirname "$0")/scripts/service.sh" "$@"
 
 **User Experience:**
 - Consistent command interface across all services
-- Automatic log rotation and process management
+- Log renaming on start (existing run.log → run.YYYY-MM-DDTHH:MM:SS.log) and process management
 - Comprehensive help and status reporting
 - Graceful error handling and recovery
 

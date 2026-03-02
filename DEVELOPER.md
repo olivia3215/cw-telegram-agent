@@ -81,7 +81,7 @@ To add a new service script:
 The shared library provides common functionality:
 - Logging functions with colors
 - Process management (start/stop/restart)
-- Log rotation and cleanup
+- Log renaming on start and cleanup
 - Environment setup
 - Status reporting
 

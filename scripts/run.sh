@@ -85,13 +85,9 @@ Files:
     Environment file: $ENV_FILE
 
 Log Rotation:
-    The script automatically rotates log files, keeping the 5 most recent:
-    - run.log (current)
-    - run1.log (previous)
-    - run2.log (2 runs ago)
-    - run3.log (3 runs ago)
-    - run4.log (4 runs ago)
-    - run5.log (5 runs ago)
+    On start, if run.log exists it is renamed to run.YYYY-MM-DDTHH:MM:SS.log
+    (server local time, zone-naive). If that name exists, the script waits 2s and retries.
+    All prior logs are kept; delete old run.*.log files by hand if desired.
 
 EOF
 }
