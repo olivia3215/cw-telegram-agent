@@ -61,6 +61,9 @@ def upsert_administrator(
 ) -> None:
     """
     Insert or update an administrator row.
+
+    On duplicate email, only overwrites name, avatar, and last_login_attempt
+    when a non-null value is passed (COALESCE keeps existing values for nulls).
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
