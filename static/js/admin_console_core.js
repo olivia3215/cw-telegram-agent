@@ -500,6 +500,9 @@ function handleMainTabClick(e) {
         if (agentName) {
             loadConversationPartners(agentName, 'conversations');
         }
+    } else if (tabName === 'users') {
+        if (typeof loadUsersList === 'function') loadUsersList();
+        switchSubtab('profile-users');
     } else if (tabName === 'global') {
         // Global tab - show first subtab
         switchSubtab('media');
@@ -522,6 +525,9 @@ function switchSubtab(subtabName) {
     }
     if (!activeMainTab) {
         activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="conversations"]');
+    }
+    if (!activeMainTab) {
+        activeMainTab = document.querySelector('.tab-panel.active[data-tab-panel="users"]');
     }
     
     // If no active tab found, try to find by checking which main tab button is active
@@ -744,6 +750,26 @@ function switchSubtab(subtabName) {
             } else if (subtabName === 'work-queue') {
                 WorkQueueUI.load(); // Shows "Select an agent and conversation partner" when no selection
             }
+        }
+    } else if (mainTabName === 'users') {
+        const userSelect = document.getElementById('users-user-select');
+        const userId = userSelect ? (userSelect.value || '').trim() : '';
+        if (userId) {
+            if (subtabName === 'profile-users') {
+                if (typeof loadUserProfile === 'function') loadUserProfile(userId);
+            } else if (subtabName === 'conversations-users') {
+                if (typeof loadUserConversations === 'function') loadUserConversations(userId);
+            } else if (subtabName === 'accounting-users') {
+                if (typeof loadUserAccounting === 'function') loadUserAccounting(userId);
+            }
+        } else {
+            const noUserMsg = 'Select a user above';
+            const profileContainer = document.getElementById('users-profile-container');
+            const convContainer = document.getElementById('users-conversations-container');
+            const acctContainer = document.getElementById('users-accounting-container');
+            if (subtabName === 'profile-users' && profileContainer) profileContainer.innerHTML = '<div class="loading">' + escapeHtml(noUserMsg) + '</div>';
+            if (subtabName === 'conversations-users' && convContainer) convContainer.innerHTML = '<div class="loading">' + escapeHtml(noUserMsg) + '</div>';
+            if (subtabName === 'accounting-users' && acctContainer) acctContainer.innerHTML = '<div class="loading">' + escapeHtml(noUserMsg) + '</div>';
         }
     }
 

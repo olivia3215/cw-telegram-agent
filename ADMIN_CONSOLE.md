@@ -68,7 +68,7 @@ To secure the admin console with HTTPS:
 
 ## Tabs
 
-The admin console provides three main tabs:
+The admin console provides four main tabs:
 
 - **Global** — Global system management with subtabs:
   - **Media Editor** — The full sticker/media management experience (details below)
@@ -93,8 +93,10 @@ The admin console provides three main tabs:
   - **Conversation** — View conversation history, edit summaries, trigger summarization, and optionally show task execution logs interleaved with messages
   - **XSend** — Trigger agent action in a conversation with specific instructions
   - **Work Queue** — View and manage pending tasks in the conversation's task graph
-
-### Conversation Tab - Task Logging
+- **Users** — View users with recent LLM activity (past 7 days), with a shared user pulldown and subtabs:
+  - **Profile** — Same as Conversations→Profile: user profile using an arbitrary agent that has a conversation with the selected user
+  - **Conversations** — List of agents that have conversations with the user; each line shows agent name (link to Conversations→Conversation) and total cost for the past 7 days
+  - **Accounting** — Chronological cost accounting for the user across all agents (similar to Global→Costs filtered by user); agent names link to Conversations→Conversation
 
 The **Conversation** tab includes an optional **"Show Task Log"** checkbox that interleaves task execution logs with conversation messages, providing visibility into agent actions.
 
