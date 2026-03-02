@@ -35,6 +35,7 @@
         <button class="tab-button active" data-tab="global" title="Global config: media, documents, prompts, parameters, LLMs, costs, new agent.">Global</button>
         <button class="tab-button" data-tab="agents" title="Per-agent config: profile, contacts, parameters, schedule, documents, media, costs.">Agents</button>
         <button class="tab-button" data-tab="conversations" title="View and manage conversations, notes, parameters, XSend, work queue.">Conversations</button>
+        <button class="tab-button" data-tab="users" title="View users with recent activity: profile, conversations, accounting.">Users</button>
     </nav>
 
     <div id="tab-panels">
@@ -710,6 +711,41 @@
         </section>
 
 
+        <!-- Users Tab -->
+        <section class="tab-panel" data-tab-panel="users">
+            <nav class="tab-bar" style="margin-bottom: 16px;">
+                <button class="tab-button active" data-subtab="profile-users" title="User profile (same as Conversations→Profile).">Profile</button>
+                <button class="tab-button" data-subtab="conversations-users" title="Agents with conversations and costs.">Conversations</button>
+                <button class="tab-button" data-subtab="accounting-users" title="Chronological cost accounting for this user.">Accounting</button>
+            </nav>
+            <div class="controls">
+                <div class="directory-selector" style="margin-bottom: 16px;">
+                    <label for="users-user-select">User: <span class="info-icon" data-tooltip="Users with LLM activity in the past 7 days, most recent first.">i</span></label><br>
+                    <select id="users-user-select">
+                        <option value="">Select a user...</option>
+                    </select>
+                </div>
+            </div>
+            <div id="users-container" class="main-container">
+                <div class="subtab-panel active" data-subtab-panel="profile-users">
+                    <div id="users-profile-container">
+                        <div class="loading">Select a user above</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="conversations-users">
+                    <div id="users-conversations-container">
+                        <div class="loading">Select a user above</div>
+                    </div>
+                </div>
+                <div class="subtab-panel" data-subtab-panel="accounting-users">
+                    <div id="users-accounting-container">
+                        <div class="loading">Select a user above</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
     </div>
     <!-- Shared media fullscreen (Global Media Editor + Agents->Media) -->
     <div id="media-fullscreen-overlay" style="display: none; position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.85); cursor: pointer; overflow: auto;" onclick="closeMediaFullscreen()" aria-label="Close">
@@ -722,5 +758,6 @@
     <script src="/admin/static/js/admin_console_media.js"></script>
     <script src="/admin/static/js/admin_console_agents.js"></script>
     <script src="/admin/static/js/admin_console_conversations.js"></script>
+    <script src="/admin/static/js/admin_console_users.js"></script>
 </body>
 </html>

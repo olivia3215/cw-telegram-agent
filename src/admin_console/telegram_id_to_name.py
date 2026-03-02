@@ -4,7 +4,7 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 """
-In-memory map from Telegram ID to display name for admin console.
+In-memory map from Telegram ID to display info (name, optional username) for admin console.
 Populated at startup from agents, contacts, and subscribed channels;
 updated when contacts or subscriptions are added.
 """
@@ -25,8 +25,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Map: telegram_id -> {"name": str, "username": str | None}
+_map: dict[int, dict[str, str | None]] = {}
 _lock = threading.Lock()
-_map: dict[int, str] = {}
 
 
 def get_name(telegram_id: int) -> str | None:
@@ -36,11 +37,12 @@ def get_name(telegram_id: int) -> str | None:
     except (ValueError, TypeError):
         return None
     with _lock:
-        return _map.get(tid)
+        entry = _map.get(tid)
+        return entry["name"] if entry else None
 
 
 def set_name(telegram_id: int, name: str) -> None:
-    """Set display name for a Telegram ID. Only set if key not already present."""
+    """Set display name for a Telegram ID. Only set if key not already present. Username left None."""
     if not name or not name.strip():
         return
     try:
@@ -49,13 +51,35 @@ def set_name(telegram_id: int, name: str) -> None:
         return
     with _lock:
         if tid not in _map:
-            _map[tid] = name.strip()
+            _map[tid] = {"name": name.strip(), "username": None}
+
+
+def set_info(telegram_id: int, name: str, username: str | None = None) -> None:
+    """Set display name and optional username. Only set if key not already present."""
+    if not name or not name.strip():
+        return
+    try:
+        tid = normalize_peer_id(telegram_id)
+    except (ValueError, TypeError):
+        return
+    with _lock:
+        if tid not in _map:
+            _map[tid] = {
+                "name": name.strip(),
+                "username": (username.strip() if username and username.strip() else None),
+            }
 
 
 def get_map_snapshot() -> dict[str, str]:
-    """Return a snapshot of the map with string keys for JSON serialization."""
+    """Return a snapshot id -> name for JSON (backward compatible)."""
     with _lock:
-        return {str(k): v for k, v in _map.items()}
+        return {str(k): v["name"] for k, v in _map.items()}
+
+
+def get_map_snapshot_full() -> dict[str, dict[str, str | None]]:
+    """Return a snapshot id -> {name, username} for building rich labels."""
+    with _lock:
+        return {str(k): dict(v) for k, v in _map.items()}
 
 
 def _display_name_for_user(user: User) -> str:
@@ -77,11 +101,36 @@ def _display_name_for_user(user: User) -> str:
     return str(getattr(user, "id", ""))
 
 
+def _username_for_user(user: User) -> str | None:
+    """Extract username from a Telegram User entity."""
+    if getattr(user, "username", None):
+        return user.username
+    usernames = getattr(user, "usernames", None)
+    if usernames:
+        for handle in usernames:
+            uv = getattr(handle, "username", None)
+            if uv:
+                return uv
+    return None
+
+
 def _display_name_for_channel(entity) -> str | None:
     """Build display name for a group/channel entity."""
     title = getattr(entity, "title", None)
     if title and title.strip():
         return title.strip()
+    return None
+
+
+def _username_for_entity(entity) -> str | None:
+    """Extract username from User or Channel/Chat entity."""
+    if hasattr(entity, "username") and entity.username:
+        return entity.username
+    if hasattr(entity, "usernames") and entity.usernames:
+        for handle in entity.usernames:
+            uv = getattr(handle, "username", None)
+            if uv:
+                return uv
     return None
 
 
@@ -93,7 +142,7 @@ def _populate_from_agent_sync(agent: "Agent") -> None:
     if agent.agent_id is not None:
         set_name(agent.agent_id, agent.name)
 
-    # Contacts (GetContactsRequest + entity names)
+    # Contacts (GetContactsRequest + entity names and usernames)
     try:
         result = agent.execute(
             agent.client(GetContactsRequest(hash=0)),
@@ -108,13 +157,14 @@ def _populate_from_agent_sync(agent: "Agent") -> None:
             if not user or not isinstance(user, User):
                 continue
             name = _display_name_for_user(user)
-            set_name(user_id, name)
+            username = _username_for_user(user)
+            set_info(user_id, name, username)
     except Exception as e:
         logger.debug("Error populating telegram_id_to_name from contacts for %s: %s", agent.name, e)
 
     # Subscribed channels (iter_dialogs, groups/channels only)
     async def _fetch_memberships():
-        out: list[tuple[int, str]] = []
+        out: list[tuple[int, str, str | None]] = []
         try:
             async for dialog in agent.client.iter_dialogs():
                 await asyncio.sleep(0.02)
@@ -138,15 +188,16 @@ def _populate_from_agent_sync(agent: "Agent") -> None:
                     continue
                 name = _display_name_for_channel(entity)
                 if name:
-                    out.append((cid, name))
+                    username = _username_for_entity(entity)
+                    out.append((cid, name, username))
         except Exception as e:
             logger.debug("Error iterating dialogs for %s: %s", agent.name, e)
         return out
 
     try:
-        pairs = agent.execute(_fetch_memberships(), timeout=45.0)
-        for cid, name in pairs or []:
-            set_name(cid, name)
+        triples = agent.execute(_fetch_memberships(), timeout=45.0)
+        for cid, name, username in triples or []:
+            set_info(cid, name, username)
     except Exception as e:
         logger.debug("Error populating telegram_id_to_name from memberships for %s: %s", agent.name, e)
 

@@ -426,3 +426,82 @@ def get_global_cost_logs(days: int = 7) -> dict[str, Any]:
         "timestamp >= %s",
         (cutoff_time,),
     )
+
+
+def get_users_with_llm_activity(days: int = 7) -> list[dict[str, Any]]:
+    """
+    Get distinct users (channel_telegram_id) with at least one llm_usage record in the past N days,
+    ordered by most recent activity first. Excludes Telegram system user (777000).
+
+    Returns:
+        List of dicts with keys: channel_telegram_id (int), last_activity (ISO datetime str).
+    """
+    try:
+        from config import TELEGRAM_SYSTEM_USER_ID
+    except Exception:
+        TELEGRAM_SYSTEM_USER_ID = 777000
+
+    try:
+        cutoff_time = clock.now(UTC) - timedelta(days=days)
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT channel_telegram_id, MAX(timestamp) AS last_activity
+                FROM task_execution_log
+                WHERE action_kind = 'llm_usage'
+                  AND timestamp >= %s
+                  AND channel_telegram_id != %s
+                GROUP BY channel_telegram_id
+                ORDER BY last_activity DESC
+                """,
+                (cutoff_time, TELEGRAM_SYSTEM_USER_ID),
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+
+        result = []
+        for row in rows:
+            ts = row["last_activity"]
+            if ts and ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+            result.append({
+                "channel_telegram_id": row["channel_telegram_id"],
+                "last_activity": ts.isoformat() if ts else None,
+            })
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get users with llm activity: {e}")
+        return []
+
+
+def get_user_cost_logs(channel_telegram_id: int, days: int = 7) -> dict[str, Any]:
+    """Get llm_usage cost logs for one user (channel) across all agents from the past N days."""
+    cutoff_time = clock.now(UTC) - timedelta(days=days)
+    return _get_cost_logs_with_filter(
+        "channel_telegram_id = %s AND timestamp >= %s",
+        (channel_telegram_id, cutoff_time),
+    )
+
+
+def get_user_conversations_summary(channel_telegram_id: int, days: int = 7) -> list[dict[str, Any]]:
+    """
+    Get per-agent total cost for one user from the past N days (for Users tab Conversations subtab).
+
+    Returns:
+        List of dicts with keys: agent_telegram_id (int), total_cost (float).
+    """
+    result = get_user_cost_logs(channel_telegram_id, days=days)
+    logs = result.get("logs") or []
+    by_agent: dict[int, float] = {}
+    for entry in logs:
+        aid = entry.get("agent_telegram_id")
+        if aid is None:
+            continue
+        cost = entry.get("cost")
+        if cost is not None:
+            by_agent[aid] = by_agent.get(aid, 0.0) + cost
+    return [
+        {"agent_telegram_id": aid, "total_cost": total}
+        for aid, total in sorted(by_agent.items(), key=lambda x: -x[1])
+    ]

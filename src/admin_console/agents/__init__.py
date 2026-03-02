@@ -27,6 +27,7 @@ from admin_console.agents import (
     routes,
     schedule,
     summaries,
+    users,
 )
 
 # Register all routes
@@ -47,3 +48,4 @@ profile.register_profile_routes(agents_bp)
 routes.register_main_routes(agents_bp)
 schedule.register_schedule_routes(agents_bp)
 summaries.register_summary_routes(agents_bp)
+users.register_users_routes(agents_bp)
