@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 7891
-DEFAULT_DEST_DIR_NAME = "tmp/nano_banana_output"
+DEFAULT_DEST_DIR_NAME = "tmp/generated_images"
 
 # (model_id, display_name). Order determines pulldown order.
 IMAGE_MODELS = [
@@ -536,7 +536,7 @@ def _html_page() -> str:
   <select id="model"><option value="">Loading…</option></select>
 
   <label for="dest-dir">Destination directory</label>
-  <input type="text" id="dest-dir" value="{default_dest}" placeholder="e.g. tmp/nano_banana_output">
+  <input type="text" id="dest-dir" value="{default_dest}" placeholder="e.g. tmp/generated_images">
 
   <label for="prompt">Image prompt</label>
   <textarea id="prompt" placeholder="Describe the image you want to generate."></textarea>
