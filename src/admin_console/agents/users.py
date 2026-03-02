@@ -72,7 +72,8 @@ def register_users_routes(agents_bp: Blueprint):
             from agent import get_agent_for_id
             from db.task_log import get_user_cost_logs
 
-            result = get_user_cost_logs(channel_id, days=7)
+            days = _parse_days_param(default_days=7)
+            result = get_user_cost_logs(channel_id, days=days)
             logs = result.get("logs") or []
             agent_ids = {log["agent_telegram_id"] for log in logs if log.get("agent_telegram_id") is not None}
             if not agent_ids:
