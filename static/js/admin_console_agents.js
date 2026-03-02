@@ -187,6 +187,7 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                         clearInterval(window._scheduleClockInterval);
                         window._scheduleClockInterval = null;
                     }
+                    scheduleHideClock();
                     scheduleContainer.innerHTML = '<div class="loading">Select an agent to manage schedule</div>';
                 }
             } else if (subtabName === 'costs') {
@@ -4240,6 +4241,33 @@ function scheduleUpdateAgentClock() {
     }
 }
 
+/** Show or hide the persistent schedule clock (outside the container). Call when rendering schedule content. */
+function scheduleShowClock(timeZone) {
+    if (window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
+    const row = document.getElementById('schedule-clock-row');
+    if (!row) return;
+    if (timeZone) {
+        row.style.display = 'block';
+        scheduleUpdateAgentClock();
+        window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
+    } else {
+        row.style.display = 'none';
+    }
+}
+
+/** Hide the schedule clock and stop its interval. Call when clearing the schedule panel. */
+function scheduleHideClock() {
+    if (window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
+    const row = document.getElementById('schedule-clock-row');
+    if (row) row.style.display = 'none';
+}
+
 function scheduleMarkDirty() {
     window._scheduleDirty = true;
     const bar = document.getElementById('schedule-unsaved-bar');
@@ -4285,25 +4313,19 @@ function scheduleToggleExpand(index) {
     }
     const container = document.getElementById('schedule-container');
     const agentName = window._scheduleAgentName;
-    const timeZone = window._scheduleTimezone;
+    const timeZone = window._scheduleClockTimezone || window._scheduleTimezone;
     if (container && agentName !== undefined) {
         renderScheduleContent(container, agentName, window._scheduleActivities, timeZone);
     }
 }
 
 function renderScheduleContent(container, agentName, activities, timeZone) {
-    if (window._scheduleClockInterval) {
-        clearInterval(window._scheduleClockInterval);
-        window._scheduleClockInterval = null;
-    }
     window._scheduleClockTimezone = timeZone || null;
+    window._scheduleTimezone = timeZone || null;
     window._scheduleAgentName = agentName;
     window._scheduleActivities = (activities || []).map(a => ({ ...a }));
     if (!window._scheduleExpandedIndices) window._scheduleExpandedIndices = new Set();
     const isDirty = !!window._scheduleDirty;
-    const clockRow = timeZone
-        ? '<div id="schedule-clock-row" style="margin-bottom: 16px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 15px;"><strong>Current time (agent\'s time zone):</strong> <span id="schedule-agent-time-value">--:--:--</span></div>'
-        : '';
     const saveBar = '<div id="schedule-unsaved-bar" style="display: ' + (isDirty ? 'flex' : 'none') + '; align-items: center; gap: 12px; margin-bottom: 16px; padding: 10px 14px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;"><span>You have unsaved changes.</span><button type="button" id="schedule-save-all-btn" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save</button></div>';
     const btnRow = '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">' +
         '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null, null, null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
@@ -4311,7 +4333,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         '<button type="button" id="schedule-delete-all-btn" onclick="scheduleDeleteAll(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete all</button>' +
         '</div>';
     if (!activities || activities.length === 0) {
-        container.innerHTML = clockRow + saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        container.innerHTML = saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
         const saveAllBtn = document.getElementById('schedule-save-all-btn');
         if (saveAllBtn) {
             saveAllBtn.onclick = () => {
@@ -4326,13 +4348,10 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
                 });
             };
         }
-        if (timeZone) {
-            scheduleUpdateAgentClock();
-            window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
-        }
+        scheduleShowClock(timeZone);
         return;
     }
-    let html = clockRow + saveBar + btnRow + '<div id="schedule-activity-list" style="display: flex; flex-direction: column; gap: 8px;">';
+    let html = saveBar + btnRow + '<div id="schedule-activity-list" style="display: flex; flex-direction: column; gap: 8px;">';
     const now = new Date();
     let currentIndex = -1;
     for (let i = 0; i < activities.length; i++) {
@@ -4401,10 +4420,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
             });
         };
     }
-    if (timeZone) {
-        scheduleUpdateAgentClock();
-        window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
-    }
+    scheduleShowClock(timeZone);
 }
 
 function loadSchedule(agentName) {
@@ -4413,6 +4429,7 @@ function loadSchedule(agentName) {
     const agentSelect = document.getElementById('agents-agent-select');
     const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
     if (currentAgentName !== agentName) return;
+    scheduleHideClock();
     container.innerHTML = '<div class="loading">Loading schedule...</div>';
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`)
         .then(response => response.json())
@@ -4420,6 +4437,7 @@ function loadSchedule(agentName) {
             const agentSelect2 = document.getElementById('agents-agent-select');
             if (agentSelect2 && stripAsterisk(agentSelect2.value) !== agentName) return;
             if (data.error) {
+                scheduleHideClock();
                 container.innerHTML = `<div class="error">${escapeHtml(data.error)}</div>`;
                 return;
             }
