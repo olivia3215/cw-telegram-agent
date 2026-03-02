@@ -79,15 +79,19 @@ check_running() {
     return 1
 }
 
-# Rotate log files (keep 5 most recent)
+# Rotate log files: on server start, rename existing run.log to run.YYYY-MM-DDTHH:MM:SS.log
+# (zone-naive local time). If that name exists, sleep 2s and retry. Keeps all logs until deleted by hand.
 rotate_logs() {
-    if [ -d "$LOG_DIR" ]; then
-        # Rotate existing log files
-        [ -f "$LOG_DIR/${LOG_BASE_NAME}4.log" ] && mv "$LOG_DIR/${LOG_BASE_NAME}4.log" "$LOG_DIR/${LOG_BASE_NAME}5.log" 2>/dev/null || true
-        [ -f "$LOG_DIR/${LOG_BASE_NAME}3.log" ] && mv "$LOG_DIR/${LOG_BASE_NAME}3.log" "$LOG_DIR/${LOG_BASE_NAME}4.log" 2>/dev/null || true
-        [ -f "$LOG_DIR/${LOG_BASE_NAME}2.log" ] && mv "$LOG_DIR/${LOG_BASE_NAME}2.log" "$LOG_DIR/${LOG_BASE_NAME}3.log" 2>/dev/null || true
-        [ -f "$LOG_DIR/${LOG_BASE_NAME}1.log" ] && mv "$LOG_DIR/${LOG_BASE_NAME}1.log" "$LOG_DIR/${LOG_BASE_NAME}2.log" 2>/dev/null || true
-        [ -f "$LOG_DIR/${LOG_BASE_NAME}.log" ] && mv "$LOG_DIR/${LOG_BASE_NAME}.log" "$LOG_DIR/${LOG_BASE_NAME}1.log" 2>/dev/null || true
+    if [ -d "$LOG_DIR" ] && [ -f "$LOG_DIR/${LOG_BASE_NAME}.log" ]; then
+        local target
+        while true; do
+            target="$LOG_DIR/${LOG_BASE_NAME}.$(date +%Y-%m-%dT%H:%M:%S).log"
+            if [ ! -f "$target" ]; then
+                break
+            fi
+            sleep 2
+        done
+        mv "$LOG_DIR/${LOG_BASE_NAME}.log" "$target"
     fi
 }
 
