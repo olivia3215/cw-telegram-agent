@@ -459,6 +459,19 @@ function checkAuthStatus() {
                         headerName.textContent = data.name || data.email || 'Admin';
                     }
                 }
+                const mainTabBar = document.getElementById('main-tab-bar');
+                const tabPanels = document.getElementById('tab-panels');
+                const noAccessEl = document.getElementById('console-no-access');
+                const isSuperuser = data.is_superuser === true;
+                if (mainTabBar) {
+                    mainTabBar.classList.toggle('hidden', !isSuperuser);
+                }
+                if (tabPanels) {
+                    tabPanels.classList.toggle('hidden', !isSuperuser);
+                }
+                if (noAccessEl) {
+                    noAccessEl.classList.toggle('hidden', isSuperuser);
+                }
             } else {
                 showAuthOverlay(overlayMessage);
             }

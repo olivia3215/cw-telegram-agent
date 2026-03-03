@@ -47,7 +47,6 @@ UNPROTECTED_ENDPOINTS = {
     "routes.favicon",
     "routes.serve_admin_css",
     "favicon",
-    "routes.api_directories",
     "static",
     "auth.api_auth_request_code",
     "auth.api_auth_verify",
@@ -211,6 +210,7 @@ def api_auth_status():
         except Exception as e:
             logger.debug("Failed to load roles/admin for auth status: %s", e)
     verified = bool(session.get(SESSION_VERIFIED_KEY))
+    is_superuser = "superuser" in (roles or [])
     return jsonify(
         {
             "logged_in": bool(email),
@@ -219,6 +219,7 @@ def api_auth_status():
             "avatar": avatar,
             "roles": roles,
             "verified": verified,
+            "is_superuser": is_superuser,
         }
     )
 
@@ -324,11 +325,6 @@ def api_google_callback():
         return redirect("/admin")
 
     from db import administrators
-
-    # Only allow access if this email is already an administrator (pre-provisioned).
-    if administrators.get_administrator(email) is None:
-        logger.warning("Google OAuth callback: email not an administrator: %s", email)
-        return redirect("/admin?error=not_authorized")
 
     name = (userinfo.get("name") or "").strip() or None
     picture = (userinfo.get("picture") or "").strip() or None

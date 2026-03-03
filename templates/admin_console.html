@@ -38,7 +38,11 @@
         </div>
     </div>
 
-    <nav class="tab-bar">
+    <div id="console-no-access" class="console-no-access hidden">
+        <p>You don't have access to the console. Use <strong>Request Access</strong> to request superuser access.</p>
+    </div>
+
+    <nav class="tab-bar" id="main-tab-bar">
         <button class="tab-button active" data-tab="global" title="Global config: media, documents, prompts, parameters, LLMs, costs, new agent.">Global</button>
         <button class="tab-button" data-tab="agents" title="Per-agent config: profile, contacts, parameters, schedule, documents, media, costs.">Agents</button>
         <button class="tab-button" data-tab="conversations" title="View and manage conversations, notes, parameters, XSend, work queue.">Conversations</button>

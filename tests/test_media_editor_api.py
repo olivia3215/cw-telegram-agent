@@ -13,6 +13,15 @@ from admin_console.app import create_admin_app
 from media.media_sources import reset_media_source_registry
 
 
+@pytest.fixture(autouse=True)
+def _mock_superuser_for_session(monkeypatch):
+    """Phase B2: mock get_roles_for_email so session-based tests get superuser access."""
+    monkeypatch.setattr(
+        "db.administrators.get_roles_for_email",
+        lambda email: ["superuser"],
+    )
+
+
 def _write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 

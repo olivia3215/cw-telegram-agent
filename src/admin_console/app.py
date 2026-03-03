@@ -105,10 +105,17 @@ def create_admin_app(use_https: bool = False) -> Flask:
             return None
         if endpoint in UNPROTECTED_ENDPOINTS:
             return None
-        if session.get(SESSION_ADMIN_EMAIL):
-            return None
+        email = session.get(SESSION_ADMIN_EMAIL)
+        if not email:
+            return jsonify({"error": "Admin console login required"}), 401
 
-        return jsonify({"error": "Admin console login required"}), 401
+        # Require superuser role for all protected endpoints
+        from db import administrators
+        roles = administrators.get_roles_for_email(email)
+        if "superuser" not in (roles or []):
+            return jsonify({"error": "Superuser role required"}), 403
+
+        return None
     
     # Scan and set available directories
     directories = scan_media_directories()
