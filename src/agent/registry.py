@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 class AgentRegistry:
     def __init__(self):
+        # Key: config name (config file stem), not display name. Used for lookups and paths only.
+        # Display name (from config "# Agent Name") is for UI and logs only.
         self._registry = {}  # config_name -> Agent
 
     def all_agent_names(self):

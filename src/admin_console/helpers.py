@@ -152,6 +152,7 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
     The agent_config_name parameter should be the config file name (without .md extension),
     which is stored as agent.config_name. This allows the admin console URLs to use
     the config file name, which is stable even if the agent's display name changes.
+    Do not use display name (from config \"# Agent Name\") for lookups; it is for UI and logs only.
     """
     return _agent_registry.get_by_config_name(agent_config_name)
 
