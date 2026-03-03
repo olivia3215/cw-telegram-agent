@@ -4,21 +4,27 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 """
-Authentication and OTP challenge system for the admin console.
+Authentication for the admin console: Google OAuth (log in) and OTP challenge (Phase C: Request Access).
 """
 
 import hashlib
 import logging
 import secrets
 import threading
+import urllib.parse
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from flask import Blueprint, current_app, jsonify, request, session  # pyright: ignore[reportMissingImports]
+import requests
+from flask import Blueprint, current_app, jsonify, redirect, request, session  # pyright: ignore[reportMissingImports]
 
 from clock import clock
-from config import ADMIN_CONSOLE_SECRET_KEY
+from config import (
+    ADMIN_CONSOLE_SECRET_KEY,
+    ADMIN_GOOGLE_CLIENT_ID,
+    ADMIN_GOOGLE_CLIENT_SECRET,
+)
 from admin_console.puppet_master import (
     PuppetMasterNotConfigured,
     PuppetMasterUnavailable,
@@ -30,21 +36,25 @@ logger = logging.getLogger(__name__)
 # Create auth blueprint
 auth_bp = Blueprint("auth", __name__)
 
-# Session key for verification status
-SESSION_VERIFIED_KEY = "admin_console_verified"
+# Session keys
+SESSION_VERIFIED_KEY = "admin_console_verified"  # Phase C: passed TOTP "Request Access"
+SESSION_ADMIN_EMAIL = "admin_email"  # Logged in via Google
+SESSION_GOOGLE_STATE = "google_oauth_state"  # CSRF for Google OAuth
 
-# Set of endpoint names that remain accessible without verification
-# These match the blueprint names: routes, auth, media, agents
+# Set of endpoint names that remain accessible without being logged in
 UNPROTECTED_ENDPOINTS = {
     "routes.index",
     "routes.favicon",
-    "routes.serve_admin_css",  # /admin/css/admin_console.css
-    "favicon",  # Root-level /favicon.ico (when opening media in new tab)
-    "routes.api_directories",  # Allow directory listing without auth
+    "routes.serve_admin_css",
+    "favicon",
+    "routes.api_directories",
     "static",
     "auth.api_auth_request_code",
     "auth.api_auth_verify",
     "auth.api_auth_status",
+    "auth.api_google_login",
+    "auth.api_google_callback",
+    "auth.api_logout",
 }
 
 
@@ -168,7 +178,7 @@ def get_challenge_manager() -> OTPChallengeManager:
 
 
 def require_admin_verification():
-    """Ensure the session has passed OTP verification for protected routes."""
+    """Ensure the session has a logged-in admin (Google) for protected routes."""
     if request.method == "OPTIONS":
         return None
 
@@ -177,20 +187,171 @@ def require_admin_verification():
         return None
     if endpoint in UNPROTECTED_ENDPOINTS:
         return None
-    if session.get(SESSION_VERIFIED_KEY):
+    if session.get(SESSION_ADMIN_EMAIL):
         return None
 
-    return jsonify({"error": "Admin console verification required"}), 401
+    return jsonify({"error": "Admin console login required"}), 401
 
 
 @auth_bp.route("/api/auth/status", methods=["GET"])
 def api_auth_status():
     """Return current authentication status for the session."""
+    email = session.get(SESSION_ADMIN_EMAIL)
+    roles = []
+    name = None
+    avatar = None
+    if email:
+        try:
+            from db import administrators
+            roles = administrators.get_roles_for_email(email)
+            admin = administrators.get_administrator(email)
+            if admin:
+                name = admin.get("name")
+                avatar = admin.get("avatar")
+        except Exception as e:
+            logger.debug("Failed to load roles/admin for auth status: %s", e)
+    verified = bool(session.get(SESSION_VERIFIED_KEY))
     return jsonify(
         {
-            "verified": bool(session.get(SESSION_VERIFIED_KEY)),
+            "logged_in": bool(email),
+            "email": email,
+            "name": name,
+            "avatar": avatar,
+            "roles": roles,
+            "verified": verified,
         }
     )
+
+
+# --- Google OAuth ---
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_SCOPES = "openid email profile"
+
+
+@auth_bp.route("/api/auth/google/login", methods=["GET"])
+def api_google_login():
+    """Redirect to Google OAuth consent screen."""
+    if not ADMIN_GOOGLE_CLIENT_ID or not ADMIN_GOOGLE_CLIENT_SECRET:
+        return (
+            jsonify(
+                {
+                    "error": "Google login is not configured. Set CINDY_ADMIN_GOOGLE_CLIENT_ID and CINDY_ADMIN_GOOGLE_CLIENT_SECRET."
+                }
+            ),
+            503,
+        )
+    state = secrets.token_urlsafe(32)
+    session[SESSION_GOOGLE_STATE] = state
+    session.modified = True
+    base = request.host_url.rstrip("/")
+    redirect_uri = f"{base}/admin/api/auth/google/callback"
+    params = {
+        "client_id": ADMIN_GOOGLE_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": GOOGLE_SCOPES,
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    url = f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+    return redirect(url)
+
+
+@auth_bp.route("/api/auth/google/callback", methods=["GET"])
+def api_google_callback():
+    """Handle Google OAuth callback: exchange code, upsert admin, set session."""
+    if not ADMIN_GOOGLE_CLIENT_ID or not ADMIN_GOOGLE_CLIENT_SECRET:
+        return redirect("/admin")
+    state = request.args.get("state")
+    code = request.args.get("code")
+    if not state or state != session.get(SESSION_GOOGLE_STATE):
+        logger.warning("Google OAuth callback: invalid or missing state")
+        session.pop(SESSION_GOOGLE_STATE, None)
+        return redirect("/admin")
+    if not code:
+        logger.warning("Google OAuth callback: missing code")
+        session.pop(SESSION_GOOGLE_STATE, None)
+        return redirect("/admin")
+    session.pop(SESSION_GOOGLE_STATE, None)
+    session.modified = True
+
+    base = request.host_url.rstrip("/")
+    redirect_uri = f"{base}/admin/api/auth/google/callback"
+    token_data = {
+        "client_id": ADMIN_GOOGLE_CLIENT_ID,
+        "client_secret": ADMIN_GOOGLE_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri,
+    }
+    try:
+        token_resp = requests.post(
+            GOOGLE_TOKEN_URL,
+            data=token_data,
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        tokens = token_resp.json()
+    except requests.RequestException as e:
+        logger.exception("Google token exchange failed: %s", e)
+        return redirect("/admin")
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        logger.warning("Google token response missing access_token")
+        return redirect("/admin")
+
+    try:
+        user_resp = requests.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        user_resp.raise_for_status()
+        userinfo = user_resp.json()
+    except requests.RequestException as e:
+        logger.exception("Google userinfo failed: %s", e)
+        return redirect("/admin")
+
+    email = (userinfo.get("email") or "").strip()
+    if not email:
+        logger.warning("Google userinfo missing email")
+        return redirect("/admin")
+
+    from db import administrators
+
+    # Only allow access if this email is already an administrator (pre-provisioned).
+    if administrators.get_administrator(email) is None:
+        logger.warning("Google OAuth callback: email not an administrator: %s", email)
+        return redirect("/admin?error=not_authorized")
+
+    name = (userinfo.get("name") or "").strip() or None
+    picture = (userinfo.get("picture") or "").strip() or None
+    now = datetime.now(UTC)
+    administrators.upsert_administrator(
+        email,
+        name=name,
+        avatar=picture,
+        last_login_attempt=now,
+    )
+
+    session[SESSION_ADMIN_EMAIL] = email
+    session.permanent = True
+    session.modified = True
+    return redirect("/admin")
+
+
+@auth_bp.route("/api/auth/logout", methods=["POST", "GET"])
+def api_logout():
+    """Clear session and redirect to admin index."""
+    session.clear()
+    session.modified = True
+    return redirect("/admin")
 
 
 @auth_bp.route("/api/auth/request-code", methods=["POST"])

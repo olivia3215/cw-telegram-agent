@@ -92,11 +92,11 @@ def create_admin_app(use_https: bool = False) -> Flask:
     # Add before_request handler for authentication (applied to all routes)
     # Import here to avoid circular imports
     from flask import request, session, jsonify  # pyright: ignore[reportMissingImports]
-    from admin_console.auth import UNPROTECTED_ENDPOINTS, SESSION_VERIFIED_KEY
-    
+    from admin_console.auth import UNPROTECTED_ENDPOINTS, SESSION_ADMIN_EMAIL
+
     @app.before_request
     def admin_verification():
-        """Ensure the session has passed OTP verification for protected routes."""
+        """Ensure the session has a logged-in admin (Google) for protected routes."""
         if request.method == "OPTIONS":
             return None
 
@@ -105,10 +105,10 @@ def create_admin_app(use_https: bool = False) -> Flask:
             return None
         if endpoint in UNPROTECTED_ENDPOINTS:
             return None
-        if session.get(SESSION_VERIFIED_KEY):
+        if session.get(SESSION_ADMIN_EMAIL):
             return None
 
-        return jsonify({"error": "Admin console verification required"}), 401
+        return jsonify({"error": "Admin console login required"}), 401
     
     # Scan and set available directories
     directories = scan_media_directories()

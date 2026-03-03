@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Console</title>
+    <title>Cindy's World Agent Admin Console</title>
     <link rel="icon" href="/admin/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/admin/static/icon-192x192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="/admin/static/apple-touch-icon.png" />
@@ -14,21 +14,28 @@
 <body>
     <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true">
         <div class="auth-card">
-            <h2>Verify Access</h2>
-            <p>Request a login code sent to the puppet master Telegram account to enable the admin console.</p>
+            <h2>Log in</h2>
+            <p>Log in with Google to access the admin console.</p>
             <div id="auth-error" class="auth-message error hidden" role="alert"></div>
             <div id="auth-status" class="auth-message info hidden"></div>
             <div class="auth-actions">
-                <button id="request-code-btn">Send verification code</button>
+                <a id="google-login-btn" href="/admin/api/auth/google/login" class="button-link">Log in via Google</a>
             </div>
-            <div class="auth-code-entry">
+            <div id="auth-otp-section" class="auth-code-entry" style="display: none;">
                 <input id="otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Six digit code">
                 <button id="verify-code-btn">Verify</button>
             </div>
         </div>
     </div>
     <div class="header">
-        <h1>Admin Console</h1>
+        <h1>Cindy's World Agent Admin Console</h1>
+        <div id="header-user" class="header-user" style="display: none;">
+            <img id="header-avatar" class="header-avatar" src="" alt="" />
+            <span id="header-name" class="header-name"></span>
+            <div class="header-user-menu">
+                <a id="header-logout" href="/admin/api/auth/logout">Log Out</a>
+            </div>
+        </div>
     </div>
 
     <nav class="tab-bar">
