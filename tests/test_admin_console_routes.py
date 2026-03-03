@@ -24,14 +24,7 @@ from media.media_sources import (
     reset_media_source_registry,
 )
 
-
-@pytest.fixture(autouse=True)
-def _mock_superuser_for_session(monkeypatch):
-    """Phase B2: mock get_roles_for_email so session-based tests get superuser access."""
-    monkeypatch.setattr(
-        "db.administrators.get_roles_for_email",
-        lambda email: ["superuser"],
-    )
+pytestmark = pytest.mark.usefixtures("mock_superuser_for_session")
 
 
 def _make_client():
@@ -970,7 +963,7 @@ def test_auth_status_returns_logged_in():
     data = response.get_json()
     assert data["logged_in"] is True
     assert data["email"] == "test@example.com"
-    assert data["is_superuser"] is True  # _mock_superuser_for_session grants superuser
+    assert data["is_superuser"] is True  # mock_superuser_for_session grants superuser
 
 
 def test_auth_status_not_logged_in():

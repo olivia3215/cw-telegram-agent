@@ -31,3 +31,12 @@ def pytest_configure(config):
 
 # Register fixtures from test_utils without an "unused import".
 pytest_plugins = ["test_utils"]
+
+
+@pytest.fixture
+def mock_superuser_for_session(monkeypatch):
+    """Phase B2: mock get_roles_for_email so session-based admin console tests get superuser access."""
+    monkeypatch.setattr(
+        "db.administrators.get_roles_for_email",
+        lambda email: ["superuser"],
+    )

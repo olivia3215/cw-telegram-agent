@@ -11,14 +11,7 @@ import pytest
 from admin_console.app import create_admin_app
 from admin_console.auth import SESSION_ADMIN_EMAIL
 
-
-@pytest.fixture(autouse=True)
-def _mock_superuser_for_session(monkeypatch):
-    """Phase B2: mock get_roles_for_email so session-based tests get superuser access."""
-    monkeypatch.setattr(
-        "db.administrators.get_roles_for_email",
-        lambda email: ["superuser"],
-    )
+pytestmark = pytest.mark.usefixtures("mock_superuser_for_session")
 
 
 def _make_client():
