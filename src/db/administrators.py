@@ -6,6 +6,10 @@
 """
 Database operations for admin console administrators and RBAC
 (roles and resource grants).
+
+For resource_type "agent": resource_id must be the string form of the agent's
+Telegram ID (e.g. str(agent.agent_id)). Do not use config name or display name.
+Grants can only be created once the agent has connected and has a telegram ID.
 """
 
 import logging
@@ -244,13 +248,20 @@ def get_resource_grants_for_email(
 
 
 def has_resource_grant(email: str, resource_type: str, resource_id: str) -> bool:
-    """Return True if the administrator has the given resource grant."""
+    """Return True if the administrator has the given resource grant.
+
+    For resource_type "agent", resource_id must be str(agent_telegram_id).
+    """
     grants = get_resource_grants_for_email(email, resource_type=resource_type, resource_id=resource_id)
     return len(grants) > 0
 
 
 def add_resource_grant(email: str, resource_type: str, resource_id: str) -> None:
-    """Add a resource grant (idempotent)."""
+    """Add a resource grant (idempotent).
+
+    For resource_type "agent", resource_id must be str(agent_telegram_id).
+    Only add agent grants when the agent has already connected (has a telegram ID).
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
