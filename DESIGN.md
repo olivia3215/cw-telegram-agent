@@ -78,7 +78,7 @@ This document describes the high-level architecture of the Telegram agent, with 
 - [Admin Console API Response Convention](#admin-console-api-response-convention)
 - [Admin Console & Puppet Master](#admin-console--puppet-master)
   - [Login and configuration flow](#login-and-configuration-flow)
-  - [OTP / verification model](#otp--verification-model)
+  - [Login and verification (current: Phase B)](#login-and-verification-current-phase-b)
 - [Media Editor API](#media-editor-api)
   - [Pagination and Filtering](#pagination-and-filtering)
   - [API Endpoints](#api-endpoints)
@@ -1440,14 +1440,24 @@ The admin console now runs exclusively through a dedicated “puppet master” T
 
 The puppet master session is stored at `state/PuppetMaster/telegram.session`. We call `client.get_me()` at runtime to discover the Telegram user ID, which avoids manual synchronization between phone number and ID.
 
-### OTP / verification model
+### Login and verification (current: Phase B)
 
-- The first time a browser session hits `/admin`, the UI prompts for a six-digit verification code.
-- The user clicks “Send verification code”; the server generates an OTP, sends it to the puppet master via `client.send_message("me", ...)`, and returns the TTL to the browser.
-- OTPs are hashed in memory, expire after five minutes, and throttle reissue requests (default 30 seconds).
-- Verification state is stored in the Flask session (`SESSION_VERIFIED_KEY`). Clearing cookies or restarting the server without the same secret key forces re-verification.
+- The first time a browser session hits `/admin`, the UI shows a login overlay with "Log in via Google". No verification code is required for initial access.
+- The user clicks "Log in via Google"; the server redirects to Google OAuth, then the callback validates the response, upserts the administrator (when allowed), and sets the session with the admin email. Only pre-provisioned administrators (rows in the `administrators` table) can complete login; others are redirected with `?error=not_authorized`.
+- The puppet master is not used for console login. Legacy OTP endpoints (request-code, verify) remain in code for a transition period; Phase C will replace them with TOTP "Request Access" for superuser escalation.
+- Session state is stored in the Flask session (e.g. `SESSION_ADMIN_EMAIL`). Clearing cookies or restarting the server without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY` forces re-login.
 
-Once verified, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer without introducing additional privileged accounts.
+Once logged in, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer (e.g. RBAC, Phase B2/C).
+
+### Issue 671 multi-admin implementation phases (Phase B2)
+
+The full plan for issue #671 (multiple administrators, RBAC, Google OAuth, TOTP) is in the project’s plan file. Summary of phases relevant to the current codebase:
+
+- **Phase A (done):** Schema and DB layer for `administrators`, `admin_role_names`, `administrator_roles`, `administrator_resource_grants`; seed `superuser` role.
+- **Phase B (done):** Google OAuth login and session; **current implementation** restricts login to pre-provisioned administrators only (callback rejects unknown emails with `?error=not_authorized`); `scripts/add_admin.py` to add admins.
+- **Phase B2 (planned):** Align with original spec: allow **any** Google user to log in (callback upserts `administrators` on first login). Show console shell (title, avatar, menu “Request Access”, “Log Out”) for every logged-in user. Show **tabs only when the user has the `superuser` role**; otherwise no tab bar. All protected admin API endpoints return **403** for non-superusers (e.g. `{"error": "Superuser role required"}`). Auth status API returns `roles` or `is_superuser` so the front end can hide tabs. Optional: `add_admin.py` can grant `superuser` for one bootstrap admin.
+- **Phase C (planned):** TOTP “Request Access”; correct code after 5+ minutes adds `superuser` to `administrator_roles`; silent failure for wrong code or recent attempt.
+- **Phases D–G (planned):** Permission module, Accounts section, agent-scoped grants, docs.
 
 ## Media Editor API
 
@@ -1614,7 +1624,7 @@ If MySQL listing fails for `state/media` (connection error, SQL failure, etc.), 
 
 **Authorization:**
 - All endpoints require authentication via Flask session
-- Session verification handled by OTP system (see Admin Console section)
+- Session verification: logged-in admin via Google OAuth (see Admin Console section)
 - No additional authorization checks beyond session validation
 
 **Path Traversal Protection:**

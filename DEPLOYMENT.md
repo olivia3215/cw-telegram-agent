@@ -240,10 +240,8 @@ open https://localhost:5001/admin
 ### First-Time Authentication
 
 On first visit:
-1. Click "Send verification code"
-2. Check your puppet master Telegram account for a 6-digit code
-3. Enter the code in the admin console
-4. You'll stay logged in as long as cookies persist and you keep the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`
+1. Click "Log in via Google" and sign in with a Google account that has been added as an administrator (see README "Adding administrators" and `scripts/add_admin.py`).
+2. You'll stay logged in as long as cookies persist and you keep the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
 ## Verification Checklist
 
@@ -251,7 +249,7 @@ After deployment, verify:
 
 - ✅ Server starts without errors (`./run.sh status`)
 - ✅ Admin console is accessible at configured port
-- ✅ Can log in to admin console with OTP
+- ✅ Can log in to admin console with Google (as a pre-provisioned administrator)
 - ✅ Agents appear in the admin console
 - ✅ Can send test messages to agents via Telegram
 - ✅ Agents respond appropriately
