@@ -8,15 +8,18 @@ Special file: URI handlers for the retrieve task.
 
 Registered URIs are resolved by name (e.g. "schedule.json", "media.json")
 instead of reading from the docs filesystem. Handlers are async and receive
-(url, agent, channel_name) and return (url, content).
+(url, agent, channel_name); agent is required. They return (url, content).
 """
 import json
 import logging
 from typing import Awaitable, Callable
 
+from handlers.received_helpers.prompt_builder import get_media_list_json
+from media.media_source import get_default_media_source_chain
+
 logger = logging.getLogger(__name__)
 
-# Type for a special file URI handler: (url, agent?, channel_name?) -> (url, content)
+# Type for a special file URI handler: (url, agent, channel_name?) -> (url, content)
 SpecialFileUriHandler = Callable[..., Awaitable[tuple[str, str]]]
 
 _REGISTRY: dict[str, SpecialFileUriHandler] = {}
@@ -35,11 +38,11 @@ def get_special_file_handler(filename: str) -> SpecialFileUriHandler | None:
 
 
 async def _handle_schedule_json(
-    url: str, agent=None, channel_name: str | None = None
+    url: str, agent, channel_name: str | None = None
 ) -> tuple[str, str]:
     """Return the agent's daily schedule as JSON for file:schedule.json."""
     if not agent:
-        return (url, "No agent available to retrieve schedule.")
+        raise ValueError("Agent is required to retrieve schedule.json")
     if not agent.daily_schedule_description:
         return (url, "Agent does not have a daily schedule configured.")
     try:
@@ -55,15 +58,11 @@ async def _handle_schedule_json(
 
 
 async def _handle_media_json(
-    url: str, agent=None, channel_name: str | None = None
+    url: str, agent, channel_name: str | None = None
 ) -> tuple[str, str]:
     """Return the list of media the agent can send as JSON for file:media.json."""
     if not agent:
-        return (url, "No agent available to retrieve media list.")
-    from media.media_source import get_default_media_source_chain
-
-    from handlers.received_helpers.prompt_builder import get_media_list_json
-
+        raise ValueError("Agent is required to retrieve media.json")
     media_chain = get_default_media_source_chain()
     try:
         items = await get_media_list_json(agent, media_chain)

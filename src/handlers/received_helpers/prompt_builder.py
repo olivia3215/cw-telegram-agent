@@ -525,30 +525,3 @@ async def get_media_list_json(agent, media_chain) -> list[dict]:
         ]
 
     return result
-
-
-async def _build_media_list(agent, media_chain) -> str | None:
-    """
-    Build a formatted list of available media (photos, audio, video, stickers, etc.)
-    with descriptions and kind. Uses agent.media with fallback to agent.photos.
-
-    Args:
-        agent: Agent instance with cached media
-        media_chain: Media source chain for description/kind lookups
-
-    Returns:
-        Formatted media list string or None if no media available
-    """
-    items = await get_media_list_json(agent, media_chain)
-    if not items:
-        return None
-    lines: list[str] = []
-    for item in items:
-        mid = item["media_id"]
-        kind = item["media_type"]
-        desc = item.get("description")
-        if desc:
-            lines.append(f"- {mid} ({kind}) - {desc}")
-        else:
-            lines.append(f"- {mid} ({kind})")
-    return "\n".join(lines)

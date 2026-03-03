@@ -429,10 +429,9 @@ async def test_fetch_file_url_schedule_json_returns_json_when_configured():
 
 @pytest.mark.asyncio
 async def test_fetch_file_url_schedule_json_no_agent():
-    """file:schedule.json returns error when no agent."""
-    url, content = await fetch_url("file:schedule.json", agent=None)
-    assert url == "file:schedule.json"
-    assert "No agent available" in content
+    """file:schedule.json raises when no agent."""
+    with pytest.raises(ValueError, match="Agent is required to retrieve schedule.json"):
+        await fetch_url("file:schedule.json", agent=None)
 
 
 @pytest.mark.asyncio
@@ -452,7 +451,7 @@ async def test_fetch_file_url_media_json_returns_json_array():
     mock_agent.media = {"uid1": MagicMock()}
     mock_agent.photos = {}
     with patch(
-        "handlers.received_helpers.prompt_builder.get_media_list_json",
+        "handlers.received_helpers.special_file_uris.get_media_list_json",
         new_callable=AsyncMock,
         return_value=[
             {"media_id": "uid1", "media_type": "photo", "description": "A cat"},
@@ -470,10 +469,9 @@ async def test_fetch_file_url_media_json_returns_json_array():
 
 @pytest.mark.asyncio
 async def test_fetch_file_url_media_json_no_agent():
-    """file:media.json returns error when no agent."""
-    url, content = await fetch_url("file:media.json", agent=None)
-    assert url == "file:media.json"
-    assert "No agent available" in content
+    """file:media.json raises when no agent."""
+    with pytest.raises(ValueError, match="Agent is required to retrieve media.json"):
+        await fetch_url("file:media.json", agent=None)
 
 
 @pytest.mark.asyncio
@@ -483,7 +481,7 @@ async def test_fetch_file_url_media_json_empty_list_when_no_media():
     mock_agent.media = {}
     mock_agent.photos = {}
     with patch(
-        "handlers.received_helpers.prompt_builder.get_media_list_json",
+        "handlers.received_helpers.special_file_uris.get_media_list_json",
         new_callable=AsyncMock,
         return_value=[],
     ):
