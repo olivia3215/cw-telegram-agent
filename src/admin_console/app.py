@@ -27,6 +27,7 @@ from admin_console.routes import routes_bp, scan_media_directories, set_availabl
 from admin_console.global_parameters import global_parameters_bp
 from admin_console.openrouter import openrouter_bp
 from admin_console.llms import llms_bp
+from db import administrators
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,6 @@ def create_admin_app(use_https: bool = False) -> Flask:
             return jsonify({"error": "Admin console login required"}), 401
 
         # Require superuser role for all protected endpoints
-        from db import administrators
         roles = administrators.get_roles_for_email(email)
         if "superuser" not in (roles or []):
             return jsonify({"error": "Superuser role required"}), 403
