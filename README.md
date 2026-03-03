@@ -432,6 +432,15 @@ config-dir/
 
 **Default location:** If `CINDY_AGENT_CONFIG_PATH` is not set, the system defaults to `samples:configdir`. This ensures that both sample agents and the required shared prompts are available by default.
 
+### Special file: URIs (retrieve task)
+
+When the agent uses the `retrieve` task with a `file:` URL, some filenames are handled specially and do not read from the docs filesystem:
+
+- **`file:schedule.json`** — Returns the agent's daily schedule as JSON (when the agent has a schedule configured). The agent is told to use this in the current-activity section of the prompt.
+- **`file:media.json`** — Returns a JSON array of media the agent can send via the `send_media` task. Each element has `media_id` (use as `unique_id` in the task), `media_type` (e.g. photo, audio, video), and optionally `description`. The agent is instructed to retrieve this when it needs the list of sendable media.
+
+Other `file:` URLs are resolved from the docs directories (agent-specific and shared).
+
 ---
 
 ## Media descriptions (high level)

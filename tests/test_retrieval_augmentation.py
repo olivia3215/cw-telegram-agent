@@ -404,3 +404,135 @@ async def test_parse_retrieve_task_with_file_url():
     assert tasks[0].type == "retrieve"
     assert "file:Friends.md" in tasks[0].params["urls"]
     assert "https://example.com/page" in tasks[0].params["urls"]
+
+
+# ---- Special file: URIs (schedule.json, media.json) ----
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_schedule_json_returns_json_when_configured():
+    """file:schedule.json returns agent schedule as JSON when agent has a schedule."""
+    mock_agent = MagicMock()
+    mock_agent.daily_schedule_description = "Work and rest"
+    mock_agent._load_schedule.return_value = {
+        "activities": [
+            {"name": "Work", "start": "09:00", "end": "17:00", "description": "Working"},
+        ],
+    }
+    url, content = await fetch_url("file:schedule.json", agent=mock_agent)
+    assert url == "file:schedule.json"
+    data = json.loads(content)
+    assert "activities" in data
+    assert len(data["activities"]) == 1
+    assert data["activities"][0]["name"] == "Work"
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_schedule_json_no_agent():
+    """file:schedule.json returns error when no agent."""
+    url, content = await fetch_url("file:schedule.json", agent=None)
+    assert url == "file:schedule.json"
+    assert "No agent available" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_schedule_json_no_schedule_configured():
+    """file:schedule.json returns message when agent has no schedule."""
+    mock_agent = MagicMock()
+    mock_agent.daily_schedule_description = None
+    url, content = await fetch_url("file:schedule.json", agent=mock_agent)
+    assert url == "file:schedule.json"
+    assert "does not have a daily schedule" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_media_json_returns_json_array():
+    """file:media.json returns JSON array with media_id, media_type, description."""
+    mock_agent = MagicMock()
+    mock_agent.media = {"uid1": MagicMock()}
+    mock_agent.photos = {}
+    with patch(
+        "handlers.received_helpers.prompt_builder.get_media_list_json",
+        new_callable=AsyncMock,
+        return_value=[
+            {"media_id": "uid1", "media_type": "photo", "description": "A cat"},
+        ],
+    ):
+        url, content = await fetch_url("file:media.json", agent=mock_agent)
+    assert url == "file:media.json"
+    data = json.loads(content)
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["media_id"] == "uid1"
+    assert data[0]["media_type"] == "photo"
+    assert data[0]["description"] == "A cat"
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_media_json_no_agent():
+    """file:media.json returns error when no agent."""
+    url, content = await fetch_url("file:media.json", agent=None)
+    assert url == "file:media.json"
+    assert "No agent available" in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_url_media_json_empty_list_when_no_media():
+    """file:media.json returns empty array when agent has no media."""
+    mock_agent = MagicMock()
+    mock_agent.media = {}
+    mock_agent.photos = {}
+    with patch(
+        "handlers.received_helpers.prompt_builder.get_media_list_json",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        url, content = await fetch_url("file:media.json", agent=mock_agent)
+    assert url == "file:media.json"
+    data = json.loads(content)
+    assert data == []
+
+
+@pytest.mark.asyncio
+async def test_prompt_includes_retrieve_media_json_instruction_when_agent_has_media():
+    """System prompt tells agent to retrieve file:media.json when agent has media."""
+    from handlers.received_helpers.prompt_builder import build_complete_system_prompt
+
+    mock_agent = MagicMock()
+    mock_agent.name = "TestAgent"
+    mock_agent.media = {"some_uid": MagicMock()}
+    mock_agent.photos = {}
+    mock_agent.stickers = {}
+    mock_agent.get_system_prompt.return_value = "Base prompt"
+    mock_agent._load_memory_content.return_value = None
+    mock_agent._load_event_content.return_value = None
+    mock_agent.get_current_time.return_value = __import__("datetime").datetime(2026, 3, 2, 12, 0, 0)
+    mock_agent.daily_schedule_description = None
+    mock_agent.role_prompt_names = []
+    mock_agent.llm = MagicMock()
+    mock_agent.llm.prompt_name = "Chatbot"
+    mock_agent._load_plan_content.return_value = None
+    mock_agent._load_intention_content.return_value = None
+    mock_agent.instructions = None
+    mock_agent._load_summary_content = AsyncMock(return_value=None)
+
+    media_chain = AsyncMock()
+
+    with patch(
+        "handlers.received_helpers.prompt_builder.build_channel_details_section",
+        new_callable=AsyncMock,
+        return_value="",
+    ):
+        prompt = await build_complete_system_prompt(
+            agent=mock_agent,
+            channel_id=123,
+            messages=[],
+            media_chain=media_chain,
+            is_group=False,
+            channel_name="User",
+            dialog=None,
+            target_msg=None,
+        )
+    assert "file:media.json" in prompt
+    assert "media_id" in prompt
+    assert "retrieve" in prompt

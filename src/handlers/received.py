@@ -61,6 +61,7 @@ from handlers.received_helpers.summarization import (
     count_unsummarized_messages,
     perform_summarization,
 )
+from handlers.received_helpers.special_file_uris import get_special_file_handler
 from handlers.received_helpers.task_parsing import (
     parse_llm_reply_from_json,
     dedupe_tasks_by_identifier,
@@ -169,25 +170,10 @@ async def fetch_url(url: str, agent=None, channel_name: str | None = None) -> tu
                 f"Invalid file URL: filename must not contain '/' or '\\' and must not be empty",
             )
         
-        # Special handling for schedule.json
-        if filename == "schedule.json":
-            if not agent:
-                return (url, "No agent available to retrieve schedule.")
-            if not agent.daily_schedule_description:
-                return (url, "Agent does not have a daily schedule configured.")
-            try:
-                schedule = agent._load_schedule()
-                if schedule is None:
-                    return (url, "No schedule found. The schedule may not have been created yet.")
-                content = json.dumps(schedule, indent=2, ensure_ascii=False)
-                return (url, content)
-            except Exception as e:
-                logger.exception(f"Error reading schedule: {e}")
-                error_type = type(e).__name__
-                return (
-                    url,
-                    f"Error reading schedule: {error_type}: {str(e)}",
-                )
+        # Special file: URIs (schedule.json, media.json, etc.)
+        handler = get_special_file_handler(filename)
+        if handler is not None:
+            return await handler(url, agent=agent, channel_name=channel_name)
         
         # Handle other file: URLs (docs files)
         agent_config_name = agent.config_name if agent else None
