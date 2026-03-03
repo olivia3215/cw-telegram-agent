@@ -1449,6 +1449,16 @@ The puppet master session is stored at `state/PuppetMaster/telegram.session`. We
 
 Once verified, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer without introducing additional privileged accounts.
 
+### Issue 671 multi-admin implementation phases (Phase B2)
+
+The full plan for issue #671 (multiple administrators, RBAC, Google OAuth, TOTP) is in the project’s plan file. Summary of phases relevant to the current codebase:
+
+- **Phase A (done):** Schema and DB layer for `administrators`, `admin_role_names`, `administrator_roles`, `administrator_resource_grants`; seed `superuser` role.
+- **Phase B (done):** Google OAuth login and session; **current implementation** restricts login to pre-provisioned administrators only (callback rejects unknown emails with `?error=not_authorized`); `scripts/add_admin.py` to add admins.
+- **Phase B2 (planned):** Align with original spec: allow **any** Google user to log in (callback upserts `administrators` on first login). Show console shell (title, avatar, menu “Request Access”, “Log Out”) for every logged-in user. Show **tabs only when the user has the `superuser` role**; otherwise no tab bar. All protected admin API endpoints return **403** for non-superusers (e.g. `{"error": "Superuser role required"}`). Auth status API returns `roles` or `is_superuser` so the front end can hide tabs. Optional: `add_admin.py` can grant `superuser` for one bootstrap admin.
+- **Phase C (planned):** TOTP “Request Access”; correct code after 5+ minutes adds `superuser` to `administrator_roles`; silent failure for wrong code or recent attempt.
+- **Phases D–G (planned):** Permission module, Accounts section, agent-scoped grants, docs.
+
 ## Media Editor API
 
 The Media Editor provides a REST API for browsing, searching, and managing media descriptions. The API is designed to handle large media collections efficiently through backend pagination and filtering.
