@@ -464,12 +464,26 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 | `CINDY_AGENT_LOOP_ENABLED` | `true` | Enable/disable the agent loop (set `false` to run console-only) |
 | `CINDY_PUPPET_MASTER_PHONE` | _(unset)_ | Phone number for the dedicated puppet master account. Required to enable the console. |
 | `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
+| `CINDY_ADMIN_GOOGLE_CLIENT_ID` | _(unset)_ | Google OAuth client ID for admin login (Web application client). Required for multi-admin. |
+| `CINDY_ADMIN_GOOGLE_CLIENT_SECRET` | _(unset)_ | Google OAuth client secret for admin login. Required for multi-admin. |
 | `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface for the console |
 | `CINDY_ADMIN_CONSOLE_PORT` | `5001` | Port for the console |
 | `CINDY_ADMIN_CONSOLE_SSL_CERT` | _(unset)_ | Path to SSL certificate file for HTTPS (optional, requires `SSL_KEY`) |
 | `CINDY_ADMIN_CONSOLE_SSL_KEY` | _(unset)_ | Path to SSL private key file for HTTPS (optional, requires `SSL_CERT`) |
 
 `CINDY_ADMIN_CONSOLE_PORT` is optional. If unset (or set to an invalid value), the admin console defaults to port `5001`.
+
+**Adding administrators**
+
+Access is restricted to administrators whose email is pre-provisioned. Use the `add_admin` script to add or update an administrator (the email must match the Google account they will use to log in):
+
+```bash
+source .env
+python scripts/add_admin.py admin@example.com
+python scripts/add_admin.py admin@example.com --name "Jane Admin"
+```
+
+Only after an email is added can that user log in via "Log in via Google" in the console. See `.env-template` for Google OAuth setup (client ID, secret, and authorized redirect URI).
 
 **Quick start**
 1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):

@@ -34,7 +34,9 @@ const verifyCodeBtn = document.getElementById('verify-code-btn');
 const otpInput = document.getElementById('otp-input');
 const initialRequestButtonLabel = requestCodeBtn ? requestCodeBtn.textContent : 'Send verification code';
 
-requestCodeBtn?.addEventListener('click', requestVerificationCode);
+if (requestCodeBtn) {
+    requestCodeBtn.addEventListener('click', requestVerificationCode);
+}
 verifyCodeBtn?.addEventListener('click', verifyVerificationCode);
 otpInput?.addEventListener('keyup', (event) => {
     if (event.key === 'Enter') {
@@ -428,17 +430,42 @@ async function verifyVerificationCode() {
 }
 
 function checkAuthStatus() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const notAuthorized = urlParams.get('error') === 'not_authorized';
+    const overlayMessage = notAuthorized
+        ? "This Google account is not authorized to access the admin console. Contact an administrator."
+        : "Log in with Google to access the admin console.";
+
     fetchWithAuth(`${API_BASE}/auth/status`)
         .then((response) => responseJsonOrThrow(response))
         .then((data) => {
-            if (data.verified) {
+            if (data.logged_in) {
+                hideAuthOverlay();
                 initializeApp();
+                const headerUser = document.getElementById('header-user');
+                const headerAvatar = document.getElementById('header-avatar');
+                const headerName = document.getElementById('header-name');
+                if (headerUser) {
+                    headerUser.style.display = 'flex';
+                    if (headerAvatar) {
+                        if (data.avatar) {
+                            headerAvatar.src = data.avatar;
+                            headerAvatar.alt = data.name || data.email || '';
+                        } else {
+                            headerAvatar.style.display = 'none';
+                        }
+                    }
+                    if (headerName) {
+                        headerName.textContent = data.name || data.email || 'Admin';
+                    }
+                }
             } else {
-                showAuthOverlay('Request a verification code to continue.');
+                showAuthOverlay(overlayMessage);
             }
         })
         .catch((error) => {
             if (error && error.message === 'unauthorized') {
+                showAuthOverlay(overlayMessage);
                 return;
             }
             const msg = (error && error.message && error.message.includes('web page instead of JSON'))

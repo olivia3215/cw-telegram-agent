@@ -13,7 +13,12 @@ from unittest.mock import patch
 import pytest
 
 from admin_console.app import create_admin_app
-from admin_console.auth import ChallengeNotFound, get_challenge_manager
+from admin_console.auth import (
+    SESSION_ADMIN_EMAIL,
+    SESSION_GOOGLE_STATE,
+    ChallengeNotFound,
+    get_challenge_manager,
+)
 from media.media_sources import (
     get_directory_media_source,
     reset_media_source_registry,
@@ -25,7 +30,8 @@ def _make_client():
     app.testing = True
     client = app.test_client()
     with client.session_transaction() as sess:
-        sess["admin_console_verified"] = True
+        sess[SESSION_ADMIN_EMAIL] = "test@example.com"
+        sess["admin_console_verified"] = True  # Phase C: TOTP verified
     return client
 
 
@@ -762,4 +768,229 @@ def test_work_queue_delete_success(monkeypatch):
     # Verify remove and save were called
     mock_work_queue.remove.assert_called_once_with(mock_graph)
     mock_work_queue.save.assert_called_once()
+
+
+# --- Phase B: Google OAuth ---
+
+
+def test_google_login_redirect_when_configured(monkeypatch):
+    """GET /admin/api/auth/google/login redirects to Google when client id/secret are set."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", "client-id")
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", "secret")
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    response = client.get("/admin/api/auth/google/login")
+    assert response.status_code == 302
+    assert "accounts.google.com" in response.location
+    assert "client_id=client-id" in response.location
+    assert "state=" in response.location
+    with client.session_transaction() as sess:
+        assert sess.get(SESSION_GOOGLE_STATE) is not None
+
+
+def test_google_login_503_when_not_configured(monkeypatch):
+    """GET /admin/api/auth/google/login returns 503 when Google OAuth is not configured."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", None)
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", None)
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    response = client.get("/admin/api/auth/google/login")
+    assert response.status_code == 503
+    data = response.get_json()
+    assert "error" in data
+    assert "Google" in data["error"]
+
+
+def test_google_callback_invalid_state_redirects(monkeypatch):
+    """Google callback with wrong or missing state redirects to /admin."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", "sec")
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_GOOGLE_STATE] = "correct-state"
+    response = client.get(
+        "/admin/api/auth/google/callback",
+        query_string={"state": "wrong-state", "code": "any"},
+    )
+    assert response.status_code == 302
+    assert response.location.endswith("/admin")
+    with client.session_transaction() as sess:
+        assert sess.get(SESSION_GOOGLE_STATE) is None
+
+    response2 = client.get(
+        "/admin/api/auth/google/callback",
+        query_string={"code": "any"},
+    )
+    assert response2.status_code == 302
+    assert response2.location.endswith("/admin")
+
+
+def test_google_callback_exchanges_code_upserts_admin_sets_session(monkeypatch):
+    """Google callback exchanges code, fetches userinfo, upserts admin, sets session."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", "sec")
+    upsert_calls = []
+
+    def fake_upsert(email, *, name=None, avatar=None, last_login_attempt=None):
+        upsert_calls.append(
+            {
+                "email": email,
+                "name": name,
+                "avatar": avatar,
+                "last_login_attempt": last_login_attempt,
+            }
+        )
+
+    def fake_get_administrator(email):
+        # Only allow alice@example.com as pre-provisioned admin
+        return {"email": email} if email == "alice@example.com" else None
+
+    class FakeTokenResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"access_token": "tok"}
+
+    class FakeUserinfoResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "email": "alice@example.com",
+                "name": "Alice",
+                "picture": "https://example.com/photo.jpg",
+            }
+
+    def fake_post(url, data, headers, timeout):
+        assert "oauth2.googleapis.com" in url
+        return FakeTokenResp()
+
+    def fake_get(url, headers, timeout):
+        assert "userinfo" in url
+        return FakeUserinfoResp()
+
+    monkeypatch.setattr("admin_console.auth.requests.post", fake_post)
+    monkeypatch.setattr("admin_console.auth.requests.get", fake_get)
+    monkeypatch.setattr("db.administrators.upsert_administrator", fake_upsert)
+    monkeypatch.setattr("db.administrators.get_administrator", fake_get_administrator)
+
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_GOOGLE_STATE] = "valid-state"
+    response = client.get(
+        "/admin/api/auth/google/callback",
+        query_string={"state": "valid-state", "code": "auth-code"},
+    )
+    assert response.status_code == 302
+    assert response.location.endswith("/admin")
+    assert len(upsert_calls) == 1
+    assert upsert_calls[0]["email"] == "alice@example.com"
+    assert upsert_calls[0]["name"] == "Alice"
+    assert upsert_calls[0]["avatar"] == "https://example.com/photo.jpg"
+    assert upsert_calls[0]["last_login_attempt"] is not None
+    with client.session_transaction() as sess:
+        assert sess.get(SESSION_ADMIN_EMAIL) == "alice@example.com"
+
+
+def test_google_callback_rejects_unknown_email(monkeypatch):
+    """Google callback does not grant access when email is not a pre-provisioned administrator."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", "sec")
+
+    class FakeTokenResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"access_token": "tok"}
+
+    class FakeUserinfoResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "email": "stranger@example.com",
+                "name": "Stranger",
+                "picture": "https://example.com/stranger.jpg",
+            }
+
+    monkeypatch.setattr(
+        "admin_console.auth.requests.post",
+        lambda url, data, headers, timeout: FakeTokenResp(),
+    )
+    monkeypatch.setattr(
+        "admin_console.auth.requests.get",
+        lambda url, headers, timeout: FakeUserinfoResp(),
+    )
+    monkeypatch.setattr("db.administrators.get_administrator", lambda email: None)
+
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_GOOGLE_STATE] = "valid-state"
+    response = client.get(
+        "/admin/api/auth/google/callback",
+        query_string={"state": "valid-state", "code": "auth-code"},
+    )
+    assert response.status_code == 302
+    assert "/admin" in response.location
+    assert "error=not_authorized" in response.location
+    with client.session_transaction() as sess:
+        assert sess.get(SESSION_ADMIN_EMAIL) is None
+
+
+def test_auth_status_returns_logged_in():
+    """GET /admin/api/auth/status returns logged_in, email when session has admin."""
+    client = _make_client()
+    response = client.get("/admin/api/auth/status")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["logged_in"] is True
+    assert data["email"] == "test@example.com"
+
+
+def test_auth_status_not_logged_in():
+    """GET /admin/api/auth/status returns logged_in false when session has no admin."""
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    response = client.get("/admin/api/auth/status")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["logged_in"] is False
+    assert data.get("email") is None
+
+
+def test_protected_endpoint_401_without_session():
+    """A protected endpoint returns 401 when session has no admin email."""
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    response = client.get("/admin/api/auth/status")
+    assert response.status_code == 200
+    response2 = client.get("/admin/api/global-parameters")
+    assert response2.status_code == 401
+    data = response2.get_json()
+    assert "error" in data
+    assert "login" in data["error"].lower()
+
+
+def test_logout_clears_session_redirects():
+    """GET /admin/api/auth/logout clears session and redirects to /admin."""
+    client = _make_client()
+    response = client.get("/admin/api/auth/logout")
+    assert response.status_code == 302
+    assert response.location.endswith("/admin")
+    with client.session_transaction() as sess:
+        assert sess.get(SESSION_ADMIN_EMAIL) is None
 
