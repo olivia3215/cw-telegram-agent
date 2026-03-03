@@ -6,6 +6,7 @@ import asyncio
 import base64
 
 from admin_console.app import create_admin_app
+from admin_console.auth import SESSION_ADMIN_EMAIL
 
 
 def _make_client():
@@ -13,7 +14,7 @@ def _make_client():
     app.testing = True
     client = app.test_client()
     with client.session_transaction() as sess:
-        sess["admin_console_verified"] = True
+        sess[SESSION_ADMIN_EMAIL] = "test@example.com"
     return client
 
 
