@@ -187,6 +187,7 @@ document.getElementById('agents-agent-select')?.addEventListener('change', (e) =
                         clearInterval(window._scheduleClockInterval);
                         window._scheduleClockInterval = null;
                     }
+                    scheduleHideClock();
                     scheduleContainer.innerHTML = '<div class="loading">Select an agent to manage schedule</div>';
                 }
             } else if (subtabName === 'costs') {
@@ -4240,6 +4241,33 @@ function scheduleUpdateAgentClock() {
     }
 }
 
+/** Show or hide the persistent schedule clock (outside the container). Call when rendering schedule content. */
+function scheduleShowClock(timeZone) {
+    if (window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
+    const row = document.getElementById('schedule-clock-row');
+    if (!row) return;
+    if (timeZone) {
+        row.style.display = 'block';
+        scheduleUpdateAgentClock();
+        window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
+    } else {
+        row.style.display = 'none';
+    }
+}
+
+/** Hide the schedule clock and stop its interval. Call when clearing the schedule panel. */
+function scheduleHideClock() {
+    if (window._scheduleClockInterval) {
+        clearInterval(window._scheduleClockInterval);
+        window._scheduleClockInterval = null;
+    }
+    const row = document.getElementById('schedule-clock-row');
+    if (row) row.style.display = 'none';
+}
+
 function scheduleMarkDirty() {
     window._scheduleDirty = true;
     const bar = document.getElementById('schedule-unsaved-bar');
@@ -4285,17 +4313,13 @@ function scheduleToggleExpand(index) {
     }
     const container = document.getElementById('schedule-container');
     const agentName = window._scheduleAgentName;
-    const timeZone = window._scheduleTimezone;
+    const timeZone = window._scheduleClockTimezone || window._scheduleTimezone;
     if (container && agentName !== undefined) {
         renderScheduleContent(container, agentName, window._scheduleActivities, timeZone);
     }
 }
 
 function renderScheduleContent(container, agentName, activities, timeZone) {
-    if (window._scheduleClockInterval) {
-        clearInterval(window._scheduleClockInterval);
-        window._scheduleClockInterval = null;
-    }
     window._scheduleClockTimezone = timeZone || null;
     window._scheduleTimezone = timeZone || null;
     window._scheduleAgentName = agentName;
@@ -4328,10 +4352,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
                 });
             };
         }
-        if (timeZone) {
-            scheduleUpdateAgentClock();
-            window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
-        }
+        scheduleShowClock(timeZone);
         return;
     }
     let html = clockRow + saveBar + btnRow + '<div id="schedule-activity-list" style="display: flex; flex-direction: column; gap: 8px;">';
@@ -4403,10 +4424,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
             });
         };
     }
-    if (timeZone) {
-        scheduleUpdateAgentClock();
-        window._scheduleClockInterval = setInterval(scheduleUpdateAgentClock, 1000);
-    }
+    scheduleShowClock(timeZone);
 }
 
 function loadSchedule(agentName) {
@@ -4415,6 +4433,7 @@ function loadSchedule(agentName) {
     const agentSelect = document.getElementById('agents-agent-select');
     const currentAgentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
     if (currentAgentName !== agentName) return;
+    scheduleHideClock();
     container.innerHTML = '<div class="loading">Loading schedule...</div>';
     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule`)
         .then(response => response.json())
@@ -4422,6 +4441,7 @@ function loadSchedule(agentName) {
             const agentSelect2 = document.getElementById('agents-agent-select');
             if (agentSelect2 && stripAsterisk(agentSelect2.value) !== agentName) return;
             if (data.error) {
+                scheduleHideClock();
                 container.innerHTML = `<div class="error">${escapeHtml(data.error)}</div>`;
                 return;
             }

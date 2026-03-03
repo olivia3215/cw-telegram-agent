@@ -233,6 +233,25 @@ function fetchWithAuth(url, options = {}) {
     });
 }
 
+/**
+ * Parse response as JSON. If the body looks like HTML (e.g. proxy error page),
+ * throw a clear error instead of "Unexpected token '<'... is not valid JSON".
+ */
+async function responseJsonOrThrow(response) {
+    const text = await response.text();
+    const trimmed = text.trim().toLowerCase();
+    if (trimmed.startsWith('<!') || trimmed.startsWith('<?xml')) {
+        throw new Error(
+            'Server returned a web page instead of JSON. Use the correct admin console URL (e.g. http://localhost:5001/admin).'
+        );
+    }
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch (e) {
+        throw new Error('Server returned invalid JSON: ' + (e.message || String(e)));
+    }
+}
+
 function handleUnauthorized(message) {
     showAuthOverlay(message || 'Session expired. Please verify again.');
     throw new Error('unauthorized');
@@ -325,7 +344,7 @@ async function requestVerificationCode() {
             headers: { 'Content-Type': 'application/json' },
             body: '{}',
         });
-        const result = await response.json();
+        const result = await responseJsonOrThrow(response);
         if (response.status === 200 && result.success) {
             const expiresIn = typeof result.expires_in === 'number' ? result.expires_in : 0;
             const expireMinutes = Math.max(Math.round(expiresIn / 60) || 1, 1);
@@ -375,7 +394,7 @@ async function verifyVerificationCode() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code }),
         });
-        const result = await response.json();
+        const result = await responseJsonOrThrow(response);
         if (response.status === 200 && result.success) {
             showAuthStatus('Verification successful.');
             clearRequestCooldown();
@@ -410,7 +429,7 @@ async function verifyVerificationCode() {
 
 function checkAuthStatus() {
     fetchWithAuth(`${API_BASE}/auth/status`)
-        .then((response) => response.json())
+        .then((response) => responseJsonOrThrow(response))
         .then((data) => {
             if (data.verified) {
                 initializeApp();
@@ -422,7 +441,10 @@ function checkAuthStatus() {
             if (error && error.message === 'unauthorized') {
                 return;
             }
-            showAuthError('Unable to reach the server. Try again in a moment.');
+            const msg = (error && error.message && error.message.includes('web page instead of JSON'))
+                ? error.message
+                : 'Unable to reach the server. Try again in a moment.';
+            showAuthError(msg);
             showAuthOverlay();
         });
 }
@@ -635,10 +657,7 @@ function switchSubtab(subtabName) {
             } else if (subtabName === 'schedule') {
                 const container = document.getElementById('schedule-container');
                 if (container) {
-                    if (window._scheduleClockInterval) {
-                        clearInterval(window._scheduleClockInterval);
-                        window._scheduleClockInterval = null;
-                    }
+                    if (typeof scheduleHideClock === 'function') scheduleHideClock();
                     container.innerHTML = '<div class="loading">Select an agent to manage schedule</div>';
                 }
             } else if (subtabName === 'costs') {

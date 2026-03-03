@@ -105,29 +105,32 @@ def test_remove_role():
 
 
 def test_add_and_remove_resource_grant():
-    """add_resource_grant, has_resource_grant, get_resource_grants_for_email, remove_resource_grant."""
+    """add_resource_grant, has_resource_grant, get_resource_grants_for_email, remove_resource_grant.
+
+    For resource_type "agent", resource_id must be str(agent_telegram_id).
+    """
     from db import administrators
 
     email = "test-admin-grants@test.example.com"
     try:
         administrators.upsert_administrator(email)
-        assert administrators.has_resource_grant(email, "agent", "agent_c") is False
+        assert administrators.has_resource_grant(email, "agent", "12345") is False
         assert administrators.get_resource_grants_for_email(email) == []
 
-        administrators.add_resource_grant(email, "agent", "agent_c")
-        assert administrators.has_resource_grant(email, "agent", "agent_c") is True
-        assert administrators.has_resource_grant(email, "agent", "agent_d") is False
+        administrators.add_resource_grant(email, "agent", "12345")
+        assert administrators.has_resource_grant(email, "agent", "12345") is True
+        assert administrators.has_resource_grant(email, "agent", "67890") is False
         grants = administrators.get_resource_grants_for_email(email)
         assert len(grants) == 1
-        assert grants[0]["resource_type"] == "agent" and grants[0]["resource_id"] == "agent_c"
+        assert grants[0]["resource_type"] == "agent" and grants[0]["resource_id"] == "12345"
 
-        administrators.add_resource_grant(email, "agent", "agent_d")
+        administrators.add_resource_grant(email, "agent", "67890")
         grants2 = administrators.get_resource_grants_for_email(email, resource_type="agent")
         assert len(grants2) == 2
 
-        administrators.remove_resource_grant(email, "agent", "agent_c")
-        assert administrators.has_resource_grant(email, "agent", "agent_c") is False
-        assert administrators.has_resource_grant(email, "agent", "agent_d") is True
+        administrators.remove_resource_grant(email, "agent", "12345")
+        assert administrators.has_resource_grant(email, "agent", "12345") is False
+        assert administrators.has_resource_grant(email, "agent", "67890") is True
     finally:
         administrators.delete_administrator(email)
 
@@ -139,7 +142,7 @@ def test_delete_administrator_cascades():
     email = "test-admin-delete@test.example.com"
     administrators.upsert_administrator(email)
     administrators.add_role(email, "superuser")
-    administrators.add_resource_grant(email, "agent", "x")
+    administrators.add_resource_grant(email, "agent", "12345")
 
     administrators.delete_administrator(email)
 
