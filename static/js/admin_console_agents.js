@@ -4297,18 +4297,20 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         window._scheduleClockInterval = null;
     }
     window._scheduleClockTimezone = timeZone || null;
+    window._scheduleTimezone = timeZone || null;
     window._scheduleAgentName = agentName;
     window._scheduleActivities = (activities || []).map(a => ({ ...a }));
     if (!window._scheduleExpandedIndices) window._scheduleExpandedIndices = new Set();
     const isDirty = !!window._scheduleDirty;
     const clockRow = timeZone
-        ? '<div id="schedule-clock-row" style="margin-bottom: 16px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 15px;"><strong>Current time (agent\'s time zone):</strong> <span id="schedule-agent-time-value">--:--:--</span></div>'
+        ? '<div id="schedule-clock-row" style="margin-bottom: 16px; padding: 10px 14px; background: #f8f9fa; border-radius: 6px; font-size: 15px;"><strong>Current time (agent\'s time zone):</strong> <span id="schedule-agent-time-value">--:--:--</span><br>Timezone: ' + escapeHtml(formatScheduleTimezoneWithOffset(timeZone)) + '</div>'
         : '';
     const saveBar = '<div id="schedule-unsaved-bar" style="display: ' + (isDirty ? 'flex' : 'none') + '; align-items: center; gap: 12px; margin-bottom: 16px; padding: 10px 14px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px;"><span>You have unsaved changes.</span><button type="button" id="schedule-save-all-btn" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save</button></div>';
     const btnRow = '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">' +
         '<button type="button" id="schedule-add-activity-btn" onclick="scheduleAddActivity(\'' + escJsAttr(agentName) + '\', null, null, null)" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">+ Add activity</button>' +
         '<button type="button" id="schedule-extend-btn" onclick="scheduleExtend(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Extend schedule</button>' +
         '<button type="button" id="schedule-delete-all-btn" onclick="scheduleDeleteAll(\'' + escJsAttr(agentName) + '\')" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete all</button>' +
+        '<button type="button" id="schedule-print-btn" onclick="schedulePrint()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Print schedule</button>' +
         '</div>';
     if (!activities || activities.length === 0) {
         container.innerHTML = clockRow + saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
@@ -4481,15 +4483,120 @@ function scheduleDeleteAll(agentName) {
     renderScheduleContent(container, agentName, [], window._scheduleTimezone || null);
 }
 
-function scheduleDeleteAll(agentName) {
-    const container = document.getElementById('schedule-container');
-    const agentSelect = document.getElementById('agents-agent-select');
-    if (agentSelect && stripAsterisk(agentSelect.value) !== agentName) return;
-    if (!confirm('Delete all schedule entries for this agent? You can save or discard changes.')) return;
-    window._scheduleActivities = [];
-    if (window._scheduleExpandedIndices) window._scheduleExpandedIndices.clear();
-    scheduleMarkDirty();
-    renderScheduleContent(container, agentName, [], window._scheduleTimezone || null);
+/** Format timezone as "TZName (-08:00)" using current offset. */
+function formatScheduleTimezoneWithOffset(tz) {
+    if (!tz) return null;
+    try {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+        const tzPart = parts.find(function(p) { return p.type === 'timeZoneName'; });
+        const val = tzPart && tzPart.value ? tzPart.value : '';
+        const m = val.match(/GMT([+-])(\d+)(?::(\d+))?/);
+        if (m) {
+            const sign = m[1];
+            const h = parseInt(m[2], 10);
+            const min = m[3] ? parseInt(m[3], 10) : 0;
+            return tz + ' (' + sign + String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ')';
+        }
+        return tz + ' (' + val + ')';
+    } catch (e) {
+        return tz;
+    }
+}
+
+/**
+ * Open a print-only HTML view of the current schedule in a new tab.
+ * Includes only schedule activities (no scheduled events).
+ */
+async function schedulePrint() {
+    const configName = window._scheduleAgentName || 'Schedule';
+    const agent = (window.agentsList || []).find(function(a) { return a.config_name === configName; });
+    const displayName = (agent && agent.name) ? agent.name : configName;
+    const timeZone = window._scheduleTimezone || null;
+    const activities = (window._scheduleActivities || []).slice();
+
+    var firstName = '';
+    var lastName = '';
+    var telegramId = (agent && agent.agent_id != null) ? String(agent.agent_id) : '';
+    if (agent && agent.config_name) {
+        try {
+            const profileRes = await fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agent.config_name)}/profile`);
+            const profileData = await profileRes.json();
+            if (!profileData.error) {
+                firstName = profileData.first_name || '';
+                lastName = profileData.last_name || '';
+                if (profileData.telegram_id != null) telegramId = String(profileData.telegram_id);
+            }
+        } catch (e) { /* use defaults */ }
+    }
+
+    var scheduleStartStr = '';
+    var scheduleEndStr = '';
+    if (activities.length > 0) {
+        var minStart = null;
+        var maxEnd = null;
+        activities.forEach(function(act) {
+            if (act.start_time) minStart = minStart == null || act.start_time < minStart ? act.start_time : minStart;
+            if (act.end_time) maxEnd = maxEnd == null || act.end_time > maxEnd ? act.end_time : maxEnd;
+        });
+        if (minStart) scheduleStartStr = formatScheduleStartForInput(minStart);
+        if (maxEnd) scheduleEndStr = formatScheduleStartForInput(maxEnd);
+    }
+
+    const title = 'Schedule — ' + escapeHtml(displayName);
+    const tzDisplay = timeZone ? formatScheduleTimezoneWithOffset(timeZone) : null;
+    const tzLine = tzDisplay ? '<p class="schedule-print-meta">Timezone: ' + escapeHtml(tzDisplay) + '</p>' : '';
+    const nameLine = (firstName || lastName || telegramId) ? '<p class="schedule-print-meta">Telegram: ' + escapeHtml([firstName, lastName].filter(Boolean).join(' ').trim() || '—') + (telegramId ? ' (ID ' + escapeHtml(telegramId) + ')' : '') + '</p>' : '';
+    const rangeLine = (scheduleStartStr && scheduleEndStr) ? '<p class="schedule-print-meta">Schedule: ' + escapeHtml(scheduleStartStr) + ' – ' + escapeHtml(scheduleEndStr) + '</p>' : '';
+    const metaBlock = nameLine + tzLine + rangeLine;
+
+    let bodyRows = '';
+    if (activities.length === 0) {
+        bodyRows = '<tr><td colspan="5" class="schedule-print-empty">No activities.</td></tr>';
+    } else {
+        activities.forEach(function(act) {
+            const startVal = escapeHtml(formatScheduleStartForInput(act.start_time));
+            const endVal = escapeHtml(formatScheduleEndForInput(act.end_time));
+            const nameVal = escapeHtml(act.activity_name || '');
+            const descVal = escapeHtml(act.description || '').replace(/\n/g, '<br>');
+            const respVal = act.responsiveness !== undefined && act.responsiveness !== '' ? Number(act.responsiveness) : '—';
+            bodyRows += '<tr><td class="schedule-print-time">' + startVal + '</td><td class="schedule-print-time">' + endVal + '</td><td class="schedule-print-name">' + nameVal + '</td><td class="schedule-print-desc">' + descVal + '</td><td class="schedule-print-resp">' + escapeHtml(String(respVal)) + '</td></tr>';
+        });
+    }
+
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + title + '</title><style>' +
+        'html, body { overflow: visible; }' +
+        'body { font-family: system-ui, sans-serif; max-width: 900px; margin: 20px auto; padding: 0 16px; color: #222; }' +
+        'h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }' +
+        '.schedule-print-meta { margin: 0 0 0.25rem 0; color: #555; font-size: 0.95rem; }' +
+        'table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; overflow: visible; }' +
+        'th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; vertical-align: top; overflow: visible; }' +
+        'th { background: #f5f5f5; font-weight: 600; }' +
+        'th:nth-child(1), td:nth-child(1) { width: 8.8em; }' +
+        'th:nth-child(2), td:nth-child(2) { width: 3.4em; }' +
+        'th:nth-child(3), td:nth-child(3) { width: 8em; }' +
+        'th:nth-child(5), td:nth-child(5) { width: 2em; }' +
+        '.schedule-print-time { white-space: nowrap; }' +
+        '.schedule-print-name { font-weight: 500; }' +
+        '.schedule-print-desc { font-size: 0.9rem; color: #333; }' +
+        'td.schedule-print-resp { white-space: nowrap; }' +
+        'th.schedule-print-resp { width: 2em; font-size: 0.75rem; white-space: normal; overflow-wrap: break-word; }' +
+        '.schedule-print-empty { color: #666; font-style: italic; }' +
+        '@media print { body { margin: 0; padding: 12px; } .no-print { display: none; } thead { display: table-header-group; } tbody tr { break-inside: avoid; } }' +
+        '</style></head><body>' +
+        '<p class="no-print" style="margin-bottom: 1rem;"><a href="#" id="schedule-save-html" style="color: #007bff; text-decoration: underline;">Save as HTML</a></p>' +
+        '<h1>' + title + '</h1>' + metaBlock +
+        '<table><thead><tr><th>Start</th><th>End</th><th>Activity</th><th>Description</th><th class="schedule-print-resp">Responsiveness</th></tr></thead><tbody>' +
+        bodyRows + '</tbody></table>' +
+        '<script>' +
+        '(function(){ var link = document.getElementById("schedule-save-html"); if (!link) return; link.onclick = function(e) { e.preventDefault(); var html = document.documentElement.outerHTML; var blob = new Blob([html], { type: "text/html;charset=utf-8" }); var url = URL.createObjectURL(blob); var a = document.createElement("a"); a.href = url; a.download = "schedule.html"; a.click(); URL.revokeObjectURL(url); }; })();' +
+        '</script></body></html>';
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (w) w.focus();
+    else location.href = url;
+    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
 }
 
 // --- Schedule tab: events in time window ---
