@@ -493,8 +493,8 @@ function handleMainTabClick(e) {
     if (!button) return;
     
     // Make sure it's in the main tab bar (not a subtab)
-    const mainTabBar = document.querySelector('.header').nextElementSibling;
-    if (!mainTabBar || !mainTabBar.classList.contains('tab-bar')) return;
+    const mainTabBar = document.getElementById('main-tab-bar');
+    if (!mainTabBar || !mainTabBar.contains(button)) return;
     if (!mainTabBar.contains(button)) return;
     
     // Make sure it's not a subtab button
@@ -572,9 +572,9 @@ function handleMainTabClick(e) {
 }
 
 // Attach event delegation to the main tab bar
-const mainTabBar = document.querySelector('.header').nextElementSibling;
-if (mainTabBar && mainTabBar.classList.contains('tab-bar')) {
-    mainTabBar.addEventListener('click', handleMainTabClick);
+const mainTabBarForClick = document.getElementById('main-tab-bar');
+if (mainTabBarForClick) {
+    mainTabBarForClick.addEventListener('click', handleMainTabClick);
 }
 
 // Subtab switching logic (for Global, Agents and Conversations tabs)
