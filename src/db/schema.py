@@ -361,6 +361,27 @@ def create_schema() -> None:
                 # Don't fail schema creation if cleanup fails
                 logger.warning(f"Failed to clean up Telegram system user entries during schema creation: {e}")
 
+            # Migrate agent resource grants: remove any that use config name instead of telegram ID.
+            # For resource_type "agent", resource_id must be str(agent_telegram_id). Old grants
+            # may have stored config name; delete only those (resource_id not numeric).
+            try:
+                cursor.execute(
+                    """
+                    DELETE FROM administrator_resource_grants
+                    WHERE resource_type = %s AND resource_id NOT REGEXP '^[0-9]+$'
+                    """,
+                    ("agent",),
+                )
+                if cursor.rowcount and cursor.rowcount > 0:
+                    logger.info(
+                        "Removed %s legacy agent resource grant(s) (config name no longer allowed; use telegram ID)",
+                        cursor.rowcount,
+                    )
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"Failed to migrate agent resource grants during schema creation: {e}")
+
         except Exception as e:
             conn.rollback()
             logger.error(f"Failed to create database schema: {e}")
