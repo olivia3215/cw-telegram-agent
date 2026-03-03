@@ -552,7 +552,7 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
 
 **Disabling HTTPS:** Remove or comment out the SSL environment variables and restart.
 
-On first visit to the console you'll be prompted to send a six-digit verification code. Click "Send verification code" to have the puppet master Telegram account message itself; enter that code to unlock the UI. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
+On first visit to the console you'll see a login overlay. Click "Log in via Google" to sign in with a Google account. Only accounts that have been added with `scripts/add_admin.py` can access the console; others see "This Google account is not authorized." Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
 The Admin Console provides three main tabs:
 
