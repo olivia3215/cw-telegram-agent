@@ -157,6 +157,15 @@ def get_agent_by_name(agent_config_name: str) -> Agent | None:
     return _agent_registry.get_by_config_name(agent_config_name)
 
 
+def get_any_logged_in_agent() -> Agent | None:
+    """Return the first agent that has a Telegram client (logged in). Used for admin console
+    operations that need a Telegram connection (e.g. querying sticker set info)."""
+    for agent in get_all_agents(include_disabled=False):
+        if getattr(agent, "_client", None) is not None:
+            return agent
+    return None
+
+
 def get_default_llm() -> str:
     """Get the default LLM name (system default).
 

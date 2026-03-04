@@ -155,8 +155,10 @@ class Agent(
 
     @property
     def timezone(self):
-        """Return the agent's timezone, defaulting to the server timezone when absent.
+        """Return the agent's timezone, defaulting to the server local timezone when absent.
         
+        When no timezone is configured (Agent Timezone not set), the agent is treated
+        as being in the server's local timezone (TZ env, /etc/timezone, or UTC fallback).
         Always returns a ZoneInfo object (IANA timezone) for consistency.
         If the server timezone is a datetime.timezone (fixed offset), falls back to UTC
         since we cannot reliably map offsets to IANA timezones.
@@ -251,8 +253,10 @@ class Agent(
     def get_timezone_identifier(self) -> str:
         """Get the IANA timezone identifier string for this agent's timezone.
         
-        Returns a string suitable for JavaScript's toLocaleString timeZone parameter.
-        Always returns a valid IANA timezone identifier (e.g., "America/Los_Angeles").
+        When no timezone is configured, the server local timezone is used (same as
+        the timezone property). Returns a string suitable for JavaScript's
+        toLocaleString timeZone parameter. Always returns a non-empty IANA
+        timezone identifier (e.g., "America/Los_Angeles" or "UTC"); never None.
         """
         tz = self.timezone
         if isinstance(tz, ZoneInfo):

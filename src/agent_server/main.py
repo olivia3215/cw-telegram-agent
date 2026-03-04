@@ -15,10 +15,6 @@ from register_agents import register_all_agents
 from prompt_loader import load_system_prompt
 from task_graph import WorkQueue
 from admin_console.app import start_admin_console
-from admin_console.puppet_master import (
-    PuppetMasterUnavailable,
-    get_puppet_master_manager,
-)
 from media.media_scratch import init_media_scratch
 from tick import run_tick_loop
 from config import (
@@ -130,28 +126,14 @@ async def main():
         return
 
     admin_server = None
-    puppet_master_manager = get_puppet_master_manager()
 
     try:
         if admin_enabled:
-            if not puppet_master_manager.is_configured:
-                logger.info(
-                    "Admin console is disabled because CINDY_PUPPET_MASTER_PHONE is not set."
-                )
-            else:
-                try:
-                    puppet_master_manager.ensure_ready(agents_list)
-                except PuppetMasterUnavailable as exc:
-                    logger.error(
-                        "Admin console disabled because puppet master is unavailable: %s",
-                        exc,
-                    )
-                else:
-                    admin_server = start_admin_console(
-                        admin_host, admin_port,
-                        ssl_cert=admin_ssl_cert,
-                        ssl_key=admin_ssl_key
-                    )
+            admin_server = start_admin_console(
+                admin_host, admin_port,
+                ssl_cert=admin_ssl_cert,
+                ssl_key=admin_ssl_key
+            )
 
         if not agent_loop_enabled:
             if not admin_enabled:
@@ -189,15 +171,6 @@ async def main():
         except Exception as e:
             logger.warning("Failed to start telegram_id_to_name population: %s", e)
 
-        if admin_enabled and puppet_master_manager.is_configured:
-            try:
-                puppet_master_manager.ensure_ready(agents_list)
-            except PuppetMasterUnavailable as exc:
-                logger.error(
-                    "Puppet master availability check failed after agent authentication: %s",
-                    exc,
-                )
-                return
         # Now start all the main tasks
         tick_task = asyncio.create_task(
             run_tick_loop(tick_interval_sec=2, state_file_path=STATE_PATH)
@@ -230,4 +203,3 @@ async def main():
     finally:
         if admin_server:
             admin_server.shutdown()
-        puppet_master_manager.shutdown()

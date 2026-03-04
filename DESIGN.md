@@ -77,7 +77,7 @@ This document describes the high-level architecture of the Telegram agent, with 
   - [Schedule Extension](#schedule-extension)
   - [Integration with Message Processing](#integration-with-message-processing)
 - [Admin Console API Response Convention](#admin-console-api-response-convention)
-- [Admin Console & Puppet Master](#admin-console--puppet-master)
+- [Admin Console](#admin-console)
   - [Login and configuration flow](#login-and-configuration-flow)
   - [Login and verification (current: Phase B)](#login-and-verification-current-phase-b)
 - [Media Editor API](#media-editor-api)
@@ -101,10 +101,10 @@ This document describes the high-level architecture of the Telegram agent, with 
 
 We never send a `system` role to Gemini. Instead:
 
-- **System instruction** (persona/role prompt/model-specific notes/current time/chat type/curated stickers) is passed via the model’s **system_instruction** parameter.
+- **System instruction** (persona/role prompt/model-specific notes/current time/chat type/curated stickers) is passed via the model's **system_instruction** parameter.
 - **Contents** contain only:
   - `user` turns — all non-agent speakers
-  - `model` turns — the agent’s prior messages (we remap `assistant → model`)
+  - `model` turns — the agent's prior messages (we remap `assistant → model`)
 
 This is required by newer Gemini families (e.g., `gemini-3-flash-preview`) that reject `system` content and only accept `user`/`model` roles.
 
@@ -600,7 +600,7 @@ CompositeMediaSource([
 
 ### Separation of Responsibilities (Media Pipeline vs Admin Console)
 
-To keep behavior consistent and avoid “double sources of truth”, we maintain a clean split:
+To keep behavior consistent and avoid "double sources of truth", we maintain a clean split:
 
 - **Media pipeline (`src/media/`) owns**:
   - **Which backend** is authoritative for a given directory (configdir JSON vs MySQL for `state/media`)
@@ -611,7 +611,7 @@ To keep behavior consistent and avoid “double sources of truth”, we maintain
 - **Admin console (`src/admin_console/` + `static/js/`) owns**:
   - Request validation, auth, response formatting
   - UI behavior (pagination/search, refresh triggers, etc.)
-  - Calling pipeline/service APIs (it should not “guess” storage backends or crawl directories ad-hoc)
+  - Calling pipeline/service APIs (it should not "guess" storage backends or crawl directories ad-hoc)
 
 To support this, common primitives are centralized:
 
@@ -758,11 +758,11 @@ The system implements comprehensive error recovery to handle various failure sce
 
 ### Retry and Exception Contracts
 
-Retry behavior is governed by clear contracts so that callers and LLM implementations know who decides “retry” vs “fail immediately.”
+Retry behavior is governed by clear contracts so that callers and LLM implementations know who decides "retry" vs "fail immediately."
 
 **Task-level retry (tick / task graph)**
 
-- **Only** the tick and `TaskNode.failed()` schedule retries: they insert a single `wait` task (e.g. 10s) and set the task back to PENDING. Handlers must **not** insert their own retry delays for “task failed, try again later”; they should raise and let the tick apply the delay.
+- **Only** the tick and `TaskNode.failed()` schedule retries: they insert a single `wait` task (e.g. 10s) and set the task back to PENDING. Handlers must **not** insert their own retry delays for "task failed, try again later"; they should raise and let the tick apply the delay.
 - When a handler raises, the tick sets `retryable = getattr(e, "is_retryable", True)` and calls `task.failed(graph, retryable=retryable)`.
   - If `retryable` is `True` (or the exception has no `is_retryable` attribute): the task is retried (delay inserted, up to max retries).
   - If `retryable` is `False`: the task is marked FAILED immediately and the graph can be removed; no retry.
@@ -773,12 +773,12 @@ Retry behavior is governed by clear contracts so that callers and LLM implementa
 - Before re-raising, the LLM implementation must **catch** API/HTTP errors and either:
   - **Retryable:** wrap in `RetryableLLMError` or set `is_retryable = True` on the exception, then re-raise; or
   - **Non-retryable:** set `is_retryable = False` on the exception (or raise an exception that will not be wrapped), then re-raise.
-- Relying on **string matching** in a central place (e.g. “503”, “timeout”) to decide retryability is fragile and provider-specific. The contract is: **each LLM marks or wraps its exceptions** so that the tick and any higher-level code can rely on `is_retryable` or `RetryableLLMError` without guessing from message text. String matching may be used as a **temporary fallback** for unmarked exceptions until all LLM implementations fully adopt this contract.
+- Relying on **string matching** in a central place (e.g. "503", "timeout") to decide retryability is fragile and provider-specific. The contract is: **each LLM marks or wraps its exceptions** so that the tick and any higher-level code can rely on `is_retryable` or `RetryableLLMError` without guessing from message text. String matching may be used as a **temporary fallback** for unmarked exceptions until all LLM implementations fully adopt this contract.
 - Shared type: `llm.exceptions.RetryableLLMError` — always treated as retryable and carries an optional `original_exception` for debugging.
 
 **Handlers that want immediate failure**
 
-- Any handler (not only LLM) that wants “do not retry” must raise an exception with `is_retryable = False` (e.g. send_media when media is not found in cache). Otherwise the tick defaults to retryable.
+- Any handler (not only LLM) that wants "do not retry" must raise an exception with `is_retryable = False` (e.g. send_media when media is not found in cache). Otherwise the tick defaults to retryable.
 
 ### Failure Scenarios
 
@@ -1449,39 +1449,32 @@ All admin console API endpoints follow a consistent response format to simplify 
 - The `resolve_user_id_and_handle_errors()` helper in `admin_console/helpers.py` automatically includes `"success": false` in all error responses
 - All conversation endpoints consistently use this format for both success and error cases
 
-## Admin Console & Puppet Master
+## Admin Console
 
-The admin console now runs exclusively through a dedicated “puppet master” Telegram account rather than borrowing an agent identity. This delivers a few guarantees:
-
-- Console access only exists when `CINDY_PUPPET_MASTER_PHONE` is configured and the account is logged in locally. If the puppet master is missing, we skip starting the HTTP server entirely so the rest of the system keeps running.
-- The puppet master account must be distinct from every agent (different phone number and Telegram user ID). We verify this both before launching the console and again after agents authenticate.
-- Long-running console actions (for example sticker-set imports) execute on the puppet master’s Telethon client. We removed the cross-thread “run this on the agent loop” helper, so agent event loops are no longer shared with the Flask thread.
+The admin console runs without a dedicated Telegram account. Console access is controlled by Google OAuth and (optionally) TOTP "Request Access". Operations that need a Telegram connection (for example resolving sticker set metadata when listing media) use an arbitrary logged-in agent when one is available; if no agent is logged in, those features use cached data or return a clear error.
 
 ### Login and configuration flow
 
-1. Export `CINDY_PUPPET_MASTER_PHONE` with the puppet master’s Telegram number.
-2. Run `./telegram_login.sh` – the script logs the puppet master first (if configured) and then iterates through the agents.
-3. Optionally set `CINDY_ADMIN_CONSOLE_SECRET_KEY` so Flask keeps session cookies across restarts; otherwise a random key is generated at launch.
-
-The puppet master session is stored at `state/PuppetMaster/telegram.session`. We call `client.get_me()` at runtime to discover the Telegram user ID, which avoids manual synchronization between phone number and ID.
+1. Set `CINDY_ADMIN_CONSOLE_SECRET_KEY` so Flask keeps session cookies across restarts; otherwise a random key is generated at launch.
+2. Run `./telegram_login.sh` to log in agents (no separate puppet master account).
 
 ### Login and verification (current: Phase B)
 
 - The first time a browser session hits `/admin`, the UI shows a login overlay with "Log in via Google". No verification code is required for initial access.
 - The user clicks "Log in via Google"; the server redirects to Google OAuth, then the callback validates the response, upserts the administrator (when allowed), and sets the session with the admin email. Only pre-provisioned administrators (rows in the `administrators` table) can complete login; others are redirected with `?error=not_authorized`.
-- The puppet master is not used for console login. Legacy OTP endpoints (request-code, verify) remain in code for a transition period; Phase C will replace them with TOTP "Request Access" for superuser escalation.
+- The puppet master is not used for console login. The request-code endpoint returns 501 (OTP via Telegram no longer supported); use TOTP or Google login.
 - Session state is stored in the Flask session (e.g. `SESSION_ADMIN_EMAIL`). Clearing cookies or restarting the server without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY` forces re-login.
 
 Once logged in, the admin console can impersonate any agent by making explicit API calls, and future work can extend that impersonation layer (e.g. RBAC, Phase B2/C).
 
 ### Issue 671 multi-admin implementation phases (Phase B2)
 
-The full plan for issue #671 (multiple administrators, RBAC, Google OAuth, TOTP) is in the project’s plan file. Summary of phases relevant to the current codebase:
+The full plan for issue #671 (multiple administrators, RBAC, Google OAuth, TOTP) is in the project's plan file. Summary of phases relevant to the current codebase:
 
 - **Phase A (done):** Schema and DB layer for `administrators`, `admin_role_names`, `administrator_roles`, `administrator_resource_grants`; seed `superuser` role.
 - **Phase B (done):** Google OAuth login and session; **current implementation** restricts login to pre-provisioned administrators only (callback rejects unknown emails with `?error=not_authorized`); `scripts/add_admin.py` to add admins.
-- **Phase B2 (planned):** Align with original spec: allow **any** Google user to log in (callback upserts `administrators` on first login). Show console shell (title, avatar, menu “Request Access”, “Log Out”) for every logged-in user. Show **tabs only when the user has the `superuser` role**; otherwise no tab bar. All protected admin API endpoints return **403** for non-superusers (e.g. `{"error": "Superuser role required"}`). Auth status API returns `roles` or `is_superuser` so the front end can hide tabs. Optional: `add_admin.py` can grant `superuser` for one bootstrap admin.
-- **Phase C (planned):** TOTP “Request Access”; correct code after 5+ minutes adds `superuser` to `administrator_roles`; silent failure for wrong code or recent attempt.
+- **Phase B2 (planned):** Align with original spec: allow **any** Google user to log in (callback upserts `administrators` on first login). Show console shell (title, avatar, menu "Request Access", "Log Out") for every logged-in user. Show **tabs only when the user has the `superuser` role**; otherwise no tab bar. All protected admin API endpoints return **403** for non-superusers (e.g. `{"error": "Superuser role required"}`). Auth status API returns `roles` or `is_superuser` so the front end can hide tabs. Optional: `add_admin.py` can grant `superuser` for one bootstrap admin.
+- **Phase C (planned):** TOTP "Request Access"; correct code after 5+ minutes adds `superuser` to `administrator_roles`; silent failure for wrong code or recent attempt.
 - **Phases D–G (planned):** Permission module, Accounts section, agent-scoped grants, docs.
 
 ## Media Editor API

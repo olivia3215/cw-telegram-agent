@@ -106,13 +106,6 @@
                             </div>
                             <div id="cleanup-unused-status" style="margin-top: 6px; font-size: 12px; color: #666;"></div>
                         </div>
-
-                        <div class="import-section">
-                            <h3>Import Sticker Set <span class="info-icon" data-tooltip="Import a Telegram sticker set by its short name (e.g. WendyDancer).">i</span></h3>
-                            <input type="text" id="sticker-set-name" placeholder="Sticker set name (e.g., WendyDancer)">
-                            <button onclick="importStickerSet()">Import Set</button>
-                            <div id="import-status"></div>
-                        </div>
                     </div>
 
                     <div class="main-container">
@@ -762,6 +755,18 @@
     <div id="media-fullscreen-overlay" style="display: none; position: fixed; z-index: 2000; inset: 0; background: rgba(0,0,0,0.85); cursor: pointer; overflow: auto;" onclick="closeMediaFullscreen()" aria-label="Close">
         <img id="media-fullscreen-img" src="" alt="Full size" style="display: none; max-width: 95vw; max-height: 90vh; object-fit: contain; margin: auto; position: relative; top: 50%; transform: translateY(-50%); pointer-events: none;">
         <video id="media-fullscreen-video" src="" style="display: none; max-width: 95vw; max-height: 90vh; object-fit: contain; margin: auto; position: relative; top: 50%; transform: translateY(-50%);" controls onclick="event.stopPropagation()"></video>
+    </div>
+    <!-- Timezone change: modal when agent has events/schedule -->
+    <div id="timezone-migration-overlay" style="display: none; position: fixed; z-index: 2100; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center;" aria-label="Timezone migration">
+        <div id="timezone-migration-modal" style="background: white; padding: 24px; border-radius: 8px; max-width: 440px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation()">
+            <h3 style="margin: 0 0 12px 0;">Change timezone</h3>
+            <p id="timezone-migration-message" style="margin: 0 0 20px 0; color: #333;"></p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button type="button" onclick="timezoneMigrationChoice('move')" style="padding: 10px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Move events and schedule to new timezone (same local time)</button>
+                <button type="button" onclick="timezoneMigrationChoice('delete')" style="padding: 10px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete all events and schedule, then change timezone</button>
+                <button type="button" onclick="timezoneMigrationChoice('cancel')" style="padding: 10px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Cancel</button>
+            </div>
+        </div>
     </div>
     <script src="/admin/static/js/admin_console_core.js"></script>
     <script src="/admin/static/js/admin_console_global.js"></script>

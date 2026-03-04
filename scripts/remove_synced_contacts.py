@@ -16,9 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from telethon.tl.functions.contacts import ResetSavedRequest  # pyright: ignore[reportMissingImports]
 
 from agent import Agent, all_agents
-from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
-from telegram.client_factory import get_puppet_master_client, get_telegram_client
+from telegram.client_factory import get_telegram_client
 from utils.formatting import format_log_prefix
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -81,39 +80,6 @@ async def remove_synced_contacts_for_agent(agent: Agent) -> bool:
         return False
     finally:
         await client.disconnect()
-
-
-# async def remove_synced_contacts_for_puppet_master() -> bool:
-#     """Remove synced contacts for the puppet master account."""
-#     if not PUPPET_MASTER_PHONE:
-#         logger.error("CINDY_PUPPET_MASTER_PHONE is not set.")
-#         return False
-    
-#     client = get_puppet_master_client()
-    
-#     try:
-#         await client.connect()
-        
-#         if not await client.is_user_authorized():
-#             logger.error("Puppet master not authenticated. Please run './telegram_login.sh --puppet-master' first.")
-#             return False
-        
-#         me = await client.get_me()
-#         logger.info(f"Puppet master connected as: {me.username or me.first_name} ({me.id})")
-        
-#         logger.info("Removing all synced phone contacts for puppet master...")
-#         result = await client(ResetSavedRequest())
-        
-#         logger.info("Successfully removed synced contacts for puppet master.")
-#         logger.info(f"Result: {result}")
-        
-#         return True
-        
-#     except Exception as e:
-#         logger.exception(f"Error removing synced contacts for puppet master: {e}")
-#         return False
-#     finally:
-#         await client.disconnect()
 
 
 async def async_main(args: argparse.Namespace) -> int:

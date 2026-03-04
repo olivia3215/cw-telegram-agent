@@ -389,7 +389,7 @@ In addition the following prompts give agents additional capabilities
 - `Person` – Encourage everyday, human-like small talk and life details
 - `Memory` – Teach the agent how and when to record long-term memories
 - `Retrieve` – Enable web retrieval tasks for fresh information
-- `XSend` – Allow cross-channel intents to the agent’s future self
+- `XSend` – Allow cross-channel intents to the agent's future self
 
 > **Detailed documentation:** See [samples/README.md](samples/README.md) for comprehensive information about role prompts, including agent-specific prompts, loading priority, and examples.
 
@@ -471,7 +471,6 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 | --- | --- | --- |
 | `CINDY_ADMIN_CONSOLE_ENABLED` | `true` | Enable/disable the console server |
 | `CINDY_AGENT_LOOP_ENABLED` | `true` | Enable/disable the agent loop (set `false` to run console-only) |
-| `CINDY_PUPPET_MASTER_PHONE` | _(unset)_ | Phone number for the dedicated puppet master account. Required to enable the console. |
 | `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
 | `CINDY_ADMIN_GOOGLE_CLIENT_ID` | _(unset)_ | Google OAuth client ID for admin login (Web application client). Required for multi-admin. |
 | `CINDY_ADMIN_GOOGLE_CLIENT_SECRET` | _(unset)_ | Google OAuth client secret for admin login. Required for multi-admin. |
@@ -495,9 +494,8 @@ python scripts/add_admin.py admin@example.com --name "Jane Admin"
 Only after an email is added can that user log in via "Log in via Google" in the console. See `.env-template` for Google OAuth setup (client ID, secret, and authorized redirect URI).
 
 **Quick start**
-1. Configure the puppet master account and session secret (generate the secret once and reuse it in your environment or `.env` file):
+1. Configure the session secret (generate once and reuse in your environment or `.env` file):
    ```bash
-   export CINDY_PUPPET_MASTER_PHONE="+15551234567"        # dedicated Telegram account
    # Generate once: python -c 'import secrets; print(secrets.token_urlsafe(32))'
    export CINDY_ADMIN_CONSOLE_SECRET_KEY="copy-the-generated-value-here"
    export CINDY_ADMIN_CONSOLE_ENABLED=true
@@ -505,9 +503,9 @@ Only after an email is added can that user log in via "Log in via Google" in the
    # Optional: override the admin console port (default is 5001)
    export CINDY_ADMIN_CONSOLE_PORT=5002
    ```
-2. Log in to Telegram for the puppet master and each agent:
+2. Log in to Telegram for each agent:
    ```bash
-   ./telegram_login.sh          # logs the puppet master first (if phone set), then all agents
+   ./telegram_login.sh          # logs all agents
    ```
 3. Start the service and open the console:
    ```bash
@@ -581,7 +579,6 @@ The Admin Console provides three main tabs:
 
 - **Media Editor** — Browse, edit, import, and manage media descriptions:
   - Browse and edit media descriptions across all agents and directories
-  - Import sticker sets from Telegram with automatic AI-generated descriptions
   - Curate descriptions by manually editing AI-generated content
   - Move items between directories or delete unwanted content
   - Refresh descriptions using the AI pipeline to generate new versions

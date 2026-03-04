@@ -56,8 +56,7 @@ MEDIA_MODEL: str | None = os.environ.get("MEDIA_MODEL")
 TRANSLATION_MODEL: str | None = os.environ.get("TRANSLATION_MODEL")
 
 
-# Puppet master configuration
-PUPPET_MASTER_PHONE: str | None = _get_optional_str("CINDY_PUPPET_MASTER_PHONE")
+# Admin console secret (for session signing)
 ADMIN_CONSOLE_SECRET_KEY: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_SECRET_KEY")
 
 # Admin console Google OAuth (for "Log in via Google")
