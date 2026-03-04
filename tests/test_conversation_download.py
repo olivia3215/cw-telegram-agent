@@ -382,9 +382,9 @@ def test_interleave_messages_and_logs_excludes_failed_tasks():
 
 
 def test_interleave_messages_and_logs_excludes_visible_action_kinds():
-    """Visible action kinds (send, sticker, react, photo, send_media) should be excluded."""
+    """Visible action kinds (send, sticker, photo, send_media) excluded; react included."""
     first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
-    
+
     messages = [
         {
             "id": "1",
@@ -395,7 +395,7 @@ def test_interleave_messages_and_logs_excludes_visible_action_kinds():
             "is_from_agent": False,
         },
     ]
-    
+
     task_logs = [
         {"timestamp": first_msg_time.isoformat(), "action_kind": "think", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "send", "action_details": '{}'},
@@ -406,18 +406,20 @@ def test_interleave_messages_and_logs_excludes_visible_action_kinds():
     ]
 
     result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
-    
-    # Should have 1 message + 1 log (only the "think" log)
-    assert len(result) == 2
+
+    # Should have 1 message + 2 logs (think and react; send, sticker, photo, send_media excluded)
+    assert len(result) == 3
     log_items = [item for item in result if item['type'] == 'log']
-    assert len(log_items) == 1
-    assert log_items[0]['data']['action_kind'] == 'think'
+    assert len(log_items) == 2
+    action_kinds = [item['data']['action_kind'] for item in log_items]
+    assert 'think' in action_kinds
+    assert 'react' in action_kinds
 
 
-def test_interleave_messages_and_logs_excludes_received_and_summarize():
-    """Received and summarize action kinds should be excluded."""
+def test_interleave_messages_and_logs_includes_received_excludes_summarize():
+    """Download includes received; only summarize is excluded."""
     first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
-    
+
     messages = [
         {
             "id": "1",
@@ -428,7 +430,7 @@ def test_interleave_messages_and_logs_excludes_received_and_summarize():
             "is_from_agent": False,
         },
     ]
-    
+
     task_logs = [
         {"timestamp": first_msg_time.isoformat(), "action_kind": "think", "action_details": '{"text": "Thinking"}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "received", "action_details": '{}'},
@@ -436,20 +438,19 @@ def test_interleave_messages_and_logs_excludes_received_and_summarize():
         {"timestamp": first_msg_time.isoformat(), "action_kind": "note", "action_details": '{"content": "Note"}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "plan", "action_details": '{"content": "Plan"}'},
     ]
-    
+
     result = _interleave_messages_and_logs(messages, task_logs, summaries=[])
-    
-    # Should have 1 message + 3 logs (think, note, plan - excluding received and summarize)
-    assert len(result) == 4
+
+    # Should have 1 message + 4 logs (think, received, note, plan - only summarize excluded)
+    assert len(result) == 5
     log_items = [item for item in result if item['type'] == 'log']
-    assert len(log_items) == 3
-    
-    # Check that received and summarize are excluded
+    assert len(log_items) == 4
+
     action_kinds = [item['data']['action_kind'] for item in log_items]
     assert 'think' in action_kinds
+    assert 'received' in action_kinds
     assert 'note' in action_kinds
     assert 'plan' in action_kinds
-    assert 'received' not in action_kinds
     assert 'summarize' not in action_kinds
 
 
@@ -469,10 +470,10 @@ def test_interleave_messages_and_logs_with_no_messages():
     assert len(result) == 0
 
 
-def test_filter_task_logs_for_conversation_includes_received_and_summarize():
-    """Live admin console view should include received and summarize logs."""
+def test_filter_task_logs_for_conversation_includes_received_summarize_and_react():
+    """Live admin console view should include received, summarize, and react logs."""
     first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
-    
+
     messages = [
         {
             "id": "1",
@@ -483,30 +484,32 @@ def test_filter_task_logs_for_conversation_includes_received_and_summarize():
             "is_from_agent": False,
         },
     ]
-    
+
     task_logs = [
         {"timestamp": first_msg_time.isoformat(), "action_kind": "think", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "received", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "summarize", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "react", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "note", "action_details": '{}'},
     ]
-    
-    # Live view filter should INCLUDE received and summarize
+
+    # Live view filter should INCLUDE received, summarize, and react
     result = filter_task_logs_for_conversation(messages, task_logs)
-    
-    # Should have all 4 logs (think, received, summarize, note)
-    assert len(result) == 4
+
+    # Should have all 5 logs (think, received, summarize, react, note)
+    assert len(result) == 5
     action_kinds = [log['action_kind'] for log in result]
     assert 'think' in action_kinds
     assert 'received' in action_kinds
     assert 'summarize' in action_kinds
+    assert 'react' in action_kinds
     assert 'note' in action_kinds
 
 
-def test_filter_task_logs_for_download_excludes_received_and_summarize():
-    """Download filter should exclude received and summarize logs."""
+def test_filter_task_logs_for_download_includes_received_and_react_excludes_summarize():
+    """Download filter includes received and react; excludes only summarize."""
     first_msg_time = datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC)
-    
+
     messages = [
         {
             "id": "1",
@@ -517,21 +520,23 @@ def test_filter_task_logs_for_download_excludes_received_and_summarize():
             "is_from_agent": False,
         },
     ]
-    
+
     task_logs = [
         {"timestamp": first_msg_time.isoformat(), "action_kind": "think", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "received", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "summarize", "action_details": '{}'},
+        {"timestamp": first_msg_time.isoformat(), "action_kind": "react", "action_details": '{}'},
         {"timestamp": first_msg_time.isoformat(), "action_kind": "note", "action_details": '{}'},
     ]
-    
-    # Download filter should EXCLUDE received and summarize
+
+    # Download filter should INCLUDE received and react, EXCLUDE only summarize
     result = filter_task_logs_for_download(messages, task_logs)
-    
-    # Should have only 2 logs (think, note - excluding received and summarize)
-    assert len(result) == 2
+
+    # Should have 4 logs (think, received, react, note - only summarize excluded)
+    assert len(result) == 4
     action_kinds = [log['action_kind'] for log in result]
     assert 'think' in action_kinds
+    assert 'received' in action_kinds
+    assert 'react' in action_kinds
     assert 'note' in action_kinds
-    assert 'received' not in action_kinds
     assert 'summarize' not in action_kinds
