@@ -297,8 +297,12 @@ async def build_complete_system_prompt(
     if media_cache:
         system_prompt += (
             "\n\n# Media you may send using a `send_media` task\n\n"
-            "To see the list of media you can send, retrieve `file:media.json` if it is not already in your context. "
+            "To see the list of media you can send, look for `file:media.json` in your context. "
             "The contents list each item's `media_id` (use as `unique_id` in the send_media task), `media_type`, and description.\n"
+            "if it is not in your context, you can retrieve it by issuing the following task:\n\n"
+            "```json\n"
+            "[{\"kind\": \"retrieve\", \"urls\": [\"file:media.json\"]}]\n"
+            "```\n"
         )
 
     # Add memory content
