@@ -1429,6 +1429,98 @@ function refreshConversation() {
     });
 }
 
+/**
+ * Open a print-only HTML view of the current conversation in a new tab.
+ * Uses conversationSummaries and conversationMessages (and conversationAgentTimezone) from the current view.
+ */
+function conversationPrint() {
+    const agentSelect = document.getElementById('conversations-agent-select');
+    const partnerSelect = document.getElementById('conversations-partner-select');
+    const userIdInput = document.getElementById('conversations-user-id');
+    const agentName = agentSelect ? stripAsterisk(agentSelect.value) : null;
+    const userId = userIdInput?.value.trim() || (partnerSelect ? stripAsterisk(partnerSelect.value) : '');
+    if (!agentName || !userId) {
+        alert('Please select an agent and a conversation partner first.');
+        return;
+    }
+    const agent = (window.agentsList || []).find(function(a) { return a.config_name === agentName; });
+    const displayName = (agent && agent.name) ? agent.name : agentName;
+    const summaries = conversationSummaries || [];
+    const messages = conversationMessages || [];
+    const agentTimezone = conversationAgentTimezone || null;
+
+    function fmtTs(ts) {
+        if (!ts) return '—';
+        return formatTimestamp(ts, agentTimezone);
+    }
+
+    let bodyHtml = '';
+    if (summaries.length > 0) {
+        bodyHtml += '<h2 style="font-size: 1.1rem; margin: 1rem 0 0.5rem 0;">Summaries</h2>';
+        summaries.forEach(function(s) {
+            bodyHtml += '<div class="conv-print-summary">';
+            bodyHtml += '<div class="conv-print-meta">ID: ' + escapeHtml(s.id || '') + ' · ' + escapeHtml(s.created || '') + ' · Messages ' + escapeHtml(String(s.min_message_id || '')) + '–' + escapeHtml(String(s.max_message_id || '')) + '</div>';
+            bodyHtml += '<div class="conv-print-content">' + escapeHtml(s.content || '').replace(/\n/g, '<br>') + '</div>';
+            bodyHtml += '</div>';
+        });
+    }
+    bodyHtml += '<h2 style="font-size: 1.1rem; margin: 1.25rem 0 0.5rem 0;">Messages</h2>';
+    if (messages.length === 0) {
+        bodyHtml += '<p class="conv-print-empty">No messages in this view.</p>';
+    } else {
+        messages.forEach(function(msg) {
+            let textContent = '';
+            if (msg.parts && Array.isArray(msg.parts)) {
+                msg.parts.forEach(function(part) {
+                    if (part.kind === 'text' && part.text) {
+                        textContent += part.text;
+                    } else if (part.kind === 'media') {
+                        const kind = part.media_kind || 'media';
+                        textContent += ' [' + escapeHtml(kind) + ']';
+                    }
+                });
+            }
+            if (!textContent && msg.text) {
+                textContent = msg.text;
+            }
+            if (!textContent) {
+                textContent = '[No content]';
+            }
+            const sender = msg.is_from_agent ? 'Agent' : (msg.sender_name ? escapeHtml(msg.sender_name) : 'User');
+            bodyHtml += '<div class="conv-print-msg">';
+            bodyHtml += '<div class="conv-print-meta">' + sender + ' · ' + fmtTs(msg.timestamp) + ' · ID: ' + escapeHtml(String(msg.id)) + '</div>';
+            bodyHtml += '<div class="conv-print-content">' + escapeHtml(String(textContent)).replace(/\n/g, '<br>') + '</div>';
+            bodyHtml += '</div>';
+        });
+    }
+
+    const title = 'Conversation — ' + escapeHtml(displayName) + ' / ' + escapeHtml(userId);
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + title + '</title><style>' +
+        'body { font-family: system-ui, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 16px; color: #222; }' +
+        'h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }' +
+        '.conv-print-meta { font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }' +
+        '.conv-print-content { white-space: pre-wrap; word-wrap: break-word; }' +
+        '.conv-print-summary, .conv-print-msg { margin-bottom: 1rem; padding: 10px; border-left: 4px solid #ddd; background: #f9f9f9; }' +
+        '.conv-print-msg { border-left-color: #2196f3; }' +
+        '.conv-print-empty { color: #666; font-style: italic; }' +
+        '.no-print { margin-bottom: 1rem; }' +
+        '@media print { body { margin: 0; padding: 12px; } .no-print { display: none; } }' +
+        '</style></head><body>' +
+        '<p class="no-print"><a href="#" id="conv-save-html" style="color: #007bff; text-decoration: underline;">Save as HTML</a></p>' +
+        '<h1>' + title + '</h1>' +
+        bodyHtml +
+        '<script>' +
+        '(function(){ var link = document.getElementById("conv-save-html"); if (!link) return; link.onclick = function(e) { e.preventDefault(); var h = document.documentElement.outerHTML; var blob = new Blob([h], { type: "text/html;charset=utf-8" }); var url = URL.createObjectURL(blob); var a = document.createElement("a"); a.href = url; a.download = "conversation.html"; a.click(); URL.revokeObjectURL(url); }; })();' +
+        '</script></body></html>';
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (w) w.focus();
+    else location.href = url;
+    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+}
+
 function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set()) {
     const container = document.getElementById('conversation-container');
     let html = '';
@@ -1440,6 +1532,10 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
         html += '<div><strong>This conversation is blocked.</strong> The agent cannot send messages to this conversation.</div>';
         html += '</div>';
     }
+    // Print button (always show when viewing a conversation)
+    html += '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">';
+    html += '<button type="button" onclick="conversationPrint()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Print</button>';
+    html += '</div>';
     // Use the formatTimestamp utility from core (now global)
     
     // Display summaries at the top (editable, styled like memories)
