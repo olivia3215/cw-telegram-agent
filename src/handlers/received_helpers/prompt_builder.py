@@ -41,9 +41,8 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
             return ""
 
         # Format times in agent's timezone for display (schedule is stored in UTC; agent uses server local when unset)
-        tz_str = getattr(agent, "get_timezone_identifier", lambda: "UTC")()
         try:
-            tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
+            tz = ZoneInfo(agent.get_timezone_identifier())
         except Exception:
             tz = ZoneInfo("UTC")
 
