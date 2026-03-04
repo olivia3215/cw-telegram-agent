@@ -124,7 +124,13 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             from handlers.received_helpers.message_processing import format_message_reactions
             from media.media_injector import format_message_for_prompt, inject_media_descriptions
             from media.media_source import get_default_media_source_chain
-            from utils.telegram import format_channel_display, get_channel_name, is_dm
+            from utils.telegram import (
+                _entity_display_name,
+                format_channel_display,
+                get_channel_name,
+                is_dm,
+                sender_entity_to_partner_cache_entry,
+            )
             from telegram_download import download_media_bytes
             from telegram_media import iter_media_parts, get_unique_id
             from media.mime_utils import detect_mime_type_from_bytes, get_file_extension_from_mime_or_bytes
@@ -141,31 +147,35 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     # Fetch ALL messages (up to 2500) - not just unsummarized
                     # Don't use min_id filter - we want everything
                     messages = []
+                    senders_to_cache = {}
                     async for message in client.iter_messages(entity, limit=2500):
                         # Extract message data similar to conversation_get.py
                         msg_id = int(message.id)
 
-                        # Get sender info
+                        # Get sender info (use message.sender when present to avoid get_channel_name)
                         from_id = getattr(message, "from_id", None)
+                        sender_entity = getattr(message, "sender", None)
                         sender_id = None
                         if from_id:
                             sender_id = getattr(from_id, "user_id", None) or getattr(from_id, "channel_id", None)
-
-                        if not sender_id:
-                            sender = getattr(message, "sender", None)
-                            if sender:
-                                sender_id = getattr(sender, "id", None)
+                        if not sender_id and sender_entity:
+                            sender_id = getattr(sender_entity, "id", None)
 
                         is_from_agent = sender_id == agent.agent_id
 
                         sender_name = None
-                        if sender_id and isinstance(sender_id, int):
+                        if sender_entity and sender_id and isinstance(sender_id, int):
+                            sender_name = _entity_display_name(sender_entity, sender_id)
+                            if not sender_name or not sender_name.strip():
+                                sender_name = "User"
+                            entry = sender_entity_to_partner_cache_entry(sender_entity, sender_id)
+                            if entry:
+                                senders_to_cache[sender_id] = entry
+                        if not sender_name and sender_id and isinstance(sender_id, int):
                             sender_name = await get_channel_name(agent, sender_id)
                             if not sender_name or not sender_name.strip():
                                 sender_name = "User"
-                        elif sender_id:
-                            sender_name = "User"
-                        else:
+                        if not sender_name:
                             sender_name = "User"
 
                         timestamp = message.date.isoformat() if hasattr(message, "date") and message.date else None
@@ -266,6 +276,10 @@ def register_conversation_download_routes(agents_bp: Blueprint):
 
                     # Reverse to chronological order
                     messages = list(reversed(messages))
+
+                    if senders_to_cache:
+                        from admin_console.agents.partners import cache_partner_display_only
+                        cache_partner_display_only(agent_config_name, list(senders_to_cache.values()))
 
                     logger.info(
                         f"{format_log_prefix_resolved(agent.name, None)} Fetched {len(messages)} messages for download (channel {channel_id})"
@@ -601,17 +615,33 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                         lottie_data_map = _build_lottie_data_map(media_dir, media_map)
 
                         # Format agent and partner for print header (Telegram name, id, @username)
+                        from admin_console.agents.partners import get_cached_partner_display_info, is_partner_unresolvable
+                        if is_partner_unresolvable(agent_config_name, str(channel_id)):
+                            partner_display_plain = str(channel_id)
+                            partner_display_html = html.escape(str(channel_id))
+                        else:
+                            partner_info = get_cached_partner_display_info(agent_config_name, str(channel_id))
+                            if partner_info:
+                                name = (partner_info.get("name") or "Unknown").strip()
+                                uname = (partner_info.get("username") or "").strip().lstrip("@")
+                                partner_display_plain = f"{name} ({channel_id})" + (f" [@{uname}]" if uname else "")
+                                if uname:
+                                    url = f"https://t.me/{uname}"
+                                    partner_display_html = html.escape(name) + html.escape(f" ({channel_id})") + f' [<a href="{html.escape(url)}">{html.escape("@" + uname)}</a>]'
+                                else:
+                                    partner_display_html = html.escape(partner_display_plain)
+                            else:
+                                partner_display_plain = await format_channel_display(
+                                    agent, channel_id, format_username_html=False
+                                )
+                                partner_display_html = await format_channel_display(
+                                    agent, channel_id, format_username_html=True
+                                )
                         agent_display_plain = await format_channel_display(
                             agent, getattr(agent, "agent_id", None), format_username_html=False
                         )
                         agent_display_html = await format_channel_display(
                             agent, getattr(agent, "agent_id", None), format_username_html=True
-                        )
-                        partner_display_plain = await format_channel_display(
-                            agent, channel_id, format_username_html=False
-                        )
-                        partner_display_html = await format_channel_display(
-                            agent, channel_id, format_username_html=True
                         )
 
                         # Generate HTML

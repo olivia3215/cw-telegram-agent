@@ -38,6 +38,26 @@ def _entity_display_name(entity, channel_id: int) -> str:
     return f"Entity ({channel_id})"
 
 
+def sender_entity_to_partner_cache_entry(entity, sender_id: int) -> dict | None:
+    """Build a partner-dict for the recency cache from a message sender entity (User, Chat, or Channel).
+    Returns None if entity is None or sender_id is invalid. Dict has user_id, name, username (no @), date=None.
+    """
+    if entity is None or sender_id is None:
+        return None
+    try:
+        name = _entity_display_name(entity, sender_id)
+        username_at = format_username(entity)
+        username_bare = (username_at or "").strip().lstrip("@") or None
+        return {
+            "user_id": str(sender_id),
+            "name": name,
+            "username": username_bare,
+            "date": None,
+        }
+    except Exception:
+        return None
+
+
 def format_username(entity):
     """Return a leading-@ username for a Telegram entity when available."""
     if entity is None:
