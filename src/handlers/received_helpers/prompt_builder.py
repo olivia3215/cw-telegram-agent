@@ -4,6 +4,8 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 import logging
+from datetime import UTC
+from zoneinfo import ZoneInfo
 
 from handlers.received_helpers.channel_details import build_channel_details_section
 from utils import get_dialog_name
@@ -38,10 +40,23 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
         if not current_activity and not next_activity:
             return ""
 
+        # Format times in agent's timezone for display (schedule is stored in UTC)
+        tz = None
+        if hasattr(agent, "get_timezone_identifier") and agent.get_timezone_identifier():
+            try:
+                tz = ZoneInfo(agent.get_timezone_identifier())
+            except Exception:
+                pass
+
+        def _local_time(dt):
+            if tz is not None:
+                dt = dt.astimezone(UTC).astimezone(tz)
+            return dt.strftime("%I:%M %p")
+
         activity_text = f"\n\n# Current Activity\n\n"
         if current_activity:
             activity_text += f"You are currently: {current_activity.activity_name} "
-            activity_text += f"({current_activity.start_time.strftime('%I:%M %p')} - {current_activity.end_time.strftime('%I:%M %p')})\n"
+            activity_text += f"({_local_time(current_activity.start_time)} - {_local_time(current_activity.end_time)})\n"
             activity_text += f"{current_activity.description}\n"
         else:
             activity_text += "Nothing is happening right now.\n"
@@ -61,7 +76,7 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
         # Show next activity if available
         if next_activity:
             activity_text += f"Next activity: {next_activity.activity_name} "
-            activity_text += f"(starts at {next_activity.start_time.strftime('%I:%M %p')})\n"
+            activity_text += f"(starts at {_local_time(next_activity.start_time)})\n"
             activity_text += f"{next_activity.description}\n"
         
         activity_text += "\nYou can retrieve your full schedule by accessing: file:schedule.json\n"

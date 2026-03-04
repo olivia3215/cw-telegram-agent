@@ -3463,21 +3463,69 @@ function updateAgentTimezone(agentName, timezone) {
         },
         body: JSON.stringify({ timezone: timezone })
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => response.json().then(data => ({ status: response.status, data })))
+    .then(({ status, data }) => {
+        if (status === 409 && data.requires_timezone_migration) {
+            showTimezoneMigrationModal(agentName, timezone, data.message || 'Agent has events and/or schedule. Choose how to proceed.');
+            return;
+        }
         if (data.error) {
             alert('Error updating timezone: ' + data.error);
-            // Reload to restore previous value
             loadAgentConfiguration(agentName);
-        } else {
-            alert('Timezone updated successfully');
+            return;
         }
+        alert('Timezone updated successfully');
     })
     .catch(error => {
         if (error && error.message === 'unauthorized') {
             return;
         }
         alert('Error updating timezone: ' + error);
+        loadAgentConfiguration(agentName);
+    });
+}
+
+function showTimezoneMigrationModal(agentName, timezone, message) {
+    const overlay = document.getElementById('timezone-migration-overlay');
+    const modal = document.getElementById('timezone-migration-modal');
+    const msgEl = document.getElementById('timezone-migration-message');
+    if (!overlay || !modal || !msgEl) {
+        alert(message + '\n\nUse API with migrate: "delete" or "move" to proceed.');
+        return;
+    }
+    msgEl.textContent = message;
+    overlay.dataset.agentName = agentName;
+    overlay.dataset.timezone = timezone;
+    overlay.style.display = 'flex';
+}
+
+function timezoneMigrationChoice(choice) {
+    const overlay = document.getElementById('timezone-migration-overlay');
+    if (!overlay) return;
+    const agentName = overlay.dataset.agentName;
+    const timezone = overlay.dataset.timezone;
+    overlay.style.display = 'none';
+    if (choice === 'cancel') {
+        loadAgentConfiguration(agentName);
+        return;
+    }
+    if (choice !== 'delete' && choice !== 'move') return;
+    fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/configuration/timezone`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: timezone, migrate: choice })
+    })
+    .then(response => response.json().then(data => ({ status: response.status, data })))
+    .then(({ status, data }) => {
+        if (data.error) {
+            alert('Error: ' + data.error);
+        } else {
+            alert(choice === 'delete' ? 'Events and schedule deleted; timezone updated.' : 'Events and schedule moved to new timezone.');
+        }
+        loadAgentConfiguration(agentName);
+    })
+    .catch(error => {
+        if (error && error.message !== 'unauthorized') alert('Error: ' + error);
         loadAgentConfiguration(agentName);
     });
 }
@@ -4337,7 +4385,20 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         '<button type="button" id="schedule-print-btn" onclick="schedulePrint()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Print schedule</button>' +
         '</div>';
     if (!activities || activities.length === 0) {
-        container.innerHTML = clockRow + saveBar + btnRow + '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>';
+        const outsideStart = new Date().toISOString();
+        const outsideEndDate = new Date();
+        outsideEndDate.setUTCDate(outsideEndDate.getUTCDate() + 30);
+        const outsideEnd = outsideEndDate.toISOString();
+        window._scheduleOutsideStart = outsideStart;
+        window._scheduleOutsideEnd = outsideEnd;
+        container.innerHTML = clockRow + saveBar + btnRow +
+            '<div class="placeholder-card">No activities. Add one or extend the schedule to generate more.</div>' +
+            '<div id="schedule-events-outside-container" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">' +
+            '<h4 style="margin: 0 0 8px 0; font-size: 14px;">Upcoming events</h4>' +
+            '<p style="font-size: 12px; color: #666; margin-bottom: 12px;">Events in the next 30 days.</p>' +
+            '<div id="schedule-events-outside" class="schedule-activity-events"><div class="loading">Loading events...</div></div>' +
+            '</div>';
+        loadScheduleEventsOutside(agentName, outsideStart, outsideEnd);
         const saveAllBtn = document.getElementById('schedule-save-all-btn');
         if (saveAllBtn) {
             saveAllBtn.onclick = () => {
@@ -4402,6 +4463,27 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
         html += '</div></div></div>';
     });
     html += '</div>';
+    // Upcoming events outside current schedule (e.g. event 11 days away when schedule covers ~7 days)
+    const outsideStart = (activities && activities.length > 0)
+        ? (function() {
+            let latest = null;
+            for (let i = 0; i < activities.length; i++) {
+                const e = activities[i].end_time;
+                if (e && (!latest || e > latest)) latest = e;
+            }
+            return latest || new Date().toISOString();
+        })()
+        : new Date().toISOString();
+    const outsideEndDate = new Date();
+    outsideEndDate.setUTCDate(outsideEndDate.getUTCDate() + 30);
+    const outsideEnd = outsideEndDate.toISOString();
+    window._scheduleOutsideStart = outsideStart;
+    window._scheduleOutsideEnd = outsideEnd;
+    html += '<div id="schedule-events-outside-container" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">';
+    html += '<h4 style="margin: 0 0 8px 0; font-size: 14px;">Upcoming events (outside schedule)</h4>';
+    html += '<p style="font-size: 12px; color: #666; margin-bottom: 12px;">Events whose next occurrence is after the last schedule activity (e.g. more than a week ahead).</p>';
+    html += '<div id="schedule-events-outside" class="schedule-activity-events"><div class="loading">Loading events...</div></div>';
+    html += '</div>';
     container.innerHTML = html;
     const scheduleActivities = window._scheduleActivities || [];
     (window._scheduleExpandedIndices || new Set()).forEach(function(idx) {
@@ -4410,6 +4492,7 @@ function renderScheduleContent(container, agentName, activities, timeZone) {
             loadScheduleEntryEvents(window._scheduleAgentName, act.start_time, act.end_time, idx);
         }
     });
+    loadScheduleEventsOutside(agentName, outsideStart, outsideEnd);
     const saveAllBtn = document.getElementById('schedule-save-all-btn');
     if (saveAllBtn) {
         saveAllBtn.onclick = () => {
@@ -4623,7 +4706,7 @@ async function schedulePrint() {
 function loadScheduleEntryEvents(agentName, startTime, endTime, activityIndex) {
     const container = document.getElementById('schedule-events-' + activityIndex);
     if (!container) return;
-    const params = new URLSearchParams({ start: startTime, end: endTime });
+    const params = 'start=' + encodeURIComponent(startTime) + '&end=' + encodeURIComponent(endTime);
     Promise.all([
         fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule/events?${params}`).then(r => r.json()),
         fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`).then(r => r.json())
@@ -4695,6 +4778,84 @@ function loadScheduleEntryEvents(agentName, startTime, endTime, activityIndex) {
     });
 }
 
+/** Load events in the "outside schedule" window (after last activity through next 30 days) for the Schedule tab. */
+function loadScheduleEventsOutside(agentName, startTime, endTime) {
+    const container = document.getElementById('schedule-events-outside');
+    if (!container) return;
+    const params = 'start=' + encodeURIComponent(startTime) + '&end=' + encodeURIComponent(endTime);
+    const activityIndex = 'outside';
+    Promise.all([
+        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/schedule/events?${params}`).then(r => r.json()),
+        fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation-partners`).then(r => r.json())
+    ]).then(function([eventsData, partnersData]) {
+        if (eventsData.error) {
+            container.innerHTML = '<div class="error">' + escapeHtml(eventsData.error) + '</div>';
+            return;
+        }
+        if (partnersData.error) {
+            container.innerHTML = '<div class="error">Could not load partners: ' + escapeHtml(partnersData.error) + '</div>';
+            return;
+        }
+        const events = eventsData.events || [];
+        const partners = partnersData.partners || [];
+        window._schedulePartnersList = partners;
+        const timezoneLabel = eventsData.timezone_display || 'agent TZ';
+        window._scheduleEventsTimezoneDisplay = window._scheduleEventsTimezoneDisplay || {};
+        window._scheduleEventsTimezoneDisplay[activityIndex] = timezoneLabel;
+        const intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
+        function partnerOptions(selectedUserId) {
+            let opts = '<option value="">Choose partner...</option>';
+            partners.forEach(function(p) {
+                const uid = p.user_id || p;
+                const label = (p.name && p.name.trim()) ? (p.name + ' (' + uid + ')') : uid;
+                const uname = p.username ? ' [@' + p.username + ']' : '';
+                opts += '<option value="' + escapeHtml(uid) + '"' + (uid === String(selectedUserId) ? ' selected' : '') + '>' + escapeHtml(label + uname) + '</option>';
+            });
+            return opts;
+        }
+        let html = '<button type="button" id="schedule-events-outside-new-btn" onclick="scheduleAddNewEvent(\'' + escJsAttr(agentName) + '\', \'outside\', \'' + escJsAttr(startTime) + '\')" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; margin-bottom: 12px;">+ New Event</button>';
+        if (events.length > 0) {
+            events.forEach(function(ev) {
+                const userId = ev.user_id || '';
+                const timeVal = (ev.time || '').slice(0, 19).replace('T', 'T');
+                let intervalNum = '';
+                let intervalUnit = 'hours';
+                if (ev.interval && typeof ev.interval === 'string') {
+                    const parts = ev.interval.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        intervalNum = parseFloat(parts[0]) || '';
+                        const u = (parts[1] || '').toLowerCase();
+                        if (u.indexOf('minute') >= 0) intervalUnit = 'minutes';
+                        else if (u.indexOf('hour') >= 0) intervalUnit = 'hours';
+                        else if (u.indexOf('day') >= 0) intervalUnit = 'days';
+                        else if (u.indexOf('week') >= 0) intervalUnit = 'weeks';
+                    }
+                }
+                const occ = ev.occurrences != null ? ev.occurrences : '';
+                const prefix = 'schedule-event-outside-';
+                html += '<div class="memory-item event-item schedule-context-event" data-activity-index="outside" data-event-id="' + escapeHtml(ev.id) + '" data-user-id="' + escapeHtml(userId) + '" data-dirty="0" style="background: #fafafa; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #eee;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">';
+                html += '<strong>Event: ' + escapeHtml(ev.id) + '</strong>';
+                html += '<span>';
+                html += '<button id="' + prefix + 'save-btn-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" onclick="saveEventSchedule(\'' + escJsAttr(agentName) + '\', \'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\', \'' + escJsAttr(userId) + '\')" style="display: none; padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px;">Save</button>';
+                html += '<button onclick="deleteEventSchedule(\'' + escJsAttr(agentName) + '\', \'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')" style="padding: 4px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>';
+                html += '</span></div>';
+                html += '<div style="margin-bottom: 6px;"><label style="font-size: 12px;">Conversation partner</label><select id="' + prefix + 'partner-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="margin-left: 8px; padding: 4px 8px;" onchange="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + partnerOptions(userId) + '</select></div>';
+                html += '<div style="margin-bottom: 6px;"><label>Intent:</label><textarea id="' + prefix + 'intent-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="width: 100%; min-height: 50px; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; box-sizing: border-box;" oninput="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + escapeHtml(ev.intent || '') + '</textarea></div>';
+                html += '<div style="margin-bottom: 6px;"><label>Time in ' + escapeHtml(timezoneLabel) + ':</label><input type="datetime-local" id="' + prefix + 'time-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + timeVal + '" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; width: 100%; box-sizing: border-box;" onchange="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"></div>';
+                html += '<div style="display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;"><div><label>Interval:</label><input type="number" id="' + prefix + 'interval-num-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + intervalNum + '" step="0.5" min="0" placeholder="number" style="width: 60px; padding: 4px;" oninput="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"><select id="' + prefix + 'interval-unit-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="padding: 4px;" onchange="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')">' + intervalUnits.map(function(u) { return '<option value="' + u + '"' + (u === intervalUnit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div><div><label>Occurrences:</label><input type="number" id="' + prefix + 'occurrences-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" value="' + occ + '" min="1" placeholder="empty" style="width: 60px; padding: 4px;" oninput="markEventDirtySchedule(\'outside\', \'' + escJsAttr(userId) + '\', \'' + escJsAttr(ev.id) + '\')"></div></div>';
+                html += '<div id="' + prefix + 'status-' + escJsAttr(userId) + '-' + escJsAttr(ev.id) + '" style="font-size: 11px; color: #666;"></div></div>';
+            });
+        } else {
+            html += '<p style="font-size: 13px; color: #666;">No events in this range.</p>';
+        }
+        container.innerHTML = html;
+    }).catch(function(err) {
+        if (err && err.message === 'unauthorized') return;
+        container.innerHTML = '<div class="error">Error loading events: ' + escapeHtml(String(err && err.message ? err.message : err)) + '</div>';
+    });
+}
+
 function markEventDirtySchedule(activityIndex, userId, eventId) {
     const prefix = 'schedule-event-' + activityIndex + '-';
     const statusEl = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
@@ -4746,8 +4907,8 @@ function saveEventSchedule(agentName, activityIndex, userId, eventId, originalUs
                 const statusEl2 = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
                 if (res.status === 404) {
                     if (statusEl2) { statusEl2.textContent = 'Event no longer exists.'; statusEl2.style.color = '#856404'; }
-                    var act = (window._scheduleActivities || [])[activityIndex];
-                    if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+                    if (activityIndex === 'outside') loadScheduleEventsOutside(agentName, window._scheduleOutsideStart, window._scheduleOutsideEnd);
+                    else { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
                     return;
                 }
                 if (res.data.error) {
@@ -4757,8 +4918,8 @@ function saveEventSchedule(agentName, activityIndex, userId, eventId, originalUs
                 if (partnerChanged && !isDraft) {
                     fetchWithAuth(`${API_BASE}/agents/${encodeURIComponent(agentName)}/events/${encodeURIComponent(originalUserId)}/${encodeURIComponent(eventId)}`, { method: 'DELETE' })
                         .then(function() {
-                            var act = (window._scheduleActivities || [])[activityIndex];
-                            if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+                            if (activityIndex === 'outside') loadScheduleEventsOutside(agentName, window._scheduleOutsideStart, window._scheduleOutsideEnd);
+                            else { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
                         });
                     return;
                 }
@@ -4767,7 +4928,10 @@ function saveEventSchedule(agentName, activityIndex, userId, eventId, originalUs
                 if (card) { card.setAttribute('data-dirty', '0'); card.setAttribute('data-user-id', targetUserId); }
                 const saveBtn = document.getElementById(prefix + 'save-btn-' + userId + '-' + eventId);
                 if (saveBtn) saveBtn.style.display = 'none';
-                if (isDraft) { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
+                if (isDraft) {
+                    if (activityIndex === 'outside') loadScheduleEventsOutside(agentName, window._scheduleOutsideStart, window._scheduleOutsideEnd);
+                    else { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
+                }
             })
             .catch(function() {
                 var statusEl2 = document.getElementById(prefix + 'status-' + userId + '-' + eventId);
@@ -4788,8 +4952,8 @@ function deleteEventSchedule(agentName, activityIndex, userId, eventId) {
         .then(function(res) {
             if (res.data.error) alert('Error: ' + res.data.error);
             else {
-                var act = (window._scheduleActivities || [])[activityIndex];
-                if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex);
+                if (activityIndex === 'outside') loadScheduleEventsOutside(agentName, window._scheduleOutsideStart, window._scheduleOutsideEnd);
+                else { var act = (window._scheduleActivities || [])[activityIndex]; if (act) loadScheduleEntryEvents(agentName, act.start_time, act.end_time, activityIndex); }
             }
         })
         .catch(function(err) { if (err && err.message !== 'unauthorized') alert('Error: ' + err); });
@@ -4817,11 +4981,12 @@ function scheduleAddNewEvent(agentName, activityIndex, startTime) {
     var timezoneLabel = (window._scheduleEventsTimezoneDisplay && window._scheduleEventsTimezoneDisplay[activityIndex]) || 'agent TZ';
     var intervalUnits = ['minutes', 'hours', 'days', 'weeks'];
     var prefix = 'schedule-event-' + activityIndex + '-';
+    var activityIndexJs = (typeof activityIndex === 'string') ? ("'" + escJsAttr(activityIndex) + "'") : String(activityIndex);
     var userIdPlaceholder = '__new__';
-    var draftHtml = '<div class="memory-item event-item schedule-context-event" data-activity-index="' + activityIndex + '" data-event-id="' + draftId + '" data-user-id="' + userIdPlaceholder + '" data-dirty="1" style="background: #fff3cd; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #ffc107;">';
+    var draftHtml = '<div class="memory-item event-item schedule-context-event" data-activity-index="' + escapeHtml(String(activityIndex)) + '" data-event-id="' + draftId + '" data-user-id="' + userIdPlaceholder + '" data-dirty="1" style="background: #fff3cd; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #ffc107;">';
     draftHtml += '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;"><strong>Event: ' + escapeHtml(draftId) + '</strong><span>';
-    draftHtml += '<button id="' + prefix + 'save-btn-' + userIdPlaceholder + '-' + draftId + '" onclick="saveEventSchedule(\'' + escJsAttr(agentName) + '\', ' + activityIndex + ', \'' + userIdPlaceholder + '\', \'' + escJsAttr(draftId) + '\', \'' + userIdPlaceholder + '\')" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px;">Save</button>';
-    draftHtml += '<button onclick="removeEventDraftSchedule(' + activityIndex + ', \'' + escJsAttr(draftId) + '\')" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel</button></span></div>';
+    draftHtml += '<button id="' + prefix + 'save-btn-' + userIdPlaceholder + '-' + draftId + '" onclick="saveEventSchedule(\'' + escJsAttr(agentName) + '\', ' + activityIndexJs + ', \'' + userIdPlaceholder + '\', \'' + escJsAttr(draftId) + '\', \'' + userIdPlaceholder + '\')" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px;">Save</button>';
+    draftHtml += '<button onclick="removeEventDraftSchedule(' + activityIndexJs + ', \'' + escJsAttr(draftId) + '\')" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel</button></span></div>';
     draftHtml += '<div style="margin-bottom: 6px;"><label style="font-size: 12px;">Conversation partner</label><select id="' + prefix + 'partner-' + userIdPlaceholder + '-' + draftId + '" style="margin-left: 8px; padding: 4px 8px;">';
     draftHtml += '<option value="">Choose partner...</option>';
     (window._schedulePartnersList || []).forEach(function(p) {
