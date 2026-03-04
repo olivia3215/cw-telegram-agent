@@ -292,11 +292,18 @@ async def build_complete_system_prompt(
         system_prompt += "You may also send any sticker you've seen in chat or know about in any other way using the sticker set name and sticker name.\n"
         system_prompt += "Send stickers using the `sticker` task only, never using the `send` task."
 
-    # Build media list (photos, audio, video, stickers without set, etc.)
-    media_list = await _build_media_list(agent, media_chain)
-    if media_list:
-        system_prompt += f"\n\n# Media you may send using a `send_media` task\n\n{media_list}\n\n"
-        system_prompt += "Send these items using the `send_media` task only, never using the `send` task."
+    # Media list is behind retrieve file:media.json (only mention when agent has media)
+    media_cache = getattr(agent, "media", None) or getattr(agent, "photos", {})
+    if media_cache:
+        system_prompt += (
+            "\n\n# Media you may send using a `send_media` task\n\n"
+            "To see the list of media you can send, look for `file:media.json` in your context. "
+            "The contents list each item's `media_id` (use as `unique_id` in the send_media task), `media_type`, and description.\n"
+            "if it is not in your context, you can retrieve it by issuing the following task:\n\n"
+            "```json\n"
+            "[{\"kind\": \"retrieve\", \"urls\": [\"file:media.json\"]}]\n"
+            "```\n"
+        )
 
     # Add memory content
     memory_content = agent._load_memory_content(channel_id)
@@ -464,29 +471,30 @@ async def _build_sticker_list(agent, media_chain) -> str | None:
     return "\n".join(lines) if lines else None
 
 
-async def _build_media_list(agent, media_chain) -> str | None:
+async def get_media_list_json(agent, media_chain) -> list[dict]:
     """
-    Build a formatted list of available media (photos, audio, video, stickers, etc.)
-    with descriptions and kind. Uses agent.media with fallback to agent.photos.
+    Build a list of available media (photos, audio, video, stickers, etc.) as
+    JSON-serializable dicts. Uses agent.media with fallback to agent.photos.
+
+    Each item has: media_id (unique_id), media_type (kind), description (optional).
 
     Args:
         agent: Agent instance with cached media
         media_chain: Media source chain for description/kind lookups
 
     Returns:
-        Formatted media list string or None if no media available
+        List of dicts with keys media_id, media_type, description
     """
     media_cache = getattr(agent, "media", None) or getattr(agent, "photos", {})
     if not media_cache:
-        return None
+        return []
 
-    lines: list[str] = []
+    result: list[dict] = []
 
     try:
         for unique_id_str in sorted(media_cache.keys()):
             try:
                 media_obj = media_cache[unique_id_str]
-                from telegram_media import get_unique_id
                 _uid = get_unique_id(media_obj)
 
                 cache_record = await media_chain.get(
@@ -503,15 +511,21 @@ async def _build_media_list(agent, media_chain) -> str | None:
                 desc = None
                 kind = "document"
 
-            if desc:
-                lines.append(f"- {unique_id_str} ({kind}) - {desc}")
-            else:
-                lines.append(f"- {unique_id_str} ({kind})")
+            item: dict = {
+                "media_id": unique_id_str,
+                "media_type": kind,
+            }
+            if desc is not None:
+                item["description"] = desc
+            result.append(item)
 
     except Exception as e:
         logger.warning(
-            f"Failed to build media descriptions, falling back to unique_ids-only: {e}"
+            "Failed to build media list, returning minimal data: %s", e
         )
-        lines = [f"- {uid}" for uid in sorted(media_cache.keys())]
+        result = [
+            {"media_id": uid, "media_type": "document"}
+            for uid in sorted(media_cache.keys())
+        ]
 
-    return "\n".join(lines) if lines else None
+    return result

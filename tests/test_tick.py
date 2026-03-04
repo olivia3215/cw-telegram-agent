@@ -59,6 +59,33 @@ async def test_run_one_tick_retries_on_failure():
 
 
 @pytest.mark.asyncio
+async def test_run_one_tick_fails_immediately_on_non_retryable_error(monkeypatch):
+    """When a handler raises with is_retryable=False, task is marked FAILED and graph removed (no retry)."""
+    dispatch_table = get_task_dispatch_table()
+
+    async def fail_permanent(task, graph, work_queue=None):
+        err = ValueError("Media not found in cache")
+        err.is_retryable = False
+        raise err
+
+    monkeypatch.setitem(dispatch_table, "send", fail_permanent)
+    monkeypatch.setattr("tick.get_agent_for_id", lambda x: None)
+
+    task = TaskNode(id="t1", type="send", params={"to": "test", "text": "hi"})
+    graph = TaskGraph(id="g1", context={"agent_id": "test-agent", "peer_id": "test"}, tasks=[task])
+    WorkQueue.reset_instance()
+    queue = WorkQueue.get_instance()
+    queue.add_graph(graph)
+
+    await run_one_tick()
+
+    assert task.status == TaskStatus.FAILED
+    assert graph not in queue._task_graphs
+    assert not any(n.type == "wait" for n in graph.tasks)
+    assert task.params.get("previous_retries", 0) == 0
+
+
+@pytest.mark.asyncio
 async def test_run_tick_loop_stops_on_shutdown(fake_clock):
     from tick import run_one_tick as real_run_one_tick
 

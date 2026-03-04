@@ -1,4 +1,4 @@
-<!-- SCHEMA_TASKS: send_media -->
+<!-- SCHEMA_TASKS: send_media, retrieve -->
 
 # Send Media Task
 
@@ -11,10 +11,10 @@ a set name, and other documents. Media are referenced by their `unique_id`.
 ## How to Use the Send Media Task
 
 To send an item, use the `send_media` task with the item's `unique_id`. The `unique_id`
-is a stable identifier that uniquely identifies each piece of media. You can find available
-media and their `unique_id` values listed in the system prompt under "Media you may send
-using a `send_media` task". Each entry shows the kind (e.g. photo, audio, video, sticker)
-and optionally a description.
+is a stable identifier that uniquely identifies each piece of media. To find available
+media, `retrieve` the URI `file:media.json` if it is not already in your context. The contents
+list each item's `media_id` (use as `unique_id` in the send_media task), `media_type`,
+and description.
 
 ## Syntax
 
@@ -30,7 +30,7 @@ and optionally a description.
 
 - `kind`: Must be `"send_media"` to send media.
 - `unique_id` (required): The Telegram `file_unique_id` string for the media you want to send.
-  This can be found in the list of available media in your system prompt.
+  This is the `media_id` listed in the contents of `file:media.json` (retrieve that file if not in context).
 - `reply_to` (optional): The message ID to reply to. If provided, the media will be sent as a reply.
 
 ## Example
@@ -51,4 +51,4 @@ If you want to send media with `unique_id` "ABC123XYZ" as a reply to message 42:
 
 - **Always use the `send_media` task to send these items, never use the `send` task.**
 - The `unique_id` is case-sensitive and must match exactly.
-- Descriptions and kind (photo, audio, video, sticker, etc.) are shown in the system prompt to help you choose the right item.
+- Descriptions and kind (photo, audio, video, sticker, etc.) are shown in your context (a special message at the beginning of the conversation) after you issue a `retrieve` task with the URI `file:media.json`

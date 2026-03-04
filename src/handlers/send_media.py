@@ -41,19 +41,23 @@ async def handle_send_media(task: TaskNode, graph: TaskGraph, work_queue=None):
     log_prefix = await format_log_prefix(agent.name, channel_name)
 
     if not unique_id:
-        raise ValueError(
+        err = ValueError(
             f"{log_prefix} Send_media task missing 'unique_id' parameter."
         )
+        err.is_retryable = False
+        raise err
 
     # Look up media in cache (agent.media); fall back to agent.photos for backward compat
     media_cache = getattr(agent, "media", None) or getattr(agent, "photos", {})
     media = media_cache.get(str(unique_id))
 
     if not media:
-        raise ValueError(
+        err = ValueError(
             f"{log_prefix} Media with unique_id {unique_id!r} not found in cache. "
             "Media may have been deleted from saved messages or cache needs refresh."
         )
+        err.is_retryable = False
+        raise err
 
     # Convert channel_id to integer and resolve entity
     channel_id_int = ensure_int_id(channel_id)

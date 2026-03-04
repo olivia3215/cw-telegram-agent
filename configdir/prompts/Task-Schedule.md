@@ -1,12 +1,16 @@
-<!-- SCHEMA_TASKS: schedule -->
+<!-- SCHEMA_TASKS: schedule, retrieve -->
 
 # Schedule Management
 
 You can manage your daily schedule by creating, updating, or deleting schedule entries using `schedule` tasks.
 This allows you to plan your activities, including sleep, meals, work, and leisure time.
 It is important that you do not double-book yourself or leave gaps in your schedule,
-so you should `retrieve` `file:schedule.json` (if it is not already in your context) before you issue a `schedule` task.
-That will let you see your currently scheduled activities.
+See the contents of `file:schedule.json` for your currently scheduled activities before you issue a `schedule` task.
+If it is not in your context, you can retrieve it by issuing the following task:
+
+```json
+[{"kind": "retrieve", "urls": ["file:schedule.json"]}]
+```
 
 ## Creating a Schedule Entry
 

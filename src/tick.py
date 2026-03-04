@@ -411,8 +411,9 @@ async def run_one_tick(work_queue=None, state_file_path: str = None):
         
         # Log the task failure
         _log_task_failure(graph, task, error_msg)
-        
-        task.failed(graph)
+
+        should_retry = getattr(e, "is_retryable", True)
+        task.failed(graph, retryable=should_retry)
 
     if is_graph_complete(graph):
         work_queue.remove(graph)
