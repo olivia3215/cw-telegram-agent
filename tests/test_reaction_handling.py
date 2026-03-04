@@ -10,24 +10,13 @@ from telethon.tl.types import Message, User, PeerUser
 
 from agent import Agent
 from task_graph import WorkQueue
+from test_utils import make_mock_agent
+
 
 @pytest.fixture
 def mock_agent():
     """Create a mock agent for testing."""
-    agent = MagicMock(spec=Agent)
-    agent.name = "TestAgent"
-    agent.agent_id = 12345
-    agent.client = AsyncMock()
-    # is_connected() is a synchronous method in Telethon
-    agent.client.is_connected = MagicMock(return_value=True)
-    agent.is_muted = AsyncMock(return_value=False)
-    agent.is_conversation_gagged = AsyncMock(return_value=False)
-    agent.is_blocked = AsyncMock(return_value=False)
-    # Mock dialog_cache to return None (no cache) so tests use iter_dialogs()
-    agent.dialog_cache = None
-    agent.is_disabled = False
-    agent.ensure_client_connected = AsyncMock(return_value=True)
-    return agent
+    return make_mock_agent(use_agent_spec=True)
 
 
 @pytest.fixture
@@ -123,8 +112,10 @@ async def test_reaction_detection_triggers_for_any_agent_message(mock_agent, moc
     mock_result.messages = [agent_message]  # Reactions on agent message
     mock_agent.client.return_value = mock_result
     
-    # Mock get_channel_name
-    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
+    # Mock get_channel_name and can_agent_send_to_channel so scan reaches insert
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"), patch(
+        'agent_server.scan.can_agent_send_to_channel', new=AsyncMock(return_value=True)
+    ):
         # Mock insert_received_task_for_conversation
         with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
             'agent_server.scan.ensure_media_cache', return_value=None
@@ -156,8 +147,10 @@ async def test_reaction_detection_triggers_for_agent_message(mock_agent, mock_di
     mock_result.messages = [mock_message]  # Reactions on agent message
     mock_agent.client.return_value = mock_result
     
-    # Mock get_channel_name
-    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"):
+    # Mock get_channel_name and can_agent_send_to_channel so scan reaches insert
+    with patch('agent_server.scan.get_channel_name', return_value="TestChannel"), patch(
+        'agent_server.scan.can_agent_send_to_channel', new=AsyncMock(return_value=True)
+    ):
         # Mock insert_received_task_for_conversation
         with patch('agent_server.scan.insert_received_task_for_conversation') as mock_insert, patch(
             'agent_server.scan.ensure_media_cache', return_value=None

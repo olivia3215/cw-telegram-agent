@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from task_graph import TaskGraph, TaskNode, TaskStatus, WorkQueue
 from task_graph_helpers import insert_received_task_for_conversation
+from test_utils import make_mock_agent
 
 
 @pytest.fixture
@@ -27,17 +28,7 @@ def work_queue(tmp_path):
 @pytest.fixture
 def mock_agent():
     """Create a mock agent."""
-    agent = MagicMock()
-    agent.agent_id = "123456789"
-    agent.name = "TestAgent"
-    agent.config_name = "test-agent"  # Add string value instead of MagicMock
-    agent.is_disabled = False
-    agent.client = MagicMock()
-    agent.client.is_connected.return_value = True
-    agent.ensure_client_connected = AsyncMock(return_value=True)
-    agent.is_conversation_gagged = AsyncMock(return_value=False)
-    agent.get_cached_entity = AsyncMock(return_value=None)  # Add this mock
-    return agent
+    return make_mock_agent(agent_id="123456789")
 
 
 @pytest.mark.asyncio
