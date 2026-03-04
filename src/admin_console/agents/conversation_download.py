@@ -701,10 +701,10 @@ def filter_task_logs_for_conversation(messages: list, task_logs: list) -> list:
         except Exception:
             pass
     
-    # Filter task logs
-    excluded_action_kinds = ['send', 'sticker', 'react', 'photo', 'send_media']
+    # Filter task logs - exclude only visible action kinds (react is shown in task log)
+    excluded_action_kinds = ['send', 'sticker', 'photo', 'send_media']
     logs_to_show = []
-    
+
     for log in task_logs:
         # Exclude failed tasks
         if log.get("failure_message"):
@@ -732,24 +732,24 @@ def filter_task_logs_for_conversation(messages: list, task_logs: list) -> list:
 def filter_task_logs_for_download(messages: list, task_logs: list) -> list:
     """
     Filter task logs for downloaded conversations.
-    
-    This excludes more task types than the live view to reduce clutter in downloads:
-    - Excludes "received" and "summarize" in addition to visible actions
-    - These task types are less useful in the static export context
-    
+
+    Excludes visible actions (send, sticker, photo, send_media) and "summarize".
+    Includes "received" and "react" so the download matches the conversation view
+    for those task types.
+
     Args:
         messages: List of message dicts with 'timestamp' field
         task_logs: List of task log dicts with 'timestamp', 'action_kind', 'failure_message' fields
-    
+
     Returns:
         Filtered list of task logs
     """
     from datetime import timedelta
-    
+
     # If there are no messages, don't show any logs
     if not messages:
         return []
-    
+
     # Find the timestamp of the first message to determine log cutoff
     cutoff_timestamp = None
     first_msg = messages[0]
@@ -763,16 +763,16 @@ def filter_task_logs_for_download(messages: list, task_logs: list) -> list:
             cutoff_timestamp = first_msg_timestamp - timedelta(minutes=2)
         except Exception:
             pass
-    
-    # Filter task logs - exclude "received" and "summarize" for downloads
-    excluded_action_kinds = ['send', 'sticker', 'react', 'photo', 'send_media', 'received', 'summarize']
+
+    # Filter task logs - exclude only visible actions and summarize (include received and react)
+    excluded_action_kinds = ['send', 'sticker', 'photo', 'send_media', 'summarize']
     logs_to_show = []
     
     for log in task_logs:
         # Exclude failed tasks
         if log.get("failure_message"):
             continue
-        # Exclude visible action kinds (and received/summarize for downloads)
+        # Exclude visible action kinds and summarize (include received and react)
         if log.get("action_kind") in excluded_action_kinds:
             continue
         # Filter by timestamp - only show logs within 2 minutes before first message or after
@@ -796,8 +796,8 @@ def _interleave_messages_and_logs(messages: list, task_logs: list, summaries: li
     """
     Interleave messages and task logs for downloaded conversations.
     
-    Uses filter_task_logs_for_download to exclude received and summarize tasks
-    in addition to the standard filtering.
+    Uses filter_task_logs_for_download to exclude only visible actions and
+    summarize (received and react are included).
     
     Returns a list of dicts with 'type' ('message' or 'log'), 'timestamp', and 'data'.
     """

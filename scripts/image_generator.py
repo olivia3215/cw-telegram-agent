@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-# scripts/nano_banana_pro.py
+# scripts/image_generator.py
 #
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 """
 Standalone web utility for generating images with Gemini (Nano Banana,
-Nano Banana Pro) or Grok (xAI).
+Nano Banana Pro, Nano Banana 2) or Grok (xAI).
 
 Saves images and params to a configurable destination directory. UI at
 http://localhost:7891.
 
 Usage:
-    ./scripts/nano_banana_pro.sh
+    ./scripts/image_generator.sh
     # or
-    python scripts/nano_banana_pro.py [--port 7891]
+    python scripts/image_generator.py [--port 7891]
 """
 
 from __future__ import annotations
@@ -53,8 +53,22 @@ DEFAULT_DEST_DIR_NAME = "tmp/generated_images"
 IMAGE_MODELS = [
     ("gemini-2.5-flash-image", "Nano Banana (Gemini 2.5 Flash Image)"),
     ("gemini-3-pro-image-preview", "Nano Banana Pro (Gemini 3 Pro Image)"),
+    ("gemini-3.1-flash-image-preview", "Nano Banana 2 (Gemini 3.1 Flash Image)"),
     ("grok-imagine-image", "Grok Imagine (xAI)"),
 ]
+
+# Models that support resolution selection (image_size). Per Gemini API pricing.
+MODELS_WITH_RESOLUTION = {"gemini-3.1-flash-image-preview"}
+
+# (value, label). Value is sent to API as image_size.
+RESOLUTION_OPTIONS = [
+    ("512px", "512px"),
+    ("1K", "1K (1024px)"),
+    ("2K", "2K (2048px)"),
+    ("4K", "4K (4096px)"),
+]
+RESOLUTION_VALUES = [r[0] for r in RESOLUTION_OPTIONS]
+DEFAULT_RESOLUTION = "1K"
 
 # Allowed aspect ratios (Gemini ImageConfig; Grok supports a subset via aspect_ratio param)
 ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
@@ -110,6 +124,7 @@ def _generate_image_gemini(
     model_id: str,
     prompt: str,
     aspect_ratio: str | None = None,
+    resolution: str | None = None,
     reference_images: list[tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, str, dict]:
     """Call a Gemini image model and return (image_bytes, mime_type, usage_dict)."""
@@ -143,8 +158,17 @@ def _generate_image_gemini(
         "response_modalities": [Modality.IMAGE],
         "safety_settings": safety_settings,
     }
+    image_config_kw: dict = {}
     if aspect_ratio and aspect_ratio in ASPECT_RATIOS:
-        config_kw["image_config"] = ImageConfig(aspect_ratio=aspect_ratio)
+        image_config_kw["aspect_ratio"] = aspect_ratio
+    if (
+        model_id in MODELS_WITH_RESOLUTION
+        and resolution
+        and resolution in RESOLUTION_VALUES
+    ):
+        image_config_kw["image_size"] = resolution
+    if image_config_kw:
+        config_kw["image_config"] = ImageConfig(**image_config_kw)
     config = GenerateContentConfig(**config_kw)
     response = client.models.generate_content(
         model=model_id,
@@ -214,6 +238,7 @@ def _generate_image(
     model_id: str,
     prompt: str,
     aspect_ratio: str | None = None,
+    resolution: str | None = None,
     reference_images: list[tuple[bytes, str]] | None = None,
 ) -> tuple[bytes, str, dict]:
     """
@@ -221,7 +246,9 @@ def _generate_image(
     """
     if model_id == "grok-imagine-image":
         return _generate_image_grok(prompt, aspect_ratio, reference_images)
-    return _generate_image_gemini(model_id, prompt, aspect_ratio, reference_images)
+    return _generate_image_gemini(
+        model_id, prompt, aspect_ratio, resolution, reference_images
+    )
 
 
 def _image_failure_reason(response: object) -> str:
@@ -262,32 +289,66 @@ def _mime_to_ext(mime: str) -> str:
     return "png"
 
 
-# Pricing: (input $/1M tokens, output $/1M tokens) for Gemini; $ per image for Grok.
-# Sources: Google Gemini API pricing; xAI docs (grok-imagine-image $0.02/image).
+# Pricing: (kind, data). token = (input $/1M, output $/1M); resolution = {size: $/image}; flat = $/image.
+# Sources: https://ai.google.dev/gemini-api/docs/pricing ; xAI docs.
 IMAGE_MODEL_PRICING = {
-    "gemini-2.5-flash-image": (0.30, 30.0),   # input, output per 1M tokens (~$0.039/image)
-    "gemini-3-pro-image-preview": (0.30, 30.0),
-    "grok-imagine-image": 0.02,  # dollars per image (flat)
+    "gemini-2.5-flash-image": ("token", (0.30, 30.0)),
+    "gemini-3-pro-image-preview": ("token", (0.30, 30.0)),
+    "gemini-3.1-flash-image-preview": (
+        "resolution",
+        {"512px": 0.045, "1K": 0.067, "2K": 0.080, "4K": 0.151},
+    ),
+    "grok-imagine-image": ("flat", 0.02),
 }
 
 
-def _estimate_image_cost(model_id: str, usage: dict) -> float | None:
+def _estimate_image_cost(
+    model_id: str,
+    usage: dict,
+    resolution: str | None = None,
+) -> float | None:
     """
     Estimate cost in dollars for a generation. Returns None if unknown.
-    usage has prompt_tokens, output_tokens for Gemini; Grok uses flat per-image.
+    For resolution-based models, resolution is from request or saved params.
     """
     pricing = IMAGE_MODEL_PRICING.get(model_id)
     if pricing is None:
         return None
-    if model_id == "grok-imagine-image":
-        return float(pricing)  # per image
-    # Gemini: token-based
-    input_per_1m, output_per_1m = pricing
+    kind = pricing[0]
+    if kind == "flat":
+        return float(pricing[1])
+    if kind == "resolution":
+        res_map = pricing[1]
+        res = resolution or DEFAULT_RESOLUTION
+        return res_map.get(res)
+    # token
+    _, (input_per_1m, output_per_1m) = pricing
     pt = usage.get("prompt_tokens") or 0
     ot = usage.get("output_tokens") or 0
     if pt == 0 and ot == 0:
         return None
     return (pt / 1_000_000) * input_per_1m + (ot / 1_000_000) * output_per_1m
+
+
+def _get_estimate_before_generation(
+    model_id: str,
+    resolution: str | None = None,
+) -> tuple[float | None, str | None]:
+    """
+    Get estimated cost in dollars and optional note before generation.
+    Returns (cost_dollars, note). note is set for token-based models.
+    """
+    pricing = IMAGE_MODEL_PRICING.get(model_id)
+    if pricing is None:
+        return None, None
+    kind = pricing[0]
+    if kind == "flat":
+        return float(pricing[1]), None
+    if kind == "resolution":
+        res_map = pricing[1]
+        res = (resolution if resolution in RESOLUTION_VALUES else None) or DEFAULT_RESOLUTION
+        return res_map.get(res), None
+    return None, "Cost shown after generation."
 
 
 def build_app() -> Flask:
@@ -335,8 +396,27 @@ def build_app() -> Flask:
 
     @app.route("/api/models", methods=["GET"])
     def list_models():
-        """Return available image models for the pulldown."""
-        return jsonify({"models": [{"id": m[0], "name": m[1]} for m in IMAGE_MODELS]})
+        """Return available image models and resolution options."""
+        return jsonify({
+            "models": [
+                {"id": m[0], "name": m[1], "supports_resolution": m[0] in MODELS_WITH_RESOLUTION}
+                for m in IMAGE_MODELS
+            ],
+            "resolution_options": [{"value": r[0], "label": r[1]} for r in RESOLUTION_OPTIONS],
+        })
+
+    @app.route("/api/estimate", methods=["GET"])
+    def api_estimate():
+        """Return estimated cost before generation. For token-based models, returns note only."""
+        model_id = (request.args.get("model") or "").strip() or (IMAGE_MODELS[0][0] if IMAGE_MODELS else "")
+        resolution = (request.args.get("resolution") or "").strip() or None
+        valid_ids = [m[0] for m in IMAGE_MODELS]
+        if model_id not in valid_ids:
+            model_id = valid_ids[0] if valid_ids else ""
+        cost, note = _get_estimate_before_generation(model_id, resolution)
+        if cost is not None:
+            return jsonify({"estimated_cost_dollars": cost, "display": f"${cost:.4f}", "note": note})
+        return jsonify({"estimated_cost_dollars": None, "display": None, "note": note or "—"})
 
     @app.route("/api/generate", methods=["POST"])
     def api_generate():
@@ -345,6 +425,7 @@ def build_app() -> Flask:
         model_id = (data.get("model") or "").strip() or IMAGE_MODELS[0][0]
         prompt = (data.get("prompt") or "").strip()
         aspect_ratio = (data.get("aspect_ratio") or "1:1").strip()
+        resolution = (data.get("resolution") or "").strip() or None
         refs = data.get("reference_images") or []
 
         if not prompt:
@@ -352,6 +433,10 @@ def build_app() -> Flask:
         valid_ids = [m[0] for m in IMAGE_MODELS]
         if model_id not in valid_ids:
             model_id = valid_ids[0]
+        if model_id in MODELS_WITH_RESOLUTION and resolution and resolution not in RESOLUTION_VALUES:
+            resolution = DEFAULT_RESOLUTION
+        elif model_id not in MODELS_WITH_RESOLUTION:
+            resolution = None
         try:
             dest = _resolve_dest_dir(dest_dir_arg)
         except ValueError as e:
@@ -383,6 +468,7 @@ def build_app() -> Flask:
                 model_id,
                 prompt,
                 aspect_ratio=aspect_ratio or None,
+                resolution=resolution,
                 reference_images=reference_images or None,
             )
         except Exception as e:
@@ -397,8 +483,8 @@ def build_app() -> Flask:
 
         img_path.write_bytes(image_bytes)
 
-        # Compute dollar cost and display string
-        cost_dollars = _estimate_image_cost(model_id, usage)
+        # Compute dollar cost and display string (use resolution for resolution-based models)
+        cost_dollars = _estimate_image_cost(model_id, usage, resolution=resolution)
         if cost_dollars is not None:
             cost_display = f"${cost_dollars:.4f}"
         elif usage:
@@ -412,6 +498,7 @@ def build_app() -> Flask:
             "model": model_id,
             "prompt": prompt,
             "aspect_ratio": aspect_ratio or "1:1",
+            "resolution": resolution,
             "reference_count": len(reference_images),
             "reference_filenames": reference_filenames,
             "usage": usage,
@@ -494,7 +581,7 @@ def _html_page() -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nano Banana Pro — Image generation</title>
+  <title>Image generator</title>
   <style>
     :root {{ font-family: system-ui, sans-serif; font-size: 16px; }}
     body {{ max-width: 800px; margin: 0 auto; padding: 1rem; }}
@@ -522,6 +609,7 @@ def _html_page() -> str:
     .history-item .btn-x {{ padding: 0.2rem 0.5rem; font-size: 0.9rem; cursor: pointer; border: 1px solid #ccc; background: white; border-radius: 3px; }}
     .history-item .btn-x:hover {{ background: #fdd; }}
     .error {{ color: #c00; margin-top: 0.5rem; }}
+    .estimate {{ font-size: 0.9rem; color: #444; margin-top: 0.35rem; }}
     .modal {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; }}
     .modal.show {{ display: flex; }}
     .modal img {{ max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer; }}
@@ -530,7 +618,7 @@ def _html_page() -> str:
 </head>
 <body>
   <h1>Image generation</h1>
-  <p>Generate images with Gemini (Nano Banana / Nano Banana Pro) or Grok. Set destination directory; when changed, history below reloads.</p>
+  <p>Generate images with Gemini (Nano Banana, Nano Banana Pro, Nano Banana 2) or Grok. Set destination directory; when changed, history below reloads.</p>
 
   <label for="model">Model</label>
   <select id="model"><option value="">Loading…</option></select>
@@ -555,6 +643,16 @@ def _html_page() -> str:
     <option value="21:9">21:9</option>
   </select>
 
+  <div id="resolution-row" style="display: none;">
+    <label for="resolution">Resolution</label>
+    <select id="resolution">
+      <option value="512px">512px</option>
+      <option value="1K" selected>1K (1024px)</option>
+      <option value="2K">2K (2048px)</option>
+      <option value="4K">4K (4096px)</option>
+    </select>
+  </div>
+
   <label>Reference images (optional, drag & drop)</label>
   <div class="ref-filenames-loaded" id="ref-filenames-loaded" style="display: none; font-size: 0.85rem; color: #666; margin-top: 0.25rem;"></div>
   <label for="ref-input" id="drop-label" class="drop-zone-label" style="cursor: pointer; display: block;">
@@ -569,6 +667,7 @@ def _html_page() -> str:
     <button type="button" id="btn-generate">Generate</button>
     <span id="status"></span>
   </div>
+  <div class="estimate" id="estimate"></div>
   <div class="error" id="error"></div>
 
   <div class="history">
@@ -586,12 +685,15 @@ def _html_page() -> str:
     const destDirEl = document.getElementById('dest-dir');
     const promptEl = document.getElementById('prompt');
     const aspectEl = document.getElementById('aspect-ratio');
+    const resolutionRow = document.getElementById('resolution-row');
+    const resolutionEl = document.getElementById('resolution');
     const dropLabel = document.getElementById('drop-label');
     const dropZone = document.getElementById('drop-zone');
     const refInput = document.getElementById('ref-input');
     const refPreview = document.getElementById('ref-preview');
     const btnGenerate = document.getElementById('btn-generate');
     const statusEl = document.getElementById('status');
+    const estimateEl = document.getElementById('estimate');
     const errorEl = document.getElementById('error');
     const historyList = document.getElementById('history-list');
     const modal = document.getElementById('modal');
@@ -600,6 +702,7 @@ def _html_page() -> str:
 
     let refFiles = [];
     let historyEntries = [];
+    let modelsMeta = [];
 
     function getDestDir() {{ return destDirEl.value.trim() || '{default_dest}'; }}
 
@@ -610,6 +713,8 @@ def _html_page() -> str:
       if (p.model) modelEl.value = p.model;
       if (p.prompt !== undefined) promptEl.value = p.prompt;
       if (p.aspect_ratio) aspectEl.value = p.aspect_ratio;
+      if (p.resolution && resolutionEl.querySelector('option[value="' + p.resolution + '"]')) resolutionEl.value = p.resolution;
+      toggleResolutionRow();
       const refEl = document.getElementById('ref-filenames-loaded');
       if (p.reference_filenames && p.reference_filenames.length) {{
         refEl.textContent = 'Reference images used: ' + p.reference_filenames.join(', ');
@@ -619,12 +724,35 @@ def _html_page() -> str:
         refEl.style.display = 'none';
       }}
       setError('');
+      updateEstimate();
+    }}
+
+    function toggleResolutionRow() {{
+      const m = modelsMeta.find(x => x.id === modelEl.value);
+      resolutionRow.style.display = (m && m.supports_resolution) ? 'block' : 'none';
+    }}
+
+    function updateEstimate() {{
+      const model = modelEl.value;
+      const resolution = resolutionEl.value;
+      if (!model) {{ estimateEl.textContent = ''; return; }}
+      const q = new URLSearchParams({{ model: model }});
+      if (resolution) q.set('resolution', resolution);
+      fetch('/api/estimate?' + q.toString())
+        .then(r => r.json())
+        .then(data => {{
+          if (data.display) estimateEl.textContent = 'Estimated cost: ' + data.display;
+          else if (data.note) estimateEl.textContent = data.note;
+          else estimateEl.textContent = '';
+        }})
+        .catch(() => {{ estimateEl.textContent = ''; }});
     }}
 
     function loadModels() {{
       fetch('/api/models')
         .then(r => r.json())
         .then(data => {{
+          modelsMeta = data.models || [];
           if (!data.models || data.models.length === 0) {{ modelEl.innerHTML = '<option value="">No models</option>'; return; }}
           modelEl.innerHTML = '';
           data.models.forEach(m => {{
@@ -633,6 +761,8 @@ def _html_page() -> str:
             opt.textContent = m.name;
             modelEl.appendChild(opt);
           }});
+          toggleResolutionRow();
+          updateEstimate();
         }})
         .catch(() => {{ modelEl.innerHTML = '<option value="">Failed to load models</option>'; }});
     }}
@@ -749,6 +879,8 @@ def _html_page() -> str:
         .catch(() => setError('Delete failed'));
     }}
 
+    modelEl.addEventListener('change', () => {{ toggleResolutionRow(); updateEstimate(); }});
+    resolutionEl.addEventListener('change', updateEstimate);
     destDirEl.addEventListener('change', loadHistory);
     destDirEl.addEventListener('blur', loadHistory);
 
@@ -757,17 +889,9 @@ def _html_page() -> str:
       statusEl.textContent = 'Generating…';
       btnGenerate.disabled = true;
       const refs = await refsToBase64();
-      fetch('/api/generate', {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{
-          model: modelEl.value,
-          dest_dir: getDestDir(),
-          prompt: promptEl.value.trim(),
-          aspect_ratio: aspectEl.value,
-          reference_images: refs
-        }})
-      }})
+      const body = {{ model: modelEl.value, dest_dir: getDestDir(), prompt: promptEl.value.trim(), aspect_ratio: aspectEl.value, reference_images: refs }};
+      if (resolutionRow.style.display !== 'none') body.resolution = resolutionEl.value;
+      fetch('/api/generate', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(body) }})
         .then(r => r.json().then(data => ({{ ok: r.ok, data }})))
         .then(({{ ok, data }}) => {{
           btnGenerate.disabled = false;
@@ -795,7 +919,7 @@ def _html_page() -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Nano Banana Pro image generation web utility (http://localhost:7891)"
+        description="Image generator web utility (http://localhost:7891)"
     )
     parser.add_argument(
         "--port",
@@ -812,9 +936,10 @@ def main() -> None:
     args = parser.parse_args()
     _resolve_dest_dir("")
     app = build_app()
-    logger.info("Nano Banana Pro at http://%s:%s", args.host, args.port)
+    logger.info("Image generator at http://%s:%s", args.host, args.port)
     app.run(host=args.host, port=args.port, debug=False)
 
 
 if __name__ == "__main__":
     main()
+
