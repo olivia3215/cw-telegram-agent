@@ -3,7 +3,10 @@
 # Copyright (c) 2025-2026 Cindy's World LLC and contributors
 # Licensed under the MIT License. See LICENSE.md for details.
 #
+import html as html_module
 import logging
+from urllib.parse import quote
+
 from typing import TYPE_CHECKING
 
 from telethon.tl.types import User, UserProfilePhotoEmpty  # pyright: ignore[reportMissingImports]
@@ -15,6 +18,24 @@ from utils.formatting import format_log_prefix_resolved
 from utils.ids import normalize_peer_id
 
 logger = logging.getLogger(__name__)
+
+
+def _entity_display_name(entity, channel_id: int) -> str:
+    """Return display name for an entity (same logic as get_channel_name when entity is not None)."""
+    if hasattr(entity, "title") and entity.title:
+        return entity.title
+    if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
+        first_name = getattr(entity, "first_name", None)
+        last_name = getattr(entity, "last_name", None)
+        if first_name and last_name:
+            return f"{first_name} {last_name}"
+        if first_name:
+            return first_name
+        if last_name:
+            return last_name
+    if hasattr(entity, "username") and entity.username:
+        return entity.username
+    return f"Entity ({channel_id})"
 
 
 def format_username(entity):
@@ -61,28 +82,7 @@ async def get_channel_name(agent: "Agent", channel_id: int | None):
             else:
                 return f"Unknown ({channel_id})"
 
-        # 1. Check for a 'title' (for groups and channels)
-        if hasattr(entity, "title") and entity.title:
-            return entity.title
-
-        # 2. Check for user attributes
-        if hasattr(entity, "first_name") or hasattr(entity, "last_name"):
-            first_name = getattr(entity, "first_name", None)
-            last_name = getattr(entity, "last_name", None)
-
-            if first_name and last_name:
-                return f"{first_name} {last_name}"
-            if first_name:
-                return first_name
-            if last_name:
-                return last_name
-
-        # 3. Fallback to username if available
-        if hasattr(entity, "username") and entity.username:
-            return entity.username
-
-        # 4. Final fallback if no name can be determined
-        return f"Entity ({channel_id})"
+        return _entity_display_name(entity, channel_id)
 
     except Exception as e:
         # Transient errors (network timeouts, rate limits, connection issues, etc.) should not
@@ -95,6 +95,62 @@ async def get_channel_name(agent: "Agent", channel_id: int | None):
             return f"User ({channel_id})"
         else:
             return f"Channel ({channel_id})"
+
+
+async def format_channel_display(
+    agent: "Agent", channel_id: int | None, *, format_username_html: bool = False
+) -> str:
+    """
+    Format a channel (user or group) as: "Display Name (telegram_id) [@username]".
+    Username part is omitted if the entity has no username.
+
+    When format_username_html is True, the username is rendered as an HTML link
+    (e.g. <a href="https://t.me/username">@username</a>) and the rest of the
+    string is HTML-escaped, so the result is safe to embed in HTML.
+    """
+    if channel_id is None:
+        return "Unknown (None)" if not format_username_html else html_module.escape("Unknown (None)")
+    try:
+        channel_id = normalize_peer_id(channel_id)
+    except (ValueError, TypeError):
+        raw = f"Unknown ({channel_id!r})"
+        return raw if not format_username_html else html_module.escape(raw)
+    if channel_id == 0:
+        raw = "Unknown (0)"
+        return raw if not format_username_html else html_module.escape(raw)
+    try:
+        entity = await agent.get_cached_entity(channel_id)
+        if not entity:
+            if channel_id > 0:
+                name_part = "Deleted Account"
+            else:
+                name_part = "Unknown"
+            suffix = f" ({channel_id})"
+            if format_username_html:
+                return html_module.escape(name_part) + html_module.escape(suffix)
+            return name_part + suffix
+        name_part = _entity_display_name(entity, channel_id)
+        id_part = f" ({channel_id})"
+        username_at = format_username(entity)
+        if username_at:
+            # Bare username for URL (strip leading @)
+            bare = username_at.lstrip("@")
+            username_part = f" [{username_at}]"
+            if format_username_html:
+                url = f"https://t.me/{quote(bare, safe='')}"
+                username_html = f' [<a href="{html_module.escape(url)}">{html_module.escape(username_at)}</a>]'
+                return html_module.escape(name_part) + html_module.escape(id_part) + username_html
+            return name_part + id_part + username_part
+        if format_username_html:
+            return html_module.escape(name_part) + html_module.escape(id_part)
+        return name_part + id_part
+    except Exception as e:
+        logger.exception(f"Could not fetch entity for {channel_id}: {e}")
+        if channel_id > 0:
+            raw = f"User ({channel_id})"
+        else:
+            raw = f"Channel ({channel_id})"
+        return raw if not format_username_html else html_module.escape(raw)
 
 
 async def get_dialog_name(agent, channel_id):

@@ -1512,11 +1512,15 @@ function loadMemories(agentName) {
             
             html += memories.map(memory => {
                 const metadata = [];
-                if (memory.creation_channel) {
-                    metadata.push(`<strong>Channel:</strong> ${memory.creation_channel}`);
-                }
-                if (memory.creation_channel_id) {
-                    metadata.push(`<strong>Channel ID:</strong> ${memory.creation_channel_id}`);
+                // Channel: Name (id) [@username] when available
+                const chName = memory.creation_channel;
+                const chId = memory.creation_channel_id;
+                const chUsername = memory.creation_channel_username;
+                if (chName != null && chName !== '' || chId != null && chId !== '') {
+                    const namePart = (chName != null && chName !== '') ? escapeHtml(String(chName)) : 'Unknown';
+                    const idPart = (chId != null && chId !== '') ? ` (${escapeHtml(String(chId))})` : '';
+                    const userPart = (chUsername != null && chUsername !== '') ? ` [${escapeHtml(String(chUsername))}]` : '';
+                    metadata.push(`<strong>Channel:</strong> ${namePart}${idPart}${userPart}`);
                 }
                 if (memory.origin) {
                     metadata.push(`<strong>Origin:</strong> ${memory.origin}`);

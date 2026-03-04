@@ -24,7 +24,7 @@ from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from utils.formatting import format_log_prefix_resolved
-from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
+from utils.telegram import can_agent_send_to_channel, format_channel_display, get_channel_name, is_dm, is_user_blocking_agent
 from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
@@ -1101,13 +1101,27 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             from admin_console.agents.conversation_download import filter_task_logs_for_conversation
             filtered_task_logs = filter_task_logs_for_conversation(messages, task_logs)
 
+            # Display strings for live view header: "Name (id) [@username]"
+            agent_display = None
+            partner_display = None
+            try:
+                async def _get_displays():
+                    ad = await format_channel_display(agent, getattr(agent, "agent_id", None), format_username_html=False)
+                    pd = await format_channel_display(agent, channel_id, format_username_html=False)
+                    return (ad, pd)
+                agent_display, partner_display = agent.execute(_get_displays(), timeout=15.0)
+            except Exception as e:
+                logger.debug(f"Could not get display strings for conversation header: {e}")
+
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
                 "agent_timezone": agent_tz_id,
                 "is_blocked": is_blocked,
                 "task_logs": filtered_task_logs,
-                "saved_media_unique_ids": saved_media_unique_ids
+                "saved_media_unique_ids": saved_media_unique_ids,
+                "agent_display": agent_display,
+                "partner_display": partner_display,
             })
         except RuntimeError as e:
             error_msg = str(e).lower()

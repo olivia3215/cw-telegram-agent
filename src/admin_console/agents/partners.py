@@ -16,6 +16,7 @@ from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissi
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY, TELEGRAM_SYSTEM_USER_ID
 from utils import normalize_peer_id
+from utils.telegram import format_channel_display
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,42 @@ def register_partner_routes(agents_bp: Blueprint):
                     "username": partner["username"],
                     "date": date_str
                 })
+
+            # Add display string (Name (id) [@username]) for each partner using format_channel_display
+            if partner_list and agent.client and agent.client.is_connected():
+                try:
+                    client_loop = agent._get_client_loop()
+                    if client_loop and client_loop.is_running():
+                        async def _add_displays():
+                            result = {}
+                            for p in partner_list:
+                                uid = p["user_id"]
+                                try:
+                                    tid = int(uid)
+                                except (ValueError, TypeError):
+                                    result[uid] = uid
+                                    continue
+                                display = await format_channel_display(agent, tid, format_username_html=False)
+                                result[uid] = display
+                            return result
+                        display_map = agent.execute(_add_displays(), timeout=60.0)
+                        for p in partner_list:
+                            p["display"] = display_map.get(p["user_id"], p["user_id"])
+                except Exception as e:
+                    logger.debug(f"Could not add display strings for partners: {e}")
+                    for p in partner_list:
+                        p["display"] = p.get("name") or p["user_id"]
+
+            for p in partner_list:
+                if "display" not in p:
+                    # Fallback when client not available
+                    name = p.get("name")
+                    uid = p["user_id"]
+                    uname = p.get("username")
+                    if name:
+                        p["display"] = f"{name} ({uid})" + (f" [@{uname}]" if uname else "")
+                    else:
+                        p["display"] = uid
 
             return jsonify({"partners": partner_list})
         except Exception as e:
