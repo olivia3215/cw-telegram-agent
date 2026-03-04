@@ -40,17 +40,15 @@ def _build_current_activity_section(agent, now, channel_name: str | None = None)
         if not current_activity and not next_activity:
             return ""
 
-        # Format times in agent's timezone for display (schedule is stored in UTC)
-        tz = None
-        if hasattr(agent, "get_timezone_identifier") and agent.get_timezone_identifier():
-            try:
-                tz = ZoneInfo(agent.get_timezone_identifier())
-            except Exception:
-                pass
+        # Format times in agent's timezone for display (schedule is stored in UTC; agent uses server local when unset)
+        tz_str = getattr(agent, "get_timezone_identifier", lambda: "UTC")()
+        try:
+            tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
+        except Exception:
+            tz = ZoneInfo("UTC")
 
         def _local_time(dt):
-            if tz is not None:
-                dt = dt.astimezone(UTC).astimezone(tz)
+            dt = dt.astimezone(UTC).astimezone(tz)
             return dt.strftime("%I:%M %p")
 
         activity_text = f"\n\n# Current Activity\n\n"

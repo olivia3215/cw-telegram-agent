@@ -132,12 +132,11 @@ def register_schedule_routes(agents_bp: Blueprint):
             activities = schedule.get("activities", [])
             if activities:
                 schedule = {**schedule, "activities": _sort_activities(activities)}
-            # Convert stored UTC times to agent timezone for display.
-            tz_str = getattr(agent, "get_timezone_identifier", None) and agent.get_timezone_identifier()
-            if tz_str and schedule.get("activities"):
+            # Convert stored UTC times to agent timezone for display (agent uses server local when unset).
+            tz_str = agent.get_timezone_identifier()
+            if schedule.get("activities"):
                 schedule["activities"] = _activity_times_utc_to_agent_tz(schedule["activities"], tz_str)
-            if tz_str:
-                schedule["timezone"] = tz_str
+            schedule["timezone"] = tz_str
             return jsonify({"success": True, **schedule})
         except Exception as e:
             logger.error(f"Error getting schedule for {agent_config_name}: {e}", exc_info=True)
@@ -209,9 +208,9 @@ def register_schedule_routes(agents_bp: Blueprint):
             normalized, err = _validate_and_normalize_activities(activities)
             if err:
                 return jsonify({"error": err}), 400
-            # Convert activity times from agent TZ (incoming) to UTC for storage.
-            tz_str = getattr(agent, "get_timezone_identifier", None) and agent.get_timezone_identifier()
-            if tz_str and normalized:
+            # Convert activity times from agent TZ (incoming) to UTC for storage (agent uses server local when unset).
+            tz_str = agent.get_timezone_identifier()
+            if normalized:
                 normalized = _activity_times_to_utc(normalized, tz_str)
             existing = agent._load_schedule() or {}
             schedule = {
@@ -257,13 +256,12 @@ def register_schedule_routes(agents_bp: Blueprint):
             if activities:
                 updated_schedule = {**updated_schedule, "activities": _sort_activities(activities)}
             # Convert stored UTC to agent timezone for display (same as GET schedule).
-            tz_str = getattr(agent, "get_timezone_identifier", None) and agent.get_timezone_identifier()
-            if tz_str and updated_schedule.get("activities"):
+            tz_str = agent.get_timezone_identifier()
+            if updated_schedule.get("activities"):
                 updated_schedule["activities"] = _activity_times_utc_to_agent_tz(
                     updated_schedule["activities"], tz_str
                 )
-            if tz_str:
-                updated_schedule["timezone"] = tz_str
+            updated_schedule["timezone"] = tz_str
             return jsonify({"success": True, **updated_schedule})
         except Exception as e:
             logger.error(f"Error extending schedule for {agent_config_name}: {e}", exc_info=True)
