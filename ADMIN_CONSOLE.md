@@ -239,9 +239,9 @@ The **LLMs** tab (under Global) provides a centralized interface for managing al
 ## Troubleshooting
 
 - **Console unreachable** — verify `CINDY_ADMIN_CONSOLE_ENABLED=true` and check logs for binding errors.
-- **Agent paused unexpectedly** — ensure `CINDY_AGENT_LOOP_ENABLED` hasn’t been set to `false`.
-- **Edits not reflected in conversations** — confirm you’re editing the correct directory (`config` vs `state` media). Shared caches should make changes immediate; look for permission or disk errors in logs.
-- **Sticker import failing** — make sure the agent is authenticated to Telegram and the sticker set is public.
+- **Agent paused unexpectedly** — ensure `CINDY_AGENT_LOOP_ENABLED` hasn't been set to `false`.
+- **Edits not reflected in conversations** — confirm you're editing the correct directory (`config` vs `state` media). Shared caches should make changes immediate; look for permission or disk errors in logs.
+- **Adding stickers to the media library** — stickers are added by having an agent place them in their own Saved Messages; the Media Editor then shows and manages them. No separate import step.
 
 ---
 

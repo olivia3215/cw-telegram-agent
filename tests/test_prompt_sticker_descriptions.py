@@ -6,7 +6,7 @@
 import importlib
 import types
 
-# We’ll import handle_received after monkeypatching to avoid import-time surprises.
+# We'll import handle_received after monkeypatching to avoid import-time surprises.
 from types import SimpleNamespace
 
 import pytest
@@ -72,7 +72,7 @@ async def test_prompt_includes_sticker_descriptions(monkeypatch):
     monkeypatch.setattr(hr, "media_cache", object(), raising=False)
 
     # Build the system prompt portion using the same snippet your code runs.
-    # We invoke the same function that constructs the prompt (if it’s a helper),
+    # We invoke the same function that constructs the prompt (if it's a helper),
     # otherwise we simulate the relevant block inline.
     # Minimal harness: patch a wrapper that returns the final system_prompt string.
 

@@ -1,6 +1,6 @@
 # Media Editor Documentation
 
-The Media Editor is a web-based application that provides a user-friendly interface for managing media descriptions used by your Telegram agents. It allows you to browse, edit, import, and organize media descriptions across all your agents and directories.
+The Media Editor is a web-based application that provides a user-friendly interface for managing media descriptions used by your Telegram agents. It allows you to browse, edit, and organize media descriptions across all your agents and directories.
 
 ## Table of Contents
 
@@ -9,7 +9,6 @@ The Media Editor is a web-based application that provides a user-friendly interf
 - [Web Interface](#web-interface)
 - [Browsing and Filtering Media](#browsing-and-filtering-media)
 - [Managing Media](#managing-media)
-- [Importing Sticker Sets](#importing-sticker-sets)
 - [AI Integration](#ai-integration)
 - [Directory Management](#directory-management)
 - [API Reference](#api-reference)
@@ -22,7 +21,6 @@ The Media Editor serves as a central hub for managing the media descriptions tha
 - **Visual browsing** of all media across agents and directories
 - **Real-time editing** with auto-save functionality
 - **AI-powered description generation** using the same pipeline as your agents
-- **Sticker set import** directly from Telegram
 - **Media organization** with move and delete capabilities
 - **Status tracking** to distinguish between AI-generated and curated descriptions
 
@@ -44,11 +42,6 @@ Before using the Media Editor, ensure you have:
 2. **Dependencies installed**:
    ```bash
    pip install -r requirements.txt
-   ```
-
-3. **Telegram sessions logged in** (for sticker import):
-   ```bash
-   ./telegram_login.sh
    ```
 
 ### Starting the Media Editor
@@ -248,42 +241,6 @@ The pagination area shows:
 3. **New description appears** when AI generation completes
 4. **Status updates** to reflect the new AI-generated content
 
-## Importing Sticker Sets
-
-The Media Editor can import entire sticker sets from Telegram:
-
-### Basic Import
-
-1. **Navigate to the directory** where you want to import stickers
-2. **Enter the sticker set name** in the import form (e.g., "OliviaAI")
-3. **Click "Import Sticker Set"**
-4. **Wait for processing** - the system will:
-   - Download all stickers from the set
-   - Generate AI descriptions for each sticker
-   - Save both the media files and JSON descriptions
-   - Cache results in `state/media` for performance
-
-### Import Process Details
-
-The import process:
-
-1. **Authenticates** using existing Telegram sessions
-2. **Downloads media** for each sticker in the set
-3. **Detects MIME types** automatically
-4. **Generates descriptions** using the AI pipeline
-5. **Handles special cases**:
-   - AnimatedEmojies: Uses emoji names as descriptions
-   - Video stickers (.webm): Receive video-level AI analysis and display with a video player
-   - Unsupported formats (TGS): Marks as "unsupported_format"
-   - Budget management: Allows 10 AI descriptions per import session
-
-### Import Tips
-
-- **Use agent-specific directories** for stickers that should be specific to one agent
-- **Use global directories** for stickers that should be available to all agents
-- **Check the AI cache** (`state/media`) to see all generated descriptions
-- **Edit descriptions** after import to customize them for your needs
-
 ## AI Integration
 
 The Media Editor uses the same AI infrastructure as your Telegram agents:
@@ -299,7 +256,6 @@ The AI integration follows this pipeline:
 
 ### Budget Management
 
-- **Import sessions**: 10 AI descriptions per sticker set import
 - **Refresh operations**: Uses available budget for individual refreshes
 - **Cache hits**: Don't consume budget (existing descriptions are reused)
 - **Unsupported formats**: Don't consume budget (TGS files, etc.)
@@ -384,11 +340,6 @@ For complete API documentation, security considerations, and performance details
 - Ensure dependencies are installed: `pip install -r requirements.txt`
 - Verify port 5001 is available: `./run.sh status`
 
-**Sticker import fails**
-- Ensure Telegram sessions are logged in: `./telegram_login.sh`
-- Check that the sticker set name is correct and public
-- Verify API credentials are valid
-
 **AI descriptions not generating**
 - Check that `GOOGLE_GEMINI_API_KEY` is set and valid
 - Ensure budget is available (restart the media editor to reset)
@@ -434,7 +385,6 @@ export GEMINI_DEBUG_LOGGING=true
 
 - **Use the AI cache**: Generated descriptions are cached in `state/media`
 - **Edit descriptions**: Manually curated descriptions don't consume AI budget
-- **Batch operations**: Import multiple sticker sets in sequence
 - **Monitor budget**: Check logs to see budget consumption patterns
 
 ## Advanced Usage

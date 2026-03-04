@@ -25,16 +25,12 @@ from datetime import UTC
 from admin_console.helpers import (
     add_cache_busting_headers,
     find_media_file,
+    get_any_logged_in_agent,
     get_state_media_path,
     is_state_media_directory,
     resolve_media_path,
 )
-from admin_console.sticker_import import import_sticker_set_async
-from admin_console.puppet_master import (
-    PuppetMasterNotConfigured,
-    PuppetMasterUnavailable,
-    get_puppet_master_manager,
-)
+from main_loop import get_main_loop
 from register_agents import register_all_agents, all_agents as get_all_agents
 from db import media_metadata
 from media.media_budget import reset_description_budget
@@ -471,15 +467,12 @@ def api_media_list():
                             # Query Telegram if we're missing either piece of information
                             if is_emoji_set is None or sticker_set_title is None:
                                 try:
-                                    # Get puppet master client for Telegram queries
-                                    puppet_master = get_puppet_master_manager()
-                                    if puppet_master.is_configured:
-                                        # Use puppet master's run() method to execute in its event loop
-                                        def _query_factory(client: TelegramClient):
-                                            return _query_sticker_set_info(client, sticker_set)
-                                        
-                                        queried_is_emoji, queried_title = puppet_master.run(_query_factory, timeout=10)
-                                        
+                                    agent = get_any_logged_in_agent()
+                                    if agent is not None:
+                                        queried_is_emoji, queried_title = agent.run(
+                                            _query_sticker_set_info(agent.client, sticker_set),
+                                            timeout=10,
+                                        )
                                         # Use queried values if we got them
                                         if is_emoji_set is None and queried_is_emoji is not None:
                                             is_emoji_set = queried_is_emoji
@@ -727,24 +720,22 @@ def api_refresh_from_ai(unique_id: str):
         # Save the updated record using the appropriate backend
         svc.put_record(unique_id, data)
 
-        # Use the puppetmaster's client for media operations
-        # (The client isn't actually used when doc is a Path, but the interface requires it)
-        # Create a minimal agent-like object
+        # Use an agent-like object for the media chain. The client is not used when doc is a Path
+        # (download_media_bytes reads from disk); we run the coro on the main loop.
         class MinimalAgent:
             def __init__(self, client):
                 self.client = client
-                self.name = "puppetmaster"
+                self.name = "media_editor"
         
-        # Require puppetmaster for media operations
-        try:
-            puppet_master = get_puppet_master_manager()
-            puppet_master.ensure_ready()
-        except (PuppetMasterNotConfigured, PuppetMasterUnavailable) as e:
-            logger.error(f"Puppetmaster required for media operations but not available: {e}")
+        loop = get_main_loop()
+        if loop is None or not loop.is_running():
+            logger.error("Main event loop not available for AI description refresh")
             return jsonify({
-                "error": f"Puppetmaster is required for media operations. {str(e)}"
-            }), 400
+                "error": "Server event loop not available. Try again when the agent server is running."
+            }), 503
         
+        # Dummy client: not used when doc is a Path (download_media_bytes uses path.read_bytes())
+        dummy_client = object()
         # Find the media file: (1) use metadata first; (2) if missing, resolve within directory and patch
         media_file = svc.resolve_media_file(unique_id, data)
         if media_file and not data.get("media_file"):
@@ -826,11 +817,11 @@ def api_refresh_from_ai(unique_id: str):
         else:
             media_kind = data.get("kind", "sticker")
 
-        # Run the media chain in the puppet master's event loop
-        async def _refresh_coro(client: TelegramClient):
+        # Run the media chain on the main event loop (no Telegram connection needed for Path doc)
+        async def _refresh_coro(client):
             agent = MinimalAgent(client)
             logger.info(
-                "Refreshing AI description for %s using puppetmaster",
+                "Refreshing AI description for %s",
                 unique_id,
             )
             
@@ -857,7 +848,13 @@ def api_refresh_from_ai(unique_id: str):
             return record
         
         try:
-            record = puppet_master.run(_refresh_coro, timeout=120)
+            future = asyncio.run_coroutine_threadsafe(
+                _refresh_coro(dummy_client), loop
+            )
+            record = future.result(timeout=120)
+        except FuturesTimeoutError:
+            logger.error("AI description refresh timed out after 120 seconds")
+            return jsonify({"error": "Refresh timed out. Please try again."}), 504
         except Exception as e:
             logger.error(f"Failed to refresh AI description: {e}")
             return jsonify({"error": f"Failed to refresh AI description: {e}"}), 500
@@ -1236,73 +1233,6 @@ def api_download_media(unique_id: str):
 
     except Exception as e:
         logger.error(f"Error downloading media {unique_id}: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@media_bp.route("/api/import-sticker-set", methods=["POST"])
-def api_import_sticker_set():
-    """Import all stickers from a sticker set."""
-    try:
-        data = request.json
-        sticker_set_name = data.get("sticker_set_name")
-        target_directory = data.get("target_directory")
-
-        logger.info(
-            f"Flask route: Starting import for {sticker_set_name} to {target_directory}"
-        )
-
-        if not sticker_set_name or not target_directory:
-            return (
-                jsonify({"error": "Missing sticker_set_name or target_directory"}),
-                400,
-            )
-
-        manager = get_puppet_master_manager()
-        if not manager.is_configured:
-            return (
-                jsonify(
-                    {
-                        "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
-                    }
-                ),
-                503,
-            )
-
-        def _coro(client: TelegramClient):
-            return import_sticker_set_async(client, sticker_set_name, target_directory)
-
-        try:
-            result = manager.run(_coro, timeout=300)
-        except PuppetMasterNotConfigured:
-            return (
-                jsonify(
-                    {
-                        "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
-                    }
-                ),
-                503,
-            )
-        except PuppetMasterUnavailable as exc:
-            logger.error("Puppet master unavailable during sticker import: %s", exc)
-            return jsonify({"error": str(exc)}), 503
-        except FuturesTimeoutError:
-            logger.error("Sticker import timed out after 300 seconds.")
-            return (
-                jsonify(
-                    {
-                        "error": "Sticker import timed out after 300 seconds. Please try again."
-                    }
-                ),
-                504,
-            )
-
-        logger.info("Flask route: async import completed successfully")
-        return jsonify(result)
-
-    except Exception as e:
-        logger.error(f"Error importing sticker set: {e}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 

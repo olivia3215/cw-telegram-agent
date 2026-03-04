@@ -90,7 +90,6 @@ export OPENROUTER_API_KEY="your_openrouter_api_key_here"  # If using OpenRouter
 export PYTHONPATH="$(pwd)/src"
 
 # Admin Console configuration
-export CINDY_PUPPET_MASTER_PHONE="+15551234567"  # Your dedicated puppet master phone
 export CINDY_ADMIN_CONSOLE_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export CINDY_ADMIN_CONSOLE_ENABLED=true
 export CINDY_ADMIN_CONSOLE_HOST=127.0.0.1  # localhost only, or 0.0.0.0 for network access
@@ -185,7 +184,7 @@ Follow the prompts:
 1. Enter phone number (including country code, e.g., +1234567890)
 2. Enter the verification code sent to your Telegram account
 3. If 2FA is enabled, enter your 2FA password
-4. Repeat for each agent and the puppet master account
+4. Repeat for each agent
 
 ## Step 9: Generate SSL Certificates (Optional, for HTTPS)
 
@@ -304,8 +303,7 @@ cw-telegram-agent/
 After successful deployment:
 
 1. **Configure agents:** Customize agent personalities and behaviors
-2. **Import sticker sets:** Use the Media Editor in the admin console
-3. **Set up monitoring:** Check logs regularly for issues
+2. **Set up monitoring:** Check logs regularly for issues
 4. **Enable HTTPS:** For production or network access
 5. **Set up backups:** Back up `state/` directory and MySQL database
 6. **Review security:** See [HTTPS.md](HTTPS.md) for HTTPS and remote-access guidance

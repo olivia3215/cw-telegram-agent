@@ -85,21 +85,6 @@ def test_delete_media_removes_cache_and_files(tmp_path):
     assert not (tmp_path / f"{unique_id}.dat").exists()
 
 
-def test_import_sticker_set_requires_puppet_master(monkeypatch, tmp_path):
-    reset_media_source_registry()
-    dummy_manager = type("DummyManager", (), {"is_configured": False})()
-    monkeypatch.setattr("admin_console.media.get_puppet_master_manager", lambda: dummy_manager)
-    client = _make_client()
-    response = client.post(
-        "/admin/api/import-sticker-set",
-        json={
-            "sticker_set_name": "ExampleSet",
-            "target_directory": str(tmp_path),
-        },
-    )
-    assert response.status_code == 503
-
-
 def test_challenge_manager_isolated_per_app_instance():
     app_a = create_admin_app()
     app_b = create_admin_app()
