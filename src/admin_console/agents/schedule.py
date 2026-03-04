@@ -184,8 +184,9 @@ def register_schedule_routes(agents_bp: Blueprint):
                 display = _event_to_display(ev, tz)
                 display["user_id"] = str(ev["channel_id"])
                 events.append(display)
-            now_tz = datetime.now(tz)
-            offset_sec = (now_tz.utcoffset() or timedelta(0)).total_seconds()
+            # Use window start for offset so DST is correct for the viewed range, not "now"
+            ref_tz = start_dt
+            offset_sec = (ref_tz.utcoffset() or timedelta(0)).total_seconds()
             sign = "+" if offset_sec >= 0 else "-"
             hours = int(abs(offset_sec) // 3600)
             mins = int((abs(offset_sec) % 3600) // 60)
