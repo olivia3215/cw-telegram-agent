@@ -240,16 +240,17 @@ async def test_gemini_describe_video_success():
 @pytest.mark.asyncio
 async def test_gemini_describe_video_too_long():
     """Test that videos longer than 10 seconds are rejected."""
-    llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
+    with patch("config.MEDIA_VIDEO_MAX_DURATION_SECONDS", 10):
+        llm = GeminiLLM(model="gemini-1.5-flash", api_key="test_key")
 
-    video_bytes = make_minimal_mp4_bytes()
+        video_bytes = make_minimal_mp4_bytes()
 
-    with pytest.raises(ValueError) as exc_info:
-        await llm.describe_video(video_bytes, "TestAgent", mime_type="video/mp4", duration=15)
+        with pytest.raises(ValueError) as exc_info:
+            await llm.describe_video(video_bytes, "TestAgent", mime_type="video/mp4", duration=15)
 
-    assert "too long to analyze" in str(exc_info.value).lower()
-    assert "15" in str(exc_info.value)
-    assert "10" in str(exc_info.value)
+        assert "too long to analyze" in str(exc_info.value).lower()
+        assert "15" in str(exc_info.value)
+        assert "10" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -352,36 +353,37 @@ async def test_gemini_describe_video_timeout():
 @pytest.mark.asyncio
 async def test_unsupported_format_source_rejects_long_video():
     """Test that UnsupportedFormatMediaSource rejects videos >10 seconds."""
-    source = UnsupportedFormatMediaSource()
+    with patch("config.MEDIA_VIDEO_MAX_DURATION_SECONDS", 10):
+        source = UnsupportedFormatMediaSource()
 
-    # Create mock agent with LLM
-    agent = MagicMock()
-    llm = MagicMock()
-    llm.is_mime_type_supported_by_llm.return_value = True
-    agent.llm = llm
+        # Create mock agent with LLM
+        agent = MagicMock()
+        llm = MagicMock()
+        llm.is_mime_type_supported_by_llm.return_value = True
+        agent.llm = llm
 
-    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
-    doc = MagicMock()
-    # Remove Path-like attributes so doc is not treated as a Path
-    if hasattr(doc, 'suffix'):
-        del doc.suffix
-    if hasattr(doc, 'read_bytes'):
-        del doc.read_bytes
-    doc.mime_type = "video/mp4"
+        # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
+        doc = MagicMock()
+        # Remove Path-like attributes so doc is not treated as a Path
+        if hasattr(doc, 'suffix'):
+            del doc.suffix
+        if hasattr(doc, 'read_bytes'):
+            del doc.read_bytes
+        doc.mime_type = "video/mp4"
 
-    # Test with video longer than 10 seconds
-    result = await source.get(
-        unique_id="long_video_123",
-        agent=agent,
-        doc=doc,
-        kind="video",
-        duration=15,
-    )
+        # Test with video longer than 10 seconds
+        result = await source.get(
+            unique_id="long_video_123",
+            agent=agent,
+            doc=doc,
+            kind="video",
+            duration=15,
+        )
 
-    assert result is not None
-    assert result["status"] == MediaStatus.UNSUPPORTED.value
-    assert "too long" in result["failure_reason"].lower()
-    assert result["unique_id"] == "long_video_123"
+        assert result is not None
+        assert result["status"] == MediaStatus.UNSUPPORTED.value
+        assert "too long" in result["failure_reason"].lower()
+        assert result["unique_id"] == "long_video_123"
 
 
 @pytest.mark.asyncio
@@ -419,34 +421,35 @@ async def test_unsupported_format_source_accepts_short_video():
 @pytest.mark.asyncio
 async def test_unsupported_format_source_rejects_long_animated_sticker():
     """Test that animated stickers >10 seconds are rejected."""
-    source = UnsupportedFormatMediaSource()
+    with patch("config.MEDIA_VIDEO_MAX_DURATION_SECONDS", 10):
+        source = UnsupportedFormatMediaSource()
 
-    # Create mock agent
-    agent = MagicMock()
-    agent.llm = MagicMock()
+        # Create mock agent
+        agent = MagicMock()
+        agent.llm = MagicMock()
 
-    # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
-    doc = MagicMock()
-    # Remove Path-like attributes so doc is not treated as a Path
-    if hasattr(doc, 'suffix'):
-        del doc.suffix
-    if hasattr(doc, 'read_bytes'):
-        del doc.read_bytes
-    doc.mime_type = "application/gzip"
+        # Mock document (don't give it Path-like attributes to avoid being treated as a Path)
+        doc = MagicMock()
+        # Remove Path-like attributes so doc is not treated as a Path
+        if hasattr(doc, 'suffix'):
+            del doc.suffix
+        if hasattr(doc, 'read_bytes'):
+            del doc.read_bytes
+        doc.mime_type = "application/gzip"
 
-    # Test with animated sticker longer than 10 seconds
-    result = await source.get(
-        unique_id="long_sticker_789",
-        agent=agent,
-        doc=doc,
-        kind="sticker",
-        mime_type="application/gzip",
-        duration=12,
-    )
+        # Test with animated sticker longer than 10 seconds
+        result = await source.get(
+            unique_id="long_sticker_789",
+            agent=agent,
+            doc=doc,
+            kind="sticker",
+            mime_type="application/gzip",
+            duration=12,
+        )
 
-    assert result is not None
-    assert result["status"] == MediaStatus.UNSUPPORTED.value
-    assert "too long" in result["failure_reason"].lower()
+        assert result is not None
+        assert result["status"] == MediaStatus.UNSUPPORTED.value
+        assert "too long" in result["failure_reason"].lower()
 
 
 @pytest.mark.asyncio
