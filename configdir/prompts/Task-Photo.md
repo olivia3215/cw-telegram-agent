@@ -1,4 +1,4 @@
-<!-- SCHEMA_TASKS: send_media -->
+<!-- SCHEMA_TASKS: send_media, retrieve -->
 
 # Send Media Task
 
@@ -12,7 +12,7 @@ a set name, and other documents. Media are referenced by their `unique_id`.
 
 To send an item, use the `send_media` task with the item's `unique_id`. The `unique_id`
 is a stable identifier that uniquely identifies each piece of media. To find available
-media, retrieve `file:media.json` if it is not already in your context. The contents
+media, `retrieve` the URI `file:media.json` if it is not already in your context. The contents
 list each item's `media_id` (use as `unique_id` in the send_media task), `media_type`,
 and description.
 
@@ -51,4 +51,4 @@ If you want to send media with `unique_id` "ABC123XYZ" as a reply to message 42:
 
 - **Always use the `send_media` task to send these items, never use the `send` task.**
 - The `unique_id` is case-sensitive and must match exactly.
-- Descriptions and kind (photo, audio, video, sticker, etc.) are shown in the system prompt to help you choose the right item.
+- Descriptions and kind (photo, audio, video, sticker, etc.) are shown in your context (a special message at the beginning of the conversation) after you issue a `retrieve` task with the URI `file:media.json`

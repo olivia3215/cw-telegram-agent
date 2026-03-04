@@ -1,4 +1,4 @@
-<!-- SCHEMA_TASKS: schedule -->
+<!-- SCHEMA_TASKS: schedule, retrieve -->
 
 # Schedule Management
 
