@@ -10,9 +10,8 @@ import logging
 from telethon.errors import SessionPasswordNeededError
 
 from agent import all_agents
-from config import PUPPET_MASTER_PHONE
 from register_agents import register_all_agents
-from telegram.client_factory import get_puppet_master_client, get_telegram_client
+from telegram.client_factory import get_telegram_client
 from utils.formatting import format_log_prefix_resolved
 
 logging.basicConfig(level=logging.INFO)
@@ -60,24 +59,6 @@ async def login_agent(agent) -> None:
         await client.disconnect()
 
 
-async def login_puppet_master() -> int:
-    if not PUPPET_MASTER_PHONE:
-        logger.info(
-            "CINDY_PUPPET_MASTER_PHONE is not set; skipping puppet master login."
-        )
-        return 0
-
-    client = get_puppet_master_client()
-
-    try:
-        await _ensure_logged_in(client, PUPPET_MASTER_PHONE, "Puppet master")
-        return 0
-    except Exception:
-        return 1
-    finally:
-        await client.disconnect()
-
-
 async def login_agents() -> int:
     register_all_agents()
     for agent in all_agents(include_disabled=True):
@@ -86,23 +67,12 @@ async def login_agents() -> int:
 
 
 async def async_main(args: argparse.Namespace) -> int:
-    if args.puppet_master:
-        return await login_puppet_master()
-
-    result = await login_puppet_master()
-    if result != 0:
-        return result
     return await login_agents()
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Log into Telegram for agents or the puppet master."
-    )
-    parser.add_argument(
-        "--puppet-master",
-        action="store_true",
-        help="Log into the puppet master account instead of agents.",
+        description="Log into Telegram for agents.",
     )
     return parser.parse_args()
 

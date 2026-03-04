@@ -1007,50 +1007,5 @@ function cleanupUnusedStateMedia() {
     });
 }
 
-function importStickerSet() {
-    const stickerSetName = document.getElementById('sticker-set-name').value.trim();
-    const statusDiv = document.getElementById('import-status');
-
-    if (!stickerSetName) {
-        statusDiv.innerHTML = '<div class="error">Please enter a sticker set name</div>';
-        return;
-    }
-
-    if (!currentDirectory) {
-        statusDiv.innerHTML = '<div class="error">Please select a directory first</div>';
-        return;
-    }
-
-    statusDiv.innerHTML = '<div>Importing sticker set...</div>';
-
-    fetchWithAuth(`${API_BASE}/import-sticker-set`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            sticker_set_name: stickerSetName,
-            target_directory: currentDirectory
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            showError(statusDiv, data.error);
-        } else {
-            statusDiv.innerHTML = '<div style="color: #28a745;">Import completed!</div>';
-            // Reload media files
-            loadMediaFiles(currentDirectory);
-        }
-    })
-    .catch(error => {
-        if (error && error.message === 'unauthorized') {
-            statusDiv.innerHTML = '<div class="error">Session expired. Please verify again.</div>';
-            return;
-        }
-        showError(statusDiv, error);
-    });
-}
-
 // Main tab switching logic - use event delegation
 // The main tab bar is directly after the header, subtab bars are inside tab panels

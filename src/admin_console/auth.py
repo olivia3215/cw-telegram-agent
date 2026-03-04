@@ -25,11 +25,6 @@ from config import (
     ADMIN_GOOGLE_CLIENT_ID,
     ADMIN_GOOGLE_CLIENT_SECRET,
 )
-from admin_console.puppet_master import (
-    PuppetMasterNotConfigured,
-    PuppetMasterUnavailable,
-    get_puppet_master_manager,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -352,62 +347,14 @@ def api_logout():
 
 @auth_bp.route("/api/auth/request-code", methods=["POST"])
 def api_auth_request_code():
-    """Issue a new OTP code and send it to the puppet master."""
-    puppet_manager = get_puppet_master_manager()
-    if not puppet_manager.is_configured:
-        return (
-            jsonify(
-                {
-                    "error": "Puppet master phone is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
-                }
-            ),
-            503,
-        )
-
-    challenge_manager = get_challenge_manager()
-
-    try:
-        code, expires_at = challenge_manager.issue()
-    except ChallengeTooFrequent as exc:
-        return jsonify({"error": str(exc), "retry_after": exc.retry_after}), 429
-    except ChallengeError as exc:  # pragma: no cover - defensive
-        return jsonify({"error": str(exc)}), 400
-
-    ttl_seconds = max(int((expires_at - clock.now(UTC)).total_seconds()), 0)
-    expire_minutes = max(ttl_seconds // 60, 1)
-    message = (
-        "Admin console login\n\n"
-        f"Your verification code is: {code}\n"
-        f"This code expires in {expire_minutes} minute{'s' if expire_minutes != 1 else ''}."
-    )
-
-    try:
-        puppet_manager.send_message("me", message)
-    except PuppetMasterNotConfigured:
-        return (
-            jsonify(
-                {
-                    "error": "Puppet master is not configured. Set CINDY_PUPPET_MASTER_PHONE and log in with './telegram_login.sh --puppet-master'."
-                }
-            ),
-            503,
-        )
-    except PuppetMasterUnavailable as exc:
-        logger.error("Failed to send OTP via puppet master: %s", exc)
-        return jsonify({"error": str(exc)}), 503
-    except Exception as exc:  # pragma: no cover - unexpected
-        logger.exception("Unexpected error sending OTP: %s", exc)
-        return jsonify({"error": "Failed to send verification code"}), 500
-
+    """OTP via Telegram is no longer supported. Use TOTP or Google login."""
     return (
         jsonify(
             {
-                "success": True,
-                "expires_in": ttl_seconds,
-                "cooldown": challenge_manager.min_interval_seconds,
+                "error": "OTP via Telegram is no longer supported. Use TOTP (Request Access) or log in with Google."
             }
         ),
-        200,
+        501,
     )
 
 

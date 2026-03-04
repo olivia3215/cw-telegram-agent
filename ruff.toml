@@ -10,7 +10,7 @@ extend-ignore = ["E501"]  # Turn off line-length checks
 [lint.per-file-ignores]
 # Intentional side-effect import for handler registration
 "tick.py" = ["E402", "F401"]
-# Tests often import fixtures/plugins that look “unused”
+# Tests often import fixtures/plugins that look "unused"
 "tests/**" = ["F401"]
 
 [format]
