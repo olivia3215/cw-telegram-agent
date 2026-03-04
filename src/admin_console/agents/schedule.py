@@ -8,8 +8,10 @@ Admin API for agent schedule (calendar) maintenance.
 """
 
 import asyncio
+import re
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, jsonify, request  # pyright: ignore[reportMissingImports]
 
@@ -31,6 +33,54 @@ def _sort_activities(activities: list[dict]) -> list[dict]:
         except (ValueError, KeyError, TypeError):
             return (1, datetime.min)
     return sorted(activities, key=sort_key)
+
+
+def _activity_times_utc_to_agent_tz(activities: list[dict], tz_str: str) -> list[dict]:
+    """Convert activity start_time/end_time from storage (UTC or legacy offset) to agent timezone for display."""
+    if not activities or not tz_str:
+        return activities
+    tz = ZoneInfo(tz_str)
+    out = []
+    for act in activities:
+        a = dict(act)
+        for key in ("start_time", "end_time"):
+            s = a.get(key)
+            if not s:
+                continue
+            try:
+                dt = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                # Normalize to UTC then to agent TZ (handles both UTC-stored and legacy offset-stored)
+                a[key] = dt.astimezone(UTC).astimezone(tz).isoformat()
+            except (ValueError, TypeError):
+                pass
+        out.append(a)
+    return out
+
+
+def _activity_times_to_utc(activities: list[dict], tz_str: str) -> list[dict]:
+    """Convert activity start_time/end_time from agent timezone (or offset) to UTC for storage."""
+    if not activities or not tz_str:
+        return activities
+    tz = ZoneInfo(tz_str)
+    out = []
+    for act in activities:
+        a = dict(act)
+        for key in ("start_time", "end_time"):
+            s = a.get(key)
+            if not s:
+                continue
+            try:
+                dt = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=tz)
+                utc = dt.astimezone(UTC)
+                a[key] = utc.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+            except (ValueError, TypeError):
+                pass
+        out.append(a)
+    return out
 
 
 def _validate_and_normalize_activities(activities: list) -> tuple[list[dict] | None, str | None]:
@@ -82,12 +132,11 @@ def register_schedule_routes(agents_bp: Blueprint):
             activities = schedule.get("activities", [])
             if activities:
                 schedule = {**schedule, "activities": _sort_activities(activities)}
-            # Always use the agent's current timezone from Parameters for display.
-            # The schedule blob may contain a stale timezone (e.g. from server default
-            # before the agent had a timezone set); the UI should show the agent's
-            # configured timezone so it matches the Parameters tab.
-            if hasattr(agent, "get_timezone_identifier"):
-                schedule["timezone"] = agent.get_timezone_identifier()
+            # Convert stored UTC times to agent timezone for display (agent uses server local when unset).
+            tz_str = agent.get_timezone_identifier()
+            if schedule.get("activities"):
+                schedule["activities"] = _activity_times_utc_to_agent_tz(schedule["activities"], tz_str)
+            schedule["timezone"] = tz_str
             return jsonify({"success": True, **schedule})
         except Exception as e:
             logger.error(f"Error getting schedule for {agent_config_name}: {e}", exc_info=True)
@@ -104,15 +153,26 @@ def register_schedule_routes(agents_bp: Blueprint):
             end_str = request.args.get("end")
             if not start_str or not end_str:
                 return jsonify({"error": "start and end query parameters (ISO datetime) are required"}), 400
+            # Interpret start/end as agent's local time (strip any offset). This fixes:
+            # - Schedule stored with fixed offset (e.g. -08:00) while agent is in DST (e.g. PDT -07:00)
+            # - Query string decoding '+' as space (positive offsets like " 01:00" or " 00:00")
+            def _parse_as_agent_local(s: str) -> datetime:
+                s = s.strip()
+                # Remove trailing timezone: Z, ±HH:MM, or space+HH:MM (decoded plus)
+                s_local = re.sub(r"\s*([Zz]|[+-]?\d{2}:?\d{2})\s*$", "", s)
+                s_local = s_local.strip()
+                if not s_local:
+                    raise ValueError(f"Invalid datetime: {s!r}")
+                dt = datetime.fromisoformat(s_local)
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                return dt.replace(tzinfo=agent.timezone)
             try:
-                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-            except (ValueError, TypeError):
+                start_dt = _parse_as_agent_local(start_str)
+                end_dt = _parse_as_agent_local(end_str)
+            except (ValueError, TypeError) as e:
+                logger.debug("Schedule events parse error: %s", e)
                 return jsonify({"error": "start and end must be valid ISO 8601 datetimes"}), 400
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=agent.timezone)
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=agent.timezone)
             start_utc = start_dt.astimezone(UTC)
             end_utc = end_dt.astimezone(UTC)
             from db import events as db_events
@@ -124,8 +184,9 @@ def register_schedule_routes(agents_bp: Blueprint):
                 display = _event_to_display(ev, tz)
                 display["user_id"] = str(ev["channel_id"])
                 events.append(display)
-            now_tz = datetime.now(tz)
-            offset_sec = (now_tz.utcoffset() or timedelta(0)).total_seconds()
+            # Use window start for offset so DST is correct for the viewed range, not "now"
+            ref_tz = start_dt
+            offset_sec = (ref_tz.utcoffset() or timedelta(0)).total_seconds()
             sign = "+" if offset_sec >= 0 else "-"
             hours = int(abs(offset_sec) // 3600)
             mins = int((abs(offset_sec) % 3600) // 60)
@@ -148,7 +209,10 @@ def register_schedule_routes(agents_bp: Blueprint):
             normalized, err = _validate_and_normalize_activities(activities)
             if err:
                 return jsonify({"error": err}), 400
-            # Preserve timezone and last_extended if provided
+            # Convert activity times from agent TZ (incoming) to UTC for storage (agent uses server local when unset).
+            tz_str = agent.get_timezone_identifier()
+            if normalized:
+                normalized = _activity_times_to_utc(normalized, tz_str)
             existing = agent._load_schedule() or {}
             schedule = {
                 "timezone": data.get("timezone", existing.get("timezone")),
@@ -192,9 +256,13 @@ def register_schedule_routes(agents_bp: Blueprint):
             activities = updated_schedule.get("activities", [])
             if activities:
                 updated_schedule = {**updated_schedule, "activities": _sort_activities(activities)}
-            # Use agent's current timezone for display (same as GET schedule).
-            if hasattr(agent, "get_timezone_identifier"):
-                updated_schedule["timezone"] = agent.get_timezone_identifier()
+            # Convert stored UTC to agent timezone for display (same as GET schedule).
+            tz_str = agent.get_timezone_identifier()
+            if updated_schedule.get("activities"):
+                updated_schedule["activities"] = _activity_times_utc_to_agent_tz(
+                    updated_schedule["activities"], tz_str
+                )
+            updated_schedule["timezone"] = tz_str
             return jsonify({"success": True, **updated_schedule})
         except Exception as e:
             logger.error(f"Error extending schedule for {agent_config_name}: {e}", exc_info=True)

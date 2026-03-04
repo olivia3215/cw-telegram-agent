@@ -227,7 +227,13 @@ def register_configuration_routes(agents_bp: Blueprint):
 
     @agents_bp.route("/api/agents/<agent_config_name>/configuration/timezone", methods=["PUT"])
     def api_update_agent_timezone(agent_config_name: str):
-        """Update agent timezone."""
+        """Update agent timezone. If agent has events or schedule, returns 409 and requires
+        client to send migrate: 'delete' or 'move' to proceed."""
+        from datetime import UTC
+        from zoneinfo import ZoneInfo
+
+        from db import events as db_events
+
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
@@ -236,38 +242,106 @@ def register_configuration_routes(agents_bp: Blueprint):
             if not agent.config_directory:
                 return jsonify({"error": "Agent has no config directory"}), 400
 
-            data = request.json
-            timezone = data.get("timezone", "").strip()
+            data = request.json or {}
+            timezone = (data.get("timezone") or "").strip()
+            migrate = (data.get("migrate") or "").strip().lower()
 
-            # Find agent's markdown file
-            agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
-            if not agent_file.exists():
-                return jsonify({"error": "Agent configuration file not found"}), 404
-
-            # Read and parse the markdown file
-            content = agent_file.read_text(encoding="utf-8")
-            from register_agents import extract_fields_from_markdown
-            fields = extract_fields_from_markdown(content)
-
-            # Update Timezone field
             if not timezone or timezone == "None":
-                if "Agent Timezone" in fields:
-                    del fields["Agent Timezone"]
+                new_tz = None
             else:
-                # Validate timezone before saving
                 try:
-                    from zoneinfo import ZoneInfo
-                    ZoneInfo(timezone)  # Validate it's a valid IANA timezone
-                    fields["Agent Timezone"] = timezone
+                    new_tz = ZoneInfo(timezone)
                 except Exception as e:
                     return jsonify({"error": f"Invalid timezone: {e}"}), 400
 
-            _write_agent_markdown(agent, fields)
+            def _has_schedule_or_events():
+                if db_events.has_events_for_agent(agent.agent_id):
+                    return True
+                schedule = agent._load_schedule()
+                activities = (schedule or {}).get("activities") or []
+                return len(activities) > 0
 
-            # Update agent's timezone in place
-            agent._timezone_raw = timezone if timezone and timezone != "None" else None
-            agent._timezone_normalized = None
+            def _apply_timezone_change():
+                agent_file = Path(agent.config_directory) / "agents" / f"{agent.config_name}.md"
+                if not agent_file.exists():
+                    raise FileNotFoundError("Agent configuration file not found")
+                content = agent_file.read_text(encoding="utf-8")
+                from register_agents import extract_fields_from_markdown
+                fields = extract_fields_from_markdown(content)
+                if not timezone or timezone == "None":
+                    if "Agent Timezone" in fields:
+                        del fields["Agent Timezone"]
+                else:
+                    fields["Agent Timezone"] = timezone
+                _write_agent_markdown(agent, fields)
+                agent._timezone_raw = timezone if timezone and timezone != "None" else None
+                agent._timezone_normalized = None
 
+            if migrate == "delete":
+                for channel_id in db_events.channels_with_events(agent.agent_id):
+                    for ev in db_events.load_events(agent.agent_id, channel_id):
+                        db_events.delete_event(agent.agent_id, channel_id, ev["id"])
+                schedule = agent._load_schedule() or {}
+                schedule["activities"] = []
+                agent._save_schedule(schedule)
+                _apply_timezone_change()
+                return jsonify({"success": True})
+
+            if migrate == "move":
+                if new_tz is None:
+                    return jsonify({"error": "Cannot migrate to empty timezone"}), 400
+                old_tz = agent.timezone
+                for channel_id in db_events.channels_with_events(agent.agent_id):
+                    for ev in db_events.load_events(agent.agent_id, channel_id):
+                        if not ev.get("time_utc"):
+                            continue
+                        from datetime import datetime
+                        dt_utc = datetime.fromisoformat(ev["time_utc"].replace("Z", "+00:00"))
+                        if dt_utc.tzinfo is None:
+                            dt_utc = dt_utc.replace(tzinfo=UTC)
+                        old_local = dt_utc.astimezone(old_tz).replace(tzinfo=None)
+                        new_utc = old_local.replace(tzinfo=new_tz).astimezone(UTC)
+                        db_events.update_event_time_and_occurrences(
+                            agent.agent_id, channel_id, ev["id"], new_utc
+                        )
+                schedule = agent._load_schedule()
+                if schedule and schedule.get("activities"):
+                    from datetime import datetime
+                    updated = []
+                    for act in schedule["activities"]:
+                        if not isinstance(act, dict):
+                            updated.append(act)
+                            continue
+                        out = dict(act)
+                        for key in ("start_time", "end_time"):
+                            s = act.get(key)
+                            if not s:
+                                continue
+                            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=UTC)
+                            old_local = dt.astimezone(old_tz).replace(tzinfo=None)
+                            new_utc = old_local.replace(tzinfo=new_tz).astimezone(UTC)
+                            out[key] = new_utc.isoformat()
+                        updated.append(out)
+                    schedule["activities"] = updated
+                    agent._save_schedule(schedule)
+                _apply_timezone_change()
+                return jsonify({"success": True})
+
+            if migrate and migrate != "cancel":
+                return jsonify({"error": "Invalid migrate option; use delete, move, or omit"}), 400
+
+            if _has_schedule_or_events():
+                return (
+                    jsonify({
+                        "requires_timezone_migration": True,
+                        "message": "Agent has events and/or schedule. Choose to delete them and change timezone, move them to the new timezone (same local time), or cancel.",
+                    }),
+                    409,
+                )
+
+            _apply_timezone_change()
             return jsonify({"success": True})
         except Exception as e:
             logger.error(f"Error updating timezone for {agent_config_name}: {e}")

@@ -58,9 +58,16 @@ def register_event_routes(agents_bp: Blueprint):
             raw = db_events.load_events(agent.agent_id, channel_id)
             tz = agent.timezone
             events = [_event_to_display(ev, tz) for ev in raw]
-            # Timezone name and offset for the Events UI label (e.g. "America/Los_Angeles (UTC-08:00)")
-            now_tz = datetime.now(tz)
-            offset_sec = (now_tz.utcoffset() or timedelta(0)).total_seconds()
+            # Timezone name and offset for the Events UI label (e.g. "America/Los_Angeles (UTC-07:00)").
+            # Use the first event's date for the offset so DST is correct for the event(s), not "now".
+            if raw and raw[0].get("time_utc"):
+                dt_utc = datetime.fromisoformat(raw[0]["time_utc"].replace("Z", "+00:00"))
+                if dt_utc.tzinfo is None:
+                    dt_utc = dt_utc.replace(tzinfo=UTC)
+                ref_tz = dt_utc.astimezone(tz)
+            else:
+                ref_tz = datetime.now(tz)
+            offset_sec = (ref_tz.utcoffset() or timedelta(0)).total_seconds()
             sign = "+" if offset_sec >= 0 else "-"
             hours = int(abs(offset_sec) // 3600)
             mins = int((abs(offset_sec) % 3600) // 60)

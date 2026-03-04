@@ -39,6 +39,14 @@ def _normalize_datetime(dt: datetime) -> datetime:
     return dt
 
 
+def _to_utc_iso(dt: datetime) -> str:
+    """Convert timezone-aware datetime to UTC and return ISO string with Z suffix for storage."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    utc = dt.astimezone(UTC)
+    return utc.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
 def _activities_overlap(start1: datetime, end1: datetime, start2: datetime, end2: datetime) -> bool:
     """
     Check if two time ranges overlap.
@@ -305,14 +313,18 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
             )
             return False
         
+        # Store in UTC
+        start_time_utc = start_time.astimezone(UTC)
+        end_time_utc = end_time.astimezone(UTC)
+        
         # Generate ID if not provided
         activity_id = params.get("id") or f"act-{uuid.uuid4().hex[:8]}"
         
-        # Create activity dict
+        # Create activity dict (UTC for storage)
         activity_dict = {
             "id": activity_id,
-            "start_time": start_time.isoformat(),
-            "end_time": end_time.isoformat(),
+            "start_time": _to_utc_iso(start_time_utc),
+            "end_time": _to_utc_iso(end_time_utc),
             "activity_name": activity_name,
             "responsiveness": int(responsiveness),
             "description": description,
@@ -329,9 +341,9 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
                 "activities": [],
             }
         
-        # Handle overlaps: split existing activities that overlap with the new one
+        # Handle overlaps: split existing activities that overlap with the new one (use UTC)
         schedule["activities"] = _handle_activity_overlaps(
-            schedule["activities"], start_time, end_time
+            schedule["activities"], start_time_utc, end_time_utc
         )
         
         # Add new activity
@@ -345,7 +357,7 @@ async def _handle_create_schedule(agent, task: TaskNode) -> bool:
         
         logger.info(
             f"{format_log_prefix_resolved(agent.name)} Created schedule entry: {activity_name} "
-            f"({start_time.isoformat()} - {end_time.isoformat()})"
+            f"({start_time_utc.isoformat()} - {end_time_utc.isoformat()})"
         )
         return True
         
@@ -449,12 +461,12 @@ async def _handle_update_schedule(agent, task: TaskNode) -> bool:
                 logger.error(f"{format_log_prefix_resolved(agent.name, None)} Activity {activity_id} lost during overlap handling")
                 return False
         
-        # Update fields
+        # Update fields (store times in UTC)
         if activity_index is not None:
-            if "start_time" in params:
-                activities[activity_index]["start_time"] = params["start_time"]
-            if "end_time" in params:
-                activities[activity_index]["end_time"] = params["end_time"]
+            if "start_time" in params and new_start is not None:
+                activities[activity_index]["start_time"] = _to_utc_iso(new_start)
+            if "end_time" in params and new_end is not None:
+                activities[activity_index]["end_time"] = _to_utc_iso(new_end)
             if "activity_name" in params:
                 activities[activity_index]["activity_name"] = params["activity_name"]
             if "responsiveness" in params:
