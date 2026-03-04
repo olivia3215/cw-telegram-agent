@@ -39,6 +39,7 @@ This document describes the high-level architecture of the Telegram agent, with 
   - [Cache Types and TTLs](#cache-types-and-ttls)
 - [Error Recovery](#error-recovery)
   - [Retry Logic](#retry-logic)
+  - [Retry and Exception Contracts](#retry-and-exception-contracts)
   - [Failure Scenarios](#failure-scenarios)
 - [Concurrency Model](#concurrency-model)
   - [Architecture](#architecture)
@@ -754,6 +755,30 @@ The system implements comprehensive error recovery to handle various failure sce
 - **Graph deletion**: After max retries, entire graph is deleted
 
 **Purpose:** Handle transient failures while preventing infinite retry loops.
+
+### Retry and Exception Contracts
+
+Retry behavior is governed by clear contracts so that callers and LLM implementations know who decides “retry” vs “fail immediately.”
+
+**Task-level retry (tick / task graph)**
+
+- **Only** the tick and `TaskNode.failed()` schedule retries: they insert a single `wait` task (e.g. 10s) and set the task back to PENDING. Handlers must **not** insert their own retry delays for “task failed, try again later”; they should raise and let the tick apply the delay.
+- When a handler raises, the tick sets `retryable = getattr(e, "is_retryable", True)` and calls `task.failed(graph, retryable=retryable)`.
+  - If `retryable` is `True` (or the exception has no `is_retryable` attribute): the task is retried (delay inserted, up to max retries).
+  - If `retryable` is `False`: the task is marked FAILED immediately and the graph can be removed; no retry.
+
+**LLM exception contract**
+
+- Each **LLM implementation** (Gemini, OpenAI, OpenRouter, Grok, etc.) is responsible for **its own** exception handling. The provider knows which errors are transient (e.g. 503, rate limit, timeout) vs permanent (e.g. 400, 401, 403).
+- Before re-raising, the LLM implementation must **catch** API/HTTP errors and either:
+  - **Retryable:** wrap in `RetryableLLMError` or set `is_retryable = True` on the exception, then re-raise; or
+  - **Non-retryable:** set `is_retryable = False` on the exception (or raise an exception that will not be wrapped), then re-raise.
+- Relying on **string matching** in a central place (e.g. “503”, “timeout”) to decide retryability is fragile and provider-specific. The contract is: **each LLM marks or wraps its exceptions** so that the tick and any higher-level code can rely on `is_retryable` or `RetryableLLMError` without guessing from message text. String matching may be used as a **temporary fallback** for unmarked exceptions until all LLM implementations fully adopt this contract.
+- Shared type: `llm.exceptions.RetryableLLMError` — always treated as retryable and carries an optional `original_exception` for debugging.
+
+**Handlers that want immediate failure**
+
+- Any handler (not only LLM) that wants “do not retry” must raise an exception with `is_retryable = False` (e.g. send_media when media is not found in cache). Otherwise the tick defaults to retryable.
 
 ### Failure Scenarios
 

@@ -154,6 +154,23 @@ def test_retry_injection_and_limit(caplog):
     assert "exceeded max retries" in caplog.text
 
 
+def test_failed_retryable_false_marks_failed_immediately(caplog):
+    """Non-retryable failures mark task FAILED and return False without inserting delay."""
+    caplog.set_level(logging.INFO)
+    graph = make_graph("no-retry-graph", [])
+    task = make_send_task("t1")
+    graph.add_task(task)
+    initial_task_count = len(graph.tasks)
+
+    result = task.failed(graph, retry_interval_sec=5, max_retries=10, retryable=False)
+
+    assert result is False
+    assert task.status == TaskStatus.FAILED
+    assert "previous_retries" not in task.params or task.params.get("previous_retries", 0) == 0
+    assert len(graph.tasks) == initial_task_count  # no wait task inserted
+    assert "non-retryable" in caplog.text.lower() or "Marking failed" in caplog.text
+
+
 def test_reloads_active_task_as_pending(tmp_path):
     """
     Ensures that a task marked 'active' in a saved file is loaded

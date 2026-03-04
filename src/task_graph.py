@@ -124,7 +124,15 @@ class TaskNode:
         graph: "TaskGraph",
         retry_interval_sec: int = 10,
         max_retries: int = 10,
+        retryable: bool = True,
     ):
+        if not retryable:
+            logger.error(
+                f"Task {self.id} failed with non-retryable error. Marking failed and removing graph {graph.id}."
+            )
+            self.status = TaskStatus.FAILED
+            return False
+
         retry_count = self.params.get("previous_retries", 0) + 1
         self.params["previous_retries"] = retry_count
 
