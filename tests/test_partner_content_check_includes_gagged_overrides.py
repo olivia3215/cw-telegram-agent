@@ -5,8 +5,12 @@
 #
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from admin_console.app import create_admin_app
 from admin_console.auth import SESSION_ADMIN_EMAIL
+
+pytestmark = pytest.mark.usefixtures("mock_superuser_for_session")
 
 
 def _make_client():

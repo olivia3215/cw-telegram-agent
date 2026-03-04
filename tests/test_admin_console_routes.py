@@ -24,6 +24,8 @@ from media.media_sources import (
     reset_media_source_registry,
 )
 
+pytestmark = pytest.mark.usefixtures("mock_superuser_for_session")
+
 
 def _make_client():
     app = create_admin_app()
@@ -845,10 +847,6 @@ def test_google_callback_exchanges_code_upserts_admin_sets_session(monkeypatch):
             }
         )
 
-    def fake_get_administrator(email):
-        # Only allow alice@example.com as pre-provisioned admin
-        return {"email": email} if email == "alice@example.com" else None
-
     class FakeTokenResp:
         def raise_for_status(self):
             pass
@@ -878,7 +876,6 @@ def test_google_callback_exchanges_code_upserts_admin_sets_session(monkeypatch):
     monkeypatch.setattr("admin_console.auth.requests.post", fake_post)
     monkeypatch.setattr("admin_console.auth.requests.get", fake_get)
     monkeypatch.setattr("db.administrators.upsert_administrator", fake_upsert)
-    monkeypatch.setattr("db.administrators.get_administrator", fake_get_administrator)
 
     app = create_admin_app()
     app.testing = True
@@ -891,6 +888,7 @@ def test_google_callback_exchanges_code_upserts_admin_sets_session(monkeypatch):
     )
     assert response.status_code == 302
     assert response.location.endswith("/admin")
+    assert "error=" not in response.location
     assert len(upsert_calls) == 1
     assert upsert_calls[0]["email"] == "alice@example.com"
     assert upsert_calls[0]["name"] == "Alice"
@@ -900,10 +898,16 @@ def test_google_callback_exchanges_code_upserts_admin_sets_session(monkeypatch):
         assert sess.get(SESSION_ADMIN_EMAIL) == "alice@example.com"
 
 
-def test_google_callback_rejects_unknown_email(monkeypatch):
-    """Google callback does not grant access when email is not a pre-provisioned administrator."""
+def test_google_callback_allows_any_email_upserts_and_sets_session(monkeypatch):
+    """Phase B2: Google callback allows any Google user; first login creates admin row and session."""
     monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_ID", "cid")
     monkeypatch.setattr("admin_console.auth.ADMIN_GOOGLE_CLIENT_SECRET", "sec")
+    upsert_calls = []
+
+    def fake_upsert(email, *, name=None, avatar=None, last_login_attempt=None):
+        upsert_calls.append(
+            {"email": email, "name": name, "avatar": avatar}
+        )
 
     class FakeTokenResp:
         def raise_for_status(self):
@@ -931,7 +935,7 @@ def test_google_callback_rejects_unknown_email(monkeypatch):
         "admin_console.auth.requests.get",
         lambda url, headers, timeout: FakeUserinfoResp(),
     )
-    monkeypatch.setattr("db.administrators.get_administrator", lambda email: None)
+    monkeypatch.setattr("db.administrators.upsert_administrator", fake_upsert)
 
     app = create_admin_app()
     app.testing = True
@@ -943,20 +947,23 @@ def test_google_callback_rejects_unknown_email(monkeypatch):
         query_string={"state": "valid-state", "code": "auth-code"},
     )
     assert response.status_code == 302
-    assert "/admin" in response.location
-    assert "error=not_authorized" in response.location
+    assert response.location.endswith("/admin")
+    assert "error=not_authorized" not in response.location
+    assert len(upsert_calls) == 1
+    assert upsert_calls[0]["email"] == "stranger@example.com"
     with client.session_transaction() as sess:
-        assert sess.get(SESSION_ADMIN_EMAIL) is None
+        assert sess.get(SESSION_ADMIN_EMAIL) == "stranger@example.com"
 
 
 def test_auth_status_returns_logged_in():
-    """GET /admin/api/auth/status returns logged_in, email when session has admin."""
+    """GET /admin/api/auth/status returns logged_in, email, is_superuser when session has admin."""
     client = _make_client()
     response = client.get("/admin/api/auth/status")
     assert response.status_code == 200
     data = response.get_json()
     assert data["logged_in"] is True
     assert data["email"] == "test@example.com"
+    assert data["is_superuser"] is True  # mock_superuser_for_session grants superuser
 
 
 def test_auth_status_not_logged_in():
@@ -983,6 +990,16 @@ def test_protected_endpoint_401_without_session():
     data = response2.get_json()
     assert "error" in data
     assert "login" in data["error"].lower()
+
+
+def test_protected_endpoint_403_without_superuser_role(monkeypatch):
+    """Phase B2: A protected endpoint returns 403 when session has admin but no superuser role."""
+    monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
+    client = _make_client()
+    response = client.get("/admin/api/agents")
+    assert response.status_code == 403
+    data = response.get_json()
+    assert data.get("error") == "Superuser role required"
 
 
 def test_logout_clears_session_redirects():

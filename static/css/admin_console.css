@@ -106,6 +106,20 @@ body.auth-locked {
 .auth-message.hidden {
     display: none;
 }
+.console-no-access {
+    margin: 16px;
+    padding: 16px;
+    background: #fff;
+    border-radius: 4px;
+    color: #2c3e50;
+}
+.console-no-access.hidden {
+    display: none;
+}
+#main-tab-bar.hidden,
+#tab-panels.hidden {
+    display: none !important;
+}
 .header {
     background: #2c3e50;
     color: white;

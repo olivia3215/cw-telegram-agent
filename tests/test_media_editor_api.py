@@ -12,6 +12,8 @@ from admin_console.auth import SESSION_ADMIN_EMAIL, SESSION_VERIFIED_KEY
 from admin_console.app import create_admin_app
 from media.media_sources import reset_media_source_registry
 
+pytestmark = pytest.mark.usefixtures("mock_superuser_for_session")
+
 
 def _write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

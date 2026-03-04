@@ -8,7 +8,8 @@
 Add an administrator so they can log in to the admin console via Google OAuth.
 
 The email must match the Google account they will use. Name and avatar are
-optional and can be updated on first login.
+optional and can be updated on first login. The new or updated administrator
+is granted the superuser role so they can access the full console.
 
 Usage:
     source .env   # or set PYTHONPATH and DB env vars
@@ -56,10 +57,11 @@ def main() -> int:
     try:
         existing = administrators.get_administrator(email)
         administrators.upsert_administrator(email, name=args.name or None)
+        administrators.add_role(email, "superuser")
         if existing:
-            print(f"Updated administrator: {email}")
+            print(f"Updated administrator: {email} (superuser)")
         else:
-            print(f"Added administrator: {email}")
+            print(f"Added administrator: {email} (superuser)")
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
