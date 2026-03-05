@@ -88,12 +88,15 @@ def register_conversation_download_routes(agents_bp: Blueprint):
     """Register conversation download route."""
 
     @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/download", methods=["POST"])
+    @agents_bp.route("/api/agents/<agent_config_name>/conversation/<user_id>/print", methods=["POST"])
     def api_download_conversation(agent_config_name: str, user_id: str):
-        """Download full conversation (up to 2500 messages) as a zip file with standalone HTML."""
+        """Download full conversation (up to 2500 messages) as zip, or return HTML for print (media served live)."""
         try:
             agent = get_agent_by_name(agent_config_name)
             if not agent:
                 return jsonify({"error": f"Agent '{agent_config_name}' not found"}), 404
+
+            return_html_only = request.path.rstrip("/").endswith("/print")
 
             # Get include_translations and include_task_logs from request body
             data = request.json or {}
@@ -136,7 +139,7 @@ def register_conversation_download_routes(agents_bp: Blueprint):
             from media.mime_utils import detect_mime_type_from_bytes, get_file_extension_from_mime_or_bytes
 
             # This is async, so we need to run it in the client's event loop
-            async def _download_conversation():
+            async def _download_conversation(return_html_only: bool = False, live_media_base_url: str | None = None):
                 try:
                     client = agent.client
                     # Use agent.get_cached_entity() to benefit from contacts fallback
@@ -435,6 +438,48 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                                         except Exception as e:
                                             logger.warning(f"Error parsing translation batch: {e}")
 
+                    # Print-only path: same HTML as download but media served live (preserve #702 display)
+                    if return_html_only:
+                        from admin_console.agents.partners import get_cached_partner_display_info, is_partner_unresolvable
+                        if is_partner_unresolvable(agent_config_name, str(channel_id)):
+                            partner_display_plain = str(channel_id)
+                            partner_display_html = html.escape(str(channel_id))
+                        else:
+                            partner_info = get_cached_partner_display_info(agent_config_name, str(channel_id))
+                            if partner_info:
+                                name = (partner_info.get("name") or "Unknown").strip()
+                                uname = (partner_info.get("username") or "").strip().lstrip("@")
+                                partner_display_plain = f"{name} ({channel_id})" + (f" [@{uname}]" if uname else "")
+                                if uname:
+                                    url = f"https://t.me/{uname}"
+                                    partner_display_html = html.escape(name) + html.escape(f" ({channel_id})") + f' [<a href="{html.escape(url)}">{html.escape("@" + uname)}</a>]'
+                                else:
+                                    partner_display_html = html.escape(partner_display_plain)
+                            else:
+                                partner_display_plain = await format_channel_display(
+                                    agent, channel_id, format_username_html=False
+                                )
+                                partner_display_html = await format_channel_display(
+                                    agent, channel_id, format_username_html=True
+                                )
+                        agent_display_plain = await format_channel_display(
+                            agent, getattr(agent, "agent_id", None), format_username_html=False
+                        )
+                        agent_display_html = await format_channel_display(
+                            agent, getattr(agent, "agent_id", None), format_username_html=True
+                        )
+                        agent_tz_id = agent.get_timezone_identifier()
+                        html_content = _generate_standalone_html(
+                            agent_display_plain, agent_display_html,
+                            partner_display_plain, partner_display_html,
+                            messages, summaries, translations, task_logs,
+                            agent_tz_id, {}, {}, {}, {}, include_translations, include_task_logs,
+                            live_media_base_url=live_media_base_url,
+                            agent_config_name=agent_config_name,
+                            user_id=user_id,
+                        )
+                        return html_content
+
                     # Create temp directory for zip contents
                     with tempfile.TemporaryDirectory() as temp_dir:
                         temp_path = Path(temp_dir)
@@ -674,9 +719,24 @@ def register_conversation_download_routes(agents_bp: Blueprint):
                     logger.error(f"Error downloading conversation: {e}", exc_info=True)
                     raise
 
-            # Execute async function
+            # Execute async function (for print, pass base URL so media loads from live API)
+            live_media_base_url = None
+            if return_html_only:
+                # Include path prefix (e.g. /admin) so media URLs resolve; routes live under /admin
+                path_prefix = ""
+                if "/api/agents/" in request.path:
+                    path_prefix = request.path[: request.path.find("/api/agents/")].rstrip("/")
+                live_media_base_url = request.host_url.rstrip("/") + (path_prefix or (request.script_root or ""))
             try:
-                zip_data = agent.execute(_download_conversation(), timeout=300.0)  # 5 minute timeout
+                result = agent.execute(
+                    _download_conversation(return_html_only=return_html_only, live_media_base_url=live_media_base_url),
+                    timeout=300.0,
+                )  # 5 min
+
+                if return_html_only:
+                    return Response(result, mimetype="text/html; charset=utf-8")
+
+                zip_data = result
 
                 # Return zip file as download
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -920,12 +980,22 @@ def _generate_standalone_html(
     messages: list, summaries: list,
     translations: dict, task_logs: list, agent_timezone: str, media_map: dict, mime_map: dict, emoji_map: dict,
     lottie_data_map: dict, show_translations: bool, show_task_logs: bool,
+    live_media_base_url: str | None = None,
+    agent_config_name: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Generate standalone HTML file for conversation display."""
+    use_live_media = bool(live_media_base_url and agent_config_name is not None and user_id is not None)
+    media_base = (live_media_base_url or "").rstrip("/")
+    media_path_prefix = (
+        f"{media_base}/api/agents/{quote(agent_config_name or '', safe='')}/conversation/{quote(user_id or '', safe='')}/media"
+        if use_live_media
+        else ""
+    )
     # This will be a large HTML string with embedded CSS and JavaScript
     # Similar to the renderConversation function in admin_console.html
     title_text = f"Conversation: Agent {agent_display_plain} with {partner_display_plain}"
-    # Get Lottie and pako from CDN (same as admin console)
+    # Get Lottie and pako from CDN (pako needed for live TGS)
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -933,6 +1003,7 @@ def _generate_standalone_html(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{html.escape(title_text)}</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    {"<script src=\"https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js\"></script>" if use_live_media else ""}
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1052,6 +1123,12 @@ def _generate_standalone_html(
             color: #d32f2f;
             font-weight: bold;
         }}
+        @media print {{
+            .message, .summary, .task-log {{
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -1067,7 +1144,6 @@ def _generate_standalone_html(
         display_items = [{'type': 'message', 'timestamp': None, 'data': msg} for msg in messages]
 
     # Render messages and logs
-    html_content += '<h2>Messages</h2>\n'
     for item in display_items:
         if item['type'] == 'log':
             # Render task log entry
@@ -1184,8 +1260,11 @@ def _generate_standalone_html(
         if show_translations and msg_id in translations:
             text = translations[msg_id]
 
-        # Replace emoji URLs with local paths
-        text = _replace_emoji_urls_with_local(text, emoji_map)
+        # Replace emoji URLs: local paths for zip, or make relative URLs absolute for live media
+        if use_live_media:
+            text = _make_relative_urls_absolute(text, media_base)
+        else:
+            text = _replace_emoji_urls_with_local(text, emoji_map)
 
         # Build content from parts
         content_html = ""
@@ -1206,14 +1285,44 @@ def _generate_standalone_html(
                             continue
                         # Use original part text and process emoji URLs
                         part_text = part.get("text", "")
-                        part_text = _replace_emoji_urls_with_local(part_text, emoji_map)
+                        if use_live_media:
+                            part_text = _make_relative_urls_absolute(part_text, media_base)
+                        else:
+                            part_text = _replace_emoji_urls_with_local(part_text, emoji_map)
                     content_html += f'<div class="message-content">{part_text}</div>\n'
                 elif part.get("kind") == "media":
                     unique_id = part.get("unique_id")
+                    message_id_part = part.get("message_id", msg_id)
                     media_kind = part.get("media_kind", "media")
                     is_animated = part.get("is_animated", False) or media_kind == "animated_sticker"
 
-                    if unique_id in media_map:
+                    if use_live_media:
+                        live_url = f"{media_path_prefix}/{quote(str(message_id_part), safe='')}/{quote(unique_id, safe='')}"
+                        live_url_attr = html.escape(live_url, quote=True)
+                        if is_animated or media_kind == "animated_sticker":
+                            escaped_unique_id = html.escape(unique_id)
+                            content_html += f'<div class="message-media"><div class="tgs-container" id="tgs-{escaped_unique_id}" data-unique-id="{escaped_unique_id}" data-src="{live_url_attr}"></div></div>\n'
+                        elif media_kind in ("video", "animation", "gif") or (media_kind == "sticker" and not is_animated):
+                            mime_type = part.get("mime_type", "")
+                            if mime_type and "video" in mime_type.lower():
+                                type_attr = f' type="{html.escape(mime_type)}"' if mime_type else ""
+                                content_html += f'<div class="message-media"><video controls loop muted preload="auto"><source src="{live_url_attr}"{type_attr}></video></div>\n'
+                            else:
+                                sticker_name = part.get("sticker_name") or unique_id
+                                content_html += f'<div class="message-media"><img src="{live_url_attr}" alt="{html.escape(sticker_name)}"></div>\n'
+                        elif media_kind == "audio":
+                            type_attr = f' type="{html.escape(part.get("mime_type", ""))}"' if part.get("mime_type") else ""
+                            content_html += f'<div class="message-media"><audio controls><source src="{live_url_attr}"{type_attr}></audio></div>\n'
+                        elif media_kind in ("photo", "sticker", "media"):
+                            # photo, sticker, and generic "media" (e.g. photos from pipeline) render as img
+                            alt_text = part.get("sticker_name") or (unique_id if media_kind == "sticker" else "Photo")
+                            content_html += f'<div class="message-media"><img src="{live_url_attr}" alt="{html.escape(alt_text)}"></div>\n'
+                        else:
+                            rendered_text = part.get("rendered_text", "") or media_kind
+                            content_html += f'<div class="message-media" style="color: #666; font-style: italic;">{html.escape(rendered_text)} <a href="{live_url_attr}" download>[Download]</a></div>\n'
+                        if part.get("rendered_text") and media_kind not in ("video", "animation", "gif"):
+                            content_html += f'<div style="color: #666; font-size: 11px; margin-top: 2px; font-style: italic;">{html.escape(part.get("rendered_text", ""))}</div>\n'
+                    elif unique_id in media_map:
                         media_path = f"media/{media_map[unique_id]}"
                         filename = media_map[unique_id]
                         ext = Path(filename).suffix.lower()
@@ -1281,49 +1390,64 @@ def _generate_standalone_html(
         {content_html}
 """
         if reactions:
-            # Replace emoji URLs in reactions with local paths
-            reactions_local = _replace_emoji_urls_with_local(reactions, emoji_map)
+            if use_live_media:
+                reactions_local = _make_relative_urls_absolute(reactions, media_base)
+            else:
+                reactions_local = _replace_emoji_urls_with_local(reactions, emoji_map)
             html_content += f'        <div class="reactions">Reactions: {reactions_local}</div>\n'
         html_content += "    </div>\n"
 
-    # Embed Lottie JSON inline so TGS works with file:// (CORS blocks fetch) and http
-    lottie_json = json_lib.dumps(lottie_data_map)
-    # Escape </ to prevent closing script tag when embedding in HTML
-    lottie_json_safe = lottie_json.replace("</", "<\\/")
-
-    html_content += (
-        f'<script id="lottie-data" type="application/json">{lottie_json_safe}</script>\n'
-        """
+    # TGS (Lottie) loading: fetch from data-src for live media, or embedded JSON for zip
+    if use_live_media:
+        html_content += """
     <script>
-        // Load TGS animations - use embedded LOTTIE_DATA (works with file:// and http)
+        document.addEventListener('DOMContentLoaded', function() {
+            const tgsContainers = document.querySelectorAll('.tgs-container[data-src]');
+            tgsContainers.forEach(function(container) {
+                const src = container.getAttribute('data-src');
+                if (!src) return;
+                fetch(src).then(function(r) { return r.arrayBuffer(); }).then(function(buf) {
+                    const bytes = new Uint8Array(buf);
+                    const jsonStr = pako.inflate(bytes, { to: 'string' });
+                    const jsonData = JSON.parse(jsonStr);
+                    container.innerHTML = '';
+                    const animationContainer = document.createElement('div');
+                    animationContainer.style.width = '100%'; animationContainer.style.height = '100%';
+                    animationContainer.style.display = 'flex'; animationContainer.style.alignItems = 'center';
+                    animationContainer.style.justifyContent = 'center'; animationContainer.style.backgroundColor = 'transparent';
+                    container.appendChild(animationContainer);
+                    lottie.loadAnimation({ container: animationContainer, renderer: 'svg', loop: true, autoplay: true, animationData: jsonData });
+                }).catch(function(e) {
+                    console.error('Failed to load TGS:', e);
+                    container.innerHTML = '<div style="text-align: center; color: #dc3545;">⚠️ Animation Error</div>';
+                });
+            });
+        });
+    </script>
+"""
+    else:
+        lottie_json = json_lib.dumps(lottie_data_map)
+        lottie_json_safe = lottie_json.replace("</", "<\\/")
+        html_content += (
+            f'<script id="lottie-data" type="application/json">{lottie_json_safe}</script>\n'
+            """
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
             const lottieDataEl = document.getElementById('lottie-data');
             const LOTTIE_DATA = lottieDataEl ? JSON.parse(lottieDataEl.textContent) : {};
-
             const tgsContainers = document.querySelectorAll('.tgs-container');
             tgsContainers.forEach(function(container) {
                 const uniqueId = container.getAttribute('data-unique-id');
                 const jsonData = LOTTIE_DATA[uniqueId];
-
                 if (jsonData) {
                     try {
                         container.innerHTML = '';
                         const animationContainer = document.createElement('div');
-                        animationContainer.style.width = '100%';
-                        animationContainer.style.height = '100%';
-                        animationContainer.style.display = 'flex';
-                        animationContainer.style.alignItems = 'center';
-                        animationContainer.style.justifyContent = 'center';
-                        animationContainer.style.backgroundColor = 'transparent';
+                        animationContainer.style.width = '100%'; animationContainer.style.height = '100%';
+                        animationContainer.style.display = 'flex'; animationContainer.style.alignItems = 'center';
+                        animationContainer.style.justifyContent = 'center'; animationContainer.style.backgroundColor = 'transparent';
                         container.appendChild(animationContainer);
-
-                        lottie.loadAnimation({
-                            container: animationContainer,
-                            renderer: 'svg',
-                            loop: true,
-                            autoplay: true,
-                            animationData: jsonData
-                        });
+                        lottie.loadAnimation({ container: animationContainer, renderer: 'svg', loop: true, autoplay: true, animationData: jsonData });
                     } catch (e) {
                         console.error('Failed to load TGS animation:', e);
                         container.innerHTML = '<div style="text-align: center; color: #dc3545;">⚠️ Animation Error</div>';
@@ -1334,12 +1458,31 @@ def _generate_standalone_html(
             });
         });
     </script>
+"""
+        )
+
+    html_content += """
 </body>
 </html>
 """
-    )
-
     return html_content
+
+
+def _make_relative_urls_absolute(html_text: str, base_url: str) -> str:
+    """Make relative URLs (starting with /) in src, href, data-emoji-url absolute using base_url."""
+    if not html_text or not base_url:
+        return html_text
+    base = base_url.rstrip("/")
+
+    def replace_attr(match):
+        attr_name = match.group(1)
+        path = match.group(2)
+        if path.startswith("/"):
+            return f'{attr_name}="{base}{path}"'
+        return match.group(0)
+
+    html_text = re.sub(r'(src|href|data-emoji-url)="(/[^"]*)"', replace_attr, html_text)
+    return html_text
 
 
 def _replace_emoji_urls_with_local(html_text: str, emoji_map: dict) -> str:

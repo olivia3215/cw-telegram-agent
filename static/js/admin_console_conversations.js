@@ -1452,6 +1452,23 @@ async function conversationPrint() {
     const includeTranslations = translationCheckbox ? translationCheckbox.checked : false;
     const includeTaskLogs = taskLogCheckbox ? taskLogCheckbox.checked : false;
 
+    // Open window synchronously so it's not blocked as a popup (user gesture is still in effect)
+    const w = window.open('', '_blank');
+    if (!w) {
+        alert('Please allow pop-ups for this site to open the print view.');
+        return;
+    }
+    w.document.write(
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Print view</title>' +
+        '<style>' +
+        '.load-spinner{width:32px;height:32px;border:3px solid #e0e0e0;border-top-color:#2196f3;border-radius:50%;animation:spin 0.8s linear infinite;} ' +
+        '@keyframes spin{to{transform:rotate(360deg);}} ' +
+        '.load-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:120px;font-family:system-ui,sans-serif;padding:2rem;color:#333;}' +
+        '</style></head><body><div class="load-box">' +
+        '<div class="load-spinner"></div>' +
+        '<span>Loading print view...</span></div></body></html>'
+    );
+    w.document.close();
     try {
         const response = await fetchWithAuth(
             `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${encodeURIComponent(userId)}/print`,
@@ -1465,18 +1482,18 @@ async function conversationPrint() {
             }
         );
         if (!response.ok) {
+            w.close();
             const data = await response.json().catch(function() { return {}; });
             alert(data.error || 'Failed to load conversation for printing');
             return;
         }
         const html = await response.text();
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const w = window.open(url, '_blank');
-        if (w) w.focus();
-        else location.href = url;
-        setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        w.focus();
     } catch (e) {
+        if (w && w.closed === false) w.close();
         if (e && e.message === 'unauthorized') return;
         alert('Error: ' + (e && e.message ? e.message : 'Failed to load conversation for printing'));
     }
@@ -1485,18 +1502,6 @@ async function conversationPrint() {
 function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set(), agentDisplay = null, partnerDisplay = null) {
     const container = document.getElementById('conversation-container');
     let html = '';
-    // Use passed display strings or stored from last full load (for re-renders)
-    const ad = agentDisplay != null ? agentDisplay : conversationAgentDisplay;
-    const pd = partnerDisplay != null ? partnerDisplay : conversationPartnerDisplay;
-
-    // Header: Agent: Name (id) [@username] / conversation with Name (id) [@username]
-    if (ad && pd) {
-        html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">';
-        html += '<div style="font-size: 16px; font-weight: 600;">Agent: ' + escapeHtml(ad) + '</div>';
-        html += '<div style="font-size: 16px; font-weight: 600; margin-top: 4px;">conversation with ' + escapeHtml(pd) + '</div>';
-        html += '</div>';
-    }
-
     // Display blocked status banner at the top if conversation is blocked
     if (isBlocked) {
         html += '<div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">';
@@ -1504,12 +1509,19 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
         html += '<div><strong>This conversation is blocked.</strong> The agent cannot send messages to this conversation.</div>';
         html += '</div>';
     }
-    // Print button (always show when viewing a conversation)
-    html += '<div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">';
+    // Single control row: Display Translation, Show Task Log, Summarize, Download, Print (last)
+    html += '<div style="margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;">';
+    html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+    html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
+    html += 'Display Translation ' + tooltipIconHtml('Show English translation alongside messages') + '</label>';
+    html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
+    html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
+    html += 'Show Task Log ' + tooltipIconHtml('Interleave task log entries with messages by time') + '</label>';
+    html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
+    html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
     html += '<button type="button" onclick="conversationPrint()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Print</button>';
     html += '</div>';
-    // Use the formatTimestamp utility from core (now global)
-    
+
     // Display summaries at the top (editable, styled like memories)
     if (summaries.length > 0) {
         html += '<div style="margin-bottom: 24px;"><h3 style="margin-bottom: 12px; font-size: 18px; font-weight: bold;">Conversation Summaries ' + tooltipIconHtml('Editable summaries that cover ranges of messages') + '</h3>';
@@ -1565,19 +1577,9 @@ function renderConversation(agentName, userId, summaries, messages, agentTimezon
             // All messages summarized - show placeholder
             html += '<div class="placeholder-card" style="margin-top: 16px;">All messages have been summarized. Only unsummarized messages are shown here.</div>';
         } else {
-            // Has unsummarized messages - show header with all controls (wraps on narrow width)
-            html += '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 12px;">';
-            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold; flex: 1 1 100%;">Unsummarized Messages ' + tooltipIconHtml('Messages not yet covered by a summary; use Summarize to create one') + '</h3>';
-            html += '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;">';
-            html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
-            html += `<input type="checkbox" id="translation-toggle" ${showTranslation ? 'checked' : ''} onchange="toggleTranslation('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
-            html += 'Display Translation ' + tooltipIconHtml('Show English translation alongside messages') + '</label>';
-            html += '<label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">';
-            html += `<input type="checkbox" id="log-interleave-toggle" ${showLogInterleave ? 'checked' : ''} onchange="toggleLogInterleave('${escJsAttr(agentName)}', '${escJsAttr(userId)}')" style="margin-right: 8px;">`;
-            html += 'Show Task Log ' + tooltipIconHtml('Interleave task log entries with messages by time') + '</label>';
-            html += `<button id="summarize-btn-${userId}" onclick="triggerSummarization('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Summarize Conversation</button>`;
-            html += `<button id="download-btn-${userId}" onclick="downloadConversation('${escJsAttr(agentName)}', '${escJsAttr(userId)}', this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">Download Conversation</button>`;
-            html += '</div>';
+            // Has unsummarized messages - show section header (controls are in the single row above)
+            html += '<div style="margin-bottom: 12px;">';
+            html += '<h3 style="margin: 0; font-size: 18px; font-weight: bold;">Unsummarized Messages ' + tooltipIconHtml('Messages not yet covered by a summary; use Summarize to create one') + '</h3>';
             html += '</div>';
         }
         
