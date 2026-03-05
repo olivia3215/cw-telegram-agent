@@ -84,12 +84,12 @@ def test_generate_standalone_html_embeds_lottie_json_when_lottie_data_map_provid
         show_task_logs=False,
     )
 
-    # Print header: two lines (Agent: ... / conversation with ...)
-    assert "<h1>Agent: " in html
+    # Print header: two lines (agent display / conversation with ...)
+    assert "<h1>TestAgent (123)</h1>" in html
     assert "conversation with " in html
     assert "Mila Quinn (6904083970)" in html
     # Title uses plain display text
-    assert "Conversation: Agent TestAgent (123) with Mila Quinn (6904083970) [@mila]" in html
+    assert "Conversation: TestAgent (123) with Mila Quinn (6904083970) [@mila]" in html
 
     # Should embed Lottie JSON via lottie-data (works with file://)
     assert 'id="lottie-data"' in html
