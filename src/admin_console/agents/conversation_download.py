@@ -994,7 +994,7 @@ def _generate_standalone_html(
     )
     # This will be a large HTML string with embedded CSS and JavaScript
     # Similar to the renderConversation function in admin_console.html
-    title_text = f"Conversation: Agent {agent_display_plain} with {partner_display_plain}"
+    title_text = f"Conversation: {agent_display_plain} with {partner_display_plain}"
     # Get Lottie and pako from CDN (pako needed for live TGS)
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1132,7 +1132,7 @@ def _generate_standalone_html(
     </style>
 </head>
 <body>
-    <h1>Agent: {agent_display_html}</h1>
+    <h1>{agent_display_html}</h1>
     <h1>conversation with {partner_display_html}</h1>
 """
 

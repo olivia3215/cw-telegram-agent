@@ -1285,8 +1285,6 @@ let showTranslation = false;
 let conversationAgentTimezone = null;
 let conversationTaskLogs = [];
 let conversationSummaries = [];
-let conversationAgentDisplay = null;
-let conversationPartnerDisplay = null;
 let showLogInterleave = false;
 
 function loadConversation() {
@@ -1326,10 +1324,7 @@ function loadConversation() {
             conversationSummaries = summaries;  // Store summaries globally
             // Preserve showTranslation state instead of resetting it
             // showTranslation state is preserved
-            conversationAgentDisplay = data.agent_display || null;
-            conversationPartnerDisplay = data.partner_display || null;
-
-            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds, conversationAgentDisplay, conversationPartnerDisplay);
+            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds);
 
             // Restore checkbox state after rendering if it was checked
             const checkbox = document.getElementById('translation-toggle');
@@ -1499,7 +1494,7 @@ async function conversationPrint() {
     }
 }
 
-function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set(), agentDisplay = null, partnerDisplay = null) {
+function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set()) {
     const container = document.getElementById('conversation-container');
     let html = '';
     // Display blocked status banner at the top if conversation is blocked
