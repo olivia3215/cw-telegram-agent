@@ -20,3 +20,4 @@ imageio-ffmpeg
 playwright
 pymysql
 cryptography
+pyotp

@@ -44,6 +44,141 @@ otpInput?.addEventListener('keyup', (event) => {
     }
 });
 
+const requestAccessModal = document.getElementById('request-access-modal');
+const requestAccessCodeInput = document.getElementById('request-access-code');
+const requestAccessVerifyBtn = document.getElementById('request-access-verify-btn');
+const requestAccessCancelBtn = document.getElementById('request-access-cancel-btn');
+const requestAccessLink = document.getElementById('header-request-access');
+const requestAccessErrorEl = document.getElementById('request-access-error');
+const headerAvatarBtn = document.getElementById('header-avatar-btn');
+const headerUserDropdown = document.getElementById('header-user-dropdown');
+
+function hideHeaderUserDropdown() {
+    if (headerUserDropdown) {
+        headerUserDropdown.classList.add('hidden');
+        if (headerAvatarBtn) {
+            headerAvatarBtn.setAttribute('aria-expanded', 'false');
+        }
+    }
+}
+
+function toggleHeaderUserDropdown() {
+    if (!headerUserDropdown) return;
+    const isOpen = !headerUserDropdown.classList.contains('hidden');
+    if (isOpen) {
+        hideHeaderUserDropdown();
+    } else {
+        headerUserDropdown.classList.remove('hidden');
+        if (headerAvatarBtn) {
+            headerAvatarBtn.setAttribute('aria-expanded', 'true');
+        }
+    }
+}
+
+function showRequestAccessModal() {
+    hideHeaderUserDropdown();
+    if (requestAccessModal) {
+        requestAccessModal.classList.remove('hidden');
+        if (requestAccessCodeInput) {
+            requestAccessCodeInput.value = '';
+            requestAccessCodeInput.focus();
+        }
+        if (requestAccessErrorEl) {
+            requestAccessErrorEl.textContent = '';
+            requestAccessErrorEl.classList.add('hidden');
+        }
+    }
+}
+
+function hideRequestAccessModal() {
+    if (requestAccessModal) {
+        requestAccessModal.classList.add('hidden');
+    }
+}
+
+async function submitRequestAccessCode() {
+    const code = (requestAccessCodeInput?.value || '').trim();
+    if (!/^\d{6}$/.test(code)) {
+        if (requestAccessErrorEl) {
+            requestAccessErrorEl.textContent = 'Enter a 6-digit code.';
+            requestAccessErrorEl.classList.remove('hidden');
+        }
+        return;
+    }
+    if (requestAccessErrorEl) {
+        requestAccessErrorEl.textContent = '';
+        requestAccessErrorEl.classList.add('hidden');
+    }
+    if (requestAccessVerifyBtn) {
+        requestAccessVerifyBtn.disabled = true;
+    }
+    try {
+        const response = await fetchWithAuth(`${API_BASE}/auth/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+        });
+        const result = await responseJsonOrThrow(response);
+        if (response.status === 200 && (result.success || result.already_superuser || result.reload)) {
+            hideRequestAccessModal();
+            window.location.reload();
+            return;
+        }
+        if (result.error && requestAccessErrorEl) {
+            requestAccessErrorEl.textContent = result.error;
+            requestAccessErrorEl.classList.remove('hidden');
+        }
+    } catch (error) {
+        if (error && error.message !== 'unauthorized' && requestAccessErrorEl) {
+            requestAccessErrorEl.textContent = error.message || 'Verification failed.';
+            requestAccessErrorEl.classList.remove('hidden');
+        }
+    } finally {
+        if (requestAccessVerifyBtn) {
+            requestAccessVerifyBtn.disabled = false;
+        }
+    }
+}
+
+if (headerAvatarBtn) {
+    headerAvatarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleHeaderUserDropdown();
+    });
+}
+document.addEventListener('click', () => {
+    hideHeaderUserDropdown();
+});
+if (headerUserDropdown) {
+    headerUserDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+}
+if (requestAccessLink) {
+    requestAccessLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showRequestAccessModal();
+    });
+}
+if (document.getElementById('header-logout')) {
+    document.getElementById('header-logout').addEventListener('click', () => {
+        hideHeaderUserDropdown();
+    });
+}
+if (requestAccessVerifyBtn) {
+    requestAccessVerifyBtn.addEventListener('click', submitRequestAccessCode);
+}
+if (requestAccessCancelBtn) {
+    requestAccessCancelBtn.addEventListener('click', hideRequestAccessModal);
+}
+if (requestAccessCodeInput) {
+    requestAccessCodeInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') {
+            submitRequestAccessCode();
+        }
+    });
+}
+
 checkAuthStatus();
 
 function initializeApp() {
@@ -407,7 +542,7 @@ async function verifyVerificationCode() {
             initializeApp();
             return;
         }
-        if (result.already_verified) {
+        if (result.already_superuser) {
             hideAuthOverlay();
             initializeApp();
             return;
@@ -471,6 +606,10 @@ function checkAuthStatus() {
                 }
                 if (noAccessEl) {
                     noAccessEl.classList.toggle('hidden', isSuperuser);
+                }
+                const requestAccessLink = document.getElementById('header-request-access');
+                if (requestAccessLink) {
+                    requestAccessLink.style.display = isSuperuser ? 'none' : 'block';
                 }
             } else {
                 showAuthOverlay(overlayMessage);

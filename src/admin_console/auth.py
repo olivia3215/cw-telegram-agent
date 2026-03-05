@@ -22,6 +22,7 @@ from flask import Blueprint, current_app, jsonify, redirect, request, session  #
 from clock import clock
 from config import (
     ADMIN_CONSOLE_SECRET_KEY,
+    ADMIN_CONSOLE_TOTP_SECRET,
     ADMIN_GOOGLE_CLIENT_ID,
     ADMIN_GOOGLE_CLIENT_SECRET,
 )
@@ -32,7 +33,6 @@ logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
 
 # Session keys
-SESSION_VERIFIED_KEY = "admin_console_verified"  # Phase C: passed TOTP "Request Access"
 SESSION_ADMIN_EMAIL = "admin_email"  # Logged in via Google
 SESSION_GOOGLE_STATE = "google_oauth_state"  # CSRF for Google OAuth
 
@@ -204,7 +204,6 @@ def api_auth_status():
                 avatar = admin.get("avatar")
         except Exception as e:
             logger.debug("Failed to load roles/admin for auth status: %s", e)
-    verified = bool(session.get(SESSION_VERIFIED_KEY))
     is_superuser = "superuser" in (roles or [])
     return jsonify(
         {
@@ -213,7 +212,6 @@ def api_auth_status():
             "name": name,
             "avatar": avatar,
             "roles": roles,
-            "verified": verified,
             "is_superuser": is_superuser,
         }
     )
@@ -358,40 +356,101 @@ def api_auth_request_code():
     )
 
 
+# Phase C: 5-minute cooldown after last_login_attempt before TOTP can grant superuser
+TOTP_COOLDOWN_MINUTES = 5
+
+
+def _parse_last_login_attempt(admin: dict | None) -> datetime | None:
+    """Return last_login_attempt as timezone-aware datetime (UTC) or None."""
+    if not admin:
+        return None
+    raw = admin.get("last_login_attempt")
+    if not raw:
+        return None
+    dt = None
+    if hasattr(raw, "isoformat"):
+        dt = raw
+    else:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+    if dt is not None and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
 @auth_bp.route("/api/auth/verify", methods=["POST"])
 def api_auth_verify():
-    """Verify a submitted OTP code."""
-    if session.get(SESSION_VERIFIED_KEY):
-        return jsonify({"success": True, "already_verified": True})
-
-    payload = request.get_json(silent=True) or {}
-    code = str(payload.get("code", "")).strip()
-
-    if not code:
-        return jsonify({"error": "Verification code is required."}), 400
-
-    challenge_manager = get_challenge_manager()
-
+    """Verify a submitted TOTP code for Request Access (Phase C). Grants superuser on success."""
     try:
-        challenge_manager.verify(code)
-    except ChallengeNotFound:
-        return (
-            jsonify({"error": "No verification code has been requested yet."}),
-            400,
-        )
-    except ChallengeExpired:
-        return jsonify({"error": "The verification code has expired."}), 400
-    except ChallengeInvalid as exc:
-        return jsonify(
-            {
-                "error": str(exc),
-                "remaining_attempts": exc.remaining_attempts,
-            }
-        ), 400
-    except ChallengeAttemptsExceeded as exc:
-        return jsonify({"error": str(exc)}), 429
+        email = session.get(SESSION_ADMIN_EMAIL)
+        if not email:
+            return jsonify({"error": "Login required."}), 401
 
-    session[SESSION_VERIFIED_KEY] = True
-    session.permanent = True  # Use PERMANENT_SESSION_LIFETIME so cookie survives browser restarts
-    session.modified = True
-    return jsonify({"success": True})
+        if not ADMIN_CONSOLE_TOTP_SECRET:
+            return (
+                jsonify(
+                    {
+                        "error": "TOTP is not configured. Set CINDY_ADMIN_CONSOLE_TOTP_SECRET and add it to your authenticator app.",
+                    }
+                ),
+                503,
+            )
+
+        from db import administrators
+
+        roles = administrators.get_roles_for_email(email)
+        if "superuser" in (roles or []):
+            logger.info("Auth verify: %s already superuser", email)
+            return jsonify({"success": True, "already_superuser": True, "reload": True})
+
+        payload = request.get_json(silent=True) or {}
+        code = str(payload.get("code", "")).strip()
+        if not code:
+            return jsonify({"error": "Verification code is required."}), 400
+
+        now = clock.now(UTC)
+        cooldown_end = now - timedelta(minutes=TOTP_COOLDOWN_MINUTES)
+        admin = administrators.get_administrator(email)
+        last_attempt = _parse_last_login_attempt(admin)
+        if last_attempt is not None and last_attempt > cooldown_end:
+            logger.info(
+                "Auth verify: %s in cooldown (last_attempt=%s, cooldown_end=%s)",
+                email,
+                last_attempt.isoformat(),
+                cooldown_end.isoformat(),
+            )
+            administrators.update_last_login_attempt(email)
+            return jsonify({"success": False, "reload": True})
+
+        import pyotp
+
+        try:
+            totp = pyotp.TOTP(ADMIN_CONSOLE_TOTP_SECRET)
+        except Exception as e:
+            logger.warning("Invalid TOTP secret configuration: %s", e)
+            return (
+                jsonify(
+                    {
+                        "error": "TOTP secret is invalid (must be base32). Regenerate with: python -c 'import pyotp; print(pyotp.random_base32())'.",
+                    }
+                ),
+                503,
+            )
+        if not totp.verify(code, valid_window=2):
+            logger.info("Auth verify: %s TOTP code invalid or expired (valid_window=2)", email)
+            administrators.update_last_login_attempt(email)
+            return jsonify({"success": False, "reload": True})
+
+        logger.info("Auth verify: %s TOTP success, granting superuser", email)
+        administrators.add_role(email, "superuser")
+        session.permanent = True
+        session.modified = True
+        return jsonify({"success": True, "reload": True})
+    except Exception as e:
+        logger.exception("Auth verify failed: %s", e)
+        return (
+            jsonify({"error": "Verification failed. Please try again or contact an administrator."}),
+            500,
+        )

@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from admin_console.auth import SESSION_ADMIN_EMAIL, SESSION_VERIFIED_KEY
+from admin_console.auth import SESSION_ADMIN_EMAIL
 from admin_console.app import create_admin_app
 from media.media_sources import reset_media_source_registry
 
@@ -58,8 +58,6 @@ def test_api_media_list_detects_missing_tgs_mime(monkeypatch, tmp_path):
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.get(f"/admin/api/media?directory={media_dir}")
         assert response.status_code == 200
 
@@ -102,8 +100,6 @@ def test_api_media_list_unnamed_video_sticker_grouped_as_other_media_videos(monk
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.get(f"/admin/api/media?directory={media_dir}")
         assert response.status_code == 200
 
@@ -158,8 +154,6 @@ def test_api_media_list_unnamed_video_sticker_infers_mime_from_extension_when_de
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.get(f"/admin/api/media?directory={media_dir}")
         assert response.status_code == 200
 
@@ -203,8 +197,6 @@ def test_api_media_list_prefers_video_mime_over_stale_photo_kind(monkeypatch, tm
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.get(f"/admin/api/media?directory={media_dir}")
         assert response.status_code == 200
         payload = response.get_json()
@@ -243,8 +235,6 @@ def test_api_media_list_overrides_stale_gif_mime_from_video_bytes(monkeypatch, t
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.get(f"/admin/api/media?directory={media_dir}&media_type=video")
         assert response.status_code == 200
         payload = response.get_json()
@@ -399,8 +389,6 @@ def test_api_media_saved_by_agents_returns_mapping(monkeypatch, tmp_path):
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.post(
             "/admin/api/media/saved-by-agents",
             json={"unique_ids": [unique_id]},
@@ -443,8 +431,6 @@ def test_api_delete_media_blocked_when_saved_by_agent(monkeypatch, tmp_path):
     with app.test_client() as client:
         with client.session_transaction() as session:
             session[SESSION_ADMIN_EMAIL] = "test@example.com"
-            session[SESSION_VERIFIED_KEY] = True
-
         response = client.delete(f"/admin/api/media/{unique_id}/delete?directory={media_dir}")
         assert response.status_code == 409
         payload = response.get_json()

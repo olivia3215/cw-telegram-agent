@@ -59,6 +59,9 @@ TRANSLATION_MODEL: str | None = os.environ.get("TRANSLATION_MODEL")
 # Admin console secret (for session signing)
 ADMIN_CONSOLE_SECRET_KEY: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_SECRET_KEY")
 
+# Admin console TOTP secret (base32) for "Request Access" / Phase C; add to authenticator app
+ADMIN_CONSOLE_TOTP_SECRET: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_TOTP_SECRET")
+
 # Admin console Google OAuth (for "Log in via Google")
 ADMIN_GOOGLE_CLIENT_ID: str | None = _get_optional_str("CINDY_ADMIN_GOOGLE_CLIENT_ID")
 ADMIN_GOOGLE_CLIENT_SECRET: str | None = _get_optional_str("CINDY_ADMIN_GOOGLE_CLIENT_SECRET")
