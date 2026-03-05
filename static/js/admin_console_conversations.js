@@ -479,23 +479,23 @@ async function loadConversationPartners(agentName, subtab, forceRefresh = false)
                 const option = document.createElement('option');
                 const userId = partner.user_id || partner;
                 option.value = userId;
-                // Display format: "Name (user_id) [@username]" or "Name (user_id)" or just "user_id"
-                // Check for both null/undefined and empty string
-                const hasName = partner.name && partner.name.trim().length > 0;
+                // Use backend-provided display (Name (id) [@username]) when available; otherwise build from name/username
                 let displayName;
-                if (hasName) {
-                    displayName = `${partner.name} (${userId})`;
-                } else if (window.telegramIdToNameMap && window.telegramIdToNameMap[userId]) {
-                    displayName = `${window.telegramIdToNameMap[userId]} (${userId})`;
+                if (partner.display && partner.display.trim().length > 0) {
+                    displayName = partner.display;
                 } else {
-                    displayName = userId;
+                    const hasName = partner.name && partner.name.trim().length > 0;
+                    if (hasName) {
+                        displayName = `${partner.name} (${userId})`;
+                    } else if (window.telegramIdToNameMap && window.telegramIdToNameMap[userId]) {
+                        displayName = `${window.telegramIdToNameMap[userId]} (${userId})`;
+                    } else {
+                        displayName = userId;
+                    }
+                    if (partner.username) {
+                        displayName += ` [@${partner.username}]`;
+                    }
                 }
-                
-                // Add Telegram username if available
-                if (partner.username) {
-                    displayName += ` [@${partner.username}]`;
-                }
-                
                 // Add asterisk if partner has content for current subtab
                 if (partnerContentChecks[userId]) {
                     displayName += ' *';
@@ -1285,6 +1285,8 @@ let showTranslation = false;
 let conversationAgentTimezone = null;
 let conversationTaskLogs = [];
 let conversationSummaries = [];
+let conversationAgentDisplay = null;
+let conversationPartnerDisplay = null;
 let showLogInterleave = false;
 
 function loadConversation() {
@@ -1324,9 +1326,11 @@ function loadConversation() {
             conversationSummaries = summaries;  // Store summaries globally
             // Preserve showTranslation state instead of resetting it
             // showTranslation state is preserved
-            
-            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds);
-            
+            conversationAgentDisplay = data.agent_display || null;
+            conversationPartnerDisplay = data.partner_display || null;
+
+            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds, conversationAgentDisplay, conversationPartnerDisplay);
+
             // Restore checkbox state after rendering if it was checked
             const checkbox = document.getElementById('translation-toggle');
             if (checkbox) {
@@ -1429,10 +1433,21 @@ function refreshConversation() {
     });
 }
 
-function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set()) {
+function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set(), agentDisplay = null, partnerDisplay = null) {
     const container = document.getElementById('conversation-container');
     let html = '';
-    
+    // Use passed display strings or stored from last full load (for re-renders)
+    const ad = agentDisplay != null ? agentDisplay : conversationAgentDisplay;
+    const pd = partnerDisplay != null ? partnerDisplay : conversationPartnerDisplay;
+
+    // Header: Agent: Name (id) [@username] / conversation with Name (id) [@username]
+    if (ad && pd) {
+        html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">';
+        html += '<div style="font-size: 16px; font-weight: 600;">Agent: ' + escapeHtml(ad) + '</div>';
+        html += '<div style="font-size: 16px; font-weight: 600; margin-top: 4px;">conversation with ' + escapeHtml(pd) + '</div>';
+        html += '</div>';
+    }
+
     // Display blocked status banner at the top if conversation is blocked
     if (isBlocked) {
         html += '<div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">';

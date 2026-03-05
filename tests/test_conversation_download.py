@@ -67,8 +67,10 @@ def test_generate_standalone_html_embeds_lottie_json_when_lottie_data_map_provid
     ]
 
     html = _generate_standalone_html(
-        agent_name="TestAgent",
-        user_id="6904083970",
+        agent_display_plain="TestAgent (123)",
+        agent_display_html="TestAgent (123)",
+        partner_display_plain="Mila Quinn (6904083970) [@mila]",
+        partner_display_html="Mila Quinn (6904083970) [<a href=\"https://t.me/mila\">@mila</a>]",
         messages=messages,
         summaries=[],
         translations={},
@@ -81,6 +83,13 @@ def test_generate_standalone_html_embeds_lottie_json_when_lottie_data_map_provid
         show_translations=False,
         show_task_logs=False,
     )
+
+    # Print header: two lines (Agent: ... / conversation with ...)
+    assert "<h1>Agent: " in html
+    assert "conversation with " in html
+    assert "Mila Quinn (6904083970)" in html
+    # Title uses plain display text
+    assert "Conversation: Agent TestAgent (123) with Mila Quinn (6904083970) [@mila]" in html
 
     # Should embed Lottie JSON via lottie-data (works with file://)
     assert 'id="lottie-data"' in html
@@ -173,8 +182,10 @@ def test_generate_standalone_html_deduplicates_lottie_json_for_repeated_stickers
     ]
 
     html = _generate_standalone_html(
-        agent_name="Test",
-        user_id="123",
+        agent_display_plain="Test (1)",
+        agent_display_html="Test (1)",
+        partner_display_plain="User (123)",
+        partner_display_html="User (123)",
         messages=messages,
         summaries=[],
         translations={},
@@ -227,8 +238,10 @@ def test_generate_standalone_html_shows_error_when_lottie_data_missing(tmp_path)
 
     # Empty lottie_data_map - sticker not in map (e.g. TGS file was missing when building)
     html = _generate_standalone_html(
-        agent_name="Test",
-        user_id="123",
+        agent_display_plain="Test (1)",
+        agent_display_html="Test (1)",
+        partner_display_plain="User (123)",
+        partner_display_html="User (123)",
         messages=messages,
         summaries=[],
         translations={},

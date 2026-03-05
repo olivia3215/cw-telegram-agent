@@ -24,7 +24,14 @@ from memory_storage import load_property_entries
 from media.media_injector import format_message_for_prompt
 from media.media_source import get_default_media_source_chain
 from utils.formatting import format_log_prefix_resolved
-from utils.telegram import can_agent_send_to_channel, get_channel_name, is_dm, is_user_blocking_agent
+from utils.telegram import (
+    can_agent_send_to_channel,
+    format_channel_display,
+    get_channel_name,
+    is_dm,
+    is_user_blocking_agent,
+    sender_entity_to_partner_cache_entry,
+)
 from telethon.tl.functions.messages import GetPeerDialogsRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.functions.stories import GetStoriesByIDRequest  # pyright: ignore[reportMissingImports]
 from telethon.tl.types import User  # pyright: ignore[reportMissingImports]
@@ -586,6 +593,7 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                     iter_kwargs["min_id"] = highest_summarized_id
 
                 messages = []
+                senders_to_cache = {}  # collect senders from message.sender to populate partner recency cache
                 total_fetched = 0
                 async for message in client.iter_messages(entity, **iter_kwargs):
                     total_fetched += 1
@@ -642,9 +650,22 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                             except Exception as e:
                                 logger.debug(f"Failed to cache sender entity {sender_id}: {e}")
 
+                    # Chat/Channel as sender (e.g. channel post in a group)
+                    elif sender_entity and hasattr(sender_entity, "title") and getattr(sender_entity, "title", None):
+                        if not sender_id:
+                            sender_id = getattr(sender_entity, "id", None)
+                        if sender_id:
+                            sender_name = sender_entity.title
+
                     # Fallback: try message.sender.id if we don't have sender_id yet
                     if not sender_id and sender_entity:
                         sender_id = getattr(sender_entity, "id", None)
+
+                    # Populate partner recency cache from sender entity (no extra resolve)
+                    if sender_entity and sender_id and isinstance(sender_id, int):
+                        entry = sender_entity_to_partner_cache_entry(sender_entity, sender_id)
+                        if entry:
+                            senders_to_cache[sender_id] = entry
 
                     is_from_agent = sender_id == agent.agent_id
 
@@ -1057,6 +1078,9 @@ def api_get_conversation(agent_config_name: str, user_id: str):
                         "reactions": reactions_str,
                         "is_read_by_partner": is_read_by_partner,  # True if read, False if unread, None if unknown/not applicable
                     })
+                if senders_to_cache:
+                    from admin_console.agents.partners import cache_partner_display_only
+                    cache_partner_display_only(agent_config_name, list(senders_to_cache.values()))
                 logger.debug(
                     f"{log_prefix} Fetched {total_fetched} unsummarized messages for channel {channel_id} "
                     f"(highest_summarized_id={highest_summarized_id}, using min_id filter)"
@@ -1101,13 +1125,36 @@ def api_get_conversation(agent_config_name: str, user_id: str):
             from admin_console.agents.conversation_download import filter_task_logs_for_conversation
             filtered_task_logs = filter_task_logs_for_conversation(messages, task_logs)
 
+            # Display strings for live view header: "Name (id) [@username]"
+            agent_display = None
+            partner_display = None
+            from admin_console.agents.partners import get_cached_partner_display_info, is_partner_unresolvable
+            if is_partner_unresolvable(agent_config_name, str(channel_id)):
+                partner_display = str(channel_id)
+            else:
+                info = get_cached_partner_display_info(agent_config_name, str(channel_id))
+                if info:
+                    name = (info.get("name") or "Unknown").strip()
+                    uname = (info.get("username") or "").strip().lstrip("@")
+                    partner_display = f"{name} ({channel_id})" + (f" [@{uname}]" if uname else "")
+            try:
+                async def _get_displays():
+                    ad = await format_channel_display(agent, getattr(agent, "agent_id", None), format_username_html=False)
+                    pd = partner_display if partner_display is not None else await format_channel_display(agent, channel_id, format_username_html=False)
+                    return (ad, pd)
+                agent_display, partner_display = agent.execute(_get_displays(), timeout=15.0)
+            except Exception as e:
+                logger.debug(f"Could not get display strings for conversation header: {e}")
+
             return jsonify({
                 "messages": messages,
                 "summaries": summaries,
                 "agent_timezone": agent_tz_id,
                 "is_blocked": is_blocked,
                 "task_logs": filtered_task_logs,
-                "saved_media_unique_ids": saved_media_unique_ids
+                "saved_media_unique_ids": saved_media_unique_ids,
+                "agent_display": agent_display,
+                "partner_display": partner_display,
             })
         except RuntimeError as e:
             error_msg = str(e).lower()
