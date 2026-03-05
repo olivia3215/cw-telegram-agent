@@ -16,6 +16,7 @@ from telethon.tl.types import User, Chat, Channel  # pyright: ignore[reportMissi
 from admin_console.helpers import get_agent_by_name
 from config import STATE_DIRECTORY, TELEGRAM_SYSTEM_USER_ID
 from utils import normalize_peer_id
+from utils.telegram import _entity_display_name, format_username
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,17 @@ logger = logging.getLogger(__name__)
 # partner_dict contains: {"user_id": str, "name": str|None, "date": datetime|None}
 # The "date" field is the recency data (most recent message date from dialog.date)
 _partner_recency_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
+
+# Unresolvable partners: {(agent_config_name, user_id): timestamp} — avoid re-resolving on every request
+# TTL 10 minutes so we retry occasionally (e.g. after network glitch or if user becomes reachable)
+_UNRESOLVABLE_PARTNER_TTL_SECONDS = 600
+_unresolvable_partner_cache: dict[tuple[str, str], float] = {}
+
+# Display-only cache: {(agent_config_name, user_id): (timestamp, ttl_seconds, {name, username})}
+# Populated from message senders when iterating conversations. Used only for display lookups;
+# NOT used to build the conversation-partner dropdown (so group participants don't appear there).
+_PARTNER_DISPLAY_TTL_SECONDS = 600
+_partner_display_cache: dict[tuple[str, str], tuple[float, float, dict]] = {}
 
 
 def get_partner_recency_cache_key(agent_config_name: str, user_id: str) -> tuple[str, str]:
@@ -61,6 +73,53 @@ def get_cached_partner_recency(agent_config_name: str) -> dict[str, dict] | None
                 del _partner_recency_cache[(cached_agent_config_name, user_id)]
     
     return cached_partners if cached_partners else None
+
+
+def get_cached_partner_display_info(agent_config_name: str, user_id: str) -> dict | None:
+    """Return name and username for a partner if they are in the recency or display-only cache (and valid).
+    Use to build display strings without calling format_channel_display.
+    Returns None if not cached or expired. Dict has "name" and "username" (username without @).
+    """
+    uid = str(user_id)
+    # 1. Partner recency cache (dialogs + resolved only — used for dropdown)
+    cached = get_cached_partner_recency(agent_config_name)
+    if cached and uid in cached:
+        p = cached[uid]
+        return {"name": p.get("name"), "username": p.get("username")}
+    # 2. Display-only cache (e.g. senders seen in message iteration — not used for dropdown)
+    key = get_partner_recency_cache_key(agent_config_name, uid)
+    now = time.time()
+    if key in _partner_display_cache:
+        cached_time, ttl_seconds, data = _partner_display_cache[key]
+        if (now - cached_time) < ttl_seconds:
+            return {"name": data.get("name"), "username": data.get("username")}
+        del _partner_display_cache[key]
+    return None
+
+
+def cache_partner_display_only(agent_config_name: str, partners: list[dict]):
+    """Cache name/username for display only. Does NOT add partners to the dropdown list.
+    Use for senders seen when iterating messages (e.g. group participants).
+    """
+    now = time.time()
+    for partner in partners:
+        user_id = partner.get("user_id")
+        if not user_id:
+            continue
+        key = get_partner_recency_cache_key(agent_config_name, user_id)
+        ttl_seconds = _PARTNER_DISPLAY_TTL_SECONDS + random.uniform(0, 60)
+        _partner_display_cache[key] = (now, ttl_seconds, partner)
+
+
+def is_partner_unresolvable(agent_config_name: str, user_id: str) -> bool:
+    """Return True if this partner was previously unresolved and TTL has not expired."""
+    key = get_partner_recency_cache_key(agent_config_name, str(user_id))
+    if key not in _unresolvable_partner_cache:
+        return False
+    if (time.time() - _unresolvable_partner_cache[key]) >= _UNRESOLVABLE_PARTNER_TTL_SECONDS:
+        del _unresolvable_partner_cache[key]
+        return False
+    return True
 
 
 def cache_partner_recency(agent_config_name: str, partners: list[dict]):
@@ -377,6 +436,87 @@ def register_partner_routes(agents_bp: Blueprint):
                     "username": partner["username"],
                     "date": date_str
                 })
+
+            # Build display from cached/fetched name and username when available (no entity lookup)
+            for p in partner_list:
+                name = p.get("name")
+                uid = p["user_id"]
+                uname = p.get("username")
+                if name or uname:
+                    name_part = (name or "Unknown").strip()
+                    uname_show = (uname or "").strip().lstrip("@")
+                    p["display"] = f"{name_part} ({uid})" + (f" [@{uname_show}]" if uname_show else "")
+
+            # Skip partners we've already tried and couldn't resolve (avoid re-hitting API every time)
+            now = time.time()
+            for key in list(_unresolvable_partner_cache.keys()):
+                if key[0] == agent_config_name and (now - _unresolvable_partner_cache[key]) >= _UNRESOLVABLE_PARTNER_TTL_SECONDS:
+                    del _unresolvable_partner_cache[key]
+            for p in partner_list:
+                if "display" in p:
+                    continue
+                key = get_partner_recency_cache_key(agent_config_name, p["user_id"])
+                if key in _unresolvable_partner_cache:
+                    if (now - _unresolvable_partner_cache[key]) < _UNRESOLVABLE_PARTNER_TTL_SECONDS:
+                        p["display"] = p["user_id"]
+                    else:
+                        del _unresolvable_partner_cache[key]
+
+            # Only resolve display for partners without name/username (e.g. notes-only); then cache them
+            need_resolve = [p for p in partner_list if "display" not in p]
+            if need_resolve and agent.client and agent.client.is_connected():
+                try:
+                    client_loop = agent._get_client_loop()
+                    if client_loop and client_loop.is_running():
+                        async def _add_displays():
+                            result = {}
+                            to_cache = []
+                            failed_ids = []
+                            for p in need_resolve:
+                                uid = p["user_id"]
+                                try:
+                                    tid = int(uid)
+                                except (ValueError, TypeError):
+                                    result[uid] = uid
+                                    failed_ids.append(uid)
+                                    continue
+                                try:
+                                    entity = await agent.get_cached_entity(tid)
+                                    if not entity:
+                                        result[uid] = str(tid)
+                                        failed_ids.append(uid)
+                                        continue
+                                    name = _entity_display_name(entity, tid)
+                                    username_at = format_username(entity)
+                                    username_bare = (username_at or "").strip().lstrip("@") or None
+                                    display = f"{name} ({tid})" + (f" [{username_at}]" if username_at else "")
+                                    result[uid] = display
+                                    to_cache.append({
+                                        "user_id": uid,
+                                        "name": name,
+                                        "username": username_bare,
+                                        "date": None,
+                                    })
+                                except Exception as e:
+                                    logger.debug(f"Could not resolve partner {uid}: {e}")
+                                    result[uid] = uid
+                                    failed_ids.append(uid)
+                            return (result, to_cache, failed_ids)
+                        display_map, resolved_to_cache, failed_ids = agent.execute(_add_displays(), timeout=60.0)
+                        for p in need_resolve:
+                            p["display"] = display_map.get(p["user_id"], p["user_id"])
+                        if resolved_to_cache:
+                            cache_partner_recency(agent_config_name, resolved_to_cache)
+                        for uid in failed_ids:
+                            _unresolvable_partner_cache[get_partner_recency_cache_key(agent_config_name, uid)] = time.time()
+                except Exception as e:
+                    logger.debug(f"Could not add display strings for partners: {e}")
+                    for p in need_resolve:
+                        p["display"] = p.get("user_id")
+
+            for p in partner_list:
+                if "display" not in p:
+                    p["display"] = p.get("name") or p["user_id"]
 
             return jsonify({"partners": partner_list})
         except Exception as e:

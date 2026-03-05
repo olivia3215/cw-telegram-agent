@@ -479,23 +479,23 @@ async function loadConversationPartners(agentName, subtab, forceRefresh = false)
                 const option = document.createElement('option');
                 const userId = partner.user_id || partner;
                 option.value = userId;
-                // Display format: "Name (user_id) [@username]" or "Name (user_id)" or just "user_id"
-                // Check for both null/undefined and empty string
-                const hasName = partner.name && partner.name.trim().length > 0;
+                // Use backend-provided display (Name (id) [@username]) when available; otherwise build from name/username
                 let displayName;
-                if (hasName) {
-                    displayName = `${partner.name} (${userId})`;
-                } else if (window.telegramIdToNameMap && window.telegramIdToNameMap[userId]) {
-                    displayName = `${window.telegramIdToNameMap[userId]} (${userId})`;
+                if (partner.display && partner.display.trim().length > 0) {
+                    displayName = partner.display;
                 } else {
-                    displayName = userId;
+                    const hasName = partner.name && partner.name.trim().length > 0;
+                    if (hasName) {
+                        displayName = `${partner.name} (${userId})`;
+                    } else if (window.telegramIdToNameMap && window.telegramIdToNameMap[userId]) {
+                        displayName = `${window.telegramIdToNameMap[userId]} (${userId})`;
+                    } else {
+                        displayName = userId;
+                    }
+                    if (partner.username) {
+                        displayName += ` [@${partner.username}]`;
+                    }
                 }
-                
-                // Add Telegram username if available
-                if (partner.username) {
-                    displayName += ` [@${partner.username}]`;
-                }
-                
                 // Add asterisk if partner has content for current subtab
                 if (partnerContentChecks[userId]) {
                     displayName += ' *';
@@ -1285,6 +1285,8 @@ let showTranslation = false;
 let conversationAgentTimezone = null;
 let conversationTaskLogs = [];
 let conversationSummaries = [];
+let conversationAgentDisplay = null;
+let conversationPartnerDisplay = null;
 let showLogInterleave = false;
 
 function loadConversation() {
@@ -1324,9 +1326,11 @@ function loadConversation() {
             conversationSummaries = summaries;  // Store summaries globally
             // Preserve showTranslation state instead of resetting it
             // showTranslation state is preserved
-            
-            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds);
-            
+            conversationAgentDisplay = data.agent_display || null;
+            conversationPartnerDisplay = data.partner_display || null;
+
+            renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked, savedMediaUniqueIds, conversationAgentDisplay, conversationPartnerDisplay);
+
             // Restore checkbox state after rendering if it was checked
             const checkbox = document.getElementById('translation-toggle');
             if (checkbox) {
@@ -1431,9 +1435,9 @@ function refreshConversation() {
 
 /**
  * Open a print-only HTML view of the current conversation in a new tab.
- * Uses conversationSummaries and conversationMessages (and conversationAgentTimezone) from the current view.
+ * Uses the backend print API: full conversation (up to 2500 messages), optional task logs and translations, media served live.
  */
-function conversationPrint() {
+async function conversationPrint() {
     const agentSelect = document.getElementById('conversations-agent-select');
     const partnerSelect = document.getElementById('conversations-partner-select');
     const userIdInput = document.getElementById('conversations-user-id');
@@ -1443,88 +1447,56 @@ function conversationPrint() {
         alert('Please select an agent and a conversation partner first.');
         return;
     }
-    const agent = (window.agentsList || []).find(function(a) { return a.config_name === agentName; });
-    const displayName = (agent && agent.name) ? agent.name : agentName;
-    const summaries = conversationSummaries || [];
-    const messages = conversationMessages || [];
-    const agentTimezone = conversationAgentTimezone || null;
+    const translationCheckbox = document.getElementById('translation-toggle');
+    const taskLogCheckbox = document.getElementById('log-interleave-toggle');
+    const includeTranslations = translationCheckbox ? translationCheckbox.checked : false;
+    const includeTaskLogs = taskLogCheckbox ? taskLogCheckbox.checked : false;
 
-    function fmtTs(ts) {
-        if (!ts) return '—';
-        return formatTimestamp(ts, agentTimezone);
-    }
-
-    let bodyHtml = '';
-    if (summaries.length > 0) {
-        bodyHtml += '<h2 style="font-size: 1.1rem; margin: 1rem 0 0.5rem 0;">Summaries</h2>';
-        summaries.forEach(function(s) {
-            bodyHtml += '<div class="conv-print-summary">';
-            bodyHtml += '<div class="conv-print-meta">ID: ' + escapeHtml(s.id || '') + ' · ' + escapeHtml(s.created || '') + ' · Messages ' + escapeHtml(String(s.min_message_id || '')) + '–' + escapeHtml(String(s.max_message_id || '')) + '</div>';
-            bodyHtml += '<div class="conv-print-content">' + escapeHtml(s.content || '').replace(/\n/g, '<br>') + '</div>';
-            bodyHtml += '</div>';
-        });
-    }
-    bodyHtml += '<h2 style="font-size: 1.1rem; margin: 1.25rem 0 0.5rem 0;">Messages</h2>';
-    if (messages.length === 0) {
-        bodyHtml += '<p class="conv-print-empty">No messages in this view.</p>';
-    } else {
-        messages.forEach(function(msg) {
-            let textContent = '';
-            if (msg.parts && Array.isArray(msg.parts)) {
-                msg.parts.forEach(function(part) {
-                    if (part.kind === 'text' && part.text) {
-                        textContent += part.text;
-                    } else if (part.kind === 'media') {
-                        const kind = part.media_kind || 'media';
-                        textContent += ' [' + escapeHtml(kind) + ']';
-                    }
-                });
+    try {
+        const response = await fetchWithAuth(
+            `${API_BASE}/agents/${encodeURIComponent(agentName)}/conversation/${encodeURIComponent(userId)}/print`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    include_translations: includeTranslations,
+                    include_task_logs: includeTaskLogs
+                })
             }
-            if (!textContent && msg.text) {
-                textContent = msg.text;
-            }
-            if (!textContent) {
-                textContent = '[No content]';
-            }
-            const sender = msg.is_from_agent ? 'Agent' : (msg.sender_name ? escapeHtml(msg.sender_name) : 'User');
-            bodyHtml += '<div class="conv-print-msg">';
-            bodyHtml += '<div class="conv-print-meta">' + sender + ' · ' + fmtTs(msg.timestamp) + ' · ID: ' + escapeHtml(String(msg.id)) + '</div>';
-            bodyHtml += '<div class="conv-print-content">' + escapeHtml(String(textContent)).replace(/\n/g, '<br>') + '</div>';
-            bodyHtml += '</div>';
-        });
+        );
+        if (!response.ok) {
+            const data = await response.json().catch(function() { return {}; });
+            alert(data.error || 'Failed to load conversation for printing');
+            return;
+        }
+        const html = await response.text();
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, '_blank');
+        if (w) w.focus();
+        else location.href = url;
+        setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+    } catch (e) {
+        if (e && e.message === 'unauthorized') return;
+        alert('Error: ' + (e && e.message ? e.message : 'Failed to load conversation for printing'));
     }
-
-    const title = 'Conversation — ' + escapeHtml(displayName) + ' / ' + escapeHtml(userId);
-    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + title + '</title><style>' +
-        'body { font-family: system-ui, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 16px; color: #222; }' +
-        'h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }' +
-        '.conv-print-meta { font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }' +
-        '.conv-print-content { white-space: pre-wrap; word-wrap: break-word; }' +
-        '.conv-print-summary, .conv-print-msg { margin-bottom: 1rem; padding: 10px; border-left: 4px solid #ddd; background: #f9f9f9; }' +
-        '.conv-print-msg { border-left-color: #2196f3; }' +
-        '.conv-print-empty { color: #666; font-style: italic; }' +
-        '.no-print { margin-bottom: 1rem; }' +
-        '@media print { body { margin: 0; padding: 12px; } .no-print { display: none; } }' +
-        '</style></head><body>' +
-        '<p class="no-print"><a href="#" id="conv-save-html" style="color: #007bff; text-decoration: underline;">Save as HTML</a></p>' +
-        '<h1>' + title + '</h1>' +
-        bodyHtml +
-        '<script>' +
-        '(function(){ var link = document.getElementById("conv-save-html"); if (!link) return; link.onclick = function(e) { e.preventDefault(); var h = document.documentElement.outerHTML; var blob = new Blob([h], { type: "text/html;charset=utf-8" }); var url = URL.createObjectURL(blob); var a = document.createElement("a"); a.href = url; a.download = "conversation.html"; a.click(); URL.revokeObjectURL(url); }; })();' +
-        '</script></body></html>';
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, '_blank');
-    if (w) w.focus();
-    else location.href = url;
-    setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
 }
 
-function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set()) {
+function renderConversation(agentName, userId, summaries, messages, agentTimezone, isBlocked = false, savedMediaUniqueIds = new Set(), agentDisplay = null, partnerDisplay = null) {
     const container = document.getElementById('conversation-container');
     let html = '';
-    
+    // Use passed display strings or stored from last full load (for re-renders)
+    const ad = agentDisplay != null ? agentDisplay : conversationAgentDisplay;
+    const pd = partnerDisplay != null ? partnerDisplay : conversationPartnerDisplay;
+
+    // Header: Agent: Name (id) [@username] / conversation with Name (id) [@username]
+    if (ad && pd) {
+        html += '<div style="margin-bottom: 16px; padding: 12px 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">';
+        html += '<div style="font-size: 16px; font-weight: 600;">Agent: ' + escapeHtml(ad) + '</div>';
+        html += '<div style="font-size: 16px; font-weight: 600; margin-top: 4px;">conversation with ' + escapeHtml(pd) + '</div>';
+        html += '</div>';
+    }
+
     // Display blocked status banner at the top if conversation is blocked
     if (isBlocked) {
         html += '<div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">';
