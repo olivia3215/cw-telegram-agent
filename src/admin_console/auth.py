@@ -265,6 +265,13 @@ def api_auth_verify():
         if not email:
             return jsonify({"error": "Login required."}), 401
 
+        from db import administrators
+
+        roles = administrators.get_roles_for_email(email)
+        if "superuser" in (roles or []):
+            logger.info("Auth verify: %s already superuser", email)
+            return jsonify({"success": True, "already_superuser": True, "reload": True})
+
         if not ADMIN_CONSOLE_TOTP_SECRET:
             return (
                 jsonify(
@@ -274,13 +281,6 @@ def api_auth_verify():
                 ),
                 503,
             )
-
-        from db import administrators
-
-        roles = administrators.get_roles_for_email(email)
-        if "superuser" in (roles or []):
-            logger.info("Auth verify: %s already superuser", email)
-            return jsonify({"success": True, "already_superuser": True, "reload": True})
 
         payload = request.get_json(silent=True) or {}
         code = str(payload.get("code", "")).strip()

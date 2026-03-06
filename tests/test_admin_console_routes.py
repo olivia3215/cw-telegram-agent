@@ -1024,8 +1024,10 @@ def test_verify_503_when_totp_not_configured(monkeypatch):
     assert "TOTP" in data["error"]
 
 
-def test_verify_already_superuser_returns_reload():
-    """Phase C: When session user is already superuser, verify returns already_superuser and reload."""
+def test_verify_already_superuser_returns_reload(monkeypatch):
+    """Phase C: When session user is already superuser, verify returns already_superuser and reload.
+    With TOTP unset so this test is env-independent and would catch wrong check order (503 vs 200)."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", None)
     client = _make_client()  # mock_superuser_for_session gives superuser
     response = client.post(
         "/admin/api/auth/verify",
