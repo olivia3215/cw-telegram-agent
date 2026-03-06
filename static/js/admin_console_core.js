@@ -342,7 +342,7 @@ function fetchDirectories(selectElement) {
     fetchWithAuth(`${API_BASE}/directories`)
         .then((response) => response.json())
         .then((directories) => {
-            directories.forEach((dir) => {
+            (directories || []).forEach((dir) => {
                 selectElement.appendChild(createOption(dir.path, dir.name));
             });
         })
@@ -1496,7 +1496,7 @@ async function loadAllDestinationsForMove(selectId, currentConfigDir, currentAge
         select.innerHTML = '<option value="">Move to...</option>';
         
         // Add global config directories
-        configDirsData.directories.forEach(dir => {
+        (configDirsData.directories || []).forEach(dir => {
             const option = document.createElement('option');
             option.value = `global|${dir.path}`;
             option.textContent = `Global: ${dir.display_path}`;
@@ -1510,7 +1510,7 @@ async function loadAllDestinationsForMove(selectId, currentConfigDir, currentAge
         });
         
         // Add agents
-        agentsData.agents.forEach(agent => {
+        (agentsData.agents || []).forEach(agent => {
             const option = document.createElement('option');
             const agentConfigDir = agent.config_directory || '';
             option.value = `agent|${agentConfigDir}|${agent.config_name}`;
@@ -1543,7 +1543,7 @@ async function loadConfigDirectoriesForMove(selectId) {
         if (!select) return;
         
         select.innerHTML = '<option value="">Select config directory...</option>';
-        data.directories.forEach(dir => {
+        (data.directories || []).forEach(dir => {
             select.appendChild(createOption(dir.path, dir.display_path));
         });
     } catch (error) {
@@ -1560,7 +1560,7 @@ async function loadAgentsForMove(selectId) {
         if (!select) return;
         
         select.innerHTML = '<option value="">Select agent...</option>';
-        data.agents.forEach(agent => {
+        (data.agents || []).forEach(agent => {
             select.appendChild(createOption(agent.config_name, agent.name));
         });
     } catch (error) {

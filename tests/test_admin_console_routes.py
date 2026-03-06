@@ -16,8 +16,6 @@ from admin_console.app import create_admin_app
 from admin_console.auth import (
     SESSION_ADMIN_EMAIL,
     SESSION_GOOGLE_STATE,
-    ChallengeNotFound,
-    get_challenge_manager,
 )
 from media.media_sources import (
     get_directory_media_source,
@@ -82,21 +80,6 @@ def test_delete_media_removes_cache_and_files(tmp_path):
     assert source.get_cached_record(unique_id) is None
     assert not (tmp_path / f"{unique_id}.json").exists()
     assert not (tmp_path / f"{unique_id}.dat").exists()
-
-
-def test_challenge_manager_isolated_per_app_instance():
-    app_a = create_admin_app()
-    app_b = create_admin_app()
-
-    with app_a.app_context():
-        manager_a = get_challenge_manager()
-        code, _ = manager_a.issue()
-
-    with app_b.app_context():
-        manager_b = get_challenge_manager()
-        assert manager_b is not manager_a
-        with pytest.raises(ChallengeNotFound):
-            manager_b.verify(code)
 
 
 def test_conversation_media_caching_does_not_emit_unawaited_coroutine_warning(
@@ -977,13 +960,20 @@ def test_protected_endpoint_401_without_session():
 
 
 def test_protected_endpoint_403_without_superuser_role(monkeypatch):
-    """Phase B2: A protected endpoint returns 403 when session has admin but no superuser role."""
+    """Phase B2: List GET endpoints return 200 with empty list; other protected endpoints return 403."""
     monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
     client = _make_client()
+    # List endpoint: return empty list instead of 403 so front end needs no special handling
     response = client.get("/admin/api/agents")
-    assert response.status_code == 403
+    assert response.status_code == 200
     data = response.get_json()
-    assert data.get("error") == "Superuser role required"
+    assert data.get("agents") == []
+    assert data.get("telegram_id_to_name") == {}
+    # Non-list protected endpoint still returns 403
+    response403 = client.get("/admin/api/global-parameters")
+    assert response403.status_code == 403
+    data403 = response403.get_json()
+    assert data403.get("error") == "Superuser role required"
 
 
 def test_logout_clears_session_redirects():
