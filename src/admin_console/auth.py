@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, redirect, request, session  # pyright: ign
 from clock import clock
 from config import (
     ADMIN_CONSOLE_SECRET_KEY,
+    ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS,
     ADMIN_CONSOLE_TOTP_SECRET,
     ADMIN_GOOGLE_CLIENT_ID,
     ADMIN_GOOGLE_CLIENT_SECRET,
@@ -220,6 +221,22 @@ def api_logout():
     return redirect("/admin")
 
 
+@auth_bp.route("/api/auth/revoke-superuser", methods=["POST"])
+def api_auth_revoke_superuser():
+    """Revoke superuser role for the current session user (self only)."""
+    email = session.get(SESSION_ADMIN_EMAIL)
+    if not email:
+        return jsonify({"error": "Login required."}), 401
+    from db import administrators
+
+    roles = administrators.get_roles_for_email(email)
+    if "superuser" not in (roles or []):
+        return jsonify({"error": "Superuser role required to revoke it."}), 403
+    administrators.remove_role(email, "superuser")
+    logger.info("Auth revoke-superuser: %s gave up superuser", email)
+    return jsonify({"success": True})
+
+
 @auth_bp.route("/api/auth/request-code", methods=["POST"])
 def api_auth_request_code():
     """OTP via Telegram is no longer supported. Use TOTP or Google login."""
@@ -233,8 +250,7 @@ def api_auth_request_code():
     )
 
 
-# Phase C: 5-minute cooldown after last_login_attempt before TOTP can grant superuser
-TOTP_COOLDOWN_MINUTES = 5
+# Phase C: cooldown (seconds) after last_login_attempt before TOTP can grant superuser; set via CINDY_ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS
 
 
 def _parse_last_login_attempt(admin: dict | None) -> datetime | None:
@@ -288,7 +304,7 @@ def api_auth_verify():
             return jsonify({"error": "Verification code is required."}), 400
 
         now = clock.now(UTC)
-        cooldown_end = now - timedelta(minutes=TOTP_COOLDOWN_MINUTES)
+        cooldown_end = now - timedelta(seconds=ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS)
         admin = administrators.get_administrator(email)
         last_attempt = _parse_last_login_attempt(admin)
         if last_attempt is not None and last_attempt > cooldown_end:

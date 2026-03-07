@@ -49,6 +49,7 @@ const requestAccessCodeInput = document.getElementById('request-access-code');
 const requestAccessVerifyBtn = document.getElementById('request-access-verify-btn');
 const requestAccessCancelBtn = document.getElementById('request-access-cancel-btn');
 const requestAccessLink = document.getElementById('header-request-access');
+const revokeSuperuserLink = document.getElementById('header-revoke-superuser');
 const requestAccessErrorEl = document.getElementById('request-access-error');
 const headerAvatarBtn = document.getElementById('header-avatar-btn');
 const headerUserDropdown = document.getElementById('header-user-dropdown');
@@ -158,6 +159,32 @@ if (requestAccessLink) {
     requestAccessLink.addEventListener('click', (e) => {
         e.preventDefault();
         showRequestAccessModal();
+    });
+}
+if (revokeSuperuserLink) {
+    revokeSuperuserLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        hideHeaderUserDropdown();
+        try {
+            const response = await fetchWithAuth(`${API_BASE}/auth/revoke-superuser`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            });
+            const result = await responseJsonOrThrow(response);
+            if (response.ok && result.success) {
+                // Refresh auth state and update UI in place; avoid GET /admin/ which can 405 on some setups
+                const statusResponse = await fetchWithAuth(`${API_BASE}/auth/status`);
+                const statusData = await responseJsonOrThrow(statusResponse);
+                if (statusData.logged_in) {
+                    applyAuthState(statusData);
+                }
+            }
+        } catch (err) {
+            if (err && err.message !== 'unauthorized') {
+                console.error('Revoke superuser failed:', err);
+            }
+        }
     });
 }
 if (document.getElementById('header-logout')) {
@@ -564,6 +591,48 @@ async function verifyVerificationCode() {
     }
 }
 
+function applyAuthState(data) {
+    if (!data.logged_in) return;
+    const headerUser = document.getElementById('header-user');
+    const headerAvatar = document.getElementById('header-avatar');
+    const headerName = document.getElementById('header-name');
+    if (headerUser) {
+        headerUser.style.display = 'flex';
+        if (headerAvatar) {
+            if (data.avatar) {
+                headerAvatar.src = data.avatar;
+                headerAvatar.alt = data.name || data.email || '';
+            } else {
+                headerAvatar.style.display = 'none';
+            }
+        }
+        if (headerName) {
+            headerName.textContent = data.name || data.email || 'Admin';
+        }
+    }
+    const mainTabBar = document.getElementById('main-tab-bar');
+    const tabPanels = document.getElementById('tab-panels');
+    const noAccessEl = document.getElementById('console-no-access');
+    const isSuperuser = data.is_superuser === true;
+    if (mainTabBar) {
+        mainTabBar.classList.toggle('hidden', !isSuperuser);
+    }
+    if (tabPanels) {
+        tabPanels.classList.toggle('hidden', !isSuperuser);
+    }
+    if (noAccessEl) {
+        noAccessEl.classList.toggle('hidden', isSuperuser);
+    }
+    const requestAccessLink = document.getElementById('header-request-access');
+    if (requestAccessLink) {
+        requestAccessLink.style.display = isSuperuser ? 'none' : 'block';
+    }
+    const revokeSuperuserLink = document.getElementById('header-revoke-superuser');
+    if (revokeSuperuserLink) {
+        revokeSuperuserLink.style.display = isSuperuser ? 'block' : 'none';
+    }
+}
+
 function checkAuthStatus() {
     const urlParams = new URLSearchParams(window.location.search);
     const notAuthorized = urlParams.get('error') === 'not_authorized';
@@ -577,40 +646,7 @@ function checkAuthStatus() {
             if (data.logged_in) {
                 hideAuthOverlay();
                 initializeApp();
-                const headerUser = document.getElementById('header-user');
-                const headerAvatar = document.getElementById('header-avatar');
-                const headerName = document.getElementById('header-name');
-                if (headerUser) {
-                    headerUser.style.display = 'flex';
-                    if (headerAvatar) {
-                        if (data.avatar) {
-                            headerAvatar.src = data.avatar;
-                            headerAvatar.alt = data.name || data.email || '';
-                        } else {
-                            headerAvatar.style.display = 'none';
-                        }
-                    }
-                    if (headerName) {
-                        headerName.textContent = data.name || data.email || 'Admin';
-                    }
-                }
-                const mainTabBar = document.getElementById('main-tab-bar');
-                const tabPanels = document.getElementById('tab-panels');
-                const noAccessEl = document.getElementById('console-no-access');
-                const isSuperuser = data.is_superuser === true;
-                if (mainTabBar) {
-                    mainTabBar.classList.toggle('hidden', !isSuperuser);
-                }
-                if (tabPanels) {
-                    tabPanels.classList.toggle('hidden', !isSuperuser);
-                }
-                if (noAccessEl) {
-                    noAccessEl.classList.toggle('hidden', isSuperuser);
-                }
-                const requestAccessLink = document.getElementById('header-request-access');
-                if (requestAccessLink) {
-                    requestAccessLink.style.display = isSuperuser ? 'none' : 'block';
-                }
+                applyAuthState(data);
             } else {
                 showAuthOverlay(overlayMessage);
             }

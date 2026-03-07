@@ -62,6 +62,19 @@ ADMIN_CONSOLE_SECRET_KEY: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_SE
 # Admin console TOTP secret (base32) for "Request Access" / Phase C; add to authenticator app
 ADMIN_CONSOLE_TOTP_SECRET: str | None = _get_optional_str("CINDY_ADMIN_CONSOLE_TOTP_SECRET")
 
+
+def _parse_totp_cooldown_seconds() -> int:
+    """Parse CINDY_ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS; default 300 (5 minutes)."""
+    try:
+        value = int(os.environ.get("CINDY_ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS", "300"))
+        return max(0, value)
+    except ValueError:
+        return 300
+
+
+# Seconds to wait after a failed TOTP attempt before another attempt can succeed (0 = no cooldown, e.g. for testing)
+ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS: int = _parse_totp_cooldown_seconds()
+
 # Admin console Google OAuth (for "Log in via Google")
 ADMIN_GOOGLE_CLIENT_ID: str | None = _get_optional_str("CINDY_ADMIN_GOOGLE_CLIENT_ID")
 ADMIN_GOOGLE_CLIENT_SECRET: str | None = _get_optional_str("CINDY_ADMIN_GOOGLE_CLIENT_SECRET")

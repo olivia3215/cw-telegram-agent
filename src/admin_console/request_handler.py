@@ -145,6 +145,16 @@ class NoDrainWSGIRequestHandler(WSGIRequestHandler):
 
         try:
             execute(self.server.app)
+            # After POST /admin/api/auth/revoke-superuser, force connection close so the
+            # next request (GET auth/status) uses a new connection. Otherwise keep-alive
+            # can cause the next request to be misread (e.g. as POST), leading to 405.
+            path_info = environ.get("PATH_INFO") or ""
+            if (
+                status_sent is not None
+                and environ.get("REQUEST_METHOD") == "POST"
+                and "revoke-superuser" in path_info
+            ):
+                self.close_connection = True
         except _connection_dropped_errors as e:
             self.connection_dropped(e, environ)
         except Exception as e:

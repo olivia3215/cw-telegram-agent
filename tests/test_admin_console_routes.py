@@ -986,6 +986,26 @@ def test_logout_clears_session_redirects():
         assert sess.get(SESSION_ADMIN_EMAIL) is None
 
 
+def test_revoke_superuser_removes_role():
+    """POST /admin/api/auth/revoke-superuser removes superuser for current user and returns success."""
+    remove_calls = []
+
+    def capture_remove(email, role_name):
+        remove_calls.append((email, role_name))
+
+    with patch("db.administrators.remove_role", side_effect=capture_remove):
+        client = _make_client()
+        response = client.post(
+            "/admin/api/auth/revoke-superuser",
+            json={},
+            content_type="application/json",
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("success") is True
+    assert remove_calls == [("test@example.com", "superuser")]
+
+
 # --- Phase C: TOTP Request Access ---
 
 
