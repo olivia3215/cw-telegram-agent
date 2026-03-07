@@ -16,8 +16,6 @@ from admin_console.app import create_admin_app
 from admin_console.auth import (
     SESSION_ADMIN_EMAIL,
     SESSION_GOOGLE_STATE,
-    ChallengeNotFound,
-    get_challenge_manager,
 )
 from media.media_sources import (
     get_directory_media_source,
@@ -33,7 +31,6 @@ def _make_client():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess[SESSION_ADMIN_EMAIL] = "test@example.com"
-        sess["admin_console_verified"] = True  # Phase C: TOTP verified
     return client
 
 
@@ -83,21 +80,6 @@ def test_delete_media_removes_cache_and_files(tmp_path):
     assert source.get_cached_record(unique_id) is None
     assert not (tmp_path / f"{unique_id}.json").exists()
     assert not (tmp_path / f"{unique_id}.dat").exists()
-
-
-def test_challenge_manager_isolated_per_app_instance():
-    app_a = create_admin_app()
-    app_b = create_admin_app()
-
-    with app_a.app_context():
-        manager_a = get_challenge_manager()
-        code, _ = manager_a.issue()
-
-    with app_b.app_context():
-        manager_b = get_challenge_manager()
-        assert manager_b is not manager_a
-        with pytest.raises(ChallengeNotFound):
-            manager_b.verify(code)
 
 
 def test_conversation_media_caching_does_not_emit_unawaited_coroutine_warning(
@@ -978,13 +960,20 @@ def test_protected_endpoint_401_without_session():
 
 
 def test_protected_endpoint_403_without_superuser_role(monkeypatch):
-    """Phase B2: A protected endpoint returns 403 when session has admin but no superuser role."""
+    """Phase B2: List GET endpoints return 200 with empty list; other protected endpoints return 403."""
     monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
     client = _make_client()
+    # List endpoint: return empty list instead of 403 so front end needs no special handling
     response = client.get("/admin/api/agents")
-    assert response.status_code == 403
+    assert response.status_code == 200
     data = response.get_json()
-    assert data.get("error") == "Superuser role required"
+    assert data.get("agents") == []
+    assert data.get("telegram_id_to_name") == {}
+    # Non-list protected endpoint still returns 403
+    response403 = client.get("/admin/api/global-parameters")
+    assert response403.status_code == 403
+    data403 = response403.get_json()
+    assert data403.get("error") == "Superuser role required"
 
 
 def test_logout_clears_session_redirects():
@@ -995,4 +984,186 @@ def test_logout_clears_session_redirects():
     assert response.location.endswith("/admin")
     with client.session_transaction() as sess:
         assert sess.get(SESSION_ADMIN_EMAIL) is None
+
+
+def test_revoke_superuser_removes_role():
+    """POST /admin/api/auth/revoke-superuser removes superuser for current user and returns success."""
+    remove_calls = []
+
+    def capture_remove(email, role_name):
+        remove_calls.append((email, role_name))
+
+    with patch("db.administrators.remove_role", side_effect=capture_remove):
+        client = _make_client()
+        response = client.post(
+            "/admin/api/auth/revoke-superuser",
+            json={},
+            content_type="application/json",
+        )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("success") is True
+    assert remove_calls == [("test@example.com", "superuser")]
+
+
+# --- Phase C: TOTP Request Access ---
+
+
+def test_verify_401_without_session():
+    """Phase C: POST /admin/api/auth/verify returns 401 when not logged in."""
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": "123456"},
+        content_type="application/json",
+    )
+    assert response.status_code == 401
+    data = response.get_json()
+    assert "error" in data
+
+
+def test_verify_503_when_totp_not_configured(monkeypatch):
+    """Phase C: When TOTP secret is not set, verify returns 503."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", None)
+    monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_ADMIN_EMAIL] = "user@example.com"
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": "123456"},
+        content_type="application/json",
+    )
+    assert response.status_code == 503
+    data = response.get_json()
+    assert "error" in data
+    assert "TOTP" in data["error"]
+
+
+def test_verify_already_superuser_returns_reload(monkeypatch):
+    """Phase C: When session user is already superuser, verify returns already_superuser and reload.
+    With TOTP unset so this test is env-independent and would catch wrong check order (503 vs 200)."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", None)
+    client = _make_client()  # mock_superuser_for_session gives superuser
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": "000000"},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("already_superuser") is True
+    assert data.get("reload") is True
+
+
+def test_verify_cooldown_silent_reload(monkeypatch):
+    """Phase C: When last_login_attempt < 5 min ago, verify updates it and returns silent reload."""
+    import pyotp
+    from datetime import UTC, datetime, timedelta
+
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+    monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
+    recent = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    monkeypatch.setattr(
+        "db.administrators.get_administrator",
+        lambda email: {"email": email, "name": None, "avatar": None, "last_login_attempt": recent},
+    )
+    update_calls = []
+
+    def capture_update(email):
+        update_calls.append(email)
+
+    monkeypatch.setattr("db.administrators.update_last_login_attempt", capture_update)
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_ADMIN_EMAIL] = "user@example.com"
+    current_code = pyotp.TOTP("JBSWY3DPEHPK3PXP").now()
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": current_code},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("success") is False
+    assert data.get("reload") is True
+    assert "error" not in data
+    assert len(update_calls) == 1
+    assert update_calls[0] == "user@example.com"
+
+
+def test_verify_wrong_totp_silent_reload(monkeypatch):
+    """Phase C: Wrong TOTP updates last_login_attempt and returns silent reload."""
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+    monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
+    monkeypatch.setattr(
+        "db.administrators.get_administrator",
+        lambda email: {"email": email, "name": None, "avatar": None, "last_login_attempt": None},
+    )
+    update_calls = []
+
+    def capture_update(email):
+        update_calls.append(email)
+
+    monkeypatch.setattr("db.administrators.update_last_login_attempt", capture_update)
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_ADMIN_EMAIL] = "user@example.com"
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": "000000"},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("success") is False
+    assert data.get("reload") is True
+    assert "error" not in data
+    assert len(update_calls) == 1
+    assert update_calls[0] == "user@example.com"
+
+
+def test_verify_correct_totp_grants_superuser(monkeypatch):
+    """Phase C: Correct TOTP after cooldown adds superuser role and returns success reload."""
+    import pyotp
+    from datetime import UTC, datetime, timedelta
+
+    secret = "JBSWY3DPEHPK3PXP"
+    monkeypatch.setattr("admin_console.auth.ADMIN_CONSOLE_TOTP_SECRET", secret)
+    monkeypatch.setattr("db.administrators.get_roles_for_email", lambda email: [])
+    old_attempt = (datetime.now(UTC) - timedelta(minutes=6)).isoformat()
+    monkeypatch.setattr(
+        "db.administrators.get_administrator",
+        lambda email: {"email": email, "name": None, "avatar": None, "last_login_attempt": old_attempt},
+    )
+    add_role_calls = []
+
+    def capture_add_role(email, role_name):
+        add_role_calls.append((email, role_name))
+
+    monkeypatch.setattr("db.administrators.add_role", capture_add_role)
+    app = create_admin_app()
+    app.testing = True
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess[SESSION_ADMIN_EMAIL] = "user@example.com"
+    current_code = pyotp.TOTP(secret).now()
+    response = client.post(
+        "/admin/api/auth/verify",
+        json={"code": current_code},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data.get("success") is True
+    assert data.get("reload") is True
+    assert add_role_calls == [("user@example.com", "superuser")]
 

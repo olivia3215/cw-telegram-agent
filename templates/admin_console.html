@@ -30,16 +30,35 @@
     <div class="header">
         <h1>Cindy's World Agent Admin Console</h1>
         <div id="header-user" class="header-user" style="display: none;">
-            <img id="header-avatar" class="header-avatar" src="" alt="" />
+            <button type="button" id="header-avatar-btn" class="header-avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="User menu">
+                <img id="header-avatar" class="header-avatar" src="" alt="" />
+            </button>
             <span id="header-name" class="header-name"></span>
-            <div class="header-user-menu">
-                <a id="header-logout" href="/admin/api/auth/logout">Log Out</a>
+            <div id="header-user-dropdown" class="header-user-dropdown hidden" role="menu">
+                <a id="header-request-access" href="#" class="header-menu-item" style="display: none;" role="menuitem">Request Access</a>
+                <a id="header-revoke-superuser" href="#" class="header-menu-item" style="display: none;" role="menuitem">Give up superuser</a>
+                <a id="header-logout" href="/admin/api/auth/logout" role="menuitem">Log Out</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="request-access-modal" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="request-access-title">
+        <div class="auth-card">
+            <h2 id="request-access-title">Request Access</h2>
+            <p>Enter the 6-digit code from your authenticator app to request superuser access.</p>
+            <div id="request-access-error" class="auth-message error hidden" role="alert"></div>
+            <div class="auth-actions" style="flex-direction: column; align-items: stretch;">
+                <input id="request-access-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Six digit code" style="margin-bottom: 12px; padding: 10px; font-size: 16px; text-align: center; letter-spacing: 0.2em;">
+                <div style="display: flex; gap: 8px;">
+                    <button id="request-access-verify-btn" type="button">Verify</button>
+                    <button id="request-access-cancel-btn" type="button">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="console-no-access" class="console-no-access hidden">
-        <p>You don't have access to the console. Contact <a href="https://t.me/wendy4673">Wendy</a> to request access.</p>
+        <p>You don't have access to the console. Use <strong>Request Access</strong> in the menu above to enter your authenticator code, or contact <a href="https://t.me/wendy4673">Wendy</a> for help.</p>
     </div>
 
     <nav class="tab-bar" id="main-tab-bar">

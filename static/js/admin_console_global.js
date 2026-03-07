@@ -11,7 +11,7 @@ async function loadGlobalDocsConfigDirectories() {
         if (!select) return;
         
         select.innerHTML = '<option value="">Choose a config directory...</option>';
-        data.directories.forEach(dir => {
+        (data.directories || []).forEach(dir => {
             select.appendChild(createOption(dir.path, dir.display_path));
         });
         

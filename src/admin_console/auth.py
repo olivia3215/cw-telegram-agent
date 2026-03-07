@@ -4,24 +4,22 @@
 # Licensed under the MIT License. See LICENSE.md for details.
 #
 """
-Authentication for the admin console: Google OAuth (log in) and OTP challenge (Phase C: Request Access).
+Authentication for the admin console: Google OAuth (log in) and TOTP Request Access (Phase C).
 """
 
-import hashlib
 import logging
 import secrets
-import threading
 import urllib.parse
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 import requests
-from flask import Blueprint, current_app, jsonify, redirect, request, session  # pyright: ignore[reportMissingImports]
+from flask import Blueprint, jsonify, redirect, request, session  # pyright: ignore[reportMissingImports]
 
 from clock import clock
 from config import (
     ADMIN_CONSOLE_SECRET_KEY,
+    ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS,
+    ADMIN_CONSOLE_TOTP_SECRET,
     ADMIN_GOOGLE_CLIENT_ID,
     ADMIN_GOOGLE_CLIENT_SECRET,
 )
@@ -32,7 +30,6 @@ logger = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
 
 # Session keys
-SESSION_VERIFIED_KEY = "admin_console_verified"  # Phase C: passed TOTP "Request Access"
 SESSION_ADMIN_EMAIL = "admin_email"  # Logged in via Google
 SESSION_GOOGLE_STATE = "google_oauth_state"  # CSRF for Google OAuth
 
@@ -50,125 +47,6 @@ UNPROTECTED_ENDPOINTS = {
     "auth.api_google_callback",
     "auth.api_logout",
 }
-
-
-class ChallengeError(Exception):
-    """Base class for OTP challenge errors."""
-
-
-class ChallengeTooFrequent(ChallengeError):
-    def __init__(self, retry_after: int):
-        super().__init__(
-            f"Please wait {retry_after} seconds before requesting a new code."
-        )
-        self.retry_after = retry_after
-
-
-class ChallengeNotFound(ChallengeError):
-    """Raised when no challenge is active."""
-
-
-class ChallengeExpired(ChallengeError):
-    """Raised when the challenge has expired."""
-
-
-class ChallengeInvalid(ChallengeError):
-    def __init__(self, remaining_attempts: int):
-        super().__init__("The code you entered is incorrect.")
-        self.remaining_attempts = remaining_attempts
-
-
-class ChallengeAttemptsExceeded(ChallengeError):
-    """Raised when too many invalid attempts were made."""
-
-
-@dataclass
-class OTPChallenge:
-    code_hash: str
-    expires_at: datetime
-    attempts: int = 0
-
-
-class OTPChallengeManager:
-    def __init__(
-        self,
-        *,
-        ttl_seconds: int = 300,
-        min_interval_seconds: int = 30,
-        max_attempts: int = 5,
-    ) -> None:
-        self.ttl_seconds = ttl_seconds
-        self.min_interval_seconds = min_interval_seconds
-        self.max_attempts = max_attempts
-        self._lock = threading.Lock()
-        self._challenge: Optional[OTPChallenge] = None
-        self._last_issued_at: Optional[datetime] = None
-
-    def issue(self) -> tuple[str, datetime]:
-        """Generate and store a new challenge code."""
-        now = clock.now(UTC)
-
-        with self._lock:
-            if self._last_issued_at:
-                delta = (now - self._last_issued_at).total_seconds()
-                if delta < self.min_interval_seconds:
-                    retry_after = int(self.min_interval_seconds - delta)
-                    raise ChallengeTooFrequent(max(retry_after, 1))
-
-            code = f"{secrets.randbelow(1_000_000):06d}"
-            code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-            expires_at = now + timedelta(seconds=self.ttl_seconds)
-
-            self._challenge = OTPChallenge(code_hash=code_hash, expires_at=expires_at)
-            self._last_issued_at = now
-
-            return code, expires_at
-
-    def verify(self, code: str) -> None:
-        now = clock.now(UTC)
-        hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
-
-        with self._lock:
-            if not self._challenge:
-                raise ChallengeNotFound("No verification code has been requested.")
-
-            if now > self._challenge.expires_at:
-                self._challenge = None
-                raise ChallengeExpired("The verification code has expired.")
-
-            if self._challenge.attempts >= self.max_attempts:
-                self._challenge = None
-                raise ChallengeAttemptsExceeded(
-                    "Too many invalid attempts. Request a new code."
-                )
-
-            self._challenge.attempts += 1
-
-            if hashed != self._challenge.code_hash:
-                remaining = max(self.max_attempts - self._challenge.attempts, 0)
-                if remaining == 0:
-                    self._challenge = None
-                    raise ChallengeAttemptsExceeded(
-                        "Too many invalid attempts. Request a new code."
-                    )
-                raise ChallengeInvalid(remaining_attempts=remaining)
-
-            # Successful verification clears the challenge
-            self._challenge = None
-
-
-def get_challenge_manager() -> OTPChallengeManager:
-    """
-    Return the OTPChallengeManager scoped to the current Flask application.
-
-    Each app instance receives its own manager so OTP state is not shared across
-    test clients or reloaded servers.
-    """
-    manager = current_app.extensions.get("otp_challenge_manager")  # type: ignore[union-attr]
-    if manager is None:
-        manager = OTPChallengeManager()
-        current_app.extensions["otp_challenge_manager"] = manager  # type: ignore[assignment]
-    return manager
 
 
 def require_admin_verification():
@@ -204,7 +82,6 @@ def api_auth_status():
                 avatar = admin.get("avatar")
         except Exception as e:
             logger.debug("Failed to load roles/admin for auth status: %s", e)
-    verified = bool(session.get(SESSION_VERIFIED_KEY))
     is_superuser = "superuser" in (roles or [])
     return jsonify(
         {
@@ -213,7 +90,6 @@ def api_auth_status():
             "name": name,
             "avatar": avatar,
             "roles": roles,
-            "verified": verified,
             "is_superuser": is_superuser,
         }
     )
@@ -345,6 +221,22 @@ def api_logout():
     return redirect("/admin")
 
 
+@auth_bp.route("/api/auth/revoke-superuser", methods=["POST"])
+def api_auth_revoke_superuser():
+    """Revoke superuser role for the current session user (self only)."""
+    email = session.get(SESSION_ADMIN_EMAIL)
+    if not email:
+        return jsonify({"error": "Login required."}), 401
+    from db import administrators
+
+    roles = administrators.get_roles_for_email(email)
+    if "superuser" not in (roles or []):
+        return jsonify({"error": "Superuser role required to revoke it."}), 403
+    administrators.remove_role(email, "superuser")
+    logger.info("Auth revoke-superuser: %s gave up superuser", email)
+    return jsonify({"success": True})
+
+
 @auth_bp.route("/api/auth/request-code", methods=["POST"])
 def api_auth_request_code():
     """OTP via Telegram is no longer supported. Use TOTP or Google login."""
@@ -358,40 +250,100 @@ def api_auth_request_code():
     )
 
 
+# Phase C: cooldown (seconds) after last_login_attempt before TOTP can grant superuser; set via CINDY_ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS
+
+
+def _parse_last_login_attempt(admin: dict | None) -> datetime | None:
+    """Return last_login_attempt as timezone-aware datetime (UTC) or None."""
+    if not admin:
+        return None
+    raw = admin.get("last_login_attempt")
+    if not raw:
+        return None
+    dt = None
+    if hasattr(raw, "isoformat"):
+        dt = raw
+    else:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+    if dt is not None and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
 @auth_bp.route("/api/auth/verify", methods=["POST"])
 def api_auth_verify():
-    """Verify a submitted OTP code."""
-    if session.get(SESSION_VERIFIED_KEY):
-        return jsonify({"success": True, "already_verified": True})
-
-    payload = request.get_json(silent=True) or {}
-    code = str(payload.get("code", "")).strip()
-
-    if not code:
-        return jsonify({"error": "Verification code is required."}), 400
-
-    challenge_manager = get_challenge_manager()
-
+    """Verify a submitted TOTP code for Request Access (Phase C). Grants superuser on success."""
     try:
-        challenge_manager.verify(code)
-    except ChallengeNotFound:
-        return (
-            jsonify({"error": "No verification code has been requested yet."}),
-            400,
-        )
-    except ChallengeExpired:
-        return jsonify({"error": "The verification code has expired."}), 400
-    except ChallengeInvalid as exc:
-        return jsonify(
-            {
-                "error": str(exc),
-                "remaining_attempts": exc.remaining_attempts,
-            }
-        ), 400
-    except ChallengeAttemptsExceeded as exc:
-        return jsonify({"error": str(exc)}), 429
+        email = session.get(SESSION_ADMIN_EMAIL)
+        if not email:
+            return jsonify({"error": "Login required."}), 401
 
-    session[SESSION_VERIFIED_KEY] = True
-    session.permanent = True  # Use PERMANENT_SESSION_LIFETIME so cookie survives browser restarts
-    session.modified = True
-    return jsonify({"success": True})
+        from db import administrators
+
+        roles = administrators.get_roles_for_email(email)
+        if "superuser" in (roles or []):
+            logger.info("Auth verify: %s already superuser", email)
+            return jsonify({"success": True, "already_superuser": True, "reload": True})
+
+        if not ADMIN_CONSOLE_TOTP_SECRET:
+            return (
+                jsonify(
+                    {
+                        "error": "TOTP is not configured. Set CINDY_ADMIN_CONSOLE_TOTP_SECRET and add it to your authenticator app.",
+                    }
+                ),
+                503,
+            )
+
+        payload = request.get_json(silent=True) or {}
+        code = str(payload.get("code", "")).strip()
+        if not code:
+            return jsonify({"error": "Verification code is required."}), 400
+
+        now = clock.now(UTC)
+        cooldown_end = now - timedelta(seconds=ADMIN_CONSOLE_TOTP_COOLDOWN_SECONDS)
+        admin = administrators.get_administrator(email)
+        last_attempt = _parse_last_login_attempt(admin)
+        if last_attempt is not None and last_attempt > cooldown_end:
+            logger.info(
+                "Auth verify: %s in cooldown (last_attempt=%s, cooldown_end=%s)",
+                email,
+                last_attempt.isoformat(),
+                cooldown_end.isoformat(),
+            )
+            administrators.update_last_login_attempt(email)
+            return jsonify({"success": False, "reload": True})
+
+        import pyotp
+
+        try:
+            totp = pyotp.TOTP(ADMIN_CONSOLE_TOTP_SECRET)
+        except Exception as e:
+            logger.warning("Invalid TOTP secret configuration: %s", e)
+            return (
+                jsonify(
+                    {
+                        "error": "TOTP secret is invalid (must be base32). Regenerate with: python -c 'import pyotp; print(pyotp.random_base32())'.",
+                    }
+                ),
+                503,
+            )
+        if not totp.verify(code, valid_window=2):
+            logger.info("Auth verify: %s TOTP code invalid or expired (valid_window=2)", email)
+            administrators.update_last_login_attempt(email)
+            return jsonify({"success": False, "reload": True})
+
+        logger.info("Auth verify: %s TOTP success, granting superuser", email)
+        administrators.add_role(email, "superuser")
+        session.permanent = True
+        session.modified = True
+        return jsonify({"success": True, "reload": True})
+    except Exception as e:
+        logger.exception("Auth verify failed: %s", e)
+        return (
+            jsonify({"error": "Verification failed. Please try again or contact an administrator."}),
+            500,
+        )

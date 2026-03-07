@@ -1473,8 +1473,8 @@ The full plan for issue #671 (multiple administrators, RBAC, Google OAuth, TOTP)
 
 - **Phase A (done):** Schema and DB layer for `administrators`, `admin_role_names`, `administrator_roles`, `administrator_resource_grants`; seed `superuser` role.
 - **Phase B (done):** Google OAuth login and session; **current implementation** restricts login to pre-provisioned administrators only (callback rejects unknown emails with `?error=not_authorized`); `scripts/add_admin.py` to add admins.
-- **Phase B2 (planned):** Align with original spec: allow **any** Google user to log in (callback upserts `administrators` on first login). Show console shell (title, avatar, menu "Request Access", "Log Out") for every logged-in user. Show **tabs only when the user has the `superuser` role**; otherwise no tab bar. All protected admin API endpoints return **403** for non-superusers (e.g. `{"error": "Superuser role required"}`). Auth status API returns `roles` or `is_superuser` so the front end can hide tabs. Optional: `add_admin.py` can grant `superuser` for one bootstrap admin.
-- **Phase C (planned):** TOTP "Request Access"; correct code after 5+ minutes adds `superuser` to `administrator_roles`; silent failure for wrong code or recent attempt.
+- **Phase B2 (done):** Any Google user can log in (callback upserts `administrators` on first login). Console shell shows title, avatar, menu "Request Access", "Log Out". Tabs only when user has `superuser` role; protected endpoints return 403 for non-superusers; auth status returns `roles` and `is_superuser`. `add_admin.py` grants `superuser` for bootstrap.
+- **Phase C (done):** TOTP "Request Access"; correct code after 5+ minutes adds `superuser` to `administrator_roles`; wrong code or attempt within 5 minutes updates `last_login_attempt` and returns silent reload (no error). Uses `CINDY_ADMIN_CONSOLE_TOTP_SECRET` (base32); `pyotp` for verification.
 - **Phases D–G (planned):** Permission module, Accounts section, agent-scoped grants, docs.
 
 ## Media Editor API

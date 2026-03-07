@@ -140,6 +140,24 @@ body.auth-locked {
     display: flex;
     align-items: center;
     gap: 10px;
+    position: relative;
+}
+.header-avatar-btn {
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.header-avatar-btn:hover {
+    opacity: 0.9;
+}
+.header-avatar-btn:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.6);
+    outline-offset: 2px;
 }
 .header-avatar {
     width: 36px;
@@ -147,6 +165,7 @@ body.auth-locked {
     border-radius: 50%;
     object-fit: cover;
     background: rgba(255, 255, 255, 0.2);
+    display: block;
 }
 .header-name {
     font-size: 14px;
@@ -155,15 +174,34 @@ body.auth-locked {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.header-user-menu a {
-    color: white;
+.header-user-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    min-width: 160px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    padding: 6px 0;
+    z-index: 1000;
+}
+.header-user-dropdown.hidden {
+    display: none !important;
+}
+.header-user-dropdown a {
+    display: block;
+    color: #2c3e50;
     text-decoration: none;
     font-size: 14px;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 8px 14px;
+    border-radius: 0;
 }
-.header-user-menu a:hover {
-    background: rgba(255, 255, 255, 0.15);
+.header-user-dropdown a:hover {
+    background: #e8ecf0;
+}
+.header-user-dropdown a:focus {
+    background: #e8ecf0;
 }
 .auth-actions .button-link {
     display: inline-block;

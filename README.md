@@ -472,6 +472,7 @@ The Admin Console serves administrative tooling with multiple tabs for managing 
 | `CINDY_ADMIN_CONSOLE_ENABLED` | `true` | Enable/disable the console server |
 | `CINDY_AGENT_LOOP_ENABLED` | `true` | Enable/disable the agent loop (set `false` to run console-only) |
 | `CINDY_ADMIN_CONSOLE_SECRET_KEY` | _(random each run)_ | Flask session secret; set to a fixed value to keep console logins after restarts. |
+| `CINDY_ADMIN_CONSOLE_TOTP_SECRET` | _(unset)_ | Base32 TOTP secret for "Request Access"; add the same value to an authenticator app (e.g. Google Authenticator) so users can escalate to superuser with a 6-digit code. Optional. |
 | `CINDY_ADMIN_GOOGLE_CLIENT_ID` | _(unset)_ | Google OAuth client ID for admin login (Web application client). Required for multi-admin. |
 | `CINDY_ADMIN_GOOGLE_CLIENT_SECRET` | _(unset)_ | Google OAuth client secret for admin login. Required for multi-admin. |
 | `CINDY_ADMIN_CONSOLE_HOST` | `0.0.0.0` | Host interface for the console |
@@ -491,7 +492,22 @@ python scripts/add_admin.py admin@example.com
 python scripts/add_admin.py admin@example.com --name "Jane Admin"
 ```
 
-Only after an email is added can that user log in via "Log in via Google" in the console. See `.env-template` for Google OAuth setup (client ID, secret, and authorized redirect URI).
+Any Google user can log in via "Log in via Google"; the first time they do, an administrator row is created. To grant full console access (tabs), either add them with `add_admin.py` (which grants the superuser role) or use Request Access (TOTP) below. See `.env-template` for Google OAuth setup (client ID, secret, and authorized redirect URI).
+
+**Request Access (TOTP)**
+
+Logged-in users who do not yet have superuser access see "Request Access" in the header menu. They can enter a 6-digit code from an authenticator app to gain superuser and see the full console.
+
+1. **Generate a TOTP secret** (once per deployment) and add it to your environment:
+   ```bash
+   python -c 'import pyotp; print(pyotp.random_base32())'
+   # Add the output to .env, e.g.:
+   export CINDY_ADMIN_CONSOLE_TOTP_SECRET="JBSWY3DPEHPK3PXP"
+   ```
+2. **Add the same secret to an authenticator app** (e.g. Google Authenticator, Authy): create a new TOTP entry, name it e.g. "Cindy Admin Console", and paste the base32 secret (or scan a QR code if your app supports it).
+3. **Use Request Access in the console:** After logging in with Google, click "Request Access" in the menu, enter the current 6-digit code from the app, and click Verify. On success the page reloads and the full console appears.
+
+If the wrong code is entered, or if a code was attempted within the last 5 minutes (including at Google login), the UI reloads with no error message (silent failure). Wait at least 5 minutes and try again with a fresh code.
 
 **Quick start**
 1. Configure the session secret (generate once and reuse in your environment or `.env` file):
@@ -573,7 +589,7 @@ By default, the admin console runs on HTTP. To enable HTTPS for secure connectio
 
 **Disabling HTTPS:** Remove or comment out the SSL environment variables and restart.
 
-On first visit to the console you'll see a login overlay. Click "Log in via Google" to sign in with a Google account. Only accounts that have been added with `scripts/add_admin.py` can access the console; others see "This Google account is not authorized." Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
+On first visit to the console you'll see a login overlay. Click "Log in via Google" to sign in with a Google account. After login, if you have the superuser role (e.g. added via `scripts/add_admin.py` or after completing Request Access with TOTP), you see the full console; otherwise you see "Request Access" in the menu to enter your authenticator code. Sessions are remembered until you clear cookies or restart without the same `CINDY_ADMIN_CONSOLE_SECRET_KEY`.
 
 The Admin Console provides three main tabs:
 

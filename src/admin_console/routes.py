@@ -27,7 +27,7 @@ _available_directories: list[dict[str, str]] = []
 _ROOT = Path(__file__).parent.parent.parent
 
 
-@routes_bp.route("/")
+@routes_bp.route("/", methods=["GET", "HEAD"])
 def index():
     """Main page with directory selection and media browser."""
     return render_template("admin_console.html", directories=_available_directories)

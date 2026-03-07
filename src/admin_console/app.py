@@ -18,7 +18,7 @@ from werkzeug.serving import make_server
 
 from admin_console.request_handler import NoDrainWSGIRequestHandler
 from config import ADMIN_CONSOLE_SECRET_KEY
-from admin_console.auth import OTPChallengeManager, auth_bp, require_admin_verification
+from admin_console.auth import auth_bp, require_admin_verification
 from admin_console.media import media_bp
 from admin_console.docs import docs_bp
 from admin_console.prompts import prompts_bp
@@ -66,10 +66,6 @@ def create_admin_app(use_https: bool = False) -> Flask:
     if use_https:
         app.config['SESSION_COOKIE_SECURE'] = True  # Only send over HTTPS
 
-    # Ensure each app instance has its own OTP challenge manager.
-    if "otp_challenge_manager" not in app.extensions:
-        app.extensions["otp_challenge_manager"] = OTPChallengeManager()
-
     # Root-level favicon (no /admin prefix) so media opened in new tab doesn't 404
     _favicon_path = Path(__file__).parent.parent.parent / "favicon.ico"
 
@@ -95,6 +91,13 @@ def create_admin_app(use_https: bool = False) -> Flask:
     from flask import request, session, jsonify  # pyright: ignore[reportMissingImports]
     from admin_console.auth import UNPROTECTED_ENDPOINTS, SESSION_ADMIN_EMAIL
 
+    # GET list endpoints: return empty list/struct instead of 403 for logged-in non-superusers
+    LIST_ENDPOINTS_EMPTY_RESPONSE = {
+        "routes.api_directories": lambda: jsonify([]),
+        "docs.api_config_directories": lambda: jsonify({"directories": []}),
+        "agents.api_agents": lambda: jsonify({"agents": [], "telegram_id_to_name": {}}),
+    }
+
     @app.before_request
     def admin_verification():
         """Ensure the session has a logged-in admin (Google) for protected routes."""
@@ -113,6 +116,9 @@ def create_admin_app(use_https: bool = False) -> Flask:
         # Require superuser role for all protected endpoints
         roles = administrators.get_roles_for_email(email)
         if "superuser" not in (roles or []):
+            # For GET list endpoints, return empty list so front end needs no special handling
+            if request.method == "GET" and endpoint in LIST_ENDPOINTS_EMPTY_RESPONSE:
+                return LIST_ENDPOINTS_EMPTY_RESPONSE[endpoint]()
             return jsonify({"error": "Superuser role required"}), 403
 
         return None
